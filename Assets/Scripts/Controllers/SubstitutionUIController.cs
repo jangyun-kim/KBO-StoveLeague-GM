@@ -106,13 +106,36 @@ namespace KBOManager.Controllers
             var label = button.GetComponentInChildren<Text>();
             if (label != null)
             {
-                label.text = candidate?.Template != null
-                    ? $"{candidate.Template.PlayerName} (OVR {candidate.CalculateOVR(false)})"
-                    : "알 수 없음";
+                label.text = BuildEntryLabel(candidate);
             }
 
             button.onClick.AddListener(() => HandleCandidateClicked(candidate));
             spawnedEntries.Add(button.gameObject);
+        }
+
+        /// <summary>"[포지션] 이름 (OVR n)"에 이어, 타자는 파워/정확을, 투수는 구위/제구를 둘째 줄에 붙인다.
+        /// 강화/각성 성장치까지 반영된 실제 스탯(GetEffectiveBatterStats/PitcherStats)을 그대로 보여준다.</summary>
+        private static string BuildEntryLabel(Player candidate)
+        {
+            if (candidate?.Template == null) return "알 수 없음";
+
+            var template = candidate.Template;
+            string position = template.IsPitcher ? template.PitcherRole.ToString() : template.BatterPosition.ToString();
+            int ovr = candidate.CalculateOVR(false);
+
+            string statLine;
+            if (template.IsPitcher)
+            {
+                var stats = candidate.GetEffectivePitcherStats();
+                statLine = $"구위 {stats.Stuff} / 제구 {stats.Control}";
+            }
+            else
+            {
+                var stats = candidate.GetEffectiveBatterStats();
+                statLine = $"파워 {stats.Power} / 정확 {stats.Contact}";
+            }
+
+            return $"[{position}] {template.PlayerName} (OVR {ovr})\n{statLine}";
         }
 
         private void HandleCandidateClicked(Player candidate)
