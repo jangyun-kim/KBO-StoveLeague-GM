@@ -37,6 +37,11 @@ namespace KBOManager.Controllers
         /// RosterUIController 등 로스터를 별도로 그리는 화면이 이 이벤트만 구독하면 재조립 없이 자동 갱신된다.</summary>
         public event Action OnRosterChanged;
 
+        /// <summary>ExecuteEnhance()의 성공/실패가 결정된 직후 발생한다(대상 선수, 성공 여부).
+        /// InventoryUIController가 이를 구독해 VFXController로 성공/실패 연출을 트리거한다 - 성공/실패
+        /// 여부는 원래 Debug.Log로만 남고 UI로 전파되지 않았는데, 이 이벤트가 그 경로를 열어 준다.</summary>
+        public event Action<Player, bool> OnEnhanceCompleted;
+
         // ----- Enhance 대상/재료 주입 (인벤토리 UI가 카드를 클릭할 때 호출) -----
 
         public void SetEnhanceTarget(Player target)
@@ -108,6 +113,8 @@ namespace KBOManager.Controllers
             Debug.Log($"[GameActionController] ExecuteEnhance: {(success ? "성공" : "실패")} " +
                       $"(대상: {enhanceTarget.Template?.PlayerName}, 현재 {enhanceTarget.ReinforceLevel}강)");
 
+            var completedTarget = enhanceTarget;
+
             if (success)
             {
                 foreach (var item in usedMaterials)
@@ -116,6 +123,8 @@ namespace KBOManager.Controllers
                 }
                 ClearEnhanceSelection();
             }
+
+            OnEnhanceCompleted?.Invoke(completedTarget, success);
         }
 
         /// <summary>각성 버튼 OnClick. 성공 시 소모된 재료(Player) 카드를 인벤토리에서 제거한다.</summary>

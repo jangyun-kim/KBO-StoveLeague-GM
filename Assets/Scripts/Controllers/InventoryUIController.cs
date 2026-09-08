@@ -17,6 +17,8 @@ namespace KBOManager.Controllers
     {
         [Header("References")]
         [SerializeField] private MaterialSelectUIController materialSelectUIController;
+        [Tooltip("ExecuteEnhance()의 성공/실패를 구독해 VFXController 연출을 트리거하는 데 쓴다.")]
+        [SerializeField] private GameActionController gameActionController;
 
         [Header("Card List")]
         [Tooltip("카드가 나열될 부모(Scroll View의 Content). GridLayoutGroup을 붙여 정렬한다.")]
@@ -39,6 +41,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Button skillChangeButton;
         [Tooltip("스킬 변경 결과(성공/실패/F등급 재확인 대기)를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
         [SerializeField] private Text skillRerollResultText;
+        [Tooltip("강화 성공/실패 시 VFXController가 반짝이는 색으로 재생할 카드 배경/테두리 Image. 비워두면 색 연출만 생략된다.")]
+        [SerializeField] private Image detailCardFlashImage;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
         private Player selectedPlayer;
@@ -62,6 +66,11 @@ namespace KBOManager.Controllers
             {
                 materialSelectUIController.OnActionCompleted += HandleMaterialActionCompleted;
             }
+
+            if (gameActionController != null)
+            {
+                gameActionController.OnEnhanceCompleted += HandleEnhanceCompleted;
+            }
         }
 
         private void OnDisable()
@@ -70,12 +79,35 @@ namespace KBOManager.Controllers
             {
                 materialSelectUIController.OnActionCompleted -= HandleMaterialActionCompleted;
             }
+
+            if (gameActionController != null)
+            {
+                gameActionController.OnEnhanceCompleted -= HandleEnhanceCompleted;
+            }
         }
 
         private void HandleMaterialActionCompleted()
         {
             RefreshInventory();
             if (selectedPlayer != null) ShowDetail(selectedPlayer); // 최신 강화/각성 수치로 패널 다시 그림
+        }
+
+        /// <summary>GameActionController.OnEnhanceCompleted 핸들러. 지금 상세 패널에 열려 있는 카드가
+        /// 방금 강화를 시도한 그 카드일 때만(다른 화면에서 강화가 일어났을 가능성은 없지만 방어적으로 확인)
+        /// VFXController에 성공/실패 연출을 위임한다.</summary>
+        private void HandleEnhanceCompleted(Player target, bool success)
+        {
+            if (target == null || target != selectedPlayer || detailPreviewCard == null) return;
+
+            if (success)
+            {
+                Transform reinforceTextTransform = detailReinforceText != null ? detailReinforceText.transform : null;
+                VFXController.Instance?.PlayEnhanceSuccess(detailCardFlashImage, reinforceTextTransform);
+            }
+            else
+            {
+                VFXController.Instance?.PlayEnhanceFailure(detailPreviewCard.transform, detailCardFlashImage);
+            }
         }
 
         /// <summary>GameManager.Instance.Inventory 전체를 다시 읽어 카드 리스트를 새로 그린다.</summary>

@@ -60,6 +60,11 @@ namespace KBOManager.Managers
             }
         }
 
+        /// <summary>SaveManager 전용 복원 진입점. InitializeSeason()과 달리 개막일로 되돌리지 않고
+        /// 저장된 날짜를 그대로 복원한다(OnDayAdvanced도 발생시키지 않는다 - 로드는 "시간이 흘렀다"가
+        /// 아니라 "그 시점 상태를 그대로 되돌린다"이므로 회복/컨디션 갱신이 다시 일어나면 안 된다).</summary>
+        public void RestoreDate(DateTime date) => currentDate = date;
+
         /// <summary>
         /// 사용자 경기 1건이 끝나 다음 경기일로 넘어간다. 다음 날이 월요일이면 리그 전체가 쉬는 날이므로
         /// 자동으로 하루 더 건너뛴다(연속으로 여러 날이 월요일일 수는 없으므로 최대 한 번만 건너뛴다).

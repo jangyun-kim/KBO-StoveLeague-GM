@@ -40,8 +40,15 @@ namespace KBOManager.Controllers
         [Header("Tabs")]
         [SerializeField] private Button batterTabButton;
         [SerializeField] private Button pitcherTabButton;
+        [SerializeField] private Button hallOfFameTabButton;
         [SerializeField] private GameObject batterPanelRoot;
         [SerializeField] private GameObject pitcherPanelRoot;
+        [SerializeField] private GameObject hallOfFamePanelRoot;
+
+        [Header("Hall of Fame Tab (역대 시즌 기록 - SaveManager가 복원한 SeasonRollover.HallOfFame)")]
+        [SerializeField] private SeasonRollover seasonRollover;
+        [SerializeField] private Transform hallOfFameListContainer;
+        [SerializeField] private Text hallOfFameEntryPrefab;
 
         [Header("Batter Panels (2x2) - 타율 / 홈런")]
         [SerializeField] private StatPanelEntry battingAveragePanel;
@@ -61,10 +68,13 @@ namespace KBOManager.Controllers
         [SerializeField] private Color userTeamHighlightColor = new Color(1f, 0.84f, 0f); // 골드
         [SerializeField] private Color normalTextColor = Color.white;
 
+        private readonly List<Text> spawnedHallOfFameEntries = new List<Text>();
+
         private void Awake()
         {
             if (batterTabButton != null) batterTabButton.onClick.AddListener(ShowBatterTab);
             if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(ShowPitcherTab);
+            if (hallOfFameTabButton != null) hallOfFameTabButton.onClick.AddListener(ShowHallOfFameTab);
         }
 
         private void OnEnable()
@@ -76,6 +86,7 @@ namespace KBOManager.Controllers
         {
             if (batterPanelRoot != null) batterPanelRoot.SetActive(true);
             if (pitcherPanelRoot != null) pitcherPanelRoot.SetActive(false);
+            if (hallOfFamePanelRoot != null) hallOfFamePanelRoot.SetActive(false);
             RefreshBatterPanels();
         }
 
@@ -83,7 +94,40 @@ namespace KBOManager.Controllers
         {
             if (batterPanelRoot != null) batterPanelRoot.SetActive(false);
             if (pitcherPanelRoot != null) pitcherPanelRoot.SetActive(true);
+            if (hallOfFamePanelRoot != null) hallOfFamePanelRoot.SetActive(false);
             RefreshPitcherPanels();
+        }
+
+        /// <summary>명예의 전당(역대 시즌 우승팀/타이틀 홀더) 탭. SeasonRollover.HallOfFame은
+        /// SaveManager.LoadGame()이 복원해 두므로, 여기선 그 리스트를 읽어 화면에 그리기만 하면 된다.</summary>
+        public void ShowHallOfFameTab()
+        {
+            if (batterPanelRoot != null) batterPanelRoot.SetActive(false);
+            if (pitcherPanelRoot != null) pitcherPanelRoot.SetActive(false);
+            if (hallOfFamePanelRoot != null) hallOfFamePanelRoot.SetActive(true);
+            RefreshHallOfFame();
+        }
+
+        private void RefreshHallOfFame()
+        {
+            foreach (var entry in spawnedHallOfFameEntries)
+            {
+                if (entry != null) Destroy(entry.gameObject);
+            }
+            spawnedHallOfFameEntries.Clear();
+
+            if (seasonRollover == null || hallOfFameEntryPrefab == null || hallOfFameListContainer == null) return;
+
+            foreach (var record in seasonRollover.HallOfFame)
+            {
+                string championLabel = record.ChampionTeam.HasValue ? record.ChampionTeam.Value.ToString() : "기록 없음";
+
+                var text = Instantiate(hallOfFameEntryPrefab, hallOfFameListContainer);
+                text.gameObject.SetActive(true);
+                text.text = $"{record.SeasonYear}시즌 - 우승: {championLabel} | 타율 1위: {record.BattingAverageLeader} | " +
+                            $"홈런 1위: {record.HomeRunLeader} | 다승 1위: {record.WinsLeader} | 방어율 1위: {record.EraLeader}";
+                spawnedHallOfFameEntries.Add(text);
+            }
         }
 
         private void RefreshBatterPanels()

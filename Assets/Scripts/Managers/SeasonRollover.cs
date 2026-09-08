@@ -36,6 +36,13 @@ namespace KBOManager.Managers
         private readonly List<HallOfFameEntry> hallOfFame = new List<HallOfFameEntry>();
         public IReadOnlyList<HallOfFameEntry> HallOfFame => hallOfFame;
 
+        /// <summary>SaveManager 전용 복원 진입점. 로드 시 저장된 명예의 전당 기록으로 통째로 교체한다.</summary>
+        public void ReplaceHallOfFame(IEnumerable<HallOfFameEntry> entries)
+        {
+            hallOfFame.Clear();
+            if (entries != null) hallOfFame.AddRange(entries);
+        }
+
         private void Awake()
         {
             if (Instance != null && Instance != this)

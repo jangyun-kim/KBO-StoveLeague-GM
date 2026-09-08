@@ -280,5 +280,37 @@ namespace KBOManager.Controllers
 
             OnMatchCompleted?.Invoke(LastResult);
         }
+
+        /// <summary>
+        /// [디버그/QA 전용] 진행 중인 경기를 즉시 유저 팀 승리로 강제 종료한다(DebugPanelUI 전용 진입점).
+        ///
+        /// 하이라이트 모드로 정지(isPausedForUser) 중이면 FinishMatch()를 여기서 직접 부르지 않는다 -
+        /// RunHighlight() 코루틴이 아직 살아 있어서, isPausedForUser만 풀어 주면 그 코루틴이 스스로
+        /// while(!engine.IsGameOver) 조건을 다시 확인해 루프를 빠져나가며 FinishMatch()를 호출한다.
+        /// 만약 여기서도 FinishMatch()를 직접 부르면 두 번 호출되어 LeagueManager.CompleteNextFixture()가
+        /// (이미 nextFixtureIndex가 전진한 뒤라) 엉뚱한 다음 경기에 이번 결과를 잘못 기록해 버린다.
+        /// 반대로 풀 플레이(수동 진행) 등 정지 상태가 아니면 아무도 대신 불러줄 코루틴이 없으므로
+        /// 여기서 직접 FinishMatch()를 호출해야 한다.
+        /// </summary>
+        public void DebugForceWinCurrentMatch()
+        {
+            if (!IsMatchInProgress || engine == null || engine.IsGameOver) return;
+
+            var userTeam = LeagueManager.Instance != null ? LeagueManager.Instance.UserTeam : Team.None;
+            string winningTeamName = (userTeam == HomeTeam ? HomeTeam : AwayTeam).ToString();
+
+            engine.DebugForceEndGame(winningTeamName);
+
+            if (isPausedForUser)
+            {
+                pausedStep = null;
+                pausedTrigger = null;
+                isPausedForUser = false;
+            }
+            else
+            {
+                FinishMatch();
+            }
+        }
     }
 }

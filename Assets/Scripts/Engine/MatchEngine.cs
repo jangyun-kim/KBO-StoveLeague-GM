@@ -493,6 +493,29 @@ namespace KBOManager.Engine
         }
 
         /// <summary>
+        /// [디버그/QA 전용] 진행 중인 경기를 즉시 강제 종료하고 winningTeamName을 승자로 확정한다.
+        /// 실제 시뮬레이션 규칙을 전혀 따르지 않는다(스코어를 임의로 조작할 뿐) - DebugPanelUI의
+        /// "현재 경기 승리로 강제 종료" 버튼 외에는 호출하지 말 것. FinishGame()이 이미 갖고 있는
+        /// "동점이면 무승부" 판정 로직을 그대로 재사용하기 위해, 직접 WinnerTeamName을 대입하는 대신
+        /// 승자 쪽 점수를 패자보다 1점 많게만 맞춰 두고 FinishGame()에게 판정을 맡긴다.
+        /// </summary>
+        public void DebugForceEndGame(string winningTeamName)
+        {
+            if (IsGameOver) return;
+
+            if (winningTeamName == homeTeamName && Result.HomeTotalScore <= Result.AwayTotalScore)
+            {
+                Result.HomeTotalScore = Result.AwayTotalScore + 1;
+            }
+            else if (winningTeamName == awayTeamName && Result.AwayTotalScore <= Result.HomeTotalScore)
+            {
+                Result.AwayTotalScore = Result.HomeTotalScore + 1;
+            }
+
+            FinishGame();
+        }
+
+        /// <summary>
         /// 생성자에서 주입받은 양 팀의 28인 로스터로 1회부터 9회까지(동점 시 연장 최대 12회) 경기를
         /// 즉시 시뮬레이션한다. 내부적으로 BeginMatch() + PlayNextAtBat() 반복 호출과 완전히 동일한
         /// 규칙을 사용한다("빠른 진행" 모드용).

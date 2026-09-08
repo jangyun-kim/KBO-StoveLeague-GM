@@ -236,6 +236,59 @@ namespace KBOManager.Managers
         public int GetFinalRank(Team team, int regularSeasonRankFallback) =>
             finalRankByTeam.TryGetValue(team, out var rank) ? rank : regularSeasonRankFallback;
 
+        /// <summary>SaveManager가 저장할 때 읽어가는 시드 목록([0]=1위 ... [4]=5위).</summary>
+        public IReadOnlyList<Team> Seeds => seeds;
+
+        /// <summary>SaveManager가 저장할 때 읽어가는, 지금까지 확정된 팀별 최종 순위.</summary>
+        public IReadOnlyDictionary<Team, int> FinalRanks => finalRankByTeam;
+
+        /// <summary>
+        /// SaveManager 전용 복원 진입점. LeagueManager.RestoreFromSave()와 동일하게 세이브 스키마
+        /// 타입을 직접 참조하지 않고 원시 값만 받는다 - activeRound가 null이면 "진행 중인 시리즈 없음"
+        /// (브래킷 시작 전이거나 챔피언이 이미 확정된 상태)을 뜻한다. Team.None은 "값 없음" 대용이다
+        /// (LeagueManager가 UserFinalRank에 -1을 쓰는 것과 같은 관례).
+        /// </summary>
+        public void RestoreBracket(Team[] savedSeeds, Team championOrNone,
+            PostSeasonRound? activeRound, Team activeHigherSeedOrNone, Team activeLowerSeedOrNone,
+            int winsRequiredHigher, int winsRequiredLower, int winsHigher, int winsLower,
+            IEnumerable<(Team team, int rank)> savedFinalRanks)
+        {
+            if (savedSeeds != null)
+            {
+                for (int i = 0; i < seeds.Length; i++)
+                {
+                    seeds[i] = i < savedSeeds.Length ? savedSeeds[i] : Team.None;
+                }
+            }
+
+            ChampionTeam = championOrNone == Team.None ? (Team?)null : championOrNone;
+
+            finalRankByTeam.Clear();
+            if (savedFinalRanks != null)
+            {
+                foreach (var (team, rank) in savedFinalRanks) finalRankByTeam[team] = rank;
+            }
+
+            if (activeRound.HasValue)
+            {
+                CurrentRound = activeRound.Value;
+                CurrentSeries = new PostSeasonSeries
+                {
+                    Round = activeRound.Value,
+                    HigherSeed = activeHigherSeedOrNone,
+                    LowerSeed = activeLowerSeedOrNone,
+                    WinsRequiredForHigherSeed = winsRequiredHigher,
+                    WinsRequiredForLowerSeed = winsRequiredLower,
+                    WinsHigherSeed = winsHigher,
+                    WinsLowerSeed = winsLower,
+                };
+            }
+            else
+            {
+                CurrentSeries = null;
+            }
+        }
+
         /// <summary>다음 시즌을 위해 브래킷 상태를 전부 비운다. SeasonRollover가 시즌 전환 시 호출한다.</summary>
         public void ResetForNextSeason()
         {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using KBOManager.Models;
@@ -65,18 +66,54 @@ namespace KBOManager.Managers
         public int Losses;
     }
 
+    /// <summary>명예의 전당(SeasonRollover.HallOfFame) 항목 1개의 저장 포맷. HallOfFameEntry의
+    /// Team? ChampionTeam은 JsonUtility가 Nullable&lt;T&gt;를 지원하지 않아 그대로 저장할 수 없으므로,
+    /// 여기서는 Team.None을 "그 시즌 우승팀 기록 없음" 대용으로 쓴다(UserFinalRank의 -1과 같은 관례).</summary>
+    [Serializable]
+    public class HallOfFameEntrySaveData
+    {
+        public int SeasonYear;
+        public Team ChampionTeam;
+        public string BattingAverageLeader;
+        public string HomeRunLeader;
+        public string WinsLeader;
+        public string EraLeader;
+    }
+
+    /// <summary>PostSeasonManager 브래킷 진행 상태의 저장 포맷. Dictionary&lt;Team,int&gt;(FinalRanks)는
+    /// JsonUtility가 지원하지 않아 팀/순위 두 병렬 리스트로 대체했다(인덱스로 짝을 맞춘다).</summary>
+    [Serializable]
+    public class PostSeasonSaveData
+    {
+        public Team[] Seeds = new Team[5];
+        public Team ChampionTeam; // Team.None = 아직 미확정
+        public List<Team> FinalRankTeams = new List<Team>();
+        public List<int> FinalRankValues = new List<int>();
+
+        public bool HasActiveSeries;
+        public PostSeasonRound ActiveRound;
+        public Team ActiveHigherSeed;
+        public Team ActiveLowerSeed;
+        public int WinsRequiredForHigherSeed;
+        public int WinsRequiredForLowerSeed;
+        public int WinsHigherSeed;
+        public int WinsLowerSeed;
+    }
+
     /// <summary>
     /// 저장 파일 전체 스키마. JsonUtility로 직렬화하므로 int?/Dictionary 등 JsonUtility가 지원하지
-    /// 않는 타입은 쓰지 않는다(Nullable은 정수 -1을 "값 없음" 대용으로 사용, Dictionary는 List로 대체).
+    /// 않는 타입은 쓰지 않는다(Nullable은 정수 -1(또는 Team.None) 등 "값 없음" 대용으로 사용, Dictionary는
+    /// 병렬 리스트로 대체). DateTime도 JsonUtility 미지원이라 ISO 문자열(.ToString("o"))로 저장한다.
     /// </summary>
     [Serializable]
     public class GameSaveData
     {
         // v2: Item 저장 포맷을 인스턴스별(ItemSaveData) -> 수량 그룹(ItemStackSaveData)으로 변경,
-        // Player에 스태미나(CurrentStamina/MaxStamina) 필드 추가. 이 값 자체를 읽어 분기하지는 않는다 -
-        // 대신 "새 필드가 비어 있으면 구버전"이라는 더 안전한 필드-존재 기반 판별을 쓴다(SaveVersion은
-        // 사람이 읽는 기록용).
-        public int SaveVersion = 2;
+        // Player에 스태미나(CurrentStamina/MaxStamina) 필드 추가.
+        // v3: 명예의 전당(HallOfFame), 리그 캘린더 날짜(CalendarDateIso), 포스트시즌 브래킷(PostSeason)
+        // 추가. 이 값 자체를 읽어 분기하지는 않는다 - 대신 "새 필드가 비어 있으면 구버전"이라는 더 안전한
+        // 필드-존재 기반 판별을 쓴다(SaveVersion은 사람이 읽는 기록용).
+        public int SaveVersion = 3;
         public string SavedAtUtc;
 
         // GameManager
@@ -97,6 +134,16 @@ namespace KBOManager.Managers
         public LeaguePhase CurrentPhase;
         public int UserFinalRank = -1; // -1 = 아직 시즌을 완주하지 않음(null 대용)
         public List<TeamStandingSaveData> Standings = new List<TeamStandingSaveData>();
+
+        // LeagueCalendar
+        public string CalendarDateIso; // null/빈 문자열이면 구버전 세이브(캘린더 도입 이전)
+
+        // SeasonRollover (명예의 전당)
+        public List<HallOfFameEntrySaveData> HallOfFame = new List<HallOfFameEntrySaveData>();
+
+        // PostSeasonManager
+        public bool HasPostSeasonData;
+        public PostSeasonSaveData PostSeason = new PostSeasonSaveData();
     }
 
     /// <summary>
@@ -207,6 +254,46 @@ namespace KBOManager.Managers
                 }).ToList();
             }
 
+            if (LeagueCalendar.Instance != null)
+            {
+                data.CalendarDateIso = LeagueCalendar.Instance.CurrentDate.ToString("o");
+            }
+
+            if (SeasonRollover.Instance != null)
+            {
+                data.HallOfFame = SeasonRollover.Instance.HallOfFame.Select(e => new HallOfFameEntrySaveData
+                {
+                    SeasonYear = e.SeasonYear,
+                    ChampionTeam = e.ChampionTeam ?? Team.None,
+                    BattingAverageLeader = e.BattingAverageLeader,
+                    HomeRunLeader = e.HomeRunLeader,
+                    WinsLeader = e.WinsLeader,
+                    EraLeader = e.EraLeader,
+                }).ToList();
+            }
+
+            if (PostSeasonManager.Instance != null)
+            {
+                var pm = PostSeasonManager.Instance;
+                data.HasPostSeasonData = true;
+                data.PostSeason.Seeds = pm.Seeds.ToArray();
+                data.PostSeason.ChampionTeam = pm.ChampionTeam ?? Team.None;
+                data.PostSeason.FinalRankTeams = pm.FinalRanks.Keys.ToList();
+                data.PostSeason.FinalRankValues = pm.FinalRanks.Values.ToList();
+
+                if (pm.CurrentSeries != null)
+                {
+                    data.PostSeason.HasActiveSeries = true;
+                    data.PostSeason.ActiveRound = pm.CurrentRound;
+                    data.PostSeason.ActiveHigherSeed = pm.CurrentSeries.HigherSeed;
+                    data.PostSeason.ActiveLowerSeed = pm.CurrentSeries.LowerSeed;
+                    data.PostSeason.WinsRequiredForHigherSeed = pm.CurrentSeries.WinsRequiredForHigherSeed;
+                    data.PostSeason.WinsRequiredForLowerSeed = pm.CurrentSeries.WinsRequiredForLowerSeed;
+                    data.PostSeason.WinsHigherSeed = pm.CurrentSeries.WinsHigherSeed;
+                    data.PostSeason.WinsLowerSeed = pm.CurrentSeries.WinsLowerSeed;
+                }
+            }
+
             return data;
         }
 
@@ -257,6 +344,57 @@ namespace KBOManager.Managers
 
                 LeagueManager.Instance.RestoreFromSave(data.UserTeam, data.PlayedGameCount, data.CurrentPhase,
                     data.UserFinalRank, standingsData);
+            }
+
+            // CalendarDateIso가 비어 있으면 캘린더 도입 이전(v2 이하) 세이브다 - 그 경우 그대로 두면
+            // LeagueCalendar가 이미 갖고 있는 기본 날짜(또는 InitializeLeague가 새로 잡아 준 개막일)를
+            // 유지하므로 크래시 없이 자연스럽게 호환된다.
+            if (!string.IsNullOrEmpty(data.CalendarDateIso) && LeagueCalendar.Instance != null)
+            {
+                if (DateTime.TryParse(data.CalendarDateIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedDate))
+                {
+                    LeagueCalendar.Instance.RestoreDate(parsedDate);
+                }
+            }
+
+            if (SeasonRollover.Instance != null)
+            {
+                var restoredEntries = (data.HallOfFame ?? new List<HallOfFameEntrySaveData>())
+                    .Select(saved => new HallOfFameEntry
+                    {
+                        SeasonYear = saved.SeasonYear,
+                        ChampionTeam = saved.ChampionTeam == Team.None ? (Team?)null : saved.ChampionTeam,
+                        BattingAverageLeader = saved.BattingAverageLeader,
+                        HomeRunLeader = saved.HomeRunLeader,
+                        WinsLeader = saved.WinsLeader,
+                        EraLeader = saved.EraLeader,
+                    });
+                SeasonRollover.Instance.ReplaceHallOfFame(restoredEntries);
+            }
+
+            if (data.HasPostSeasonData && PostSeasonManager.Instance != null)
+            {
+                var ps = data.PostSeason;
+                var finalRankTeams = ps.FinalRankTeams ?? new List<Team>();
+                var finalRankValues = ps.FinalRankValues ?? new List<int>();
+                int pairCount = Mathf.Min(finalRankTeams.Count, finalRankValues.Count);
+                var finalRanks = new List<(Team team, int rank)>(pairCount);
+                for (int i = 0; i < pairCount; i++)
+                {
+                    finalRanks.Add((finalRankTeams[i], finalRankValues[i]));
+                }
+
+                PostSeasonManager.Instance.RestoreBracket(
+                    ps.Seeds,
+                    ps.ChampionTeam,
+                    ps.HasActiveSeries ? ps.ActiveRound : (PostSeasonRound?)null,
+                    ps.ActiveHigherSeed,
+                    ps.ActiveLowerSeed,
+                    ps.WinsRequiredForHigherSeed,
+                    ps.WinsRequiredForLowerSeed,
+                    ps.WinsHigherSeed,
+                    ps.WinsLowerSeed,
+                    finalRanks);
             }
         }
 
