@@ -19,23 +19,58 @@ namespace KBOManager.Data
         BullpenPitcher
     }
 
-    /// <summary>
-    /// 스킬이 세부 스탯에 실제로 적용되는 방식. GDD 7절은 스킬마다 서로 다른 발동 조건/수치를 갖는
-    /// 텍스트 설명만 제공하므로, 우선 GDD가 구체 수치를 명시한 2개 유형만 구현하고 나머지 스킬은
-    /// None(효과 없음, 이름/티어만 보유)으로 남겨 둔다. 신규 유형은 이 enum에 추가해 확장한다.
-    /// </summary>
-    public enum SkillEffectType
+    /// <summary>스킬 효과가 누구의 스탯에 적용되는지. 배터의 스킬이 Opponent를 대상으로 하면 상대 투수에게 적용된다.</summary>
+    public enum EffectTarget
     {
-        None,
-        FlatStatBonus,      // 조건 없이 보유자의 세부 스탯 전체에 +Value (예: 배팅머신)
-        UnderdogStatBonus   // 보유자의 OVR이 상대보다 낮을 때만 세부 스탯 전체에 +Value (예: 패기)
+        Self,
+        Opponent
+    }
+
+    /// <summary>스탯 증감의 대상. 배터용(Power/Contact/Discipline)과 투수용(Stuff/Velocity/Movement/Control)이 한 enum에 공존하며,
+    /// 대상이 아닌 쪽 StatType이 잘못 설정되면 적용 시 무시된다(예: 타자 스탯에 Stuff를 지정한 경우).</summary>
+    public enum StatType
+    {
+        Power,
+        Contact,
+        Discipline,
+        Stuff,
+        Velocity,
+        Movement,
+        Control
+    }
+
+    /// <summary>스킬 발동 조건.</summary>
+    public enum SkillCondition
+    {
+        Always,                     // 상시 발동
+        SelfOvrLowerThanOpponent,   // 패기류: 스킬 보유자의 (스킬 미포함) OVR이 상대보다 낮을 때
+        SelfOvrHigherThanOpponent,  // 반대 상황: 보유자가 우위일 때 발동하는 스킬용
+        RunnerOnBase,               // 주자 1루 이상 존재 (※ 정의만 되어 있음, 아래 클래스 주석 참고)
+        RunnerInScoringPosition,    // 득점권(2·3루) 주자 존재 (※ 정의만 되어 있음, 아래 클래스 주석 참고)
     }
 
     [Serializable]
+    public class StatModifier
+    {
+        public StatType Stat;
+        public int Value;
+    }
+
+    /// <summary>
+    /// 스킬 1개의 실제 효과. Target(나/상대) x Condition(발동 조건) x Modifiers(스탯별 증감치 목록)의
+    /// 조합(Composition)으로 표현한다. 새 스킬을 추가할 때 코드를 건드리지 않고 인스펙터에서
+    /// SkillEntry.Effect를 채우는 것만으로 대부분의 "스탯 X를 Y만큼 증감" 유형 효과를 만들 수 있다.
+    ///
+    /// RunnerOnBase/RunnerInScoringPosition 조건은 enum만 정의되어 있다. MatchEngine.SimulateAtBat(Player, Player)의
+    /// 공개 시그니처가 주자 상태를 받지 않으므로 현재는 항상 미충족으로 처리된다 - 주자 조건부 스킬을 실제로
+    /// 쓰려면 SimulateAtBat 시그니처 확장이 선행되어야 한다(후속 과제).
+    /// </summary>
+    [Serializable]
     public class SkillEffect
     {
-        public SkillEffectType EffectType;
-        public int Value;
+        public EffectTarget Target = EffectTarget.Self;
+        public SkillCondition Condition = SkillCondition.Always;
+        public List<StatModifier> Modifiers = new List<StatModifier>();
     }
 
     [Serializable]
@@ -198,20 +233,36 @@ namespace KBOManager.Data
                 (SkillTier.F, "리그의강자")
             );
 
-            // GDD 7절이 구체 수치를 명시한 2개 스킬만 실제 효과를 연결한다. (나머지는 이름/티어만 보유, 효과 None)
-            // 배팅머신: "파워, 정확, 선구 능력치가 9 증가"
-            SetEffect(batterSkills, "배팅머신", SkillEffectType.FlatStatBonus, 9);
-            // 패기: "상대 타자의 OVR이 더 높은 경우 구위, 구속, 변화, 제구 능력치가 10 증가"
-            // (투수 스킬. 배터 D티어의 동명 "패기"는 GDD에 효과가 명시되지 않아 None으로 남겨 둔다.)
-            SetEffect(startingPitcherSkills, "패기", SkillEffectType.UnderdogStatBonus, 10);
-            SetEffect(bullpenPitcherSkills, "패기", SkillEffectType.UnderdogStatBonus, 10);
+            // GDD 7절이 구체 수치를 명시한 스킬만 실제 효과를 연결한다. (나머지는 이름/티어만 보유, Modifiers 비어 있음 = 효과 없음)
+
+            // 배팅머신: "파워, 정확, 선구 능력치가 9 증가" (상시, 본인)
+            SetEffect(batterSkills, "배팅머신", EffectTarget.Self, SkillCondition.Always,
+                (StatType.Power, 9), (StatType.Contact, 9), (StatType.Discipline, 9));
+
+            // 패기(투수): "상대 타자의 OVR이 더 높은 경우 구위, 구속, 변화, 제구 능력치가 10 증가"
+            // = 본인(투수)의 OVR이 상대(타자)보다 낮을 때, 본인 스탯 증가
+            SetEffect(startingPitcherSkills, "패기", EffectTarget.Self, SkillCondition.SelfOvrLowerThanOpponent,
+                (StatType.Stuff, 10), (StatType.Velocity, 10), (StatType.Movement, 10), (StatType.Control, 10));
+            SetEffect(bullpenPitcherSkills, "패기", EffectTarget.Self, SkillCondition.SelfOvrLowerThanOpponent,
+                (StatType.Stuff, 10), (StatType.Velocity, 10), (StatType.Movement, 10), (StatType.Control, 10));
+
+            // 패기(타자): GDD가 배터판 수치를 명시하지 않아, 투수판과 동일한 발동 조건/크기(+10)를
+            // 파워/정확/선구에 대칭 적용한 추정값이다. 기획 확정 시 이 SetEffect 호출의 값만 바꾸면 된다.
+            SetEffect(batterSkills, "패기", EffectTarget.Self, SkillCondition.SelfOvrLowerThanOpponent,
+                (StatType.Power, 10), (StatType.Contact, 10), (StatType.Discipline, 10));
         }
 
-        private static void SetEffect(List<SkillEntry> skills, string skillName, SkillEffectType effectType, int value)
+        private static void SetEffect(List<SkillEntry> skills, string skillName, EffectTarget target,
+            SkillCondition condition, params (StatType stat, int value)[] modifiers)
         {
             foreach (var skill in skills.Where(s => s.SkillName == skillName))
             {
-                skill.Effect = new SkillEffect { EffectType = effectType, Value = value };
+                skill.Effect = new SkillEffect
+                {
+                    Target = target,
+                    Condition = condition,
+                    Modifiers = modifiers.Select(m => new StatModifier { Stat = m.stat, Value = m.value }).ToList()
+                };
             }
         }
 

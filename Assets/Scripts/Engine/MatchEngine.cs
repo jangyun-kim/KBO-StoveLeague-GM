@@ -51,13 +51,13 @@ namespace KBOManager.Engine
         {
             Strikeout,      // 투수 구위/구속 vs 타자 정확/선구
             Walk,           // 타자 선구 vs 투수 제구
-            ContactQuality, // 타자 정확 vs 투수 변화 (범타로 죽느냐, 안타가 되느냐)
+            ContactQuality, // 타자 정확 vs 투수 구위 (범타로 죽느냐, 안타가 되느냐)
             Power           // 타자 파워 vs 투수 변화 (장타가 되느냐)
         }
 
-        // 타석 결과 기본 확률표(총합 1.0). direction=+1이면 해당 driver의 skill 값이 클수록 확률이 커지고,
-        // -1이면 작아진다. OVR/세부 스탯 밸런스가 확정되지 않은 임시값이다.
-        private static readonly (AtBatResult result, float baseWeight, OutcomeDriver driver, float direction)[] OutcomeTable =
+        // 타석 결과 기본(fallback) 확률표. EngineConfig가 있으면 결과별 BaseWeight는 그쪽 값을 우선 사용하고,
+        // driver/direction 관계(어떤 스탯 매치업이 무엇을 좌우하는지)는 물리적 의미가 있는 구조이므로 코드에 고정한다.
+        private static readonly (AtBatResult result, float defaultBaseWeight, OutcomeDriver driver, float direction)[] OutcomeTable =
         {
             (AtBatResult.Strikeout, 0.22f, OutcomeDriver.Strikeout,      +1f),
             (AtBatResult.Walk,      0.08f, OutcomeDriver.Walk,           +1f),
@@ -69,23 +69,23 @@ namespace KBOManager.Engine
             (AtBatResult.HomeRun,   0.04f, OutcomeDriver.Power,          +1f),
         };
 
-        private const float SkillInfluence = 0.6f;     // 매치업 격차가 결과 분포를 얼마나 흔드는지(임시 계수)
-        private const float StatDiffNormalizer = 50f;  // 이 스탯 격차를 skill=±1(최대 보정)로 정규화(임시 스케일)
-
-        // 삼진 판정에서 정확/선구가 각각 기여하는 비중(임시값, 총합 1.0)
-        private const float ContactWeightInStrikeout = 0.6f;
-        private const float DisciplineWeightInStrikeout = 0.4f;
-
-        // GameManager.CheckSetDeckBonus()의 기본값과 동일한 임시 세트덱 규칙.
-        // MatchEngine은 씬의 GameManager 싱글톤에 의존하지 않는 순수 C# 클래스이므로 값만 복제해 둔다.
-        private const int SetDeckActivationThreshold = 5;
-        private const float SetDeckBonusMultiplier = 1.15f;
+        // config가 없을 때 쓰는 기본값. EngineConfig.PopulateDefaults()의 값과 동일하게 맞춰 둔다.
+        private const float DefaultSkillInfluence = 0.6f;
+        private const float DefaultStatDiffNormalizer = 50f;
+        private const int DefaultSetDeckActivationThreshold = 5;
+        private const float DefaultSetDeckBonusMultiplier = 1.15f;
 
         private static readonly BatterPosition[] StarterBatterPositions =
             (BatterPosition[])Enum.GetValues(typeof(BatterPosition));
 
         private readonly SkillDB skillDB;
+        private readonly EngineConfig config;
         private readonly Random random;
+
+        private float SkillInfluence => config != null ? config.SkillInfluence : DefaultSkillInfluence;
+        private float StatDiffNormalizer => config != null ? config.StatDiffNormalizer : DefaultStatDiffNormalizer;
+        private int SetDeckActivationThreshold => config != null ? config.SetDeckActivationThreshold : DefaultSetDeckActivationThreshold;
+        private float SetDeckBonusMultiplier => config != null ? config.SetDeckBonusMultiplier : DefaultSetDeckBonusMultiplier;
 
         // 스킬이 섞이지 않은 순수 OVR(강화/각성/세트덱만 반영). 투수 로테이션 정렬과, "패기"류 스킬의
         // OVR 비교 조건(GDD: 상대 스킬 효과로 인한 OVR 증가 제외)에 사용한다.
@@ -93,11 +93,13 @@ namespace KBOManager.Engine
         private readonly Dictionary<Player, (bool isActive, float multiplier)> setDeckContext = new Dictionary<Player, (bool, float)>();
 
         /// <summary>
-        /// skillDB는 선택 사항이다(없으면 스킬 스탯 보정 없이 진행). randomSeed를 지정하면 결과 재현이 가능하다.
+        /// skillDB/config는 선택 사항이다(없으면 각각 스킬 보정 없이, 코드 기본 상수로 진행한다).
+        /// randomSeed를 지정하면 결과 재현이 가능하다.
         /// </summary>
-        public MatchEngine(SkillDB skillDB = null, int? randomSeed = null)
+        public MatchEngine(SkillDB skillDB = null, EngineConfig config = null, int? randomSeed = null)
         {
             this.skillDB = skillDB;
+            this.config = config;
             random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
         }
 
@@ -165,22 +167,29 @@ namespace KBOManager.Engine
             if (batter?.Template == null || pitcher?.Template == null) return AtBatResult.Groundout;
             if (batter.Template.IsPitcher || !pitcher.Template.IsPitcher) return AtBatResult.Groundout;
 
-            var batterStats = ResolveEffectiveBatterStats(batter);
+            var batterStats = ResolveEffectiveBatterStats(batter, pitcher);
             var pitcherStats = ResolveEffectivePitcherStats(pitcher, batter);
 
+            // 삼진: 투수 구위/구속 평균 vs 타자 정확/선구 평균 (동일 가중치)
             float strikeoutSkill = NormalizeDiff(
                 (pitcherStats.Stuff + pitcherStats.Velocity) / 2f
-                - (batterStats.Contact * ContactWeightInStrikeout + batterStats.Discipline * DisciplineWeightInStrikeout));
+                - (batterStats.Contact + batterStats.Discipline) / 2f);
 
+            // 볼넷: 타자 선구 vs 투수 제구
             float walkSkill = NormalizeDiff(batterStats.Discipline - pitcherStats.Control);
-            float contactSkill = NormalizeDiff(batterStats.Contact - pitcherStats.Movement);
+
+            // 안타 여부(맞은 공이 범타로 죽느냐/안타가 되느냐): 타자 정확 vs 투수 구위
+            float contactSkill = NormalizeDiff(batterStats.Contact - pitcherStats.Stuff);
+
+            // 장타(2루타 이상) 여부: 타자 파워 vs 투수 변화
             float powerSkill = NormalizeDiff(batterStats.Power - pitcherStats.Movement);
 
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
             {
-                var (_, baseWeight, driver, direction) = OutcomeTable[i];
+                var (result, defaultBaseWeight, driver, direction) = OutcomeTable[i];
+                float baseWeight = config != null ? config.GetBaseWeight(result, defaultBaseWeight) : defaultBaseWeight;
                 float skill = driver switch
                 {
                     OutcomeDriver.Strikeout => strikeoutSkill,
@@ -206,7 +215,7 @@ namespace KBOManager.Engine
             return OutcomeTable[OutcomeTable.Length - 1].result;
         }
 
-        private static float NormalizeDiff(float diff) => Mathf.Clamp(diff / StatDiffNormalizer, -1f, 1f);
+        private float NormalizeDiff(float diff) => Mathf.Clamp(diff / StatDiffNormalizer, -1f, 1f);
 
         // ----- 팀 상태 구성 -----
 
@@ -258,7 +267,7 @@ namespace KBOManager.Engine
             return order;
         }
 
-        private static (bool isActive, float multiplier) EvaluateSetDeckBonus(List<Player> teamRoster)
+        private (bool isActive, float multiplier) EvaluateSetDeckBonus(List<Player> teamRoster)
         {
             int maxCount = teamRoster
                 .Where(p => p.Template.Team != Team.None)
@@ -284,81 +293,125 @@ namespace KBOManager.Engine
             return baseOvrCache.TryGetValue(player, out var cached) ? cached : player.CalculateOVR(false);
         }
 
-        /// <summary>강화/각성(Player) + 세트덱(팀) + 스킬(FlatStatBonus) 보정을 모두 반영한 타자 세부 스탯.</summary>
-        private BatterStats ResolveEffectiveBatterStats(Player batter)
+        /// <summary>
+        /// 최종 스탯 = (Base + Growth) * SetDeckMultiplier + SkillBonus.
+        /// 세트덱 배율은 원본 성장분까지만 곱하고, 스킬 보정은 그 뒤에 가산한다 - 스킬 보너스가
+        /// 세트덱 배율의 영향을 받아 함께 부풀려지는 복리 현상을 방지하기 위함이다.
+        /// </summary>
+        private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher)
         {
-            var stats = batter.GetEffectiveBatterStats();
+            var stats = batter.GetEffectiveBatterStats(); // Base + Growth
             var (isActive, multiplier) = GetSetDeckContext(batter);
             if (isActive && multiplier > 1f)
             {
-                stats = new BatterStats(
-                    Mathf.RoundToInt(stats.Power * multiplier),
-                    Mathf.RoundToInt(stats.Contact * multiplier),
-                    Mathf.RoundToInt(stats.Discipline * multiplier));
+                stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
             }
 
-            if (skillDB != null)
-            {
-                foreach (var skillName in batter.AcquiredSkillIds)
-                {
-                    var skill = skillDB.FindSkill(skillName);
-                    if (skill?.Effect == null) continue;
-
-                    // 배터용 UnderdogStatBonus 스킬은 GDD에 구체 수치가 없어 아직 미구현이다(TODO).
-                    if (skill.Effect.EffectType == SkillEffectType.FlatStatBonus)
-                    {
-                        int v = skill.Effect.Value;
-                        stats = new BatterStats(stats.Power + v, stats.Contact + v, stats.Discipline + v);
-                    }
-                }
-            }
+            // 본인이 보유한 Target=Self 스킬
+            stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher);
+            // 상대 투수가 보유한 Target=Opponent 스킬(나를 겨냥한 효과) - 조건 판정은 스킬 소유자(투수) 기준
+            stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter);
 
             return stats;
         }
 
-        /// <summary>강화/각성(Player) + 세트덱(팀) + 스킬(Flat/Underdog) 보정을 모두 반영한 투수 세부 스탯.</summary>
-        private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player opposingBatter)
+        /// <summary>ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용한다.</summary>
+        private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter)
         {
-            var stats = pitcher.GetEffectivePitcherStats();
+            var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
             var (isActive, multiplier) = GetSetDeckContext(pitcher);
             if (isActive && multiplier > 1f)
             {
-                stats = new PitcherStats(
-                    Mathf.RoundToInt(stats.Stuff * multiplier),
-                    Mathf.RoundToInt(stats.Velocity * multiplier),
-                    Mathf.RoundToInt(stats.Movement * multiplier),
-                    Mathf.RoundToInt(stats.Control * multiplier));
+                stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
             }
 
-            if (skillDB != null)
+            stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter);
+            stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher);
+
+            return stats;
+        }
+
+        private static BatterStats Scale(BatterStats stats, float multiplier) => new BatterStats(
+            Mathf.RoundToInt(stats.Power * multiplier),
+            Mathf.RoundToInt(stats.Contact * multiplier),
+            Mathf.RoundToInt(stats.Discipline * multiplier));
+
+        private static PitcherStats Scale(PitcherStats stats, float multiplier) => new PitcherStats(
+            Mathf.RoundToInt(stats.Stuff * multiplier),
+            Mathf.RoundToInt(stats.Velocity * multiplier),
+            Mathf.RoundToInt(stats.Movement * multiplier),
+            Mathf.RoundToInt(stats.Control * multiplier));
+
+        /// <summary>
+        /// skillOwner가 보유한 스킬 중 지정한 wantedTarget(Self/Opponent)에 해당하고 조건을 만족하는 것만
+        /// 골라 stats(타자 스탯)에 적용한다. 조건은 항상 스킬 소유자(self) 기준으로 평가한다.
+        /// </summary>
+        private BatterStats ApplyBatterSkills(BatterStats stats, Player skillOwner, EffectTarget wantedTarget, Player self, Player opponent)
+        {
+            if (skillDB == null || skillOwner == null) return stats;
+
+            foreach (var skillName in skillOwner.AcquiredSkillIds)
             {
-                // "패기" 판정은 스킬 효과가 섞이지 않은 기본 OVR로 비교한다.
-                // (GDD: "상대 타자의 스킬 효과로 인한 OVR 증가 제외")
-                int pitcherOvr = GetBaseOvr(pitcher);
-                int batterOvr = GetBaseOvr(opposingBatter);
+                var effect = skillDB.FindSkill(skillName)?.Effect;
+                if (effect == null || effect.Target != wantedTarget) continue;
+                if (!IsConditionMet(effect.Condition, self, opponent)) continue;
 
-                foreach (var skillName in pitcher.AcquiredSkillIds)
+                foreach (var modifier in effect.Modifiers)
                 {
-                    var skill = skillDB.FindSkill(skillName);
-                    if (skill?.Effect == null) continue;
-
-                    switch (skill.Effect.EffectType)
-                    {
-                        case SkillEffectType.FlatStatBonus:
-                            stats = AddFlat(stats, skill.Effect.Value);
-                            break;
-                        case SkillEffectType.UnderdogStatBonus:
-                            if (pitcherOvr < batterOvr) stats = AddFlat(stats, skill.Effect.Value);
-                            break;
-                    }
+                    stats = ApplyModifier(stats, modifier.Stat, modifier.Value);
                 }
             }
 
             return stats;
         }
 
-        private static PitcherStats AddFlat(PitcherStats stats, int value) =>
-            new PitcherStats(stats.Stuff + value, stats.Velocity + value, stats.Movement + value, stats.Control + value);
+        private PitcherStats ApplyPitcherSkills(PitcherStats stats, Player skillOwner, EffectTarget wantedTarget, Player self, Player opponent)
+        {
+            if (skillDB == null || skillOwner == null) return stats;
+
+            foreach (var skillName in skillOwner.AcquiredSkillIds)
+            {
+                var effect = skillDB.FindSkill(skillName)?.Effect;
+                if (effect == null || effect.Target != wantedTarget) continue;
+                if (!IsConditionMet(effect.Condition, self, opponent)) continue;
+
+                foreach (var modifier in effect.Modifiers)
+                {
+                    stats = ApplyModifier(stats, modifier.Stat, modifier.Value);
+                }
+            }
+
+            return stats;
+        }
+
+        private static BatterStats ApplyModifier(BatterStats stats, StatType stat, int value) => stat switch
+        {
+            StatType.Power => new BatterStats(stats.Power + value, stats.Contact, stats.Discipline),
+            StatType.Contact => new BatterStats(stats.Power, stats.Contact + value, stats.Discipline),
+            StatType.Discipline => new BatterStats(stats.Power, stats.Contact, stats.Discipline + value),
+            _ => stats // 투수 전용 StatType이 잘못 설정된 경우 무시
+        };
+
+        private static PitcherStats ApplyModifier(PitcherStats stats, StatType stat, int value) => stat switch
+        {
+            StatType.Stuff => new PitcherStats(stats.Stuff + value, stats.Velocity, stats.Movement, stats.Control),
+            StatType.Velocity => new PitcherStats(stats.Stuff, stats.Velocity + value, stats.Movement, stats.Control),
+            StatType.Movement => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement + value, stats.Control),
+            StatType.Control => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement, stats.Control + value),
+            _ => stats // 타자 전용 StatType이 잘못 설정된 경우 무시
+        };
+
+        /// <summary>
+        /// 조건은 항상 스킬 "소유자"(self) 기준으로 평가한다. RunnerOnBase 계열은 SimulateAtBat의 공개
+        /// 시그니처가 주자 상태를 전달받지 않아 아직 실제로 평가할 수 없으므로 항상 false를 반환한다.
+        /// </summary>
+        private bool IsConditionMet(SkillCondition condition, Player self, Player opponent) => condition switch
+        {
+            SkillCondition.Always => true,
+            SkillCondition.SelfOvrLowerThanOpponent => GetBaseOvr(self) < GetBaseOvr(opponent),
+            SkillCondition.SelfOvrHigherThanOpponent => GetBaseOvr(self) > GetBaseOvr(opponent),
+            _ => false // RunnerOnBase / RunnerInScoringPosition: 후속 과제 (SimulateAtBat 시그니처 확장 필요)
+        };
 
         // ----- 이닝/타석 진행 -----
 

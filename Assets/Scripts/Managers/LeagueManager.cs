@@ -62,6 +62,17 @@ namespace KBOManager.Managers
         [Header("Match Simulation")]
         [Tooltip("MatchEngine에 전달할 SkillDB (선택 사항)")]
         [SerializeField] private SkillDB skillDB;
+        [Tooltip("MatchEngine에 전달할 EngineConfig (선택 사항, 없으면 코드 기본값 사용)")]
+        [SerializeField] private EngineConfig engineConfig;
+
+        [Header("AI Roster Generation")]
+        [Tooltip("있으면 AI 로스터 생성 시 이 DB에 등록된 실제 PlayerTemplate을 우선 사용한다. " +
+                 "없거나 특정 포지션/롤에 해당 구단 템플릿이 부족하면 절차적(더미) 템플릿으로 대체한다.")]
+        [SerializeField] private PlayerDatabase playerDatabase;
+        [Tooltip("더미 스탯 생성 시 목표 OVR 대비 허용하는 무작위 편차(±)")]
+        [SerializeField] private int aiOvrVarianceRange = 10;
+
+        private const int DefaultAiBaseStatLevel = 65; // 유저 로스터가 비어 있을 때 쓰는 기본 스탯 수준
 
         private readonly Dictionary<Team, TeamInfo> standings = new Dictionary<Team, TeamInfo>();
         private readonly List<MatchFixture> schedule = new List<MatchFixture>();
@@ -100,12 +111,14 @@ namespace KBOManager.Managers
             }
 
             BuildUserSchedule();
+            GenerateAiRosters();
         }
 
         /// <summary>
-        /// AI 팀(또는 유저 팀)의 28인 로스터를 등록한다. AI 팀 로스터 자동 생성기는 아직 없으므로,
-        /// 호출부(예: 향후 AI 팀 빌더)가 PlayerDatabase 등에서 구성한 로스터를 여기로 넘겨줘야 한다.
-        /// 유저 팀은 매 경기 시뮬레이션 시점에 GameManager.Roster를 직접 참조하므로 보통 호출할 필요가 없다.
+        /// AI 팀(또는 유저 팀)의 28인 로스터를 수동으로 덮어쓴다. InitializeLeague()가 자동으로
+        /// GenerateAiRosters()를 호출해 9개 AI 팀을 채우므로 보통 직접 호출할 필요는 없다 - 특정 팀의
+        /// 로스터를 수동으로 커스터마이징하고 싶을 때만 사용한다. 유저 팀은 매 경기 시뮬레이션 시점에
+        /// GameManager.Roster를 직접 참조하므로 이 메서드로 설정해도 실제 경기에는 반영되지 않는다.
         /// </summary>
         public void SetTeamRoster(Team team, List<Player> roster)
         {
@@ -114,6 +127,139 @@ namespace KBOManager.Managers
                 info.Roster = roster ?? new List<Player>();
             }
         }
+
+        /// <summary>
+        /// 9개 AI 팀 전체의 28인(타자 15 + 투수 13) 로스터를 자동 생성한다.
+        /// 유저 팀 로스터의 평균 OVR을 목표치로 삼아 ±aiOvrVarianceRange 범위에서 편차를 준 더미 스탯으로
+        /// 채우므로, 유저 로스터가 강해지면 AI들도 대략 비슷한 수준으로 스케일링된다.
+        /// playerDatabase에 해당 구단·포지션/롤의 실제 PlayerTemplate이 있으면 그것을 우선 사용한다.
+        /// </summary>
+        public void GenerateAiRosters()
+        {
+            int targetStatLevel = EstimateTargetStatLevel();
+
+            foreach (var team in standings.Keys.Where(t => t != userTeam).ToList())
+            {
+                standings[team].Roster = GenerateTeamRoster(team, targetStatLevel);
+            }
+        }
+
+        private int EstimateTargetStatLevel()
+        {
+            if (GameManager.Instance == null || GameManager.Instance.Roster.Count == 0)
+            {
+                return DefaultAiBaseStatLevel;
+            }
+
+            // Player.CalculateOVR()은 이미 세부 스탯의 평균이므로, 그 평균을 그대로 AI의 목표 스탯 수준으로 쓴다.
+            return Mathf.RoundToInt((float)GameManager.Instance.Roster.Average(p => p.CalculateOVR(false)));
+        }
+
+        private static readonly BatterPosition[] AllBatterPositions = (BatterPosition[])Enum.GetValues(typeof(BatterPosition));
+        private const int AiBenchBatterCount = 6;
+
+        // RosterManager와 동일한 투수 13명 배분(선발5/승리조2/추격조4/롱릴리프1/마무리1).
+        private static readonly (PitcherRole role, int count)[] AiPitcherRoleQuota =
+        {
+            (PitcherRole.StartingPitcher, 5),
+            (PitcherRole.WinningReliever, 2),
+            (PitcherRole.MopUpReliever, 4),
+            (PitcherRole.LongReliever, 1),
+            (PitcherRole.Closer, 1),
+        };
+
+        private List<Player> GenerateTeamRoster(Team team, int targetStatLevel)
+        {
+            var roster = new List<Player>(GameManager.RequiredRosterSize);
+
+            foreach (var position in AllBatterPositions)
+            {
+                roster.Add(CreateAiPlayer(team, false, position, null, targetStatLevel));
+            }
+
+            for (int i = 0; i < AiBenchBatterCount; i++)
+            {
+                // 벤치는 포지션 편중 없이 무작위 포지션으로 채운다 (단순화)
+                var randomPosition = AllBatterPositions[UnityEngine.Random.Range(0, AllBatterPositions.Length)];
+                roster.Add(CreateAiPlayer(team, false, randomPosition, null, targetStatLevel));
+            }
+
+            foreach (var (role, count) in AiPitcherRoleQuota)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    roster.Add(CreateAiPlayer(team, true, null, role, targetStatLevel));
+                }
+            }
+
+            return roster;
+        }
+
+        private Player CreateAiPlayer(Team team, bool isPitcher, BatterPosition? batterPosition, PitcherRole? pitcherRole, int targetStatLevel)
+        {
+            var template = FindDatabaseTemplate(team, isPitcher, batterPosition, pitcherRole)
+                ?? CreateProceduralTemplate(team, isPitcher, batterPosition, pitcherRole, targetStatLevel);
+
+            return new Player(Guid.NewGuid().ToString(), template);
+        }
+
+        /// <summary>
+        /// playerDatabase에 등록된 실제 카드 중 조건에 맞는 첫 항목을 사용한다.
+        /// TODO: 같은 템플릿이 여러 슬롯에 중복 배정될 수 있다(예: 벤치 두 자리가 같은 카드) - 후속 과제.
+        /// </summary>
+        private PlayerTemplate FindDatabaseTemplate(Team team, bool isPitcher, BatterPosition? batterPosition, PitcherRole? pitcherRole)
+        {
+            if (playerDatabase == null) return null;
+
+            return playerDatabase.AllTemplates.FirstOrDefault(t =>
+                t.Team == team && t.IsPitcher == isPitcher &&
+                (isPitcher ? t.PitcherRole == pitcherRole : t.BatterPosition == batterPosition));
+        }
+
+        /// <summary>
+        /// 실제 카드가 없을 때 즉석에서 만드는 더미 템플릿(.asset으로 저장되지 않는 런타임 전용 인스턴스).
+        /// 4개(투수) 또는 3개(타자) 세부 스탯을 모두 targetStatLevel ± aiOvrVarianceRange로 동일하게 채운다.
+        /// </summary>
+        private PlayerTemplate CreateProceduralTemplate(Team team, bool isPitcher, BatterPosition? batterPosition,
+            PitcherRole? pitcherRole, int targetStatLevel)
+        {
+            var template = ScriptableObject.CreateInstance<PlayerTemplate>();
+
+            string roleLabel = isPitcher ? pitcherRole.ToString() : batterPosition.ToString();
+            template.TemplateId = $"AI_{team}_{roleLabel}_{Guid.NewGuid():N}";
+            template.RealPlayerId = template.TemplateId;
+            template.PlayerName = $"{team} AI ({roleLabel})";
+            template.Team = team;
+            template.Grade = Grade.LIVE_NORMAL;
+            template.IsPitcher = isPitcher;
+            template.Cost = 1;
+
+            if (isPitcher)
+            {
+                template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
+            }
+            else
+            {
+                template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
+            }
+
+            int variance = UnityEngine.Random.Range(-aiOvrVarianceRange, aiOvrVarianceRange + 1);
+            int statLevel = Mathf.Max(10, targetStatLevel + variance);
+
+            if (isPitcher)
+            {
+                template.PitcherStats = new PitcherStats(statLevel, statLevel, statLevel, statLevel);
+            }
+            else
+            {
+                template.BatterStats = new BatterStats(statLevel, statLevel, statLevel);
+            }
+
+            return template;
+        }
+
+        /// <summary>스케줄 전체(144경기)를 끝까지 시뮬레이션한다. 시즌이 에러 없이 완주되는지 확인하는 용도로도 쓸 수 있다.</summary>
+        public void PlaySeasonToCompletion() => PlayUntil(TotalUserGames);
 
         public TeamInfo GetTeamInfo(Team team) => standings.TryGetValue(team, out var info) ? info : null;
 
@@ -198,7 +344,7 @@ namespace KBOManager.Managers
                 ? GameManager.Instance.Roster.ToList()
                 : away.Roster;
 
-            var engine = new MatchEngine(skillDB);
+            var engine = new MatchEngine(skillDB, engineConfig);
             var result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString());
 
             fixture.Result = result;
