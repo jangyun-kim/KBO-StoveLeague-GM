@@ -38,6 +38,31 @@ namespace KBOManager.Engine
     }
 
     /// <summary>
+    /// 타석 하나가 진행되는 순간의 게임 상황. 스킬 발동 조건(SkillCondition) 판정과 베이스러닝 로직이
+    /// 모두 이 객체를 기준으로 동작한다. 하프이닝 동안 하나의 인스턴스가 계속 갱신되며 사용된다.
+    /// </summary>
+    public class MatchState
+    {
+        public int Inning = 1;
+        public int Outs;
+        public int Balls;
+        public int Strikes;
+        public bool RunnerOnFirst;
+        public bool RunnerOnSecond;
+        public bool RunnerOnThird;
+        public bool IsPostSeason;
+
+        public bool HasAnyRunner => RunnerOnFirst || RunnerOnSecond || RunnerOnThird;
+        public bool HasRunnerInScoringPosition => RunnerOnSecond || RunnerOnThird;
+
+        public void ResetCount()
+        {
+            Balls = 0;
+            Strikes = 0;
+        }
+    }
+
+    /// <summary>
     /// 1이닝 1구(타석) 단위로 진행되는 순수 C# 시뮬레이션 엔진. MonoBehaviour를 상속하지 않아
     /// 씬/프레임 오버헤드 없이 다수의 경기를 즉시(백그라운드) 계산할 수 있다.
     /// </summary>
@@ -45,6 +70,10 @@ namespace KBOManager.Engine
     {
         private const int RegulationInnings = 9;
         private const int MaxInnings = 12; // KBO 정규시즌 연장 상한. 도달 시 무승부로 종료
+
+        // 병살타/희생플라이 판정용 임시 확률. GDD 미명시 - 밸런스 확정 전까지의 추정값.
+        private const double DoublePlayChance = 0.4; // 1루 주자 있고 2아웃 미만인 땅볼일 때 병살 발생 확률
+        private const double TwoStrikeReachProbability = 0.6; // 타석이 2스트라이크까지 도달할 확률(단순화된 카운트 모델)
 
         /// <summary>타석 결과가 세부 스탯 중 어떤 "매치업"에 의해 좌우되는지.</summary>
         private enum OutcomeDriver
@@ -121,9 +150,10 @@ namespace KBOManager.Engine
 
         /// <summary>
         /// 양 팀의 28인 로스터로 1회부터 9회까지(동점 시 연장 최대 12회) 경기를 즉시 시뮬레이션한다.
+        /// isPostSeason은 "가을사나이" 등 포스트시즌 조건부 스킬 판정에 쓰인다.
         /// </summary>
         public MatchResult PlayFullMatch(List<Player> homeRoster, List<Player> awayRoster,
-            string homeTeamName = "Home", string awayTeamName = "Away")
+            string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
         {
             var home = BuildTeamState(homeRoster, homeTeamName);
             var away = BuildTeamState(awayRoster, awayTeamName);
@@ -132,7 +162,7 @@ namespace KBOManager.Engine
 
             for (int inning = 1; inning <= MaxInnings; inning++)
             {
-                int awayRuns = SimulateHalfInning(away, home, inning);
+                int awayRuns = SimulateHalfInning(away, home, inning, isPostSeason);
                 result.AwayInningScores.Add(awayRuns);
                 result.AwayTotalScore += awayRuns;
 
@@ -140,7 +170,7 @@ namespace KBOManager.Engine
                 bool skipBottom = inning >= RegulationInnings && result.HomeTotalScore > result.AwayTotalScore;
                 if (!skipBottom)
                 {
-                    int homeRuns = SimulateHalfInning(home, away, inning);
+                    int homeRuns = SimulateHalfInning(home, away, inning, isPostSeason);
                     result.HomeInningScores.Add(homeRuns);
                     result.HomeTotalScore += homeRuns;
                 }
@@ -159,16 +189,20 @@ namespace KBOManager.Engine
 
         /// <summary>
         /// 타자/투수의 세부 스탯(강화·각성·세트덱·스킬 효과 모두 반영)을 매치업별로 비교해
-        /// 확률적으로 타석 결과를 산출한다. PlayFullMatch가 미리 채워 둔 세트덱 컨텍스트를 사용하며,
-        /// 캐시에 없는 대상(단독 호출 등)은 세트덱 보너스 없이 계산한다.
+        /// 확률적으로 타석 결과를 산출한다. state는 이닝/아웃/볼카운트/주자/포스트시즌 여부를 담아
+        /// RunnerOnBase, TwoStrikesOrMore 등 상황부 스킬 조건 판정에 쓰인다.
+        /// PlayFullMatch가 미리 채워 둔 세트덱 컨텍스트를 사용하며, 캐시에 없는 대상(단독 호출 등)은
+        /// 세트덱 보너스 없이 계산한다.
         /// </summary>
-        public AtBatResult SimulateAtBat(Player batter, Player pitcher)
+        public AtBatResult SimulateAtBat(Player batter, Player pitcher, MatchState state)
         {
             if (batter?.Template == null || pitcher?.Template == null) return AtBatResult.Groundout;
             if (batter.Template.IsPitcher || !pitcher.Template.IsPitcher) return AtBatResult.Groundout;
 
-            var batterStats = ResolveEffectiveBatterStats(batter, pitcher);
-            var pitcherStats = ResolveEffectivePitcherStats(pitcher, batter);
+            state ??= new MatchState();
+
+            var batterStats = ResolveEffectiveBatterStats(batter, pitcher, state);
+            var pitcherStats = ResolveEffectivePitcherStats(pitcher, batter, state);
 
             // 삼진: 투수 구위/구속 평균 vs 타자 정확/선구 평균 (동일 가중치)
             float strikeoutSkill = NormalizeDiff(
@@ -298,7 +332,7 @@ namespace KBOManager.Engine
         /// 세트덱 배율은 원본 성장분까지만 곱하고, 스킬 보정은 그 뒤에 가산한다 - 스킬 보너스가
         /// 세트덱 배율의 영향을 받아 함께 부풀려지는 복리 현상을 방지하기 위함이다.
         /// </summary>
-        private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher)
+        private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher, MatchState state)
         {
             var stats = batter.GetEffectiveBatterStats(); // Base + Growth
             var (isActive, multiplier) = GetSetDeckContext(batter);
@@ -308,15 +342,15 @@ namespace KBOManager.Engine
             }
 
             // 본인이 보유한 Target=Self 스킬
-            stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher);
+            stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher, state);
             // 상대 투수가 보유한 Target=Opponent 스킬(나를 겨냥한 효과) - 조건 판정은 스킬 소유자(투수) 기준
-            stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter);
+            stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
 
             return stats;
         }
 
         /// <summary>ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용한다.</summary>
-        private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter)
+        private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter, MatchState state)
         {
             var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
             var (isActive, multiplier) = GetSetDeckContext(pitcher);
@@ -325,8 +359,8 @@ namespace KBOManager.Engine
                 stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
             }
 
-            stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter);
-            stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher);
+            stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter, state);
+            stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher, state);
 
             return stats;
         }
@@ -346,7 +380,8 @@ namespace KBOManager.Engine
         /// skillOwner가 보유한 스킬 중 지정한 wantedTarget(Self/Opponent)에 해당하고 조건을 만족하는 것만
         /// 골라 stats(타자 스탯)에 적용한다. 조건은 항상 스킬 소유자(self) 기준으로 평가한다.
         /// </summary>
-        private BatterStats ApplyBatterSkills(BatterStats stats, Player skillOwner, EffectTarget wantedTarget, Player self, Player opponent)
+        private BatterStats ApplyBatterSkills(BatterStats stats, Player skillOwner, EffectTarget wantedTarget,
+            Player self, Player opponent, MatchState state)
         {
             if (skillDB == null || skillOwner == null) return stats;
 
@@ -354,7 +389,7 @@ namespace KBOManager.Engine
             {
                 var effect = skillDB.FindSkill(skillName)?.Effect;
                 if (effect == null || effect.Target != wantedTarget) continue;
-                if (!IsConditionMet(effect.Condition, self, opponent)) continue;
+                if (!IsConditionMet(effect.Condition, self, opponent, state)) continue;
 
                 foreach (var modifier in effect.Modifiers)
                 {
@@ -365,7 +400,8 @@ namespace KBOManager.Engine
             return stats;
         }
 
-        private PitcherStats ApplyPitcherSkills(PitcherStats stats, Player skillOwner, EffectTarget wantedTarget, Player self, Player opponent)
+        private PitcherStats ApplyPitcherSkills(PitcherStats stats, Player skillOwner, EffectTarget wantedTarget,
+            Player self, Player opponent, MatchState state)
         {
             if (skillDB == null || skillOwner == null) return stats;
 
@@ -373,7 +409,7 @@ namespace KBOManager.Engine
             {
                 var effect = skillDB.FindSkill(skillName)?.Effect;
                 if (effect == null || effect.Target != wantedTarget) continue;
-                if (!IsConditionMet(effect.Condition, self, opponent)) continue;
+                if (!IsConditionMet(effect.Condition, self, opponent, state)) continue;
 
                 foreach (var modifier in effect.Modifiers)
                 {
@@ -401,57 +437,84 @@ namespace KBOManager.Engine
             _ => stats // 타자 전용 StatType이 잘못 설정된 경우 무시
         };
 
-        /// <summary>
-        /// 조건은 항상 스킬 "소유자"(self) 기준으로 평가한다. RunnerOnBase 계열은 SimulateAtBat의 공개
-        /// 시그니처가 주자 상태를 전달받지 않아 아직 실제로 평가할 수 없으므로 항상 false를 반환한다.
-        /// </summary>
-        private bool IsConditionMet(SkillCondition condition, Player self, Player opponent) => condition switch
+        /// <summary>조건은 항상 스킬 "소유자"(self) 기준으로 평가하며, state는 그 타석 시점의 실제 게임 상황이다.</summary>
+        private bool IsConditionMet(SkillCondition condition, Player self, Player opponent, MatchState state) => condition switch
         {
             SkillCondition.Always => true,
             SkillCondition.SelfOvrLowerThanOpponent => GetBaseOvr(self) < GetBaseOvr(opponent),
             SkillCondition.SelfOvrHigherThanOpponent => GetBaseOvr(self) > GetBaseOvr(opponent),
-            _ => false // RunnerOnBase / RunnerInScoringPosition: 후속 과제 (SimulateAtBat 시그니처 확장 필요)
+            SkillCondition.RunnerOnBase => state != null && state.HasAnyRunner,
+            SkillCondition.RunnerInScoringPosition => state != null && state.HasRunnerInScoringPosition,
+            SkillCondition.TwoStrikesOrMore => state != null && state.Strikes >= 2,
+            SkillCondition.PostSeasonGame => state != null && state.IsPostSeason,
+            SkillCondition.SeventhInningOrLaterNoOuts => state != null && state.Inning >= 7 && state.Outs == 0,
+            _ => false
         };
 
         // ----- 이닝/타석 진행 -----
 
-        private int SimulateHalfInning(TeamGameState batting, TeamGameState pitching, int inning)
+        private int SimulateHalfInning(TeamGameState batting, TeamGameState pitching, int inning, bool isPostSeason)
         {
             if (batting.BattingOrder.Count == 0) return 0;
 
             var pitcher = SelectPitcherForInning(pitching, batting, inning);
             if (pitcher == null) return 0;
 
-            bool onFirst = false, onSecond = false, onThird = false;
-            int outs = 0;
+            var state = new MatchState { Inning = inning, IsPostSeason = isPostSeason };
             int runs = 0;
 
-            while (outs < 3)
+            while (state.Outs < 3)
             {
                 var batter = GetNextBatter(batting);
                 if (batter == null) break;
 
-                var result = SimulateAtBat(batter, pitcher);
+                state.ResetCount();
+                RollPitchCount(state);
+
+                var result = SimulateAtBat(batter, pitcher, state);
                 bool isOut = result == AtBatResult.Strikeout || result == AtBatResult.Groundout || result == AtBatResult.Flyout;
 
                 if (isOut)
                 {
-                    // 단순화된 '주자 생환' 처리: 삼진이 아닌 아웃이고 아웃카운트 2 미만이며 3루 주자가 있으면 1점(희생플라이/땅볼 성격)
-                    if (onThird && outs < 2 && result != AtBatResult.Strikeout)
+                    if (result == AtBatResult.Flyout && state.RunnerOnThird && state.Outs < 2)
                     {
+                        // 희생플라이: 3루 주자 생환, 배터만 아웃 처리
                         runs++;
-                        onThird = false;
+                        state.RunnerOnThird = false;
+                        state.Outs++;
                     }
-                    outs++;
+                    else if (result == AtBatResult.Groundout && state.RunnerOnFirst && state.Outs < 2
+                             && random.NextDouble() < DoublePlayChance)
+                    {
+                        // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
+                        state.RunnerOnFirst = false;
+                        state.Outs += 2;
+                    }
+                    else
+                    {
+                        state.Outs++;
+                    }
                 }
                 else
                 {
-                    runs += AdvanceRunners(result, ref onFirst, ref onSecond, ref onThird);
+                    runs += AdvanceRunners(result, state);
                 }
             }
 
             batting.RunsScored += runs;
             return runs;
+        }
+
+        /// <summary>
+        /// 실제 투구 시퀀스를 시뮬레이션하지 않는 단순화된 카운트 모델이다. 이번 타석이 2스트라이크까지
+        /// 도달하는지만 확률적으로 결정해 state.Strikes에 반영한다(노림수/위닝샷 등의 조건에 사용).
+        /// state.Balls는 구조적으로만 채워두며 현재 어떤 확률 계산에도 쓰이지 않는다(TODO: 완전한 구 단위 시뮬레이션).
+        /// </summary>
+        private void RollPitchCount(MatchState state)
+        {
+            bool reachesTwoStrikes = random.NextDouble() < TwoStrikeReachProbability;
+            state.Strikes = reachesTwoStrikes ? 2 : (random.NextDouble() < 0.5 ? 1 : 0);
+            state.Balls = random.Next(0, 4);
         }
 
         private static Player GetNextBatter(TeamGameState team)
@@ -508,50 +571,50 @@ namespace KBOManager.Engine
             return pick;
         }
 
-        /// <summary>타석 결과에 따라 주자를 이동시키고 이번 타석에서 발생한 득점 수를 반환한다.</summary>
-        private static int AdvanceRunners(AtBatResult result, ref bool onFirst, ref bool onSecond, ref bool onThird)
+        /// <summary>타석 결과에 따라 state의 주자를 이동시키고 이번 타석에서 발생한 득점 수를 반환한다.</summary>
+        private static int AdvanceRunners(AtBatResult result, MatchState state)
         {
             int runs = 0;
 
             switch (result)
             {
                 case AtBatResult.Walk:
-                    bool forcedHome = onFirst && onSecond && onThird;
-                    bool forceToThird = onFirst && onSecond;
-                    bool forceToSecond = onFirst;
+                    bool forcedHome = state.RunnerOnFirst && state.RunnerOnSecond && state.RunnerOnThird;
+                    bool forceToThird = state.RunnerOnFirst && state.RunnerOnSecond;
+                    bool forceToSecond = state.RunnerOnFirst;
                     if (forcedHome) runs++;
-                    if (forceToThird) onThird = true;
-                    if (forceToSecond) onSecond = true;
-                    onFirst = true;
+                    if (forceToThird) state.RunnerOnThird = true;
+                    if (forceToSecond) state.RunnerOnSecond = true;
+                    state.RunnerOnFirst = true;
                     break;
 
                 case AtBatResult.Single:
-                    if (onThird) runs++;
-                    onThird = onSecond;
-                    onSecond = onFirst;
-                    onFirst = true;
+                    if (state.RunnerOnThird) runs++;
+                    state.RunnerOnThird = state.RunnerOnSecond;
+                    state.RunnerOnSecond = state.RunnerOnFirst;
+                    state.RunnerOnFirst = true;
                     break;
 
                 case AtBatResult.Double:
-                    if (onThird) runs++;
-                    if (onSecond) runs++;
-                    onThird = onFirst; // 단순화: 1루 주자는 3루에서 멈춘다고 가정
-                    onSecond = true;
-                    onFirst = false;
+                    if (state.RunnerOnThird) runs++;
+                    if (state.RunnerOnSecond) runs++;
+                    state.RunnerOnThird = state.RunnerOnFirst; // 단순화: 1루 주자는 3루에서 멈춘다고 가정
+                    state.RunnerOnSecond = true;
+                    state.RunnerOnFirst = false;
                     break;
 
                 case AtBatResult.Triple:
-                    if (onThird) runs++;
-                    if (onSecond) runs++;
-                    if (onFirst) runs++;
-                    onThird = true;
-                    onSecond = false;
-                    onFirst = false;
+                    if (state.RunnerOnThird) runs++;
+                    if (state.RunnerOnSecond) runs++;
+                    if (state.RunnerOnFirst) runs++;
+                    state.RunnerOnThird = true;
+                    state.RunnerOnSecond = false;
+                    state.RunnerOnFirst = false;
                     break;
 
                 case AtBatResult.HomeRun:
-                    runs = 1 + (onFirst ? 1 : 0) + (onSecond ? 1 : 0) + (onThird ? 1 : 0);
-                    onFirst = onSecond = onThird = false;
+                    runs = 1 + (state.RunnerOnFirst ? 1 : 0) + (state.RunnerOnSecond ? 1 : 0) + (state.RunnerOnThird ? 1 : 0);
+                    state.RunnerOnFirst = state.RunnerOnSecond = state.RunnerOnThird = false;
                     break;
             }
 

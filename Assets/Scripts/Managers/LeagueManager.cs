@@ -52,6 +52,9 @@ namespace KBOManager.Managers
         public const int RegularOpenGames = 72;                              // 1~72경기
         // 73~144경기 = RegularLockedGames (TotalUserGames - RegularOpenGames)
 
+        // GDD 4절: 정규시즌 순위 5위 이내면 포스트시즌(가을야구) 진출.
+        public const int PlayoffQualifyingRank = 5;
+
         // 상대 팀 1개당 시리즈 구성: 3연전 x 5 + 단판 1경기 = 16경기. (144를 9개 상대에게 균등 배분하기 위한 근사치.
         // 실제 KBO는 3연전 위주에 일부 다른 길이의 시리즈를 섞어 16경기를 맞춘다 - 여기서는 그 스타일을 단순화했다.)
         private static readonly int[] SeriesLengths = { 3, 3, 3, 3, 3, 1 };
@@ -81,6 +84,16 @@ namespace KBOManager.Managers
         public Team UserTeam => userTeam;
         public IReadOnlyList<MatchFixture> Schedule => schedule;
 
+        /// <summary>현재 리그 진행 단계. 144경기가 모두 끝나면 POST_PREP(포스트시즌 진출) 또는
+        /// STOVE_LEAGUE(시즌 종료)로 자동 전환된다.</summary>
+        public LeaguePhase CurrentPhase { get; private set; } = LeaguePhase.STOVE_LEAGUE;
+
+        /// <summary>정규시즌 144경기를 모두 마친 뒤의 유저 팀 최종 순위(1위=1). 시즌 진행 중이거나 시작 전이면 null.</summary>
+        public int? UserFinalRank { get; private set; }
+
+        /// <summary>UserFinalRank가 PlayoffQualifyingRank(5위) 이내인지.</summary>
+        public bool IsUserPlayoffEligible => UserFinalRank.HasValue && UserFinalRank.Value <= PlayoffQualifyingRank;
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -103,6 +116,8 @@ namespace KBOManager.Managers
             standings.Clear();
             schedule.Clear();
             nextFixtureIndex = 0;
+            CurrentPhase = LeaguePhase.REGULAR_OPEN;
+            UserFinalRank = null;
 
             foreach (Team team in Enum.GetValues(typeof(Team)))
             {
@@ -319,8 +334,35 @@ namespace KBOManager.Managers
             var fixture = schedule[nextFixtureIndex];
             nextFixtureIndex++;
             SimulateFixture(fixture);
+            UpdatePhaseAfterFixture(fixture);
 
             return fixture;
+        }
+
+        /// <summary>
+        /// 72경기 지점에서 REGULAR_OPEN -> REGULAR_LOCKED로 전환하고, 144경기(전체 스케줄)가 끝나면
+        /// GDD 5절 규칙(5위 이내 = 포스트시즌 진출)에 따라 POST_PREP 또는 STOVE_LEAGUE로 확정한다.
+        /// </summary>
+        private void UpdatePhaseAfterFixture(MatchFixture fixture)
+        {
+            if (fixture.GameNumber == RegularOpenGames && CurrentPhase == LeaguePhase.REGULAR_OPEN)
+            {
+                CurrentPhase = LeaguePhase.REGULAR_LOCKED;
+            }
+
+            if (fixture.GameNumber == TotalUserGames)
+            {
+                FinalizeSeason();
+            }
+        }
+
+        private void FinalizeSeason()
+        {
+            var finalStandings = GetStandings();
+            int rank = finalStandings.FindIndex(t => t.Team == userTeam) + 1; // 1-based, 못 찾으면 0
+            UserFinalRank = rank > 0 ? rank : (int?)null;
+
+            CurrentPhase = IsUserPlayoffEligible ? LeaguePhase.POST_PREP : LeaguePhase.STOVE_LEAGUE;
         }
 
         /// <summary>지정한 GameNumber까지(포함) 남은 스케줄을 한 번에 시뮬레이션한다. (빠른 진행용)</summary>
@@ -345,7 +387,8 @@ namespace KBOManager.Managers
                 : away.Roster;
 
             var engine = new MatchEngine(skillDB, engineConfig);
-            var result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString());
+            bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
+            var result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
 
             fixture.Result = result;
             fixture.IsPlayed = true;

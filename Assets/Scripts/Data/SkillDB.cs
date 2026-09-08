@@ -39,14 +39,17 @@ namespace KBOManager.Data
         Control
     }
 
-    /// <summary>스킬 발동 조건.</summary>
+    /// <summary>스킬 발동 조건. MatchState 연동 이후 모든 값이 MatchEngine에서 실제로 평가된다.</summary>
     public enum SkillCondition
     {
         Always,                     // 상시 발동
         SelfOvrLowerThanOpponent,   // 패기류: 스킬 보유자의 (스킬 미포함) OVR이 상대보다 낮을 때
         SelfOvrHigherThanOpponent,  // 반대 상황: 보유자가 우위일 때 발동하는 스킬용
-        RunnerOnBase,               // 주자 1루 이상 존재 (※ 정의만 되어 있음, 아래 클래스 주석 참고)
-        RunnerInScoringPosition,    // 득점권(2·3루) 주자 존재 (※ 정의만 되어 있음, 아래 클래스 주석 참고)
+        RunnerOnBase,               // 주자 1루 이상 존재
+        RunnerInScoringPosition,    // 득점권(2·3루) 주자 존재
+        TwoStrikesOrMore,           // 볼카운트 2스트라이크 이후 (노림수, 위닝샷 등)
+        PostSeasonGame,             // 정규시즌이 아닌 포스트시즌 경기 (가을사나이 등)
+        SeventhInningOrLaterNoOuts, // 7회 이후 + 아웃카운트 0 (이닝 시작 시점 등판, 마당쇠 등)
     }
 
     [Serializable]
@@ -60,10 +63,8 @@ namespace KBOManager.Data
     /// 스킬 1개의 실제 효과. Target(나/상대) x Condition(발동 조건) x Modifiers(스탯별 증감치 목록)의
     /// 조합(Composition)으로 표현한다. 새 스킬을 추가할 때 코드를 건드리지 않고 인스펙터에서
     /// SkillEntry.Effect를 채우는 것만으로 대부분의 "스탯 X를 Y만큼 증감" 유형 효과를 만들 수 있다.
-    ///
-    /// RunnerOnBase/RunnerInScoringPosition 조건은 enum만 정의되어 있다. MatchEngine.SimulateAtBat(Player, Player)의
-    /// 공개 시그니처가 주자 상태를 받지 않으므로 현재는 항상 미충족으로 처리된다 - 주자 조건부 스킬을 실제로
-    /// 쓰려면 SimulateAtBat 시그니처 확장이 선행되어야 한다(후속 과제).
+    /// 모든 Condition은 MatchEngine.SimulateAtBat(Player, Player, MatchState)이 매 타석 전달받는
+    /// MatchState(이닝/아웃/볼카운트/주자/포스트시즌 여부)를 기준으로 실제로 평가된다.
     /// </summary>
     [Serializable]
     public class SkillEffect
@@ -250,6 +251,31 @@ namespace KBOManager.Data
             // 파워/정확/선구에 대칭 적용한 추정값이다. 기획 확정 시 이 SetEffect 호출의 값만 바꾸면 된다.
             SetEffect(batterSkills, "패기", EffectTarget.Self, SkillCondition.SelfOvrLowerThanOpponent,
                 (StatType.Power, 10), (StatType.Contact, 10), (StatType.Discipline, 10));
+
+            // 클러치히터(타자/D): "득점권 주자가 있을 때 파워/정확 +5"
+            SetEffect(batterSkills, "클러치히터", EffectTarget.Self, SkillCondition.RunnerInScoringPosition,
+                (StatType.Power, 5), (StatType.Contact, 5));
+
+            // 노림수(타자/C): "볼카운트가 2스트라이크 이후일 때 정확 +8"
+            SetEffect(batterSkills, "노림수", EffectTarget.Self, SkillCondition.TwoStrikesOrMore,
+                (StatType.Contact, 8));
+
+            // 가을사나이(타자/A): "정규시즌이 아닌 포스트시즌 경기일 때 모든 스탯 +5"
+            // 동명 스킬이 선발/불펜 투수 풀에도 있으나, 이번 지시는 타자판만 명시해 그쪽만 연결했다.
+            SetEffect(batterSkills, "가을사나이", EffectTarget.Self, SkillCondition.PostSeasonGame,
+                (StatType.Power, 5), (StatType.Contact, 5), (StatType.Discipline, 5));
+
+            // 마당쇠(투수/B, 선발 풀): "현재 이닝이 7회 이후이고 아웃카운트가 0일 때 구위/제구 +5"
+            // 동명 스킬이 불펜 풀에는 S+ 티어로 별도 존재하나, 이번 지시는 "투수/B티어"만 명시해 그쪽만 연결했다.
+            SetEffect(startingPitcherSkills, "마당쇠", EffectTarget.Self, SkillCondition.SeventhInningOrLaterNoOuts,
+                (StatType.Stuff, 5), (StatType.Control, 5));
+
+            // 위닝샷(투수/D, 선발+불펜 공통): "2스트라이크 이후일 때 변화 +8"
+            // 선발/불펜 두 풀에 동일 D티어로 존재해 양쪽 모두 연결했다.
+            SetEffect(startingPitcherSkills, "위닝샷", EffectTarget.Self, SkillCondition.TwoStrikesOrMore,
+                (StatType.Movement, 8));
+            SetEffect(bullpenPitcherSkills, "위닝샷", EffectTarget.Self, SkillCondition.TwoStrikesOrMore,
+                (StatType.Movement, 8));
         }
 
         private static void SetEffect(List<SkillEntry> skills, string skillName, EffectTarget target,
