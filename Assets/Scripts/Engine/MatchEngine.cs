@@ -182,11 +182,35 @@ namespace KBOManager.Engine
         private int runsThisHalfInning;
         private bool matchStarted;
 
+        // 경기 중 교체되어 나간 선수(대타로 빠진 타자, 강판된 투수). 야구 룰상 이 경기에는 다시 출전할 수 없다.
+        private readonly HashSet<Player> subbedOutList = new HashSet<Player>();
+
         public MatchResult Result { get; private set; }
         public bool IsGameOver { get; private set; }
         public MatchState CurrentState => currentAtBatState;
         public int CurrentInning => currentInning;
         public bool IsAwayBatting => isTopHalf;
+        public bool IsHomeTeamBatting => !isTopHalf;
+
+        /// <summary>이 경기에서 교체되어 나가, 다시 출전할 수 없는 선수 목록.</summary>
+        public IReadOnlyCollection<Player> SubbedOutList => subbedOutList;
+
+        public IReadOnlyList<Player> HomeBattingOrder => homeState?.BattingOrder;
+        public IReadOnlyList<Player> AwayBattingOrder => awayState?.BattingOrder;
+
+        /// <summary>현재 이닝을 던지고 있는 투수.</summary>
+        public Player CurrentPitcher => currentHalfInningPitcher;
+
+        /// <summary>현재 공격 중인 팀의 다음 타석에 나올 예정인 타자. 대타 교체 대상이 곧 이 선수다.</summary>
+        public Player UpcomingBatter
+        {
+            get
+            {
+                var battingTeam = isTopHalf ? awayState : homeState;
+                if (battingTeam == null || battingTeam.BattingOrder.Count == 0) return null;
+                return battingTeam.BattingOrder[battingTeam.NextBatterIndex % battingTeam.BattingOrder.Count];
+            }
+        }
 
         /// <summary>
         /// 스텝 단위 진행(PlayNextAtBat)을 위해 경기를 준비한다. PlayFullMatch()도 내부적으로 이를 사용한다.
@@ -217,6 +241,57 @@ namespace KBOManager.Engine
             var battingTeam = isTopHalf ? awayState : homeState;
             currentHalfInningPitcher = SelectPitcherForInning(pitchingTeam, battingTeam, currentInning);
             runsThisHalfInning = 0;
+        }
+
+        // ----- 선수 교체 API -----
+
+        /// <summary>
+        /// 현재 공격 중인 팀의 "다음 타석에 나올 예정인 타자"(UpcomingBatter)를 대타로 교체한다.
+        /// 원래 있던 타자는 SubbedOutList에 등록되어 이 경기에서 다시 출전할 수 없다.
+        /// MatchState(아웃/주자/볼카운트/이닝)는 건드리지 않으므로, 다음 PlayNextAtBat() 호출부터
+        /// 자연스럽게 새 타자로 이어진다.
+        /// </summary>
+        public bool SubstituteBatter(Player newBatter)
+        {
+            if (!matchStarted || IsGameOver) return false;
+            if (newBatter?.Template == null || newBatter.Template.IsPitcher) return false;
+            if (subbedOutList.Contains(newBatter)) return false; // 이미 교체되어 나간 선수는 재출전 불가
+
+            var battingTeam = isTopHalf ? awayState : homeState;
+            if (battingTeam.BattingOrder.Count == 0) return false;
+            if (battingTeam.BattingOrder.Contains(newBatter)) return false; // 이미 라인업에 있는 선수 중복 방지
+
+            int slotIndex = battingTeam.NextBatterIndex % battingTeam.BattingOrder.Count;
+            var outgoingBatter = battingTeam.BattingOrder[slotIndex];
+            if (outgoingBatter == newBatter) return false; // 동일 선수로의 "교체"는 무의미
+
+            battingTeam.BattingOrder[slotIndex] = newBatter;
+            if (outgoingBatter != null) subbedOutList.Add(outgoingBatter);
+
+            return true;
+        }
+
+        /// <summary>
+        /// 현재 이닝을 던지고 있는 투수(CurrentPitcher)를 구원 투수로 교체한다. 원래 투수는 SubbedOutList에
+        /// 등록되어 이 경기에서 다시 등판할 수 없다. MatchState는 건드리지 않으므로 남은 아웃카운트/주자
+        /// 상황 그대로 새 투수가 이어받는다.
+        /// </summary>
+        public bool SubstitutePitcher(Player newPitcher)
+        {
+            if (!matchStarted || IsGameOver) return false;
+            if (newPitcher?.Template == null || !newPitcher.Template.IsPitcher) return false;
+            if (subbedOutList.Contains(newPitcher)) return false; // 이미 교체되어 나간 투수는 재등판 불가
+            if (currentHalfInningPitcher == newPitcher) return false; // 동일 투수로의 "교체"는 무의미
+
+            var pitchingTeam = isTopHalf ? homeState : awayState;
+
+            var outgoingPitcher = currentHalfInningPitcher;
+            if (outgoingPitcher != null) subbedOutList.Add(outgoingPitcher);
+
+            currentHalfInningPitcher = newPitcher;
+            pitchingTeam.UsedPitchers.Add(newPitcher); // 이후 자동 로테이션에서 재선택되지 않도록 등록
+
+            return true;
         }
 
         /// <summary>
@@ -671,9 +746,11 @@ namespace KBOManager.Engine
 
         /// <summary>
         /// 간이 불펜 운용 규칙(1~5회 선발, 6회 롱릴리프, 7~8회 승리/추격조, 9회+ 마무리/추격조).
-        /// 실제 투구수/피로도 기반 교체나 유저 개입(하이라이트/풀 플레이)은 후속 과제.
+        /// SubbedOutList에 등록된(유저가 명시적으로 강판시킨) 투수는 이 자동 로테이션에서도 절대 재선택되지
+        /// 않는다 - UsedPitchers(소프트 선호도)와 별개로 SubbedOutList는 하드 제외 규칙이다.
+        /// 실제 투구수/피로도 기반 교체는 후속 과제.
         /// </summary>
-        private static Player SelectPitcherForInning(TeamGameState pitchingTeam, TeamGameState battingTeam, int inning)
+        private Player SelectPitcherForInning(TeamGameState pitchingTeam, TeamGameState battingTeam, int inning)
         {
             int scoreDiff = pitchingTeam.RunsScored - battingTeam.RunsScored; // 0 이상이면 투수팀이 동점 이상
 
@@ -695,7 +772,9 @@ namespace KBOManager.Engine
                 preferred = scoreDiff >= 0 ? pitchingTeam.WinningRelief : pitchingTeam.MopUpRelief;
             }
 
-            var pick = preferred.FirstOrDefault(p => !pitchingTeam.UsedPitchers.Contains(p)) ?? preferred.FirstOrDefault();
+            var eligiblePreferred = preferred.Where(p => !subbedOutList.Contains(p)).ToList();
+            var pick = eligiblePreferred.FirstOrDefault(p => !pitchingTeam.UsedPitchers.Contains(p))
+                ?? eligiblePreferred.FirstOrDefault();
 
             if (pick == null)
             {
@@ -705,9 +784,25 @@ namespace KBOManager.Engine
                     .Concat(pitchingTeam.WinningRelief)
                     .Concat(pitchingTeam.MopUpRelief)
                     .Concat(pitchingTeam.Closers)
+                    .Where(p => !subbedOutList.Contains(p))
                     .ToList();
 
                 pick = allPitchers.FirstOrDefault(p => !pitchingTeam.UsedPitchers.Contains(p)) ?? allPitchers.FirstOrDefault();
+
+                if (pick == null)
+                {
+                    // 이 팀의 등판 가능한 투수가 전원 교체되어 나간 극단적 상황. 경기가 멈추지 않도록
+                    // 마지막 수단으로 SubbedOutList를 무시하고 가장 최근에 쓴 투수를 재사용한다.
+                    Debug.LogWarning($"[MatchEngine] {pitchingTeam.TeamName}: 등판 가능한 투수가 모두 소진되어 " +
+                                      "SubbedOutList를 무시하고 재사용합니다.");
+                    var anyPitcher = pitchingTeam.Starters
+                        .Concat(pitchingTeam.LongRelief)
+                        .Concat(pitchingTeam.WinningRelief)
+                        .Concat(pitchingTeam.MopUpRelief)
+                        .Concat(pitchingTeam.Closers)
+                        .ToList();
+                    pick = anyPitcher.FirstOrDefault();
+                }
             }
 
             if (pick != null) pitchingTeam.UsedPitchers.Add(pick);

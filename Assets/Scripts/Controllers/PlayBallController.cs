@@ -30,34 +30,46 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private SkillDB skillDB;
         [SerializeField] private EngineConfig engineConfig;
+        [Tooltip("하이라이트 정지 조건(득점권/후반 접전/끝내기 위기)의 활성화 여부와 임계값. " +
+                 "비워두면 기본값(전부 활성화, 7회/3점차/9회 기준)으로 동작한다.")]
+        [SerializeField] private HighlightConfig highlightConfig;
 
         private MatchEngine engine;
 
         /// <summary>
         /// 하이라이트 모드에서 시뮬레이션을 멈출 트리거 목록(OR 조합 - 하나라도 만족하면 멈춘다).
-        /// 새 트리거를 추가하고 싶으면 IHighlightCondition을 구현한 클래스를 만들어 이 리스트에
-        /// AddHighlightCondition()으로 등록하면 되고, 이 파일(PlayBallController.cs) 자체를 고칠 필요는 없다.
+        /// highlightConfig 에셋의 값으로 BuildHighlightConditions()가 채운다. 코드로만 표현 가능한
+        /// 커스텀 트리거는 AddHighlightCondition()으로 추가로 등록할 수 있다(개방-폐쇄 원칙 유지).
         /// </summary>
-        private readonly List<IHighlightCondition> highlightConditions = new List<IHighlightCondition>
-        {
-            new ScoringPositionCondition(),
-            new LateInningCloseGameCondition(),
-            new WalkOffDangerCondition(),
-        };
+        private readonly List<IHighlightCondition> highlightConditions = new List<IHighlightCondition>();
 
-        /// <summary>대기 중(WaitUntil)인 코루틴을 풀어주는 스위치. ResumeMatch()가 false로 내려서 재개시킨다.</summary>
+        /// <summary>대기 중(WaitUntil)인 코루틴을 풀어주는 스위치. ResumeMatch(false)가 내려서 재개시킨다.</summary>
         private bool isPausedForUser;
+
+        // ResumeMatch(true)로 개입이 요청됐을 때 InterventionController에게 넘겨줄, 멈춘 시점의 상황 스냅샷.
+        private AtBatStepResult pausedStep;
+        private IHighlightCondition pausedTrigger;
 
         public bool IsMatchInProgress { get; private set; }
         public bool IsPausedForUser => isPausedForUser;
         public PlayMode CurrentMode { get; private set; }
         public MatchResult LastResult { get; private set; }
 
+        /// <summary>진행 중인 MatchEngine. InterventionController 등이 SubstituteBatter/Pitcher를 직접 호출할 때 쓴다.</summary>
+        public MatchEngine Engine => engine;
+
+        public Team HomeTeam { get; private set; }
+        public Team AwayTeam { get; private set; }
+
         /// <summary>타석이 1회 진행될 때마다 호출된다 (연출/로그 갱신용).</summary>
         public event Action<AtBatStepResult> OnAtBatResolved;
 
         /// <summary>하이라이트 트리거가 발동해 유저 입력 대기 상태로 멈췄을 때 호출된다. UI는 이때 개입/스킵 버튼을 노출한다.</summary>
         public event Action<AtBatStepResult, IHighlightCondition> OnHighlightMoment;
+
+        /// <summary>ResumeMatch(true)(개입)가 호출됐을 때 발생한다. InterventionController가 이 이벤트를 구독해
+        /// 교체 UI 흐름을 시작한다. 이 시점에는 아직 시뮬레이션이 재개되지 않는다(교체 확정 후 재개된다).</summary>
+        public event Action<AtBatStepResult, IHighlightCondition> OnInterventionRequested;
 
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
         public event Action<MatchResult> OnMatchCompleted;
@@ -66,6 +78,24 @@ namespace KBOManager.Controllers
         public void AddHighlightCondition(IHighlightCondition condition)
         {
             if (condition != null) highlightConditions.Add(condition);
+        }
+
+        /// <summary>highlightConfig 에셋(없으면 기본값)을 기준으로 표준 3종 트리거 목록을 다시 구성한다.</summary>
+        private void BuildHighlightConditions()
+        {
+            highlightConditions.Clear();
+
+            bool enableScoringPosition = highlightConfig == null || highlightConfig.enableScoringPosition;
+            bool enableLateInning = highlightConfig == null || highlightConfig.enableLateInningCloseGame;
+            bool enableWalkOff = highlightConfig == null || highlightConfig.enableWalkOffDanger;
+
+            int lateInningThreshold = highlightConfig != null ? highlightConfig.lateInningThreshold : 7;
+            int closeGameMargin = highlightConfig != null ? highlightConfig.closeGameScoreMargin : 3;
+            int walkOffInnings = highlightConfig != null ? highlightConfig.walkOffRegulationInnings : 9;
+
+            if (enableScoringPosition) highlightConditions.Add(new ScoringPositionCondition());
+            if (enableLateInning) highlightConditions.Add(new LateInningCloseGameCondition(lateInningThreshold, closeGameMargin));
+            if (enableWalkOff) highlightConditions.Add(new WalkOffDangerCondition(walkOffInnings));
         }
 
         /// <summary>
@@ -89,6 +119,9 @@ namespace KBOManager.Controllers
             var homeRoster = LeagueManager.Instance.ResolveRosterForTeam(fixture.HomeTeam);
             var awayRoster = LeagueManager.Instance.ResolveRosterForTeam(fixture.AwayTeam);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
+
+            HomeTeam = fixture.HomeTeam;
+            AwayTeam = fixture.AwayTeam;
 
             BeginMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason, mode);
         }
@@ -116,6 +149,7 @@ namespace KBOManager.Controllers
 
                 case PlayMode.Highlight:
                     engine.BeginMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
+                    BuildHighlightConditions();
                     StartCoroutine(RunHighlight());
                     break;
 
@@ -143,6 +177,8 @@ namespace KBOManager.Controllers
                     if (triggered != null)
                     {
                         Debug.Log($"[PlayBallController] 하이라이트 정지: {triggered.Name}");
+                        pausedStep = step;
+                        pausedTrigger = triggered;
                         OnHighlightMoment?.Invoke(step, triggered);
 
                         isPausedForUser = true;
@@ -165,11 +201,13 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// 하이라이트 멈춤 상태를 UI(버튼)에서 재개시킨다. 대기 중이 아닐 때 호출하면 아무 일도 하지 않는다.
+        /// 하이라이트 멈춤 상태에서 UI(버튼)가 호출하는 진입점. 대기 중이 아닐 때 호출하면 아무 일도 하지 않는다.
         /// </summary>
         /// <param name="intervene">
-        /// false: 개입 없이 다음 타석으로 스킵한다.
-        /// true: 개입을 선택했다는 로그만 남기고 대기를 해제한다 - 실제 투수/타자 교체 UI 연결은 후속 과제다.
+        /// false: 개입 없이 다음 타석으로 진행한다(시뮬레이션이 실제로 재개된다).
+        /// true: 아직 재개하지 않고 OnInterventionRequested를 발생시켜 InterventionController에게 교체 흐름을
+        /// 넘긴다 - 교체(또는 스킵)가 확정되어 InterventionController가 ResumeMatch(false)를 다시 호출할 때
+        /// 비로소 실제로 재개된다.
         /// </param>
         public void ResumeMatch(bool intervene)
         {
@@ -181,10 +219,13 @@ namespace KBOManager.Controllers
 
             if (intervene)
             {
-                // TODO: 투수 교체/대타 등 실제 개입 UI가 만들어지면 여기서 그 흐름을 시작해야 한다.
-                Debug.Log("[PlayBallController] 유저가 개입을 선택했습니다. (교체 UI는 아직 연결되지 않음)");
+                Debug.Log("[PlayBallController] 유저가 개입을 선택했습니다 - 교체 흐름으로 위임합니다.");
+                OnInterventionRequested?.Invoke(pausedStep, pausedTrigger);
+                return; // isPausedForUser는 그대로 true 유지 - 교체가 끝난 뒤 ResumeMatch(false)가 다시 호출되어야 재개된다.
             }
 
+            pausedStep = null;
+            pausedTrigger = null;
             isPausedForUser = false;
         }
 
