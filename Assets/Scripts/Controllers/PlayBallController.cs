@@ -77,6 +77,16 @@ namespace KBOManager.Controllers
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
         public event Action<MatchResult> OnMatchCompleted;
 
+        /// <summary>대타/투수 교체가 확정됐을 때 발생하는 중계 로그. InGameUIController가 OnAtBatEnd와
+        /// 동일하게 구독해 텍스트 중계창에 이어 붙인다.</summary>
+        public event Action<string> OnSubstitutionLog;
+
+        /// <summary>InterventionController 등 외부에서 교체가 확정된 뒤 호출해, 그 로그를 중계창으로 내보낸다.</summary>
+        public void RaiseSubstitutionLog(string message)
+        {
+            if (!string.IsNullOrEmpty(message)) OnSubstitutionLog?.Invoke(message);
+        }
+
         /// <summary>새 하이라이트 트리거를 등록한다. (개방-폐쇄 원칙: 이 클래스를 고치지 않고 트리거를 추가하는 진입점)</summary>
         public void AddHighlightCondition(IHighlightCondition condition)
         {

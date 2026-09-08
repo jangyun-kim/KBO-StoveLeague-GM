@@ -44,6 +44,7 @@ namespace KBOManager.Controllers
             if (playBallController == null) return;
             playBallController.OnAtBatEnd += HandleAtBatEnd;
             playBallController.OnInningEnd += HandleInningEnd;
+            playBallController.OnSubstitutionLog += AddLog;
         }
 
         private void OnDisable()
@@ -51,6 +52,7 @@ namespace KBOManager.Controllers
             if (playBallController == null) return;
             playBallController.OnAtBatEnd -= HandleAtBatEnd;
             playBallController.OnInningEnd -= HandleInningEnd;
+            playBallController.OnSubstitutionLog -= AddLog;
         }
 
         private void HandleAtBatEnd(AtBatStepResult step)

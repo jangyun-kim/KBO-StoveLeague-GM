@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KBOManager.Engine;
@@ -24,6 +25,14 @@ namespace KBOManager.Controllers
         public IHighlightCondition PendingTrigger { get; private set; }
         public bool HasPendingIntervention => PendingStep != null;
 
+        /// <summary>지금이 유저 팀 공격 차례라 대타를 낼 수 있을 때 발생한다. SubstitutionUIController가
+        /// 이 이벤트를 구독해 ShowPinchHitterList(currentBatter, availableBench)를 그대로 호출하면 된다.</summary>
+        public event Action<Player, List<Player>> OnPinchHitterOpportunity;
+
+        /// <summary>지금이 유저 팀 수비 차례라 구원 투수를 투입할 수 있을 때 발생한다. SubstitutionUIController가
+        /// 이 이벤트를 구독해 ShowRelieverList(currentPitcher, availableBullpen)를 그대로 호출하면 된다.</summary>
+        public event Action<Player, List<Player>> OnRelieverOpportunity;
+
         private void OnEnable()
         {
             if (playBallController != null)
@@ -45,6 +54,17 @@ namespace KBOManager.Controllers
             PendingStep = step;
             PendingTrigger = triggeredBy;
             Debug.Log($"[InterventionController] 개입 대기 시작 (사유: {triggeredBy?.Name})");
+
+            if (playBallController?.Engine == null) return;
+
+            if (IsUserTeamBatting())
+            {
+                OnPinchHitterOpportunity?.Invoke(playBallController.Engine.UpcomingBatter, GetAvailablePinchHitters());
+            }
+            else
+            {
+                OnRelieverOpportunity?.Invoke(playBallController.Engine.CurrentPitcher, GetAvailableRelievers());
+            }
         }
 
         private bool IsUserTeamBatting()
@@ -90,24 +110,36 @@ namespace KBOManager.Controllers
                 .ToList();
         }
 
-        /// <summary>대타 교체를 확정하고 경기를 재개한다.</summary>
+        /// <summary>대타 교체를 확정하고 경기를 재개한다. 성공 시 텍스트 중계창에도 교체 로그를 남긴다.</summary>
         public void ConfirmBatterSubstitution(Player newBatter)
         {
             if (playBallController?.Engine == null) return;
 
+            var outgoingBatter = playBallController.Engine.UpcomingBatter; // 교체 전에 미리 캡처(교체 후엔 이미 newBatter로 바뀜)
             bool success = playBallController.Engine.SubstituteBatter(newBatter);
             Debug.Log($"[InterventionController] 대타 교체 {(success ? "성공" : "실패")}: {newBatter?.Template?.PlayerName}");
+
+            if (success)
+            {
+                playBallController.RaiseSubstitutionLog(MatchLogger.BuildSubstitutionLog(outgoingBatter, newBatter, isBatterSubstitution: true));
+            }
 
             ClearPendingAndResume();
         }
 
-        /// <summary>투수 교체를 확정하고 경기를 재개한다.</summary>
+        /// <summary>투수 교체를 확정하고 경기를 재개한다. 성공 시 텍스트 중계창에도 교체 로그를 남긴다.</summary>
         public void ConfirmPitcherSubstitution(Player newPitcher)
         {
             if (playBallController?.Engine == null) return;
 
+            var outgoingPitcher = playBallController.Engine.CurrentPitcher; // 교체 전에 미리 캡처
             bool success = playBallController.Engine.SubstitutePitcher(newPitcher);
             Debug.Log($"[InterventionController] 투수 교체 {(success ? "성공" : "실패")}: {newPitcher?.Template?.PlayerName}");
+
+            if (success)
+            {
+                playBallController.RaiseSubstitutionLog(MatchLogger.BuildSubstitutionLog(outgoingPitcher, newPitcher, isBatterSubstitution: false));
+            }
 
             ClearPendingAndResume();
         }

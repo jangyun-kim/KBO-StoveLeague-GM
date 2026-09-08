@@ -355,12 +355,19 @@ namespace KBOManager.Engine
             RollPitchCount(currentAtBatState);
 
             var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
+
+            // 로그의 "[3회초 2사 1,3루]" 부분은 배터가 타석에 "들어선 시점"의 상황이어야 하므로,
+            // ResolveAtBatEffect()가 아웃/주자를 바꾸기 직전에 별도로 스냅샷을 떠 둔다.
+            var situationBeforePlay = currentAtBatState.Clone();
+            int outsBeforePlay = currentAtBatState.Outs;
+
             int runs = ResolveAtBatEffect(result, currentAtBatState);
+            bool isDoublePlay = result == AtBatResult.Groundout && currentAtBatState.Outs - outsBeforePlay == 2;
 
             // AdvanceAfterHalfInning()이 아래에서 currentAtBatState를 다음 하프이닝용 새 객체로 교체할 수 있으므로,
-            // "이 타석 시점"의 상태를 독립 스냅샷으로 미리 떠 둔다 - 로그/AtBatStepResult 모두 이 스냅샷을 쓴다.
+            // "이 타석 종료 직후" 상태도 독립 스냅샷으로 떠 둔다 - AtBatStepResult.State/하이라이트 조건이 이걸 쓴다.
             var stateSnapshot = currentAtBatState.Clone();
-            string logMessage = MatchLogger.BuildLog(stateSnapshot.Inning, wasTopHalf, batter, result, runs);
+            string logMessage = MatchLogger.BuildLog(situationBeforePlay, wasTopHalf, batter, result, runs, isDoublePlay);
 
             runsThisHalfInning += runs;
             if (isTopHalf) { Result.AwayTotalScore += runs; awayState.RunsScored += runs; }
