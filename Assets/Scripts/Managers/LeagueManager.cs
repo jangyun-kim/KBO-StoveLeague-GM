@@ -401,6 +401,38 @@ namespace KBOManager.Managers
             CurrentPhase = IsUserPlayoffEligible ? LeaguePhase.POST_PREP : LeaguePhase.STOVE_LEAGUE;
         }
 
+        /// <summary>
+        /// 스토브리그 처리(AI 로스터 자동 성장)까지 마친 뒤 다음 시즌을 개막한다. POST_PREP(포스트시즌
+        /// 대기) 또는 STOVE_LEAGUE(포스트시즌 탈락) 단계, 즉 FinalizeSeason()이 이미 호출된 뒤에만
+        /// 의미가 있다. UI(LeagueDashboardUIController 등)가 "다음 시즌 시작" 버튼에 연결하는 진입점이다.
+        ///
+        /// InitializeLeague()와 달리 AI 로스터를 처음부터 다시 생성하지 않는다 - GenerateAiRosters()를
+        /// 다시 부르면 매번 새 Player 인스턴스를 절차적으로 찍어내므로, 방금 StoveLeagueManager로 키워둔
+        /// ReinforceLevel/스킬이 통째로 사라져 버린다. 대신 기존 TeamInfo.Roster(9개 AI 팀)는 그대로 둔
+        /// 채 StoveLeagueManager로 성장시키고, 승/무/패 기록과 스케줄만 새 시즌 기준으로 초기화한다.
+        /// </summary>
+        public StoveLeagueManager.StoveLeagueReport AdvanceToNextSeason()
+        {
+            var aiTeams = standings.Values.Where(t => !t.IsUserTeam).ToList();
+            var report = StoveLeagueManager.ProcessStoveLeague(aiTeams, skillDB);
+
+            foreach (var info in standings.Values)
+            {
+                info.Wins = 0;
+                info.Draws = 0;
+                info.Losses = 0;
+            }
+
+            schedule.Clear();
+            nextFixtureIndex = 0;
+            UserFinalRank = null;
+            CurrentPhase = LeaguePhase.REGULAR_OPEN;
+
+            BuildUserSchedule();
+
+            return report;
+        }
+
         /// <summary>지정한 GameNumber까지(포함) 남은 스케줄을 한 번에 시뮬레이션한다. (빠른 진행용)</summary>
         public void PlayUntil(int gameNumber)
         {

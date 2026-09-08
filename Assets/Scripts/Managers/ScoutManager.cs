@@ -91,6 +91,46 @@ namespace KBOManager.Managers
             return results;
         }
 
+        /// <summary>
+        /// 등급이 minimumGrade 이상으로 "확정"된 카드 1장을 발급한다. 재화 소모는 이 메서드의 책임이
+        /// 아니다 - 호출자(ShopUIController 등)가 자신의 재화(프리미엄 재화 등)를 먼저 확인/차감한
+        /// 뒤에만 호출해야 한다. gradeDropRates 중 minimumGrade 이상인 항목들만 남겨 그 상대 확률로
+        /// 다시 추첨하므로, 같은 "확정" 안에서도 상위 등급(SIGNATURE/DYNASTY 등)일수록 여전히 더 희귀하다.
+        /// </summary>
+        public Player RollGuaranteed(Grade minimumGrade)
+        {
+            if (playerDatabase == null) return null;
+
+            var grade = RollGradeAtLeast(minimumGrade);
+            var template = PickTemplate(grade);
+            if (template == null) return null;
+
+            var player = new Player(Guid.NewGuid().ToString(), template);
+            ApplyInitialGradeRule(player, grade);
+            AttachInitialSkill(player, template);
+
+            return player;
+        }
+
+        private Grade RollGradeAtLeast(Grade minimumGrade)
+        {
+            var eligible = gradeDropRates.Where(g => g.Grade >= minimumGrade).ToList();
+            if (eligible.Count == 0) return minimumGrade; // 확률표에 해당 등급 이상이 없으면 최소 등급으로 확정
+
+            float total = eligible.Sum(g => g.RatePercent);
+            if (total <= 0f) return eligible[0].Grade;
+
+            float roll = UnityEngine.Random.Range(0f, total);
+            float cumulative = 0f;
+            foreach (var entry in eligible)
+            {
+                cumulative += entry.RatePercent;
+                if (roll <= cumulative) return entry.Grade;
+            }
+
+            return eligible[eligible.Count - 1].Grade;
+        }
+
         private Player RollOnce()
         {
             var grade = RollGrade();

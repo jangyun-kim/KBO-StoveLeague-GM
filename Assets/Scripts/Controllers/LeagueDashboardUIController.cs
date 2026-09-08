@@ -37,11 +37,17 @@ namespace KBOManager.Controllers
         [SerializeField] private Button highlightButton;
         [SerializeField] private Button fullPlayButton;
 
+        [Header("Navigation Buttons")]
+        [Tooltip("상점 화면(UIManager.ScreenType.Shop)으로 전환하는 버튼. UIManager.ShowScreen()만 호출하므로" +
+                 " ShopUIController를 직접 참조하지 않는다.")]
+        [SerializeField] private Button shopButton;
+
         private void Awake()
         {
             if (quickPlayButton != null) quickPlayButton.onClick.AddListener(() => StartMatch(PlayMode.QuickPlay));
             if (highlightButton != null) highlightButton.onClick.AddListener(() => StartMatch(PlayMode.Highlight));
             if (fullPlayButton != null) fullPlayButton.onClick.AddListener(() => StartMatch(PlayMode.FullPlay));
+            if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
         }
 
         private void OnEnable()

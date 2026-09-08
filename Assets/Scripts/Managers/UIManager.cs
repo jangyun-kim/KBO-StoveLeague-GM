@@ -11,7 +11,8 @@ namespace KBOManager.Managers
         InGame,
         Inventory,
         Roster,
-        Scout
+        Scout,
+        Shop
     }
 
     /// <summary>

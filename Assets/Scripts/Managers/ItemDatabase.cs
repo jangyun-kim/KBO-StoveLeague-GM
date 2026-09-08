@@ -56,5 +56,31 @@ namespace KBOManager.Managers
 
             return new Item(Guid.NewGuid().ToString(), template);
         }
+
+        /// <summary>
+        /// ItemDataSeeder(에디터 전용 자동 생성 스크립트)가 새로 만든 템플릿들을 이 DB에 자동 등록할 때
+        /// 호출한다. TemplateId 기준으로 중복을 걸러내며, 이미 등록된 항목은 같은 참조로 그대로 둔다
+        /// (덮어쓰기 없음 - 인스펙터에서 수동으로 순서/내용을 조정해 둔 경우를 보존하기 위함).
+        /// allTemplates가 private이므로 외부(에디터 스크립트 포함)에서 이 메서드를 거치지 않고는
+        /// 목록을 바꿀 수 없다 - DB 스스로 중복 등록 여부를 책임진다.
+        /// </summary>
+        /// <returns>새로 추가된 템플릿 개수.</returns>
+        public int RegisterTemplates(IEnumerable<ItemTemplate> templates)
+        {
+            if (templates == null) return 0;
+
+            int addedCount = 0;
+            foreach (var template in templates)
+            {
+                if (template == null) continue;
+                if (allTemplates.Contains(template)) continue;
+                if (allTemplates.Any(t => t != null && t.TemplateId == template.TemplateId)) continue;
+
+                allTemplates.Add(template);
+                addedCount++;
+            }
+
+            return addedCount;
+        }
     }
 }

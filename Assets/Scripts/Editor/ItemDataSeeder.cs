@@ -1,19 +1,24 @@
+using System.Collections.Generic;
 using KBOManager.Data;
+using KBOManager.Managers;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace KBOManager.EditorTools
 {
     /// <summary>
     /// GDD 3절에 명시된 강화 재료 카드 10종(일반 1~5성 + 확률업 1~5성+1)의 ItemTemplate .asset을
-    /// 에디터 메뉴 한 번으로 자동 생성/갱신한다. 에디터 전용이므로 반드시 "Editor" 폴더 밑에 있어야
-    /// 빌드에 포함되지 않는다.
+    /// 에디터 메뉴 한 번으로 자동 생성/갱신하고, 열려 있는 씬의 ItemDatabase 컴포넌트를 찾아 그
+    /// AllTemplates에 자동 등록까지 완료한다(드래그 앤 드롭 불필요). 에디터 전용이므로 반드시
+    /// "Editor" 폴더 밑에 있어야 빌드에 포함되지 않는다.
     ///
     /// 이미 존재하는 에셋은 덮어쓰지 않고 필드만 최신 값으로 갱신한다 - 여러 번 실행해도 안전하다
     /// (예: MaterialType 이름을 바꿔 다시 실행해도 중복 에셋이 생기지 않는다).
     ///
-    /// 실행 후에는 ItemDatabase.AllTemplates에 새로 만들어진 10개 에셋을 수동으로 드래그해 등록해야
-    /// 한다 - ItemDatabase는 씬에 배치되는 MonoBehaviour라 에디터 스크립트가 임의로 찾아 수정하지 않는다.
+    /// ItemDatabase 자동 등록은 "현재 열려 있는 씬"에 배치된 인스턴스를 대상으로 한다. 씬이 열려 있지
+    /// 않거나 씬에 ItemDatabase가 없으면(예: 프리팹으로만 존재) 자동 등록을 건너뛰고 경고 로그만
+    /// 남긴다 - 이 경우 종전처럼 수동으로 드래그해 등록해야 한다.
     /// </summary>
     public static class ItemDataSeeder
     {
@@ -40,26 +45,49 @@ namespace KBOManager.EditorTools
 
             int created = 0;
             int updated = 0;
+            var allSeededTemplates = new List<ItemTemplate>(DefaultItems.Length);
 
             foreach (var (templateId, displayName, materialType) in DefaultItems)
             {
-                if (CreateOrUpdate(templateId, displayName, materialType))
-                {
-                    created++;
-                }
-                else
-                {
-                    updated++;
-                }
+                var template = CreateOrUpdate(templateId, displayName, materialType, out bool wasCreated);
+                if (template == null) continue;
+
+                allSeededTemplates.Add(template);
+                if (wasCreated) created++; else updated++;
             }
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
+            string bindingReport = RegisterIntoSceneDatabase(allSeededTemplates);
+
             Debug.Log($"[ItemDataSeeder] 강화 아이템 {DefaultItems.Length}종 처리 완료 " +
-                      $"(신규 {created}개, 갱신 {updated}개) - '{TargetFolder}'. " +
-                      "ItemDatabase.AllTemplates에는 아직 자동 등록되지 않으니, 씬의 ItemDatabase 컴포넌트에 " +
-                      "직접 드래그해 등록해 주세요.");
+                      $"(신규 {created}개, 갱신 {updated}개) - '{TargetFolder}'. {bindingReport}");
+        }
+
+        /// <summary>
+        /// 현재 열려 있는 씬에서 ItemDatabase 컴포넌트를 찾아 방금 생성/갱신한 템플릿들을 자동으로
+        /// AllTemplates에 등록한다(Dirty 마킹 + 씬 저장 포함). Object.FindFirstObjectByType은 비활성
+        /// 오브젝트를 찾지 못하므로, 씬에 ItemDatabase가 비활성 상태로 배치돼 있다면 감지되지 않는다는
+        /// 한계가 있다 - 그런 경우엔 이 메서드가 "찾지 못함" 경고를 남기고 종전처럼 수동 등록을 안내한다.
+        /// </summary>
+        private static string RegisterIntoSceneDatabase(List<ItemTemplate> templates)
+        {
+            var itemDatabase = Object.FindFirstObjectByType<ItemDatabase>();
+            if (itemDatabase == null)
+            {
+                return "ItemDatabase.AllTemplates에는 자동 등록되지 않았습니다(열려 있는 씬에서 ItemDatabase 컴포넌트를 " +
+                       "찾지 못함). 씬을 열고 다시 실행하거나, 수동으로 드래그해 등록해 주세요.";
+            }
+
+            int addedCount = itemDatabase.RegisterTemplates(templates);
+
+            EditorUtility.SetDirty(itemDatabase);
+            EditorSceneManager.MarkSceneDirty(itemDatabase.gameObject.scene);
+            EditorSceneManager.SaveScene(itemDatabase.gameObject.scene);
+
+            return $"ItemDatabase.AllTemplates에 신규 {addedCount}개 자동 등록 완료(씬 '{itemDatabase.gameObject.scene.name}' 저장됨). " +
+                   "드래그 앤 드롭 불필요.";
         }
 
         /// <summary>"Assets/GameData/Items"처럼 여러 단계로 없는 폴더를 순서대로 만든다.</summary>
@@ -79,8 +107,8 @@ namespace KBOManager.EditorTools
             }
         }
 
-        /// <summary>true를 반환하면 새로 생성한 것, false면 기존 에셋을 갱신한 것.</summary>
-        private static bool CreateOrUpdate(string templateId, string displayName, MaterialCardType materialType)
+        /// <summary>wasCreated가 true면 새로 생성한 것, false면 기존 에셋을 갱신한 것. 결과 템플릿을 반환한다.</summary>
+        private static ItemTemplate CreateOrUpdate(string templateId, string displayName, MaterialCardType materialType, out bool wasCreated)
         {
             string assetPath = $"{TargetFolder}/{templateId}.asset";
             var existing = AssetDatabase.LoadAssetAtPath<ItemTemplate>(assetPath);
@@ -91,7 +119,8 @@ namespace KBOManager.EditorTools
                 existing.DisplayName = displayName;
                 existing.MaterialType = materialType;
                 EditorUtility.SetDirty(existing);
-                return false;
+                wasCreated = false;
+                return existing;
             }
 
             var template = ScriptableObject.CreateInstance<ItemTemplate>();
@@ -100,7 +129,8 @@ namespace KBOManager.EditorTools
             template.MaterialType = materialType;
 
             AssetDatabase.CreateAsset(template, assetPath);
-            return true;
+            wasCreated = true;
+            return template;
         }
     }
 }
