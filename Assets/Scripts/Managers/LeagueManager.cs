@@ -380,6 +380,7 @@ namespace KBOManager.Managers
         {
             nextFixtureIndex++;
             RecordResult(standings[fixture.HomeTeam], standings[fixture.AwayTeam], fixture.Result);
+            RecoverPitcherStamina();
 
             if (fixture.GameNumber == RegularOpenGames && CurrentPhase == LeaguePhase.REGULAR_OPEN)
             {
@@ -389,6 +390,49 @@ namespace KBOManager.Managers
             if (fixture.GameNumber == TotalUserGames)
             {
                 FinalizeSeason();
+            }
+        }
+
+        // 경기(하루) 하나가 끝날 때마다 회복되는 체력. GDD 미명시 - StaminaCostPerBatterFaced(4)로
+        // 소모된 체력을 다음 경기까지 대략 회복하도록 역산한 임시값이다.
+        private const int StarterStaminaRecoveryPerFixture = 25;
+        private const int BullpenStaminaRecoveryPerFixture = 15;
+
+        /// <summary>
+        /// 경기(=리그 일정상 하루)가 끝날 때마다 리그 전체 10개 구단 로스터의 모든 투수를 쉬게 한다 -
+        /// 선발은 +25, 불펜(선발 외 전 롤)은 +15. 이 게임에는 별도의 "날짜" 개념이 없어 "경기 1건 완료"를
+        /// 곧 "하루가 지났다"로 취급한다 - CompleteNextFixture()/PlayNextMatch() 양쪽 모두 결국 이
+        /// FinalizeFixtureBookkeeping()을 거치므로, 어느 진행 방식이든 회복이 빠짐없이 적용된다.
+        /// 유저 팀은 standings[userTeam].Roster가 아니라 GameManager.Instance.Roster가 실제 로스터이므로
+        /// (GenerateAiRosters가 유저 팀은 건너뛰어 standings 쪽은 항상 비어 있다) 별도로 처리한다.
+        /// </summary>
+        private void RecoverPitcherStamina()
+        {
+            if (GameManager.Instance != null)
+            {
+                RecoverRosterStamina(GameManager.Instance.Roster);
+            }
+
+            foreach (var info in standings.Values)
+            {
+                if (info.IsUserTeam) continue; // 유저 로스터는 위에서 이미 처리함
+                RecoverRosterStamina(info.Roster);
+            }
+        }
+
+        private static void RecoverRosterStamina(IReadOnlyList<Player> roster)
+        {
+            if (roster == null) return;
+
+            foreach (var player in roster)
+            {
+                if (player?.Template == null || !player.Template.IsPitcher) continue;
+
+                int recoveryAmount = player.Template.PitcherRole == PitcherRole.StartingPitcher
+                    ? StarterStaminaRecoveryPerFixture
+                    : BullpenStaminaRecoveryPerFixture;
+
+                player.RecoverStamina(recoveryAmount);
             }
         }
 

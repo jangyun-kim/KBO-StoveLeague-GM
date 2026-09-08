@@ -110,6 +110,14 @@ namespace KBOManager.Engine
         private const double DoublePlayChance = 0.4; // 1루 주자 있고 2아웃 미만인 땅볼일 때 병살 발생 확률
         private const double TwoStrikeReachProbability = 0.6; // 타석이 2스트라이크까지 도달할 확률(단순화된 카운트 모델)
 
+        // 투수 체력(Stamina): 타석 1회를 상대할 때마다 소모되는 양. TODO: 밸런스 확정 전까지의 임시값 -
+        // 선발(100)은 약 25타석(6~7이닝)에서 30% 미만(페널티 구간)에 진입하고, 불펜(40)은 약 8타석
+        // (2~3이닝)에서 진입하도록 역산한 수치다.
+        private const int StaminaCostPerBatterFaced = 4;
+
+        // SelectPitcherForInning()이 투수를 고를 때 "체력이 이 비율 이상인 투수"를 최우선으로 취급한다.
+        private const float MinStaminaPercentToPitch = 0.6f;
+
         /// <summary>타석 결과가 세부 스탯 중 어떤 "매치업"에 의해 좌우되는지.</summary>
         private enum OutcomeDriver
         {
@@ -355,6 +363,11 @@ namespace KBOManager.Engine
             RollPitchCount(currentAtBatState);
 
             var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
+
+            // 이 타석을 던진 대가로 체력을 소모한다. SimulateAtBat()이 이미 "이번 타석 시작 시점"의
+            // 체력을 기준으로 페널티(IsLowStamina) 여부를 판정한 뒤이므로, 소모는 그 판정 이후에
+            // 반영해야 "이번 타석 도중 지쳐서 이번 타석 결과에도 소급 적용되는" 부자연스러움이 없다.
+            pitcherForThisAtBat.ConsumeStamina(StaminaCostPerBatterFaced);
 
             // 로그의 "[3회초 2사 1,3루]" 부분은 배터가 타석에 "들어선 시점"의 상황이어야 하므로,
             // ResolveAtBatEffect()가 아웃/주자를 바꾸기 직전에 별도로 스냅샷을 떠 둔다.
@@ -634,7 +647,11 @@ namespace KBOManager.Engine
             return stats;
         }
 
-        /// <summary>ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용한다.</summary>
+        /// <summary>
+        /// ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용하되, 체력 페널티를 세트덱
+        /// 배율과 같은 단계(스킬 보정 이전)에 곱한다 - 스킬 보너스는 가산이므로 지친 투수라도 스킬
+        /// 효과 자체의 절댓값은 깎이지 않는다(세트덱 배율이 스킬 보너스를 부풀리지 않게 한 것과 동일한 이유).
+        /// </summary>
         private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter, MatchState state)
         {
             var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
@@ -642,6 +659,11 @@ namespace KBOManager.Engine
             if (isActive && multiplier > 1f)
             {
                 stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
+            }
+
+            if (pitcher.IsLowStamina)
+            {
+                stats = Scale(stats, 1f - Player.LowStaminaOvrPenaltyPercent); // 체력 30% 미만: -15%
             }
 
             stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter, state);
@@ -803,11 +825,31 @@ namespace KBOManager.Engine
             return batter;
         }
 
+        /// <summary>체력이 MinStaminaPercentToPitch(60%) 이상인 투수. 타자/체력 데이터가 없는 카드는 항상 true를 반환해
+        /// (필터로 인해 아예 후보가 사라지는 사고를 막는다) 안전하게 우회한다.</summary>
+        private static bool HasSufficientStamina(Player pitcher)
+        {
+            if (pitcher?.Template == null || !pitcher.Template.IsPitcher || pitcher.MaxStamina <= 0) return true;
+            return (float)pitcher.CurrentStamina / pitcher.MaxStamina >= MinStaminaPercentToPitch;
+        }
+
         /// <summary>
-        /// 간이 불펜 운용 규칙(1~5회 선발, 6회 롱릴리프, 7~8회 승리/추격조, 9회+ 마무리/추격조).
+        /// candidates 중에서 "아직 이 경기에 등판하지 않았고 체력도 충분한" 투수를 최우선으로,
+        /// 그다음 "아직 등판하지 않은" 투수를, 그래도 없으면 아무나(순서 유지)를 반환한다.
+        /// 이 3단계 우선순위 하나로 SelectPitcherForInning() 전체(선호 롤 후보/전체 폴백 후보)를 통일해서 처리한다.
+        /// </summary>
+        private static Player PickByStaminaThenUsage(List<Player> candidates, HashSet<Player> usedPitchers)
+        {
+            return candidates.FirstOrDefault(p => !usedPitchers.Contains(p) && HasSufficientStamina(p))
+                ?? candidates.FirstOrDefault(p => !usedPitchers.Contains(p))
+                ?? candidates.FirstOrDefault();
+        }
+
+        /// <summary>
+        /// 간이 불펜 운용 규칙(1~5회 선발, 6회 롱릴리프, 7~8회 승리/추격조, 9회+ 마무리/추격조) +
+        /// 체력 기반 우선순위(PickByStaminaThenUsage - 체력 60% 이상 우선, 그다음 미사용, 그다음 아무나).
         /// SubbedOutList에 등록된(유저가 명시적으로 강판시킨) 투수는 이 자동 로테이션에서도 절대 재선택되지
-        /// 않는다 - UsedPitchers(소프트 선호도)와 별개로 SubbedOutList는 하드 제외 규칙이다.
-        /// 실제 투구수/피로도 기반 교체는 후속 과제.
+        /// 않는다 - UsedPitchers(소프트 선호도)/체력(소프트 우선순위)과 별개로 SubbedOutList는 하드 제외 규칙이다.
         /// </summary>
         private Player SelectPitcherForInning(TeamGameState pitchingTeam, TeamGameState battingTeam, int inning)
         {
@@ -816,7 +858,16 @@ namespace KBOManager.Engine
             List<Player> preferred;
             if (inning <= 5 && pitchingTeam.Starters.Count > 0)
             {
-                preferred = new List<Player> { pitchingTeam.Starters[0] };
+                // 이번 경기에서 이미 등판을 시작한 선발이 있으면(Starters 중 UsedPitchers에 이미 들어간
+                // 선수) 그 선발로 계속 이어간다 - 이닝마다 다른 선발로 튀면 안 되기 때문이다. 아직 아무도
+                // 등판하지 않았다면(경기 첫 투수 결정) Starters 전체를 후보로 넘겨, 체력이 가장 넉넉한
+                // 선발이 우선 선택되도록 한다 - 이게 곧 "선발 5명을 강제로 돌려쓰게 만드는" 로테이션이다.
+                // (기존에는 항상 Starters[0](최고 OVR)만 고정으로 선발 등판했다 - 체력과 무관하게 매 경기
+                // 동일 인물이 선발이었던 것을 여기서 함께 고쳤다.)
+                var alreadyStartedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p));
+                preferred = alreadyStartedToday != null
+                    ? new List<Player> { alreadyStartedToday }
+                    : pitchingTeam.Starters;
             }
             else if (inning == 6)
             {
@@ -832,12 +883,11 @@ namespace KBOManager.Engine
             }
 
             var eligiblePreferred = preferred.Where(p => !subbedOutList.Contains(p)).ToList();
-            var pick = eligiblePreferred.FirstOrDefault(p => !pitchingTeam.UsedPitchers.Contains(p))
-                ?? eligiblePreferred.FirstOrDefault();
+            var pick = PickByStaminaThenUsage(eligiblePreferred, pitchingTeam.UsedPitchers);
 
             if (pick == null)
             {
-                // [Fallback] 선호 롤에 가용 투수가 없으면 전체 투수 풀에서 미사용 -> 재사용 순으로 배정한다.
+                // [Fallback] 선호 롤에 가용 투수가 없으면 전체 투수 풀에서 체력 우선 -> 미사용 -> 재사용 순으로 배정한다.
                 var allPitchers = pitchingTeam.Starters
                     .Concat(pitchingTeam.LongRelief)
                     .Concat(pitchingTeam.WinningRelief)
@@ -846,7 +896,7 @@ namespace KBOManager.Engine
                     .Where(p => !subbedOutList.Contains(p))
                     .ToList();
 
-                pick = allPitchers.FirstOrDefault(p => !pitchingTeam.UsedPitchers.Contains(p)) ?? allPitchers.FirstOrDefault();
+                pick = PickByStaminaThenUsage(allPitchers, pitchingTeam.UsedPitchers);
 
                 if (pick == null)
                 {

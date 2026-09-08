@@ -22,17 +22,38 @@ namespace KBOManager.Managers
         public int StarLevel;
         public StarType CurrentStarType;
         public List<string> AcquiredSkillIds = new List<string>();
+
+        // 체력 필드 도입(v2) 이전 세이브에는 이 두 값이 JSON에 아예 없어 역직렬화 시 기본값(0)이 된다.
+        // RestorePlayer()가 "투수인데 MaxStamina가 0"인 경우를 "구버전 세이브"로 간주해 Player 생성자의
+        // 롤 기준 기본값(완전 회복 상태)을 그대로 둔다 - 자세한 내용은 RestorePlayer() 참고.
+        public int CurrentStamina;
+        public int MaxStamina;
     }
 
     /// <summary>
-    /// Item도 Player와 동일한 경량화 원칙을 따른다: ItemTemplate 전체를 직렬화하지 않고 TemplateId만
-    /// 저장한다 - 로드 시 ItemDatabase에서 TemplateId로 원본을 다시 찾아 붙인다.
+    /// (구버전, v1 이하 세이브 전용) Item을 인스턴스 1개당 1행으로 저장하던 예전 포맷. 강화 재료/스킬
+    /// 변경권처럼 완전히 동일한 템플릿을 수십 장씩 보유할 수 있는 소모품에는 비효율적이라 v2부터는
+    /// ItemStackSaveData(TemplateId+수량)로 대체됐다. 새 세이브는 이 필드를 항상 빈 리스트로 쓴다 -
+    /// 오직 "이 필드에 값이 있다 = v1 이하 세이브"를 판별하기 위한 하위 호환 읽기 전용 필드로만 남겨 둔다.
     /// </summary>
     [Serializable]
     public class ItemSaveData
     {
         public string InstanceId;
         public string TemplateId;
+    }
+
+    /// <summary>
+    /// v2부터 쓰는 신규 Item 저장 포맷. 같은 TemplateId를 가진 아이템을 개수(Count)로 묶어 한 행으로
+    /// 저장한다 - Item은 InstanceId/Template 외에 성장 상태가 전혀 없는 완전한 소모품(fungible)이라
+    /// 인스턴스별로 구분해 저장할 이유가 없다. 로드 시에는 TemplateId당 Count개의 새 Item 인스턴스를
+    /// (새 GUID로) 다시 만들어 낸다 - InstanceId 자체를 보존할 필요가 없기 때문에 가능한 단순화다.
+    /// </summary>
+    [Serializable]
+    public class ItemStackSaveData
+    {
+        public string TemplateId;
+        public int Count;
     }
 
     [Serializable]
@@ -51,13 +72,18 @@ namespace KBOManager.Managers
     [Serializable]
     public class GameSaveData
     {
-        public int SaveVersion = 1;
+        // v2: Item 저장 포맷을 인스턴스별(ItemSaveData) -> 수량 그룹(ItemStackSaveData)으로 변경,
+        // Player에 스태미나(CurrentStamina/MaxStamina) 필드 추가. 이 값 자체를 읽어 분기하지는 않는다 -
+        // 대신 "새 필드가 비어 있으면 구버전"이라는 더 안전한 필드-존재 기반 판별을 쓴다(SaveVersion은
+        // 사람이 읽는 기록용).
+        public int SaveVersion = 2;
         public string SavedAtUtc;
 
         // GameManager
         public List<PlayerSaveData> Inventory = new List<PlayerSaveData>();
         public List<string> RosterInstanceIds = new List<string>(); // Inventory 중 로스터에 편성된 카드의 InstanceId
-        public List<ItemSaveData> ItemInventory = new List<ItemSaveData>();
+        public List<ItemSaveData> ItemInventory = new List<ItemSaveData>(); // v1 이하 세이브 하위 호환 전용 - 새 저장은 항상 빈 리스트
+        public List<ItemStackSaveData> ItemStacks = new List<ItemStackSaveData>();
         public Team FavoriteTeam;
         public int ScoutReport;
         public int PremiumCurrency;
@@ -150,7 +176,12 @@ namespace KBOManager.Managers
 
                 data.Inventory = gm.Inventory.Select(ToSaveData).ToList();
                 data.RosterInstanceIds = gm.Roster.Select(p => p.InstanceId).ToList();
-                data.ItemInventory = gm.ItemInventory.Select(ToSaveData).ToList();
+                data.ItemInventory = new List<ItemSaveData>(); // v2부터는 항상 비워 둔다 - ItemStacks가 유일한 진실
+                data.ItemStacks = gm.ItemInventory
+                    .Where(i => i?.Template != null)
+                    .GroupBy(i => i.Template.TemplateId)
+                    .Select(g => new ItemStackSaveData { TemplateId = g.Key, Count = g.Count() })
+                    .ToList();
                 data.FavoriteTeam = gm.FavoriteTeam;
                 data.ScoutReport = gm.ScoutReport;
                 data.PremiumCurrency = gm.PremiumCurrency;
@@ -188,12 +219,8 @@ namespace KBOManager.Managers
             StarLevel = player.StarLevel,
             CurrentStarType = player.CurrentStarType,
             AcquiredSkillIds = new List<string>(player.AcquiredSkillIds),
-        };
-
-        private static ItemSaveData ToSaveData(Item item) => new ItemSaveData
-        {
-            InstanceId = item.InstanceId,
-            TemplateId = item.Template != null ? item.Template.TemplateId : null,
+            CurrentStamina = player.CurrentStamina,
+            MaxStamina = player.MaxStamina,
         };
 
         // ----- 역직렬화 -----
@@ -214,11 +241,7 @@ namespace KBOManager.Managers
                 var restoredRoster = restoredPlayers.Where(p => rosterSet.Contains(p.InstanceId)).ToList();
                 gm.OverwriteRoster(restoredRoster);
 
-                var restoredItems = (data.ItemInventory ?? new List<ItemSaveData>())
-                    .Select(RestoreItem)
-                    .Where(i => i != null)
-                    .ToList();
-                gm.ReplaceItemInventory(restoredItems);
+                gm.ReplaceItemInventory(RestoreItemInventory(data));
 
                 gm.FavoriteTeam = data.FavoriteTeam;
                 gm.ScoutReport = data.ScoutReport;
@@ -249,7 +272,7 @@ namespace KBOManager.Managers
                 return null;
             }
 
-            return new Player(saved.InstanceId, template)
+            var player = new Player(saved.InstanceId, template)
             {
                 ReinforceLevel = saved.ReinforceLevel,
                 AwakenLevel = saved.AwakenLevel,
@@ -257,21 +280,63 @@ namespace KBOManager.Managers
                 CurrentStarType = saved.CurrentStarType,
                 AcquiredSkillIds = new List<string>(saved.AcquiredSkillIds ?? new List<string>()),
             };
+
+            // 체력 필드 도입(v2) 이전 세이브는 CurrentStamina/MaxStamina가 JSON에 아예 없어 역직렬화 시
+            // 기본값(0)이 된다. 투수인데 MaxStamina가 0이면 "체력 데이터가 없던 구버전 세이브"로 간주해,
+            // Player 생성자가 이미 채워 둔 롤 기준 기본값(완전 회복 상태)을 그대로 둔다(덮어쓰지 않음) -
+            // 그 결과 구버전 세이브를 불러오면 모든 투수가 "완전히 쉰 상태"로 자연스럽게 시작한다.
+            // 그 외(정상 저장된 값, 또는 애초에 체력이 없는 타자 카드)는 저장된 값을 그대로 복원한다.
+            bool isLegacySaveMissingStamina = template.IsPitcher && saved.MaxStamina <= 0;
+            if (!isLegacySaveMissingStamina)
+            {
+                player.MaxStamina = saved.MaxStamina;
+                player.CurrentStamina = saved.CurrentStamina;
+            }
+
+            return player;
         }
 
-        private Item RestoreItem(ItemSaveData saved)
+        /// <summary>
+        /// data.ItemStacks(v2, 수량 그룹)가 있으면 그것을 우선 사용하고, 비어 있으면 data.ItemInventory
+        /// (v1 이하, 인스턴스별 1행)로 대체한다 - ItemStacks 필드 자체가 존재하지 않던 구버전 JSON은
+        /// 역직렬화 시 자동으로 빈 리스트가 되므로, 이 순서만으로 "신규/구버전 세이브"를 안전하게 구분할
+        /// 수 있다(별도의 버전 분기 없이 필드 존재 여부만으로 판별).
+        /// </summary>
+        private List<Item> RestoreItemInventory(GameSaveData data)
         {
-            if (itemDatabase == null || string.IsNullOrEmpty(saved.TemplateId)) return null;
+            if (data.ItemStacks != null && data.ItemStacks.Count > 0)
+            {
+                var restored = new List<Item>();
+                foreach (var stack in data.ItemStacks)
+                {
+                    for (int i = 0; i < stack.Count; i++)
+                    {
+                        var item = RestoreItemByTemplateId(stack.TemplateId);
+                        if (item != null) restored.Add(item);
+                    }
+                }
+                return restored;
+            }
 
-            var template = itemDatabase.GetTemplateById(saved.TemplateId);
+            return (data.ItemInventory ?? new List<ItemSaveData>())
+                .Select(saved => RestoreItemByTemplateId(saved.TemplateId))
+                .Where(i => i != null)
+                .ToList();
+        }
+
+        private Item RestoreItemByTemplateId(string templateId)
+        {
+            if (itemDatabase == null || string.IsNullOrEmpty(templateId)) return null;
+
+            var template = itemDatabase.GetTemplateById(templateId);
             if (template == null)
             {
-                Debug.LogWarning($"[SaveManager] TemplateId '{saved.TemplateId}'를 ItemDatabase에서 찾을 수 없어 " +
+                Debug.LogWarning($"[SaveManager] TemplateId '{templateId}'를 ItemDatabase에서 찾을 수 없어 " +
                                   "재료 카드 하나를 복구하지 못했습니다. (해당 .asset이 삭제/변경되었을 수 있습니다)");
                 return null;
             }
 
-            return new Item(saved.InstanceId, template);
+            return new Item(Guid.NewGuid().ToString(), template);
         }
     }
 }

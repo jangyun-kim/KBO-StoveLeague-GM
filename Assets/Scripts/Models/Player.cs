@@ -17,6 +17,12 @@ namespace KBOManager.Models
         public const int MinStarLevel = 1;
         public const int MaxStarLevel = 6;
 
+        // ----- 투수 체력(Stamina) -----
+        public const int MaxStaminaStartingPitcher = 100; // 선발
+        public const int MaxStaminaBullpen = 40;          // 승리조/추격조/롱릴리프/마무리 전부 불펜 취급
+        public const float LowStaminaThresholdPercent = 0.3f;  // 30% 미만이면 페널티 발동
+        public const float LowStaminaOvrPenaltyPercent = 0.15f; // 페널티 크기: 최종 스탯 -15%
+
         public string InstanceId;      // 유저 보유 카드 고유 ID (GUID)
         public PlayerTemplate Template; // 원본 데이터 참조 (이름/구단/기본OVR/코스트/포지션/등급)
 
@@ -26,6 +32,11 @@ namespace KBOManager.Models
         public StarType CurrentStarType;
 
         public List<string> AcquiredSkillIds = new List<string>();
+
+        // 투수 카드에만 의미가 있다(타자 카드는 항상 0). MatchEngine이 타석마다 ConsumeStamina()로
+        // 깎고, LeagueManager가 경기 종료마다 RecoverStamina()로 회복시킨다.
+        public int MaxStamina;
+        public int CurrentStamina;
 
         public Player() { }
 
@@ -37,6 +48,31 @@ namespace KBOManager.Models
             AwakenLevel = 0;
             CurrentStarType = template != null ? DefaultStarTypeFor(template.Grade) : StarType.NORMAL;
             StarLevel = template != null ? DefaultStarLevelFor(template.Grade) : MinStarLevel;
+            MaxStamina = template != null && template.IsPitcher ? DefaultMaxStaminaFor(template.PitcherRole) : 0;
+            CurrentStamina = MaxStamina; // 새로 발급된 카드는 항상 완전 회복 상태로 시작한다.
+        }
+
+        /// <summary>투수 롤에 따른 기본 최대 체력. 선발은 오래 던지므로 넉넉하게, 불펜은 짧고 굵게 쓰므로 낮게 잡았다.</summary>
+        public static int DefaultMaxStaminaFor(PitcherRole role) =>
+            role == PitcherRole.StartingPitcher ? MaxStaminaStartingPitcher : MaxStaminaBullpen;
+
+        /// <summary>체력이 30% 미만으로 떨어진 투수. MatchEngine이 이 값을 보고 최종 투구 스탯에 -15%
+        /// 페널티를 적용한다. 타자 카드(MaxStamina == 0)는 항상 false.</summary>
+        public bool IsLowStamina => Template != null && Template.IsPitcher && MaxStamina > 0
+            && (float)CurrentStamina / MaxStamina < LowStaminaThresholdPercent;
+
+        /// <summary>체력을 amount만큼 소모한다. 0 밑으로 내려가지 않는다(MatchEngine이 타석마다 호출).</summary>
+        public void ConsumeStamina(int amount)
+        {
+            if (amount <= 0) return;
+            CurrentStamina = Mathf.Max(0, CurrentStamina - amount);
+        }
+
+        /// <summary>체력을 amount만큼 회복한다. MaxStamina를 넘지 않는다(LeagueManager가 경기 종료마다 호출).</summary>
+        public void RecoverStamina(int amount)
+        {
+            if (amount <= 0) return;
+            CurrentStamina = Mathf.Min(MaxStamina, CurrentStamina + amount);
         }
 
         /// <summary>LIVE_NORMAL / LIVE_EPIC 등급은 강화만 가능하고 각성은 불가하다.</summary>
