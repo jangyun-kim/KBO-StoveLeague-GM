@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Data;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -189,8 +190,13 @@ namespace KBOManager.Controllers
 
             if (GameManager.Instance == null || itemEntryPrefab == null || itemListContainer == null) return;
 
+            // GameManager.ItemInventory는 강화 재료(EnhanceMaterial)와 스킬 변경권(SkillChangeTicket)이
+            // 함께 섞여 있는 하나의 리스트다 - 강화 재료 선택 팝업에는 강화 재료만 노출해야 한다
+            // (그렇지 않으면 스킬 변경권이 강화 재료로 잘못 소모되거나, UpgradeProbabilityDB에 없는
+            // MaterialType으로 조회돼 0% 취급되는 등 강화 계산이 오염된다).
             foreach (var item in GameManager.Instance.ItemInventory)
             {
+                if (item?.Template == null || item.Template.Category != ItemCategory.EnhanceMaterial) continue;
                 SpawnItemEntry(item);
             }
         }

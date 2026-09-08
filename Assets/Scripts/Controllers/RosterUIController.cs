@@ -3,6 +3,7 @@ using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace KBOManager.Controllers
 {
@@ -10,6 +11,10 @@ namespace KBOManager.Controllers
     /// GameManager.Instance.Roster(28인)를 타자 15명/투수 13명 두 그룹으로 나눠 각각의
     /// GridLayoutGroup 컨테이너에 PlayerCardUI로 렌더링한다. GameActionController.OnRosterChanged를
     /// 구독해 ExecuteAutoRoster()가 로스터를 덮어쓸 때마다 자동으로 다시 그려진다.
+    ///
+    /// GDD 1절 "구단 세트덱 중심 플레이"를 유저가 체감하도록, 화면 상단에 현재 로스터의 최다 구단
+    /// 인원수를 게이지/텍스트로 보여주고, GameManager.CheckSetDeckBonus()가 활성화로 판정하면
+    /// 게이지/텍스트 색상과 별도 글로우 오브젝트로 시각적 피드백을 준다.
     /// </summary>
     public class RosterUIController : MonoBehaviour
     {
@@ -24,6 +29,16 @@ namespace KBOManager.Controllers
 
         [Header("Pitcher Roster (13명)")]
         [SerializeField] private Transform pitcherContainer;
+
+        [Header("Set Deck Visualization (GDD 1절)")]
+        [Tooltip("예: 'LG 트윈스 세트덱 활성화: 18/28'. 최다 구단이 없으면(로스터가 비어 있으면) 표시를 생략한다.")]
+        [SerializeField] private Text setDeckStatusText;
+        [Tooltip("Image.Type=Filled로 설정된 게이지 바. fillAmount = 최다 구단 인원 / 28.")]
+        [SerializeField] private Image setDeckGaugeFillImage;
+        [Tooltip("세트덱 보너스가 활성화됐을 때만 켜지는 배경 빛망울 등 장식용 오브젝트. 비워두면 생략.")]
+        [SerializeField] private GameObject setDeckActiveGlowRoot;
+        [SerializeField] private Color setDeckActiveColor = new Color(1f, 0.84f, 0f); // 골드
+        [SerializeField] private Color setDeckInactiveColor = Color.white;
 
         private readonly List<PlayerCardUI> spawnedBatterCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedPitcherCards = new List<PlayerCardUI>();
@@ -68,6 +83,44 @@ namespace KBOManager.Controllers
                 {
                     SpawnCard(player, batterContainer, spawnedBatterCards);
                 }
+            }
+
+            RefreshSetDeckStatus();
+        }
+
+        /// <summary>
+        /// GameManager.CheckSetDeckBonus()로 현재 로스터의 최다 구단/인원수/활성화 여부를 다시 읽어
+        /// 상단 게이지·텍스트·글로우 오브젝트를 갱신한다. RefreshRoster()가 호출될 때마다 함께 갱신되므로
+        /// 별도로 구독할 이벤트가 없다 - 로스터가 바뀌는 모든 경로(오토 라인업, 강화/각성 등)가 이미
+        /// RefreshRoster()를 거치기 때문이다.
+        /// </summary>
+        private void RefreshSetDeckStatus()
+        {
+            if (GameManager.Instance == null) return;
+
+            var countByTeam = GameManager.Instance.CheckSetDeckBonus(out Team dominantTeam, out bool isBonusActive, out float bonusMultiplier);
+            int dominantCount = dominantTeam != Team.None && countByTeam.TryGetValue(dominantTeam, out var count) ? count : 0;
+
+            var themeColor = isBonusActive ? setDeckActiveColor : setDeckInactiveColor;
+
+            if (setDeckStatusText != null)
+            {
+                string teamLabel = dominantTeam != Team.None ? dominantTeam.ToString() : "없음";
+                setDeckStatusText.text = isBonusActive
+                    ? $"{teamLabel} 세트덱 활성화! {dominantCount}/{GameManager.RequiredRosterSize} (x{bonusMultiplier:F2})"
+                    : $"{teamLabel} {dominantCount}/{GameManager.RequiredRosterSize} (세트덱 미활성)";
+                setDeckStatusText.color = themeColor;
+            }
+
+            if (setDeckGaugeFillImage != null)
+            {
+                setDeckGaugeFillImage.fillAmount = Mathf.Clamp01((float)dominantCount / GameManager.RequiredRosterSize);
+                setDeckGaugeFillImage.color = themeColor;
+            }
+
+            if (setDeckActiveGlowRoot != null)
+            {
+                setDeckActiveGlowRoot.SetActive(isBonusActive);
             }
         }
 

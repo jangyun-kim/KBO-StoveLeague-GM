@@ -38,6 +38,12 @@ namespace KBOManager.EditorTools
             ("ENHANCE_STAR5_PLUS", "5성 +1 강화카드", MaterialCardType.Star5Plus),
         };
 
+        // GDD 7절 "스킬 변경권으로 뽑기 진행". MaterialType은 EnhanceMaterial 전용 필드라 여기선 의미가
+        // 없으므로 임의값(Star1)을 넣어 두되, ItemCategory.SkillChangeTicket이 실제 소비처
+        // (SkillRerollManager)를 가르는 유일한 기준이다.
+        private const string SkillTicketTemplateId = "SKILL_CHANGE_TICKET";
+        private const string SkillTicketDisplayName = "스킬 변경권";
+
         [MenuItem("KBO Manager/Generate Default Items")]
         public static void GenerateDefaultItems()
         {
@@ -45,15 +51,23 @@ namespace KBOManager.EditorTools
 
             int created = 0;
             int updated = 0;
-            var allSeededTemplates = new List<ItemTemplate>(DefaultItems.Length);
+            var allSeededTemplates = new List<ItemTemplate>(DefaultItems.Length + 1);
 
             foreach (var (templateId, displayName, materialType) in DefaultItems)
             {
-                var template = CreateOrUpdate(templateId, displayName, materialType, out bool wasCreated);
+                var template = CreateOrUpdate(templateId, displayName, materialType, ItemCategory.EnhanceMaterial, out bool wasCreated);
                 if (template == null) continue;
 
                 allSeededTemplates.Add(template);
                 if (wasCreated) created++; else updated++;
+            }
+
+            var ticketTemplate = CreateOrUpdate(SkillTicketTemplateId, SkillTicketDisplayName,
+                MaterialCardType.Star1, ItemCategory.SkillChangeTicket, out bool ticketWasCreated);
+            if (ticketTemplate != null)
+            {
+                allSeededTemplates.Add(ticketTemplate);
+                if (ticketWasCreated) created++; else updated++;
             }
 
             AssetDatabase.SaveAssets();
@@ -61,7 +75,7 @@ namespace KBOManager.EditorTools
 
             string bindingReport = RegisterIntoSceneDatabase(allSeededTemplates);
 
-            Debug.Log($"[ItemDataSeeder] 강화 아이템 {DefaultItems.Length}종 처리 완료 " +
+            Debug.Log($"[ItemDataSeeder] 강화 아이템 {DefaultItems.Length}종 + 스킬 변경권 1종 처리 완료 " +
                       $"(신규 {created}개, 갱신 {updated}개) - '{TargetFolder}'. {bindingReport}");
         }
 
@@ -108,7 +122,8 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>wasCreated가 true면 새로 생성한 것, false면 기존 에셋을 갱신한 것. 결과 템플릿을 반환한다.</summary>
-        private static ItemTemplate CreateOrUpdate(string templateId, string displayName, MaterialCardType materialType, out bool wasCreated)
+        private static ItemTemplate CreateOrUpdate(string templateId, string displayName, MaterialCardType materialType,
+            ItemCategory category, out bool wasCreated)
         {
             string assetPath = $"{TargetFolder}/{templateId}.asset";
             var existing = AssetDatabase.LoadAssetAtPath<ItemTemplate>(assetPath);
@@ -118,6 +133,7 @@ namespace KBOManager.EditorTools
                 existing.TemplateId = templateId;
                 existing.DisplayName = displayName;
                 existing.MaterialType = materialType;
+                existing.Category = category;
                 EditorUtility.SetDirty(existing);
                 wasCreated = false;
                 return existing;
@@ -127,6 +143,7 @@ namespace KBOManager.EditorTools
             template.TemplateId = templateId;
             template.DisplayName = displayName;
             template.MaterialType = materialType;
+            template.Category = category;
 
             AssetDatabase.CreateAsset(template, assetPath);
             wasCreated = true;

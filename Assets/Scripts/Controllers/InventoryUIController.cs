@@ -34,14 +34,24 @@ namespace KBOManager.Controllers
         [SerializeField] private Text detailSkillsText;
         [SerializeField] private Button enhanceButton;
         [SerializeField] private Button awakenButton;
+        [Tooltip("스킬 변경권을 소모해 첫 번째 보유 스킬(AcquiredSkillIds[0])을 재추첨한다. " +
+                 "SkillRerollManager.Instance를 정적으로 참조하므로 별도 인스펙터 연결이 필요 없다.")]
+        [SerializeField] private Button skillChangeButton;
+        [Tooltip("스킬 변경 결과(성공/실패/F등급 재확인 대기)를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
+        [SerializeField] private Text skillRerollResultText;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
         private Player selectedPlayer;
+
+        /// <summary>SkillRerollManager에 F등급 확정 대기가 걸려 있는 선수. 다른 카드를 선택하거나 패널을
+        /// 닫으면 자동으로 취소한다(보류 상태가 다른 선수로 잘못 이어지는 것을 방지).</summary>
+        private Player pendingRerollTarget;
 
         private void Awake()
         {
             if (enhanceButton != null) enhanceButton.onClick.AddListener(OnClickEnhance);
             if (awakenButton != null) awakenButton.onClick.AddListener(OnClickAwaken);
+            if (skillChangeButton != null) skillChangeButton.onClick.AddListener(OnClickSkillChange);
 
             CloseDetail();
         }
@@ -121,6 +131,15 @@ namespace KBOManager.Controllers
 
         private void ShowDetail(Player player)
         {
+            // 다른 선수를 새로 선택하면(=재조회가 아니면) 이전 선수의 F등급 확정 대기를 취소한다 -
+            // 보류된 재추첨 결과가 엉뚱한 선수에게 잘못 적용되는 사고를 막는다.
+            if (pendingRerollTarget != null && pendingRerollTarget != player)
+            {
+                SkillRerollManager.Instance?.CancelPendingReroll(pendingRerollTarget);
+                pendingRerollTarget = null;
+                if (skillRerollResultText != null) skillRerollResultText.text = "";
+            }
+
             selectedPlayer = player;
             if (player?.Template == null) return;
 
@@ -148,13 +167,63 @@ namespace KBOManager.Controllers
 
             if (enhanceButton != null) enhanceButton.interactable = player.ReinforceLevel < Player.MaxReinforceLevel;
             if (awakenButton != null) awakenButton.interactable = player.CanAwaken && player.AwakenLevel < Player.MaxAwakenLevel;
+            if (skillChangeButton != null) skillChangeButton.interactable = player.AcquiredSkillIds.Count > 0;
         }
 
         /// <summary>상세 패널의 닫기 버튼 OnClick.</summary>
         public void CloseDetail()
         {
+            if (pendingRerollTarget != null)
+            {
+                SkillRerollManager.Instance?.CancelPendingReroll(pendingRerollTarget);
+                pendingRerollTarget = null;
+            }
+
             selectedPlayer = null;
             if (detailPanelRoot != null) detailPanelRoot.SetActive(false);
+        }
+
+        // ----- 스킬 변경 버튼 브릿지 -----
+
+        /// <summary>
+        /// [스킬 변경] 버튼 OnClick. 항상 첫 번째 보유 스킬(AcquiredSkillIds[0])을 재추첨 대상으로 삼는다
+        /// (현재 유저 카드는 ScoutManager.AttachInitialSkill()로 스킬을 최대 1개만 보유하므로 충분하다 -
+        /// 추후 스킬 슬롯이 여러 개로 늘어나면 선택 UI를 추가하고 이 인덱스를 그 선택값으로 바꾸면 된다).
+        ///
+        /// 직전 시도가 F등급 확정 대기 상태였다면(이 버튼을 다시 눌렀다는 것은 "그래도 적용" 의사로
+        /// 해석한다) 새로 재추첨하지 않고 ConfirmPendingReroll()로 그 결과를 그대로 확정 적용한다.
+        /// </summary>
+        private void OnClickSkillChange()
+        {
+            if (selectedPlayer == null || SkillRerollManager.Instance == null) return;
+
+            RerollResult result = pendingRerollTarget == selectedPlayer
+                ? SkillRerollManager.Instance.ConfirmPendingReroll(selectedPlayer)
+                : SkillRerollManager.Instance.TryRerollSkill(selectedPlayer, 0);
+
+            pendingRerollTarget = result.Outcome == RerollOutcome.PendingDowngradeConfirmation ? selectedPlayer : null;
+
+            ShowSkillRerollResult(result);
+
+            if (result.Outcome == RerollOutcome.Applied)
+            {
+                ShowDetail(selectedPlayer); // 갱신된 AcquiredSkillIds를 패널에 다시 반영
+            }
+        }
+
+        private void ShowSkillRerollResult(RerollResult result)
+        {
+            if (skillRerollResultText == null) return;
+
+            skillRerollResultText.text = result.Outcome switch
+            {
+                RerollOutcome.Applied => $"'{result.OldSkillName}' -> '{result.NewSkillName}' ({result.NewSkillTier}) 변경 완료!",
+                RerollOutcome.NoTicket => "스킬 변경권이 없습니다.",
+                RerollOutcome.NoSkillAvailable => "뽑을 수 있는 스킬이 없습니다.",
+                RerollOutcome.PendingDowngradeConfirmation =>
+                    $"새로 뽑힌 스킬이 최하위 F등급입니다 ('{result.NewSkillName}'). 그래도 적용하려면 [스킬 변경]을 한 번 더 눌러주세요.",
+                _ => "스킬 변경에 실패했습니다.",
+            };
         }
 
         // ----- 강화/각성 버튼 브릿지 -----

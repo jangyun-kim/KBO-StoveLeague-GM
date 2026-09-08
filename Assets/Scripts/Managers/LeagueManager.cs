@@ -409,12 +409,17 @@ namespace KBOManager.Managers
         /// InitializeLeague()와 달리 AI 로스터를 처음부터 다시 생성하지 않는다 - GenerateAiRosters()를
         /// 다시 부르면 매번 새 Player 인스턴스를 절차적으로 찍어내므로, 방금 StoveLeagueManager로 키워둔
         /// ReinforceLevel/스킬이 통째로 사라져 버린다. 대신 기존 TeamInfo.Roster(9개 AI 팀)는 그대로 둔
-        /// 채 StoveLeagueManager로 성장시키고, 승/무/패 기록과 스케줄만 새 시즌 기준으로 초기화한다.
+        /// 채 StoveLeagueManager로 성장(강화/스킬) + 세대교체(최하위 은퇴 -> 유저 평균 OVR에 러버밴딩된
+        /// 신인 영입)시키고, 승/무/패 기록과 스케줄만 새 시즌 기준으로 초기화한다.
+        ///
+        /// CreateAiPlayer를 메서드 그룹으로 그대로 넘겨 StoveLeagueManager가 신인을 생성할 때도 초기
+        /// AI 로스터 생성과 동일한 경로(PlayerDatabase 실카드 우선, 없으면 procedural)를 타도록 한다.
         /// </summary>
         public StoveLeagueManager.StoveLeagueReport AdvanceToNextSeason()
         {
             var aiTeams = standings.Values.Where(t => !t.IsUserTeam).ToList();
-            var report = StoveLeagueManager.ProcessStoveLeague(aiTeams, skillDB);
+            int userAverageOvr = EstimateTargetStatLevel();
+            var report = StoveLeagueManager.ProcessStoveLeague(aiTeams, skillDB, userAverageOvr, CreateAiPlayer);
 
             foreach (var info in standings.Values)
             {
