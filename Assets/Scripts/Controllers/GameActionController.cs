@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KBOManager.Managers;
@@ -31,6 +32,10 @@ namespace KBOManager.Controllers
 
         public Player AwakenTarget => awakenTarget;
         public IReadOnlyList<Player> AwakenMaterials => awakenMaterials;
+
+        /// <summary>ExecuteAutoRoster()가 GameManager.Roster를 실제로 덮어쓴 직후 발생한다.
+        /// RosterUIController 등 로스터를 별도로 그리는 화면이 이 이벤트만 구독하면 재조립 없이 자동 갱신된다.</summary>
+        public event Action OnRosterChanged;
 
         // ----- Enhance 대상/재료 주입 (인벤토리 UI가 카드를 클릭할 때 호출) -----
 
@@ -143,6 +148,7 @@ namespace KBOManager.Controllers
             GameManager.Instance.OverwriteRoster(newRoster);
 
             Debug.Log($"[GameActionController] ExecuteAutoRoster: {newRoster.Count}명 편성 완료 (샐러리 캡 {salaryCap})");
+            OnRosterChanged?.Invoke();
         }
 
         /// <summary>저장 버튼 OnClick. SaveManager.SaveGame()으로 바로 위임한다.</summary>
