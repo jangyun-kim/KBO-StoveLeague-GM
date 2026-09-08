@@ -41,6 +41,8 @@ namespace KBOManager.Controllers
         [Tooltip("상점 화면(UIManager.ScreenType.Shop)으로 전환하는 버튼. UIManager.ShowScreen()만 호출하므로" +
                  " ShopUIController를 직접 참조하지 않는다.")]
         [SerializeField] private Button shopButton;
+        [Tooltip("리그 기록실(UIManager.ScreenType.LeagueStats)로 전환하는 버튼.")]
+        [SerializeField] private Button leagueStatsButton;
 
         private void Awake()
         {
@@ -48,6 +50,7 @@ namespace KBOManager.Controllers
             if (highlightButton != null) highlightButton.onClick.AddListener(() => StartMatch(PlayMode.Highlight));
             if (fullPlayButton != null) fullPlayButton.onClick.AddListener(() => StartMatch(PlayMode.FullPlay));
             if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
+            if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
         }
 
         private void OnEnable()

@@ -110,10 +110,20 @@ namespace KBOManager.Engine
         private const double DoublePlayChance = 0.4; // 1루 주자 있고 2아웃 미만인 땅볼일 때 병살 발생 확률
         private const double TwoStrikeReachProbability = 0.6; // 타석이 2스트라이크까지 도달할 확률(단순화된 카운트 모델)
 
-        // 투수 체력(Stamina): 타석 1회를 상대할 때마다 소모되는 양. TODO: 밸런스 확정 전까지의 임시값 -
-        // 선발(100)은 약 25타석(6~7이닝)에서 30% 미만(페널티 구간)에 진입하고, 불펜(40)은 약 8타석
-        // (2~3이닝)에서 진입하도록 역산한 수치다.
-        private const int StaminaCostPerBatterFaced = 4;
+        // 투수 체력(Stamina): 타석 1회를 상대할 때마다 소모되는 양. 선발/불펜을 다르게 잡았다 - 이전
+        // 배치 시뮬레이션(수학적 추적)에서 선발/불펜 모두 동일하게 4를 쓰면 불펜이 단발 등판 + 평일
+        // 회복(+15)만으로 거의 매번 100%에 가깝게 리셋돼 30% 페널티 구간이 사실상 발동하지 않는다는
+        // 결론이 나왔다 - 불펜만 6으로 올려 "짧고 굵게 쓰면 확실히 지친다"는 체감을 만든다.
+        private const int StaminaCostPerBatterFacedStarter = 4;
+        private const int StaminaCostPerBatterFacedBullpen = 6;
+
+        // 퀵후크(조기 강판) 기준: 이 둘 중 하나라도 해당하면, 이닝 수와 무관하게 선발을 다음 하프이닝부터
+        // 롱릴리프/불펜으로 교체한다. 체력 기준(35%)은 Player.LowStaminaThresholdPercent(30%)의 -15%
+        // OVR 페널티 구간보다 살짝 높게 잡아, "페널티를 실제로 맞기 직전에 미리 내린다"는 감독의 판단을
+        // 흉내낸다 - 그래서 AI 자동 로테이션에서는 -15% 페널티 구간에 거의 진입하지 않고, 대신 유저가
+        // 직접 개입해 무리하게 더 끌고 가는 경우에만 그 페널티를 실제로 감수하게 된다.
+        private const float QuickHookStaminaPercent = 0.35f;
+        private const int QuickHookRunsAllowedThreshold = 4;
 
         // SelectPitcherForInning()이 투수를 고를 때 "체력이 이 비율 이상인 투수"를 최우선으로 취급한다.
         private const float MinStaminaPercentToPitch = 0.6f;
@@ -163,6 +173,10 @@ namespace KBOManager.Engine
         // OVR 비교 조건(GDD: 상대 스킬 효과로 인한 OVR 증가 제외)에 사용한다.
         private readonly Dictionary<Player, int> baseOvrCache = new Dictionary<Player, int>();
         private readonly Dictionary<Player, (bool isActive, float multiplier)> setDeckContext = new Dictionary<Player, (bool, float)>();
+
+        // 이번 경기에서 투수별로 누적 허용한 실점. 퀵후크(조기 강판) 판정에 쓴다 - 경기 전체 누적이며
+        // 이닝별로 나뉘어 있지 않다(간단한 "대량 실점" 기준이라 이 정도 단순화로 충분하다고 봤다).
+        private readonly Dictionary<Player, int> runsAllowedByPitcher = new Dictionary<Player, int>();
 
         // 양 팀의 28인 로스터 원본. 생성자에서 주입받아 경기 내내 이 엔진 인스턴스가 직접 소유한다.
         // (원본 리스트 자체는 복사하지만 Player 참조는 공유 - "얕은 복사"로 호출부의 리스트 변형으로부터
@@ -364,10 +378,12 @@ namespace KBOManager.Engine
 
             var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
 
-            // 이 타석을 던진 대가로 체력을 소모한다. SimulateAtBat()이 이미 "이번 타석 시작 시점"의
-            // 체력을 기준으로 페널티(IsLowStamina) 여부를 판정한 뒤이므로, 소모는 그 판정 이후에
-            // 반영해야 "이번 타석 도중 지쳐서 이번 타석 결과에도 소급 적용되는" 부자연스러움이 없다.
-            pitcherForThisAtBat.ConsumeStamina(StaminaCostPerBatterFaced);
+            // 이 타석을 던진 대가로 체력을 소모한다. 선발/불펜 롤에 따라 소모량이 다르다(불펜이 더 큼 -
+            // 짧고 굵게 쓰는 만큼 더 빨리 지친다). SimulateAtBat()이 이미 "이번 타석 시작 시점"의 체력을
+            // 기준으로 페널티(IsLowStamina) 여부를 판정한 뒤이므로, 소모는 그 판정 이후에 반영해야
+            // "이번 타석 도중 지쳐서 이번 타석 결과에도 소급 적용되는" 부자연스러움이 없다.
+            bool pitcherIsStarter = pitcherForThisAtBat.Template.PitcherRole == PitcherRole.StartingPitcher;
+            pitcherForThisAtBat.ConsumeStamina(pitcherIsStarter ? StaminaCostPerBatterFacedStarter : StaminaCostPerBatterFacedBullpen);
 
             // 로그의 "[3회초 2사 1,3루]" 부분은 배터가 타석에 "들어선 시점"의 상황이어야 하므로,
             // ResolveAtBatEffect()가 아웃/주자를 바꾸기 직전에 별도로 스냅샷을 떠 둔다.
@@ -376,6 +392,14 @@ namespace KBOManager.Engine
 
             int runs = ResolveAtBatEffect(result, currentAtBatState);
             bool isDoublePlay = result == AtBatResult.Groundout && currentAtBatState.Outs - outsBeforePlay == 2;
+
+            // 퀵후크(조기 강판) 판정용 누적 실점. 이닝 로테이션 로직(SelectPitcherForInning)이 다음
+            // 하프이닝을 고를 때 이 값을 읽는다.
+            if (runs > 0)
+            {
+                runsAllowedByPitcher.TryGetValue(pitcherForThisAtBat, out int runsSoFar);
+                runsAllowedByPitcher[pitcherForThisAtBat] = runsSoFar + runs;
+            }
 
             // AdvanceAfterHalfInning()이 아래에서 currentAtBatState를 다음 하프이닝용 새 객체로 교체할 수 있으므로,
             // "이 타석 종료 직후" 상태도 독립 스냅샷으로 떠 둔다 - AtBatStepResult.State/하이라이트 조건이 이걸 쓴다.
@@ -846,40 +870,63 @@ namespace KBOManager.Engine
         }
 
         /// <summary>
-        /// 간이 불펜 운용 규칙(1~5회 선발, 6회 롱릴리프, 7~8회 승리/추격조, 9회+ 마무리/추격조) +
-        /// 체력 기반 우선순위(PickByStaminaThenUsage - 체력 60% 이상 우선, 그다음 미사용, 그다음 아무나).
-        /// SubbedOutList에 등록된(유저가 명시적으로 강판시킨) 투수는 이 자동 로테이션에서도 절대 재선택되지
-        /// 않는다 - UsedPitchers(소프트 선호도)/체력(소프트 우선순위)과 별개로 SubbedOutList는 하드 제외 규칙이다.
+        /// 선발이 QuickHookStaminaPercent(35%) 미만이거나 QuickHookRunsAllowedThreshold(4점) 이상을
+        /// 이미 내줬다면 더 이상 믿고 맡기지 않는다(조기 강판/퀵후크) - 이닝 수와 무관하다.
+        /// </summary>
+        private bool ShouldPullStarter(Player starter)
+        {
+            if (starter == null || starter.MaxStamina <= 0) return true;
+            if ((float)starter.CurrentStamina / starter.MaxStamina < QuickHookStaminaPercent) return true;
+
+            runsAllowedByPitcher.TryGetValue(starter, out int runsAllowed);
+            return runsAllowed >= QuickHookRunsAllowedThreshold;
+        }
+
+        /// <summary>
+        /// 유연화된 불펜 운용 규칙: 선발은 더 이상 "이닝 1~5"라는 고정 상한 없이, 퀵후크 조건
+        /// (ShouldPullStarter - 체력 35% 미만 또는 4실점 이상)에 걸리기 전까지는 6~8회까지도 계속
+        /// 던질 수 있다. 일단 강판되면(또는 애초에 대량 실점으로 조기 강판되면) 그 시점 이닝을 기준으로
+        /// 롱릴리프(~6회)/승리·추격조(7~8회)/마무리·추격조(9회+)로 넘어간다.
+        /// 체력 기반 우선순위(PickByStaminaThenUsage - 체력 60% 이상 우선, 그다음 미사용, 그다음 아무나)는
+        /// 불펜 후보를 고를 때 그대로 유지한다. SubbedOutList에 등록된(유저가 명시적으로 강판시킨) 투수는
+        /// 이 자동 로테이션에서도 절대 재선택되지 않는다 - UsedPitchers(소프트 선호도)/체력(소프트
+        /// 우선순위)과 별개로 SubbedOutList는 하드 제외 규칙이다.
         /// </summary>
         private Player SelectPitcherForInning(TeamGameState pitchingTeam, TeamGameState battingTeam, int inning)
         {
             int scoreDiff = pitchingTeam.RunsScored - battingTeam.RunsScored; // 0 이상이면 투수팀이 동점 이상
 
             List<Player> preferred;
-            if (inning <= 5 && pitchingTeam.Starters.Count > 0)
-            {
-                // 이번 경기에서 이미 등판을 시작한 선발이 있으면(Starters 중 UsedPitchers에 이미 들어간
-                // 선수) 그 선발로 계속 이어간다 - 이닝마다 다른 선발로 튀면 안 되기 때문이다. 아직 아무도
-                // 등판하지 않았다면(경기 첫 투수 결정) Starters 전체를 후보로 넘겨, 체력이 가장 넉넉한
-                // 선발이 우선 선택되도록 한다 - 이게 곧 "선발 5명을 강제로 돌려쓰게 만드는" 로테이션이다.
-                // (기존에는 항상 Starters[0](최고 OVR)만 고정으로 선발 등판했다 - 체력과 무관하게 매 경기
-                // 동일 인물이 선발이었던 것을 여기서 함께 고쳤다.)
-                var alreadyStartedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p));
-                preferred = alreadyStartedToday != null
-                    ? new List<Player> { alreadyStartedToday }
-                    : pitchingTeam.Starters;
-            }
-            else if (inning == 6)
-            {
-                preferred = pitchingTeam.LongRelief;
-            }
-            else if (inning >= RegulationInnings)
+            if (inning >= RegulationInnings)
             {
                 preferred = scoreDiff >= 0 ? pitchingTeam.Closers : pitchingTeam.MopUpRelief;
             }
-            else // 7~8회
+            else
             {
-                preferred = scoreDiff >= 0 ? pitchingTeam.WinningRelief : pitchingTeam.MopUpRelief;
+                var startedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p));
+
+                if (startedToday != null && !subbedOutList.Contains(startedToday) && !ShouldPullStarter(startedToday))
+                {
+                    // 아직 믿고 맡길 만하다 - 이닝 상한 없이 계속 그 선발로 이어간다.
+                    preferred = new List<Player> { startedToday };
+                }
+                else if (startedToday == null && inning <= 5 && pitchingTeam.Starters.Count > 0)
+                {
+                    // 이번 경기에서 아직 아무도 선발로 등판하지 않은, 경기 최초의 투수 결정. 체력이 가장
+                    // 넉넉한 선발이 우선 선택되도록 Starters 전체를 후보로 넘긴다 - 이게 곧 "선발 5명을
+                    // 강제로 돌려쓰게 만드는" 로테이션이다(기존에는 항상 Starters[0](최고 OVR)만 고정으로
+                    // 선발 등판했다 - 체력과 무관하게 매 경기 동일 인물이 선발이었던 것을 여기서 고쳤다).
+                    preferred = pitchingTeam.Starters;
+                }
+                else if (inning <= 6)
+                {
+                    // 선발이 이미 강판됐거나(퀵후크), 6회 진입 - 롱릴리프가 이어받는다.
+                    preferred = pitchingTeam.LongRelief;
+                }
+                else // 7~8회, 선발은 이미 내려간 상태
+                {
+                    preferred = scoreDiff >= 0 ? pitchingTeam.WinningRelief : pitchingTeam.MopUpRelief;
+                }
             }
 
             var eligiblePreferred = preferred.Where(p => !subbedOutList.Contains(p)).ToList();

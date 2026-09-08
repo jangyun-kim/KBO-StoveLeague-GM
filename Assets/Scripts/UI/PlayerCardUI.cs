@@ -30,6 +30,24 @@ namespace KBOManager.UI
         [Tooltip("선택 시 표시할 체크마크 아이콘. 평소 비활성 상태로 둔다.")]
         [SerializeField] private GameObject checkmarkIcon;
 
+        [Header("Stamina Bar (카드 하단, Image.Type=Filled) - 투수 카드에서만 표시된다")]
+        [SerializeField] private GameObject staminaBarRoot;
+        [SerializeField] private Image staminaFillImage;
+        [SerializeField] private Color staminaHighColor = new Color(0.3f, 0.85f, 0.3f); // 60% 이상 - 초록
+        [SerializeField] private Color staminaMidColor = new Color(1f, 0.85f, 0.2f);    // 30~60% - 노랑
+        [SerializeField] private Color staminaLowColor = new Color(0.9f, 0.25f, 0.25f); // 30% 미만 - 빨강
+
+        [Header("Condition Icon (우측 상단, 타자/투수 공통)")]
+        [Tooltip("색상으로 5단계를 구분한다(비워두면 생략).")]
+        [SerializeField] private Image conditionIconImage;
+        [Tooltip("↑(최상)/↗(호조)/↔(보통)/↘(저조)/↓(열악) 화살표 문자로 표시한다(비워두면 생략).")]
+        [SerializeField] private Text conditionArrowText;
+        [SerializeField] private Color conditionPoorColor = new Color(0.9f, 0.25f, 0.25f);
+        [SerializeField] private Color conditionBelowAverageColor = new Color(1f, 0.6f, 0.2f);
+        [SerializeField] private Color conditionNormalColor = new Color(0.75f, 0.75f, 0.75f);
+        [SerializeField] private Color conditionGoodColor = new Color(0.4f, 0.75f, 1f);
+        [SerializeField] private Color conditionExcellentColor = new Color(1f, 0.84f, 0f);
+
         public Player BoundPlayer { get; private set; }
         public bool IsSelected { get; private set; }
 
@@ -55,6 +73,8 @@ namespace KBOManager.UI
             if (frameImage != null) frameImage.color = gradeColor;
 
             SetupStars(player.StarLevel, gradeColor);
+            SetupStamina(player);
+            SetupCondition(player.CurrentCondition);
         }
 
         /// <summary>빈 카드로 되돌린다 (풀링/재사용 시 사용).</summary>
@@ -67,7 +87,40 @@ namespace KBOManager.UI
             if (ovrText != null) ovrText.text = "";
             if (frameImage != null) frameImage.color = Color.white;
             SetupStars(0, Color.white);
+            if (staminaBarRoot != null) staminaBarRoot.SetActive(false);
+            SetupCondition(PlayerCondition.Normal);
             SetSelected(false);
+        }
+
+        /// <summary>투수 카드에서만 체력 게이지를 켠다. fillAmount = CurrentStamina/MaxStamina, 색은
+        /// 60% 이상 초록 -> 30~60% 노랑 -> 30% 미만(Player.LowStaminaThresholdPercent) 빨강.</summary>
+        private void SetupStamina(Player player)
+        {
+            bool isPitcherCard = player.Template.IsPitcher && player.MaxStamina > 0;
+            if (staminaBarRoot != null) staminaBarRoot.SetActive(isPitcherCard);
+            if (!isPitcherCard || staminaFillImage == null) return;
+
+            float ratio = Mathf.Clamp01((float)player.CurrentStamina / player.MaxStamina);
+            staminaFillImage.fillAmount = ratio;
+            staminaFillImage.color = ratio >= 0.6f
+                ? staminaHighColor
+                : ratio >= Player.LowStaminaThresholdPercent ? staminaMidColor : staminaLowColor;
+        }
+
+        private void SetupCondition(PlayerCondition condition)
+        {
+            var (color, arrow) = condition switch
+            {
+                PlayerCondition.Poor => (conditionPoorColor, "↓"),
+                PlayerCondition.BelowAverage => (conditionBelowAverageColor, "↘"),
+                PlayerCondition.Normal => (conditionNormalColor, "↔"),
+                PlayerCondition.Good => (conditionGoodColor, "↗"),
+                PlayerCondition.Excellent => (conditionExcellentColor, "↑"),
+                _ => (conditionNormalColor, "↔"),
+            };
+
+            if (conditionIconImage != null) conditionIconImage.color = color;
+            if (conditionArrowText != null) conditionArrowText.text = arrow;
         }
 
         /// <summary>재료 선택 UI 등에서 이 카드가 선택됐는지를 시각적으로 표시한다(Dim 오버레이 + 체크마크).</summary>

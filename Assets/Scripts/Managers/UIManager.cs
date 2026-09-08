@@ -13,7 +13,8 @@ namespace KBOManager.Managers
         Roster,
         Scout,
         Shop,
-        Onboarding
+        Onboarding,
+        LeagueStats
     }
 
     /// <summary>
