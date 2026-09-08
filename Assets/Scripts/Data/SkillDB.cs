@@ -117,6 +117,11 @@ namespace KBOManager.Data
         /// <summary>
         /// 카테고리에 맞는 스킬을 티어 확률에 따라 무작위로 뽑는다.
         /// 뽑힌 티어에 해당 카테고리 스킬이 없으면(예: 선발투수는 S+ 미보유) 있는 티어가 나올 때까지 재추첨한다.
+        /// 반환값은 항상 GetPool(category)에 실제로 속한 항목이다 - 이 메서드가 유일한 "스킬 획득" 진입점
+        /// (ScoutManager 초기 스킬 부여, StoveLeagueManager AI 성장, SkillRerollManager 재추첨이 모두
+        /// 이 메서드 하나만 거친다)이므로, 여기서만 카테고리 무결성을 지켜도 획득 경로 전체가 안전해진다.
+        /// Debug.Assert는 향후 GetPool()의 switch 분기가 실수로 잘못 바뀌는 회귀를 즉시 잡기 위한
+        /// 방어적 검증이다(정상 동작 시에는 항상 통과하며 아무 비용도 없다).
         /// </summary>
         public SkillEntry GetRandomSkill(SkillCategory category)
         {
@@ -130,24 +135,60 @@ namespace KBOManager.Data
                 var candidates = pool.Where(s => s.Tier == tier).ToList();
                 if (candidates.Count > 0)
                 {
-                    return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+                    var picked = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+                    Debug.Assert(IsSkillValidForCategory(picked.SkillName, category),
+                        $"[SkillDB] GetRandomSkill({category})가 해당 카테고리 풀에 속하지 않은 스킬을 반환했습니다: '{picked.SkillName}'");
+                    return picked;
                 }
             }
 
             // 재추첨으로도 걸리지 않으면(카테고리에 극히 일부 티어만 존재) 풀 전체에서 균등 추첨
-            return pool[UnityEngine.Random.Range(0, pool.Count)];
+            var fallback = pool[UnityEngine.Random.Range(0, pool.Count)];
+            Debug.Assert(IsSkillValidForCategory(fallback.SkillName, category),
+                $"[SkillDB] GetRandomSkill({category}) fallback이 해당 카테고리 풀에 속하지 않은 스킬을 반환했습니다: '{fallback.SkillName}'");
+            return fallback;
         }
 
-        /// <summary>PlayerTemplate으로부터 카테고리를 자동 판별해 스킬을 뽑는 편의 오버로드.</summary>
+        /// <summary>PlayerTemplate으로부터 카테고리를 자동 판별해 스킬을 뽑는 편의 오버로드.
+        /// 타자는 타자 풀에서만, 선발은 선발 풀에서만, 불펜은 불펜 풀에서만 추첨되도록 ResolveCategory()로
+        /// 먼저 카테고리를 확정한 뒤 GetRandomSkill(SkillCategory)에 위임한다 - 타자가 '철완' 같은 투수
+        /// 전용 스킬을 얻거나 선발이 불펜 전용 스킬을 얻는 경로는 이 오버로드를 거치는 한 존재하지 않는다.</summary>
         public SkillEntry GetRandomSkill(PlayerTemplate template)
         {
             return template == null ? null : GetRandomSkill(ResolveCategory(template));
         }
 
+        /// <summary>skillName이 category 풀에 실제로 존재하는지 검증한다.</summary>
+        public bool IsSkillValidForCategory(string skillName, SkillCategory category)
+        {
+            if (string.IsNullOrEmpty(skillName)) return false;
+            return GetPool(category).Any(s => s.SkillName == skillName);
+        }
+
         /// <summary>
-        /// 스킬 이름으로 전체 항목(티어+효과)을 역조회한다. (MatchEngine이 보유 스킬 효과를 세부 스탯에
-        /// 적용할 때 사용) 3개 풀을 모두 검색하므로, 동일 이름이 여러 풀에 존재하면 검색 순서
-        /// (타자→선발→불펜)상 먼저 걸리는 항목을 반환한다.
+        /// category 풀 안에서만 skillName을 조회한다(카테고리 무결성 보장). "패기"/"마당쇠"처럼 동일한
+        /// 이름의 스킬이 타자/선발/불펜 풀에 서로 다른 효과로 각각 존재하는 경우, 이 오버로드는 반드시
+        /// 소유자의 실제 카테고리 풀에 있는 효과만 반환한다 - MatchEngine이 효과를 조회할 때 반드시 이
+        /// 오버로드를 써야, 선발이 보유한 '마당쇠'(선발 풀 B티어)가 불펜 풀의 동명 S+ 티어 효과로
+        /// 잘못 적용되는 사고를 막을 수 있다.
+        ///
+        /// category 풀에 없는 이름이면(구버전 세이브 데이터, 삭제/개명된 스킬 등 저장은 됐지만 더 이상
+        /// 유효하지 않은 이름) null을 반환한다 - 호출부(MatchEngine)는 이미 "effect == null이면 그냥
+        /// 스킵"하는 방어 로직을 갖고 있어, 잘못된 스킬 이름은 크래시 없이 조용히 무시된다.
+        /// </summary>
+        public SkillEntry FindSkill(string skillName, SkillCategory category)
+        {
+            if (string.IsNullOrEmpty(skillName)) return null;
+
+            return GetPool(category).FirstOrDefault(s => s.SkillName == skillName);
+        }
+
+        /// <summary>
+        /// 스킬 이름으로 3개 풀 전체를 검색해 첫 매치를 반환하는 카테고리 비인지(非認知) 버전.
+        /// 동일 이름이 여러 풀에 다른 효과로 존재하면 검색 순서(타자->선발->불펜)상 먼저 걸리는 쪽을
+        /// 반환하므로 "효과 적용" 목적에는 절대 쓰지 말 것 - 그 목적에는 반드시 FindSkill(name, category)
+        /// 오버로드를 사용해야 한다(MatchEngine이 실제로 그렇게 한다). 이 오버로드는 카테고리를 모르는
+        /// 상태에서 "이 이름의 스킬이 게임에 존재하긴 하는지"만 확인하는 보조 용도로만 남겨 둔다.
         /// </summary>
         public SkillEntry FindSkill(string skillName)
         {
@@ -157,7 +198,8 @@ namespace KBOManager.Data
                 .FirstOrDefault(s => s.SkillName == skillName);
         }
 
-        /// <summary>스킬 이름으로 티어만 역조회하는 편의 메서드.</summary>
+        /// <summary>스킬 이름으로 티어만 역조회하는 편의 메서드. FindSkill(string)과 동일하게 카테고리
+        /// 비인지 버전이다 - 실제 효과 적용이 아닌 참고용(로그/디버그 표시 등)으로만 사용할 것.</summary>
         public SkillTier? FindTier(string skillName)
         {
             var match = FindSkill(skillName);

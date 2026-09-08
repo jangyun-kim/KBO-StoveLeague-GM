@@ -67,6 +67,12 @@ namespace KBOManager.Managers
         /// target의 skillIndex번째 보유 스킬을 스킬 변경권 1장을 소모해 재추첨한다.
         /// 새 스킬이 F등급이면 자동 적용하지 않고 PendingDowngradeConfirmation을 반환한다(티켓 미소모) -
         /// 이 경우 ConfirmPendingReroll() 또는 CancelPendingReroll()로 후속 처리해야 한다.
+        ///
+        /// 부수 효과(자연 치유): candidate는 skillDB.GetRandomSkill(target.Template)로 뽑으므로 항상
+        /// target의 실제 카테고리(타자/선발/불펜) 풀에 속한 유효한 스킬이다. 즉 skillIndex 자리에 예전
+        /// 세이브 데이터나 이전 버그(카테고리 무결성 검증 이전 버전)로 인해 소유자 카테고리와 맞지 않는
+        /// 이름이 들어 있었더라도, 재추첨 한 번으로 그 자리가 유효한 이름으로 교체돼 자동으로 복구된다 -
+        /// 별도의 마이그레이션 스크립트 없이 "재추첨을 한 번 쓰면 고쳐지는" 형태의 자연 치유다.
         /// </summary>
         public RerollResult TryRerollSkill(Player target, int skillIndex)
         {
@@ -99,6 +105,9 @@ namespace KBOManager.Managers
                 result.Outcome = RerollOutcome.NoSkillAvailable;
                 return result;
             }
+
+            Debug.Assert(skillDB.IsSkillValidForCategory(candidate.SkillName, SkillDB.ResolveCategory(target.Template)),
+                $"[SkillRerollManager] GetRandomSkill이 target의 카테고리와 맞지 않는 스킬을 반환했습니다: '{candidate.SkillName}'");
 
             result.NewSkillName = candidate.SkillName;
             result.NewSkillTier = candidate.Tier;

@@ -46,6 +46,15 @@ namespace KBOManager.Managers
             set => favoriteTeam = value;
         }
 
+        [Tooltip("true인 동안은 UIManager가 로비 대신 온보딩(선호 구단 선택) 화면을 강제 출력한다. " +
+                 "OnboardingManager.CompleteOnboarding()이 스타터 팩 지급을 마친 뒤 false로 내린다.")]
+        [SerializeField] private bool isFirstLogin = true;
+        public bool IsFirstLogin
+        {
+            get => isFirstLogin;
+            set => isFirstLogin = value;
+        }
+
         // ----- 재화 -----
         [Header("Currency")]
         [SerializeField] private int scoutReport;     // 스카우트 리포트 (뽑기 재화)

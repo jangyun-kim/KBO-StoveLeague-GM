@@ -62,6 +62,7 @@ namespace KBOManager.Managers
         public int ScoutReport;
         public int PremiumCurrency;
         public int GameGold;
+        public bool IsFirstLogin = true;
 
         // LeagueManager
         public bool HasLeagueData;
@@ -154,6 +155,7 @@ namespace KBOManager.Managers
                 data.ScoutReport = gm.ScoutReport;
                 data.PremiumCurrency = gm.PremiumCurrency;
                 data.GameGold = gm.GameGold;
+                data.IsFirstLogin = gm.IsFirstLogin;
             }
 
             if (LeagueManager.Instance != null)
@@ -222,6 +224,7 @@ namespace KBOManager.Managers
                 gm.ScoutReport = data.ScoutReport;
                 gm.PremiumCurrency = data.PremiumCurrency;
                 gm.GameGold = data.GameGold;
+                gm.IsFirstLogin = data.IsFirstLogin;
             }
 
             if (data.HasLeagueData && LeagueManager.Instance != null)

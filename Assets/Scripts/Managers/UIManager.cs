@@ -12,7 +12,8 @@ namespace KBOManager.Managers
         Inventory,
         Roster,
         Scout,
-        Shop
+        Shop,
+        Onboarding
     }
 
     /// <summary>
@@ -65,9 +66,16 @@ namespace KBOManager.Managers
             }
         }
 
+        /// <summary>
+        /// GameManager.IsFirstLogin이 true면(=아직 선호 구단을 고른 적이 없으면) initialScreen 대신
+        /// 온보딩 화면을 강제로 먼저 띄운다. GameManager는 DontDestroyOnLoad 싱글톤이라 Awake()가
+        /// 이미 씬의 모든 오브젝트보다 먼저 끝나 있으므로(Unity의 Awake -&gt; Start 실행 순서 보장),
+        /// 여기 Start() 시점에는 GameManager.Instance가 항상 준비돼 있다.
+        /// </summary>
         private void Start()
         {
-            ShowScreen(initialScreen);
+            bool needsOnboarding = GameManager.Instance != null && GameManager.Instance.IsFirstLogin;
+            ShowScreen(needsOnboarding ? ScreenType.Onboarding : initialScreen);
         }
 
         /// <summary>지정한 화면만 켜고 나머지 등록된 화면은 전부 끈다.</summary>

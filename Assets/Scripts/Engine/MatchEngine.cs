@@ -668,11 +668,18 @@ namespace KBOManager.Engine
         private BatterStats ApplyBatterSkills(BatterStats stats, Player skillOwner, EffectTarget wantedTarget,
             Player self, Player opponent, MatchState state)
         {
-            if (skillDB == null || skillOwner == null) return stats;
+            if (skillDB == null || skillOwner?.Template == null) return stats;
+
+            // 소유자의 실제 카테고리(타자/선발/불펜) 풀에서만 조회한다 - "패기"/"마당쇠"처럼 동일 이름의
+            // 스킬이 다른 카테고리 풀에 다른 효과로도 존재하는 경우, 이름만으로 전체 풀을 검색하면
+            // 소유자와 무관한(예: 투수용) 효과가 잘못 붙을 수 있다. AI 세대교체/스킬 재추첨 등으로 저장된
+            // 스킬 이름이 더 이상 소유자 카테고리와 맞지 않게 되어도(구버전 세이브 등) FindSkill이 null을
+            // 반환해 아래에서 조용히 스킵된다 - 크래시나 잘못된 스탯 적용 없이 무시.
+            var ownerCategory = SkillDB.ResolveCategory(skillOwner.Template);
 
             foreach (var skillName in skillOwner.AcquiredSkillIds)
             {
-                var effect = skillDB.FindSkill(skillName)?.Effect;
+                var effect = skillDB.FindSkill(skillName, ownerCategory)?.Effect;
                 if (effect == null || effect.Target != wantedTarget) continue;
                 if (!IsConditionMet(effect.Condition, self, opponent, state)) continue;
 
@@ -688,11 +695,14 @@ namespace KBOManager.Engine
         private PitcherStats ApplyPitcherSkills(PitcherStats stats, Player skillOwner, EffectTarget wantedTarget,
             Player self, Player opponent, MatchState state)
         {
-            if (skillDB == null || skillOwner == null) return stats;
+            if (skillDB == null || skillOwner?.Template == null) return stats;
+
+            // ApplyBatterSkills와 동일한 이유로 소유자의 실제 카테고리(선발/불펜) 풀에서만 조회한다.
+            var ownerCategory = SkillDB.ResolveCategory(skillOwner.Template);
 
             foreach (var skillName in skillOwner.AcquiredSkillIds)
             {
-                var effect = skillDB.FindSkill(skillName)?.Effect;
+                var effect = skillDB.FindSkill(skillName, ownerCategory)?.Effect;
                 if (effect == null || effect.Target != wantedTarget) continue;
                 if (!IsConditionMet(effect.Condition, self, opponent, state)) continue;
 
