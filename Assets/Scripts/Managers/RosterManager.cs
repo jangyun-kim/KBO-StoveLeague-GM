@@ -18,16 +18,22 @@ namespace KBOManager.Managers
 
         public const int BenchBatterCount = 6; // 타자 15 = 선발 9 + 후보 6
 
-        // 투수 13명 배분. GDD 원문 "승리조(RP), 추격조(RP) 4인"은 두 롤 합산 4명으로 해석하고,
-        // 총 인원(5+4+3+1=13)에 맞춰 롱릴리프 3명을 역산했다. (TODO: 세부 인원 배분은 기획 확정 시 조정)
+        // 투수 13명 배분 (기획 확정치): 선발 5 + 승리조 2 + 추격조 4 + 롱릴리프 1 + 마무리 1 = 13명.
         private static readonly (PitcherRole role, int count)[] PitcherRoleQuota =
         {
             (PitcherRole.StartingPitcher, 5),
             (PitcherRole.WinningReliever, 2),
-            (PitcherRole.MopUpReliever, 2),
-            (PitcherRole.LongReliever, 3),
+            (PitcherRole.MopUpReliever, 4),
+            (PitcherRole.LongReliever, 1),
             (PitcherRole.Closer, 1),
         };
+
+        static RosterManager()
+        {
+            int totalPitcherQuota = PitcherRoleQuota.Sum(q => q.count);
+            Debug.Assert(totalPitcherQuota == GameManager.RequiredPitcherCount,
+                $"[RosterManager] 투수 쿼터 합계 오류: {totalPitcherQuota}명 (기대값 {GameManager.RequiredPitcherCount}명)");
+        }
 
         private enum SlotKind { BatterStarter, PitcherRole, BatterBench }
 

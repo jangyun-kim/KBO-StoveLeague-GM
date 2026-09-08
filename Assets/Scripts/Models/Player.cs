@@ -14,12 +14,15 @@ namespace KBOManager.Models
     {
         public const int MaxReinforceLevel = 10; // 명함(0강) ~ 10강
         public const int MaxAwakenLevel = 10;    // 1각 ~ 10각
+        public const int MinStarLevel = 1;
+        public const int MaxStarLevel = 6;
 
         public string InstanceId;      // 유저 보유 카드 고유 ID (GUID)
         public PlayerTemplate Template; // 원본 데이터 참조 (이름/구단/기본OVR/코스트/포지션/등급)
 
         public int ReinforceLevel;     // 0~10강
         public int AwakenLevel;        // 0~10각 (ALLSTAR 이상 등급만 유효)
+        public int StarLevel;          // 1~6, 뽑기 시 등급에 따라 결정되는 초기 성급. 강화/각성과는 별개 개념
         public StarType CurrentStarType;
 
         public List<string> AcquiredSkillIds = new List<string>();
@@ -33,6 +36,7 @@ namespace KBOManager.Models
             ReinforceLevel = 0;
             AwakenLevel = 0;
             CurrentStarType = template != null ? DefaultStarTypeFor(template.Grade) : StarType.NORMAL;
+            StarLevel = template != null ? DefaultStarLevelFor(template.Grade) : MinStarLevel;
         }
 
         /// <summary>LIVE_NORMAL / LIVE_EPIC 등급은 강화만 가능하고 각성은 불가하다.</summary>
@@ -50,6 +54,22 @@ namespace KBOManager.Models
             Grade.SIGNATURE => StarType.PLATINUM,
             Grade.DYNASTY => StarType.TEAM_COLOR,
             _ => StarType.NORMAL
+        };
+
+        /// <summary>
+        /// 등급별 결정론적 기본 성급. LIVE_NORMAL의 1~3성 무작위 배정처럼 확률이 개입되는 규칙은
+        /// 뽑기를 실제로 수행하는 ScoutManager가 이 기본값을 덮어써서 적용한다.
+        /// </summary>
+        private static int DefaultStarLevelFor(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => MinStarLevel,
+            Grade.LIVE_EPIC => 4,
+            Grade.ALLSTAR => 4,
+            Grade.TITLE_HOLDER => 5,
+            Grade.GOLDEN_GLOVE => 5,
+            Grade.SIGNATURE => MaxStarLevel,
+            Grade.DYNASTY => MaxStarLevel,
+            _ => MinStarLevel
         };
 
         /// <summary>

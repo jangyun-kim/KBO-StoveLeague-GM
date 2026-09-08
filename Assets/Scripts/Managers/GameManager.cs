@@ -21,12 +21,16 @@ namespace KBOManager.Managers
         [Header("Inventory / Roster")]
         [SerializeField] private List<Player> inventory = new List<Player>();
         [SerializeField] private List<Player> roster = new List<Player>();
+        [SerializeField] private List<Item> itemInventory = new List<Item>();
 
         /// <summary>유저가 보유한 전체 선수 카드.</summary>
         public IReadOnlyList<Player> Inventory => inventory;
 
         /// <summary>1군 로스터에 편성된 선수 카드 (최대 타자 15 + 투수 13 = 28).</summary>
         public IReadOnlyList<Player> Roster => roster;
+
+        /// <summary>유저가 보유한 강화 재료(Item) 카드.</summary>
+        public IReadOnlyList<Item> ItemInventory => itemInventory;
 
         [Header("Set Deck Rule")]
         [Tooltip("동일 구단 선수가 이 인원 이상이면 세트덱 보너스 활성화 (TODO: GDD 밸런스 확정 후 구간별 세분화)")]
@@ -108,6 +112,33 @@ namespace KBOManager.Managers
         public bool RemovePlayerFromRoster(Player player)
         {
             return player != null && roster.Remove(player);
+        }
+
+        /// <summary>인벤토리에서 선수를 제거한다. (각성 재료 소모 등으로 카드가 완전히 사라질 때 사용)</summary>
+        public bool RemovePlayerFromInventory(Player player)
+        {
+            if (player == null) return false;
+            roster.Remove(player); // 로스터에 편성돼 있었다면 유령 참조가 남지 않도록 함께 제거
+            return inventory.Remove(player);
+        }
+
+        /// <summary>오토 라인업 등으로 새로 계산된 28인 리스트를 로스터에 그대로 덮어쓴다.</summary>
+        public void OverwriteRoster(List<Player> newRoster)
+        {
+            roster.Clear();
+            if (newRoster != null) roster.AddRange(newRoster);
+        }
+
+        /// <summary>새로 획득한 강화 재료(Item)를 인벤토리에 추가한다.</summary>
+        public void AddItemToInventory(Item item)
+        {
+            if (item != null) itemInventory.Add(item);
+        }
+
+        /// <summary>강화 소모 등으로 재료(Item)를 인벤토리에서 제거한다.</summary>
+        public bool RemoveItemFromInventory(Item item)
+        {
+            return item != null && itemInventory.Remove(item);
         }
 
         /// <summary>로스터가 타자 15 + 투수 13 = 28명 정원을 정확히 채웠는지 확인한다.</summary>
