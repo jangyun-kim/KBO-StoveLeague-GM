@@ -84,6 +84,9 @@ namespace KBOManager.Managers
         public Team UserTeam => userTeam;
         public IReadOnlyList<MatchFixture> Schedule => schedule;
 
+        /// <summary>지금까지 진행된(결과가 기록된) 경기 수. SaveManager가 저장/복원 지점으로 사용한다.</summary>
+        public int PlayedGameCount => nextFixtureIndex;
+
         /// <summary>현재 리그 진행 단계. 144경기가 모두 끝나면 POST_PREP(포스트시즌 진출) 또는
         /// STOVE_LEAGUE(시즌 종료)로 자동 전환된다.</summary>
         public LeaguePhase CurrentPhase { get; private set; } = LeaguePhase.STOVE_LEAGUE;
@@ -326,25 +329,58 @@ namespace KBOManager.Managers
             }
         }
 
-        /// <summary>스케줄의 다음 미진행 경기를 시뮬레이션하고 결과를 기록한다. 더 진행할 경기가 없으면 null.</summary>
+        /// <summary>스케줄의 다음 미진행 경기를 조회만 한다(진행 포인터를 소모하지 않음). 더 없으면 null.
+        /// PlayBallController처럼 외부에서 직접 경기를 진행할 주체가 "이번엔 누구와 붙는지" 미리 알아야 할 때 쓴다.</summary>
+        public MatchFixture PeekNextFixture() => nextFixtureIndex < schedule.Count ? schedule[nextFixtureIndex] : null;
+
+        /// <summary>team의 로스터를 반환한다. userTeam이면 GameManager.Roster를 실시간으로, 아니면 저장된 AI 로스터를 반환한다.</summary>
+        public List<Player> ResolveRosterForTeam(Team team)
+        {
+            if (team == userTeam && GameManager.Instance != null)
+            {
+                return GameManager.Instance.Roster.ToList();
+            }
+
+            return standings.TryGetValue(team, out var info) ? info.Roster : new List<Player>();
+        }
+
+        /// <summary>스케줄의 다음 미진행 경기를 자체 MatchEngine으로 즉시 시뮬레이션하고 결과를 기록한다. (UI 없는 빠른 진행/시즌 스킵용)</summary>
         public MatchFixture PlayNextMatch()
         {
-            if (nextFixtureIndex >= schedule.Count) return null;
+            var fixture = PeekNextFixture();
+            if (fixture == null) return null;
 
-            var fixture = schedule[nextFixtureIndex];
-            nextFixtureIndex++;
             SimulateFixture(fixture);
-            UpdatePhaseAfterFixture(fixture);
+            FinalizeFixtureBookkeeping(fixture);
 
             return fixture;
         }
 
         /// <summary>
-        /// 72경기 지점에서 REGULAR_OPEN -> REGULAR_LOCKED로 전환하고, 144경기(전체 스케줄)가 끝나면
-        /// GDD 5절 규칙(5위 이내 = 포스트시즌 진출)에 따라 POST_PREP 또는 STOVE_LEAGUE로 확정한다.
+        /// PeekNextFixture()가 가리키는 경기를 외부(PlayBallController 등)에서 이미 자체 MatchEngine으로
+        /// 진행했을 때, 그 결과를 리그 기록(승/무/패, 다음 경기 포인터, 시즌 단계 전환)에 반영한다.
+        /// LeagueManager 자신은 시뮬레이션을 다시 수행하지 않는다(중복 시뮬레이션 방지).
         /// </summary>
-        private void UpdatePhaseAfterFixture(MatchFixture fixture)
+        public void CompleteNextFixture(MatchResult result)
         {
+            var fixture = PeekNextFixture();
+            if (fixture == null || result == null) return;
+
+            fixture.Result = result;
+            fixture.IsPlayed = true;
+            FinalizeFixtureBookkeeping(fixture);
+        }
+
+        /// <summary>
+        /// 다음 경기 포인터를 전진시키고 승/무/패를 기록한 뒤, 72경기 지점에서 REGULAR_OPEN ->
+        /// REGULAR_LOCKED로 전환하며, 144경기(전체 스케줄)가 끝나면 GDD 5절 규칙(5위 이내 = 포스트시즌
+        /// 진출)에 따라 POST_PREP 또는 STOVE_LEAGUE로 확정한다.
+        /// </summary>
+        private void FinalizeFixtureBookkeeping(MatchFixture fixture)
+        {
+            nextFixtureIndex++;
+            RecordResult(standings[fixture.HomeTeam], standings[fixture.AwayTeam], fixture.Result);
+
             if (fixture.GameNumber == RegularOpenGames && CurrentPhase == LeaguePhase.REGULAR_OPEN)
             {
                 CurrentPhase = LeaguePhase.REGULAR_LOCKED;
@@ -376,24 +412,42 @@ namespace KBOManager.Managers
 
         private void SimulateFixture(MatchFixture fixture)
         {
-            var home = standings[fixture.HomeTeam];
-            var away = standings[fixture.AwayTeam];
-
-            var homeRoster = fixture.HomeTeam == userTeam && GameManager.Instance != null
-                ? GameManager.Instance.Roster.ToList()
-                : home.Roster;
-            var awayRoster = fixture.AwayTeam == userTeam && GameManager.Instance != null
-                ? GameManager.Instance.Roster.ToList()
-                : away.Roster;
+            var homeRoster = ResolveRosterForTeam(fixture.HomeTeam);
+            var awayRoster = ResolveRosterForTeam(fixture.AwayTeam);
 
             var engine = new MatchEngine(skillDB, engineConfig);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
-            var result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
-
-            fixture.Result = result;
+            fixture.Result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
             fixture.IsPlayed = true;
+        }
 
-            RecordResult(home, away, result);
+        /// <summary>
+        /// SaveManager 전용 복원 진입점. 리그를 새로 초기화(스케줄/로스터 재생성)한 뒤 저장된 누적
+        /// 승/무/패, 진행 지점(PlayedGameCount), 시즌 단계로 덮어쓴다.
+        /// 주의: 과거에 치른 개별 경기의 MatchResult(이닝별 스코어 등 boxscore)는 복원하지 않는다 -
+        /// 재시작 시 AI 로스터도 (PlayerDatabase 미보유분은) 절차적으로 새로 생성되므로 완전히 동일하지 않을 수 있다.
+        /// </summary>
+        public void RestoreFromSave(Team savedUserTeam, int playedGameCount, LeaguePhase phase,
+            int userFinalRankOrNegativeOne, IEnumerable<(Team team, int wins, int draws, int losses)> standingsData)
+        {
+            InitializeLeague(savedUserTeam);
+
+            if (standingsData != null)
+            {
+                foreach (var saved in standingsData)
+                {
+                    if (standings.TryGetValue(saved.team, out var info))
+                    {
+                        info.Wins = saved.wins;
+                        info.Draws = saved.draws;
+                        info.Losses = saved.losses;
+                    }
+                }
+            }
+
+            nextFixtureIndex = Mathf.Clamp(playedGameCount, 0, schedule.Count);
+            CurrentPhase = phase;
+            UserFinalRank = userFinalRankOrNegativeOne >= 0 ? userFinalRankOrNegativeOne : (int?)null;
         }
 
         private static void RecordResult(TeamInfo home, TeamInfo away, MatchResult result)

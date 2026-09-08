@@ -129,6 +129,20 @@ namespace KBOManager.Managers
             if (newRoster != null) roster.AddRange(newRoster);
         }
 
+        /// <summary>인벤토리 전체를 교체한다. (SaveManager의 로드 복원 전용)</summary>
+        public void ReplaceInventory(List<Player> players)
+        {
+            inventory.Clear();
+            if (players != null) inventory.AddRange(players);
+        }
+
+        /// <summary>강화 재료(Item) 인벤토리 전체를 교체한다. (SaveManager의 로드 복원 전용)</summary>
+        public void ReplaceItemInventory(List<Item> items)
+        {
+            itemInventory.Clear();
+            if (items != null) itemInventory.AddRange(items);
+        }
+
         /// <summary>새로 획득한 강화 재료(Item)를 인벤토리에 추가한다.</summary>
         public void AddItemToInventory(Item item)
         {

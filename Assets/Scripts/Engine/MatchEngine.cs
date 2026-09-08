@@ -62,6 +62,18 @@ namespace KBOManager.Engine
         }
     }
 
+    /// <summary>PlayNextAtBat() 1회 호출의 결과. UI(PlayBallController 등)가 연출/로그를 그리는 데 사용한다.</summary>
+    public class AtBatStepResult
+    {
+        public Player Batter;
+        public Player Pitcher;
+        public AtBatResult Result;
+        public int RunsScoredThisPlay;
+        public bool HalfInningEnded;
+        public bool GameEnded;
+        public MatchState State; // 이 타석 종료 직후의 상태 스냅샷 (이닝/아웃/주자 등)
+    }
+
     /// <summary>
     /// 1이닝 1구(타석) 단위로 진행되는 순수 C# 시뮬레이션 엔진. MonoBehaviour를 상속하지 않아
     /// 씬/프레임 오버헤드 없이 다수의 경기를 즉시(백그라운드) 계산할 수 있다.
@@ -148,43 +160,181 @@ namespace KBOManager.Engine
             public int RunsScored;
         }
 
+        // ----- 스텝 단위 진행 상태 -----
+        // 한 MatchEngine 인스턴스는 한 경기만 진행한다고 가정한다(LeagueManager/PlayBallController 모두
+        // 경기마다 새 MatchEngine을 생성해 쓰는 기존 관례를 그대로 따른다). 동시에 여러 경기를 진행하려면
+        // 경기마다 별도의 MatchEngine 인스턴스를 만들어야 한다.
+        private TeamGameState homeState;
+        private TeamGameState awayState;
+        private string homeTeamName;
+        private string awayTeamName;
+        private bool isPostSeasonMatch;
+        private int currentInning;
+        private bool isTopHalf; // true = 원정 공격(초)
+        private MatchState currentAtBatState;
+        private Player currentHalfInningPitcher;
+        private int runsThisHalfInning;
+        private bool matchStarted;
+
+        public MatchResult Result { get; private set; }
+        public bool IsGameOver { get; private set; }
+        public MatchState CurrentState => currentAtBatState;
+        public int CurrentInning => currentInning;
+        public bool IsAwayBatting => isTopHalf;
+
+        /// <summary>
+        /// 스텝 단위 진행(PlayNextAtBat)을 위해 경기를 준비한다. PlayFullMatch()도 내부적으로 이를 사용한다.
+        /// isPostSeason은 "가을사나이" 등 포스트시즌 조건부 스킬 판정에 쓰인다.
+        /// </summary>
+        public void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
+            string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
+        {
+            homeState = BuildTeamState(homeRoster, homeTeamName);
+            awayState = BuildTeamState(awayRoster, awayTeamName);
+            this.homeTeamName = homeTeamName;
+            this.awayTeamName = awayTeamName;
+            isPostSeasonMatch = isPostSeason;
+
+            Result = new MatchResult { HomeTeamName = homeTeamName, AwayTeamName = awayTeamName };
+            IsGameOver = false;
+            currentInning = 1;
+            isTopHalf = true;
+            matchStarted = true;
+
+            StartHalfInning();
+        }
+
+        private void StartHalfInning()
+        {
+            currentAtBatState = new MatchState { Inning = currentInning, IsPostSeason = isPostSeasonMatch };
+            var pitchingTeam = isTopHalf ? homeState : awayState;
+            var battingTeam = isTopHalf ? awayState : homeState;
+            currentHalfInningPitcher = SelectPitcherForInning(pitchingTeam, battingTeam, currentInning);
+            runsThisHalfInning = 0;
+        }
+
+        /// <summary>
+        /// 정확히 타석 1회를 진행한다. BeginMatch()를 먼저 호출해야 하며, IsGameOver가 true가 되면 더 이상
+        /// 진행하지 않는다(호출 시 GameEnded=true인 결과를 그대로 반환).
+        /// </summary>
+        public AtBatStepResult PlayNextAtBat()
+        {
+            if (!matchStarted) throw new InvalidOperationException("BeginMatch()를 먼저 호출해야 합니다.");
+            if (IsGameOver) return new AtBatStepResult { GameEnded = true };
+
+            var battingTeam = isTopHalf ? awayState : homeState;
+
+            if (battingTeam.BattingOrder.Count == 0 || currentHalfInningPitcher == null)
+            {
+                // 유효한 타자/투수가 전혀 없는 극단적 로스터 상태 - 더 진행할 수 없으므로 경기를 즉시 종료한다.
+                FinishGame();
+                return new AtBatStepResult { HalfInningEnded = true, GameEnded = true };
+            }
+
+            var batter = GetNextBatter(battingTeam);
+            currentAtBatState.ResetCount();
+            RollPitchCount(currentAtBatState);
+
+            var result = SimulateAtBat(batter, currentHalfInningPitcher, currentAtBatState);
+            int runs = ResolveAtBatEffect(result, currentAtBatState);
+
+            runsThisHalfInning += runs;
+            if (isTopHalf) { Result.AwayTotalScore += runs; awayState.RunsScored += runs; }
+            else { Result.HomeTotalScore += runs; homeState.RunsScored += runs; }
+
+            bool halfInningEnded = false;
+
+            // 진짜 끝내기: 9회 이후 말 공격 중 이 타석으로 홈이 앞서가면 3아웃을 채우지 않고 즉시 종료한다.
+            if (!isTopHalf && currentInning >= RegulationInnings && Result.HomeTotalScore > Result.AwayTotalScore)
+            {
+                halfInningEnded = true;
+                FinishHalfInning();
+                FinishGame();
+            }
+            else if (currentAtBatState.Outs >= 3)
+            {
+                halfInningEnded = true;
+                FinishHalfInning();
+                AdvanceAfterHalfInning();
+            }
+
+            return new AtBatStepResult
+            {
+                Batter = batter,
+                Pitcher = currentHalfInningPitcher,
+                Result = result,
+                RunsScoredThisPlay = runs,
+                HalfInningEnded = halfInningEnded,
+                GameEnded = IsGameOver,
+                State = currentAtBatState,
+            };
+        }
+
+        private void FinishHalfInning()
+        {
+            if (isTopHalf) Result.AwayInningScores.Add(runsThisHalfInning);
+            else Result.HomeInningScores.Add(runsThisHalfInning);
+        }
+
+        /// <summary>3아웃으로 하프이닝이 정상 종료된 직후, 다음 하프이닝/이닝으로 넘어가거나 경기를 종료한다.</summary>
+        private void AdvanceAfterHalfInning()
+        {
+            if (isTopHalf)
+            {
+                // 방금 초(원정 공격)가 끝났다. 9회 이후 홈이 이미 앞서 있으면 말 공격을 생략하고 바로 종료.
+                isTopHalf = false;
+                bool skipBottom = currentInning >= RegulationInnings && Result.HomeTotalScore > Result.AwayTotalScore;
+                if (skipBottom)
+                {
+                    FinishGame();
+                    return;
+                }
+
+                StartHalfInning();
+            }
+            else
+            {
+                // 방금 말(홈 공격)이 끝났다.
+                bool decided = currentInning >= RegulationInnings && Result.HomeTotalScore != Result.AwayTotalScore;
+                bool reachedCap = currentInning >= MaxInnings;
+                if (decided || reachedCap)
+                {
+                    FinishGame();
+                    return;
+                }
+
+                currentInning++;
+                isTopHalf = true;
+                StartHalfInning();
+            }
+        }
+
+        private void FinishGame()
+        {
+            if (IsGameOver) return; // 중복 호출 방지
+
+            IsGameOver = true;
+            Result.IsExtraInnings = Result.AwayInningScores.Count > RegulationInnings;
+            Result.WinnerTeamName = Result.HomeTotalScore == Result.AwayTotalScore
+                ? null
+                : (Result.HomeTotalScore > Result.AwayTotalScore ? homeTeamName : awayTeamName);
+        }
+
         /// <summary>
         /// 양 팀의 28인 로스터로 1회부터 9회까지(동점 시 연장 최대 12회) 경기를 즉시 시뮬레이션한다.
-        /// isPostSeason은 "가을사나이" 등 포스트시즌 조건부 스킬 판정에 쓰인다.
+        /// 내부적으로 BeginMatch() + PlayNextAtBat() 반복 호출과 완전히 동일한 규칙을 사용한다("빠른 진행" 모드용).
         /// </summary>
         public MatchResult PlayFullMatch(List<Player> homeRoster, List<Player> awayRoster,
             string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
         {
-            var home = BuildTeamState(homeRoster, homeTeamName);
-            var away = BuildTeamState(awayRoster, awayTeamName);
+            BeginMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
 
-            var result = new MatchResult { HomeTeamName = homeTeamName, AwayTeamName = awayTeamName };
-
-            for (int inning = 1; inning <= MaxInnings; inning++)
+            while (!IsGameOver)
             {
-                int awayRuns = SimulateHalfInning(away, home, inning, isPostSeason);
-                result.AwayInningScores.Add(awayRuns);
-                result.AwayTotalScore += awayRuns;
-
-                // 9회 이후, 말 공격 전에 이미 홈이 앞서 있으면 끝내기와 동일하게 말 공격을 생략한다.
-                bool skipBottom = inning >= RegulationInnings && result.HomeTotalScore > result.AwayTotalScore;
-                if (!skipBottom)
-                {
-                    int homeRuns = SimulateHalfInning(home, away, inning, isPostSeason);
-                    result.HomeInningScores.Add(homeRuns);
-                    result.HomeTotalScore += homeRuns;
-                }
-
-                bool decided = inning >= RegulationInnings && result.HomeTotalScore != result.AwayTotalScore;
-                if (decided) break;
+                PlayNextAtBat();
             }
 
-            result.IsExtraInnings = result.AwayInningScores.Count > RegulationInnings;
-            result.WinnerTeamName = result.HomeTotalScore == result.AwayTotalScore
-                ? null
-                : (result.HomeTotalScore > result.AwayTotalScore ? homeTeamName : awayTeamName);
-
-            return result;
+            return Result;
         }
 
         /// <summary>
@@ -453,56 +603,38 @@ namespace KBOManager.Engine
 
         // ----- 이닝/타석 진행 -----
 
-        private int SimulateHalfInning(TeamGameState batting, TeamGameState pitching, int inning, bool isPostSeason)
+        /// <summary>
+        /// 타석 1회의 결과를 state(아웃/주자)에 반영하고, 이 플레이로 발생한 득점 수를 반환한다.
+        /// 병살타/희생플라이 판정이 여기 포함된다.
+        /// </summary>
+        private int ResolveAtBatEffect(AtBatResult result, MatchState state)
         {
-            if (batting.BattingOrder.Count == 0) return 0;
+            bool isOut = result == AtBatResult.Strikeout || result == AtBatResult.Groundout || result == AtBatResult.Flyout;
 
-            var pitcher = SelectPitcherForInning(pitching, batting, inning);
-            if (pitcher == null) return 0;
-
-            var state = new MatchState { Inning = inning, IsPostSeason = isPostSeason };
-            int runs = 0;
-
-            while (state.Outs < 3)
+            if (!isOut)
             {
-                var batter = GetNextBatter(batting);
-                if (batter == null) break;
-
-                state.ResetCount();
-                RollPitchCount(state);
-
-                var result = SimulateAtBat(batter, pitcher, state);
-                bool isOut = result == AtBatResult.Strikeout || result == AtBatResult.Groundout || result == AtBatResult.Flyout;
-
-                if (isOut)
-                {
-                    if (result == AtBatResult.Flyout && state.RunnerOnThird && state.Outs < 2)
-                    {
-                        // 희생플라이: 3루 주자 생환, 배터만 아웃 처리
-                        runs++;
-                        state.RunnerOnThird = false;
-                        state.Outs++;
-                    }
-                    else if (result == AtBatResult.Groundout && state.RunnerOnFirst && state.Outs < 2
-                             && random.NextDouble() < DoublePlayChance)
-                    {
-                        // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
-                        state.RunnerOnFirst = false;
-                        state.Outs += 2;
-                    }
-                    else
-                    {
-                        state.Outs++;
-                    }
-                }
-                else
-                {
-                    runs += AdvanceRunners(result, state);
-                }
+                return AdvanceRunners(result, state);
             }
 
-            batting.RunsScored += runs;
-            return runs;
+            if (result == AtBatResult.Flyout && state.RunnerOnThird && state.Outs < 2)
+            {
+                // 희생플라이: 3루 주자 생환, 배터만 아웃 처리
+                state.RunnerOnThird = false;
+                state.Outs++;
+                return 1;
+            }
+
+            if (result == AtBatResult.Groundout && state.RunnerOnFirst && state.Outs < 2
+                && random.NextDouble() < DoublePlayChance)
+            {
+                // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
+                state.RunnerOnFirst = false;
+                state.Outs += 2;
+                return 0;
+            }
+
+            state.Outs++;
+            return 0;
         }
 
         /// <summary>
