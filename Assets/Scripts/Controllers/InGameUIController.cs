@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Engine;
+using KBOManager.Managers;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,11 +15,16 @@ namespace KBOManager.Controllers
     /// UGUI Text로 작성했다. 프로젝트에 TextMeshPro(TMP Essentials)가 설치돼 있다면 필드 타입을
     /// UnityEngine.UI.Text -> TMPro.TextMeshProUGUI로, using UnityEngine.UI -> using TMPro로만
     /// 바꾸면 그대로 동작한다(로직은 텍스트 컴포넌트의 .text 프로퍼티만 사용하므로 API 차이가 없다).
+    ///
+    /// 로비로 돌아갈 때 UIManager.Instance.ShowScreen()만 호출한다 - LeagueDashboardUIController를
+    /// 직접 참조하지 않으므로(양방향 결합 제거), 로비 쪽 구현이 바뀌어도 이 클래스는 영향받지 않는다.
     /// </summary>
     public class InGameUIController : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private PlayBallController playBallController;
+        [Tooltip("MatchRewardManager.OnRewardGranted를 구독해 보상 내역을 결과창에 표시한다. 비워두면 보상 표시를 생략한다.")]
+        [SerializeField] private MatchRewardManager matchRewardManager;
 
         [Header("Scoreboard - 이닝별 득점 (배열 순서 = 1회, 2회, ... 연장 포함)")]
         [SerializeField] private Text[] awayInningTexts;
@@ -37,15 +44,12 @@ namespace KBOManager.Controllers
         [Tooltip("새 로그가 추가될 때 스크롤 뷰를 맨 아래로 내릴지 여부.")]
         [SerializeField] private ScrollRect logScrollRect;
 
-        [Header("Match End / Return to Lobby (뼈대 수준 패널 전환)")]
-        [Tooltip("스코어보드/중계창을 포함한 인게임 화면 전체 루트.")]
-        [SerializeField] private GameObject inGameScreenRoot;
+        [Header("Match End / Return to Lobby")]
         [Tooltip("경기 종료 시 노출되는 결과 요약 패널.")]
         [SerializeField] private GameObject matchEndPanelRoot;
         [SerializeField] private Text matchResultSummaryText;
+        [SerializeField] private Text rewardSummaryText;
         [SerializeField] private Button returnToLobbyButton;
-        [SerializeField] private GameObject lobbyScreenRoot;
-        [SerializeField] private LeagueDashboardUIController leagueDashboardUIController;
 
         private readonly List<Text> spawnedLogEntries = new List<Text>();
 
@@ -56,20 +60,34 @@ namespace KBOManager.Controllers
 
         private void OnEnable()
         {
-            if (playBallController == null) return;
-            playBallController.OnAtBatEnd += HandleAtBatEnd;
-            playBallController.OnInningEnd += HandleInningEnd;
-            playBallController.OnSubstitutionLog += AddLog;
-            playBallController.OnMatchCompleted += HandleMatchCompleted;
+            if (playBallController != null)
+            {
+                playBallController.OnAtBatEnd += HandleAtBatEnd;
+                playBallController.OnInningEnd += HandleInningEnd;
+                playBallController.OnSubstitutionLog += AddLog;
+                playBallController.OnMatchCompleted += HandleMatchCompleted;
+            }
+
+            if (matchRewardManager != null)
+            {
+                matchRewardManager.OnRewardGranted += HandleRewardGranted;
+            }
         }
 
         private void OnDisable()
         {
-            if (playBallController == null) return;
-            playBallController.OnAtBatEnd -= HandleAtBatEnd;
-            playBallController.OnInningEnd -= HandleInningEnd;
-            playBallController.OnSubstitutionLog -= AddLog;
-            playBallController.OnMatchCompleted -= HandleMatchCompleted;
+            if (playBallController != null)
+            {
+                playBallController.OnAtBatEnd -= HandleAtBatEnd;
+                playBallController.OnInningEnd -= HandleInningEnd;
+                playBallController.OnSubstitutionLog -= AddLog;
+                playBallController.OnMatchCompleted -= HandleMatchCompleted;
+            }
+
+            if (matchRewardManager != null)
+            {
+                matchRewardManager.OnRewardGranted -= HandleRewardGranted;
+            }
         }
 
         private void HandleAtBatEnd(AtBatStepResult step)
@@ -166,6 +184,8 @@ namespace KBOManager.Controllers
         /// PlayBallController.OnMatchCompleted 핸들러. 경기 결과 요약을 채우고 결과 패널을 연다.
         /// 이 시점에는 이미 LeagueManager.CompleteNextFixture()로 순위표/다음 경기 포인터가 갱신된 뒤다
         /// (PlayBallController.FinishMatch()가 OnMatchCompleted를 발생시키기 전에 먼저 호출한다).
+        /// 보상 지급은 별도로 MatchRewardManager가 같은 이벤트를 구독해 처리하고, 그 결과가
+        /// OnRewardGranted로 도착하면 HandleRewardGranted가 이어서 화면에 반영한다.
         /// </summary>
         private void HandleMatchCompleted(MatchResult result)
         {
@@ -179,21 +199,28 @@ namespace KBOManager.Controllers
             }
         }
 
+        /// <summary>MatchRewardManager.OnRewardGranted 핸들러. 지급된 재화/아이템 내역을 결과창에 표시한다.</summary>
+        private void HandleRewardGranted(MatchRewardResult reward)
+        {
+            if (rewardSummaryText == null || reward == null) return;
+
+            string itemsLine = reward.ItemsGained.Count > 0
+                ? string.Join(", ", reward.ItemsGained.Select(i => i.Template != null ? i.Template.DisplayName : "알 수 없는 재료"))
+                : "없음";
+
+            rewardSummaryText.text = $"보상: 스카우트 리포트 +{reward.ScoutReportGained}\n획득 아이템: {itemsLine}";
+        }
+
         /// <summary>
-        /// 경기 결과 패널의 [로비로 돌아가기] 버튼 OnClick. 인게임 화면을 닫고 리그 대시보드를 다시
-        /// 켠 뒤 RefreshDashboard()로 최신 순위/다음 매치업을 반영한다(뼈대 수준 패널 전환).
+        /// 경기 결과 패널의 [로비로 돌아가기] 버튼 OnClick. UIManager에게 로비 화면으로 전환해 달라고만
+        /// 요청한다 - 로비 화면이 켜지는 순간 LeagueDashboardUIController.OnEnable()이 자동으로
+        /// RefreshDashboard()를 호출하므로, 여기서 그 컨트롤러를 직접 참조해 호출할 필요가 없다.
         /// </summary>
         public void ReturnToLobby()
         {
             if (matchEndPanelRoot != null) matchEndPanelRoot.SetActive(false);
-            if (inGameScreenRoot != null) inGameScreenRoot.SetActive(false);
 
-            if (lobbyScreenRoot != null) lobbyScreenRoot.SetActive(true);
-            if (leagueDashboardUIController != null)
-            {
-                leagueDashboardUIController.gameObject.SetActive(true);
-                leagueDashboardUIController.RefreshDashboard();
-            }
+            UIManager.Instance?.ShowScreen(ScreenType.Lobby);
 
             ClearAll();
         }
