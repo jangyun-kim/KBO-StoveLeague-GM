@@ -144,5 +144,30 @@ namespace KBOManager.Controllers
 
             Debug.Log($"[GameActionController] ExecuteAutoRoster: {newRoster.Count}명 편성 완료 (샐러리 캡 {salaryCap})");
         }
+
+        /// <summary>저장 버튼 OnClick. SaveManager.SaveGame()으로 바로 위임한다.</summary>
+        public void ExecuteSaveGame()
+        {
+            if (SaveManager.Instance == null)
+            {
+                Debug.LogWarning("[GameActionController] SaveManager가 없어 저장할 수 없습니다.");
+                return;
+            }
+
+            SaveManager.Instance.SaveGame();
+        }
+
+        /// <summary>불러오기 버튼 OnClick. SaveManager.LoadGame()으로 바로 위임한다.</summary>
+        public void ExecuteLoadGame()
+        {
+            if (SaveManager.Instance == null)
+            {
+                Debug.LogWarning("[GameActionController] SaveManager가 없어 불러올 수 없습니다.");
+                return;
+            }
+
+            bool success = SaveManager.Instance.LoadGame();
+            Debug.Log($"[GameActionController] ExecuteLoadGame: {(success ? "성공" : "실패")}");
+        }
     }
 }

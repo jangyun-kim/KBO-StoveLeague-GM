@@ -62,7 +62,7 @@ namespace KBOManager.Engine
         }
     }
 
-    /// <summary>PlayNextAtBat() 1회 호출의 결과. UI(PlayBallController 등)가 연출/로그를 그리는 데 사용한다.</summary>
+    /// <summary>PlayNextAtBat() 1회 호출의 결과. UI(PlayBallController 등)가 연출/로그/하이라이트 트리거 판정에 사용한다.</summary>
     public class AtBatStepResult
     {
         public Player Batter;
@@ -72,6 +72,12 @@ namespace KBOManager.Engine
         public bool HalfInningEnded;
         public bool GameEnded;
         public MatchState State; // 이 타석 종료 직후의 상태 스냅샷 (이닝/아웃/주자 등)
+
+        // 이 타석 종료 직후의 누적 스코어. 하이라이트 트리거(접전/끝내기 위기 등)가 MatchEngine 내부에
+        // 접근하지 않고도 판정할 수 있도록 스냅샷으로 노출한다.
+        public int HomeScore;
+        public int AwayScore;
+        public bool IsTopHalf; // true = 원정 공격(초) 중이었던 타석
     }
 
     /// <summary>
@@ -231,6 +237,8 @@ namespace KBOManager.Engine
                 return new AtBatStepResult { HalfInningEnded = true, GameEnded = true };
             }
 
+            bool wasTopHalf = isTopHalf; // AdvanceAfterHalfInning()이 isTopHalf를 바꾸기 전에 이 타석 시점 값을 보존
+
             var batter = GetNextBatter(battingTeam);
             currentAtBatState.ResetCount();
             RollPitchCount(currentAtBatState);
@@ -267,6 +275,9 @@ namespace KBOManager.Engine
                 HalfInningEnded = halfInningEnded,
                 GameEnded = IsGameOver,
                 State = currentAtBatState,
+                HomeScore = Result.HomeTotalScore,
+                AwayScore = Result.AwayTotalScore,
+                IsTopHalf = wasTopHalf,
             };
         }
 

@@ -31,25 +31,42 @@ namespace KBOManager.Controllers
         [SerializeField] private SkillDB skillDB;
         [SerializeField] private EngineConfig engineConfig;
 
-        [Header("Highlight Mode")]
-        [Tooltip("득점권 상황에서 멈춘 뒤 이 프레임 수만큼 대기하고 자동 재개한다. " +
-                 "실제 UI가 붙으면 유저의 '계속' 입력으로 대체되어야 하는 자리표시자 값이다.")]
-        [SerializeField] private int highlightAutoResumeFrames = 30;
-
         private MatchEngine engine;
 
+        /// <summary>
+        /// 하이라이트 모드에서 시뮬레이션을 멈출 트리거 목록(OR 조합 - 하나라도 만족하면 멈춘다).
+        /// 새 트리거를 추가하고 싶으면 IHighlightCondition을 구현한 클래스를 만들어 이 리스트에
+        /// AddHighlightCondition()으로 등록하면 되고, 이 파일(PlayBallController.cs) 자체를 고칠 필요는 없다.
+        /// </summary>
+        private readonly List<IHighlightCondition> highlightConditions = new List<IHighlightCondition>
+        {
+            new ScoringPositionCondition(),
+            new LateInningCloseGameCondition(),
+            new WalkOffDangerCondition(),
+        };
+
+        /// <summary>대기 중(WaitUntil)인 코루틴을 풀어주는 스위치. ResumeMatch()가 false로 내려서 재개시킨다.</summary>
+        private bool isPausedForUser;
+
         public bool IsMatchInProgress { get; private set; }
+        public bool IsPausedForUser => isPausedForUser;
         public PlayMode CurrentMode { get; private set; }
         public MatchResult LastResult { get; private set; }
 
         /// <summary>타석이 1회 진행될 때마다 호출된다 (연출/로그 갱신용).</summary>
         public event Action<AtBatStepResult> OnAtBatResolved;
 
-        /// <summary>하이라이트 모드에서 득점권 상황이 발생해 진행이 멈췄을 때 호출된다.</summary>
-        public event Action<MatchState> OnHighlightMoment;
+        /// <summary>하이라이트 트리거가 발동해 유저 입력 대기 상태로 멈췄을 때 호출된다. UI는 이때 개입/스킵 버튼을 노출한다.</summary>
+        public event Action<AtBatStepResult, IHighlightCondition> OnHighlightMoment;
 
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
         public event Action<MatchResult> OnMatchCompleted;
+
+        /// <summary>새 하이라이트 트리거를 등록한다. (개방-폐쇄 원칙: 이 클래스를 고치지 않고 트리거를 추가하는 진입점)</summary>
+        public void AddHighlightCondition(IHighlightCondition condition)
+        {
+            if (condition != null) highlightConditions.Add(condition);
+        }
 
         /// <summary>
         /// LeagueManager.PeekNextFixture()가 가리키는 "다음 경기"를 지정한 모드로 시작한다.
@@ -110,9 +127,8 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// 하이라이트: 백그라운드로 타석을 진행하되, 득점권(2루 이상 주자) 상황이 발생하면 멈추고
-        /// OnHighlightMoment로 제어권을 UI에 넘긴다. 지금은 유저 입력 대신 일정 프레임 대기 후
-        /// 자동으로 재개하는 것으로 뼈대만 구현했다 - 실제 UI 연동 시 대기 지점을 유저 입력 이벤트로 교체한다.
+        /// 하이라이트: 백그라운드로 타석을 진행하되, highlightConditions 중 하나라도 발동하면 멈추고
+        /// OnHighlightMoment로 제어권을 UI에 넘긴 뒤, 유저가 ResumeMatch()를 호출할 때까지 무한정 대기한다.
         /// </summary>
         private IEnumerator RunHighlight()
         {
@@ -121,26 +137,55 @@ namespace KBOManager.Controllers
                 var step = engine.PlayNextAtBat();
                 OnAtBatResolved?.Invoke(step);
 
-                if (!step.GameEnded && step.State != null && step.State.HasRunnerInScoringPosition)
+                if (!step.GameEnded)
                 {
-                    OnHighlightMoment?.Invoke(step.State);
-                    yield return WaitForHighlightResume();
+                    var triggered = FindTriggeredCondition(step);
+                    if (triggered != null)
+                    {
+                        Debug.Log($"[PlayBallController] 하이라이트 정지: {triggered.Name}");
+                        OnHighlightMoment?.Invoke(step, triggered);
+
+                        isPausedForUser = true;
+                        yield return new WaitUntil(() => !isPausedForUser);
+                    }
                 }
             }
 
             FinishMatch();
         }
 
-        /// <summary>
-        /// 하이라이트 정지 후 재개를 기다리는 지점. 자리표시자로 지정된 프레임 수만큼 대기하며,
-        /// 실제 UI가 붙으면 유저 입력(예: "계속" 버튼) 이벤트를 기다리는 코드로 교체되어야 한다.
-        /// </summary>
-        private IEnumerator WaitForHighlightResume()
+        private IHighlightCondition FindTriggeredCondition(AtBatStepResult step)
         {
-            for (int i = 0; i < highlightAutoResumeFrames; i++)
+            foreach (var condition in highlightConditions)
             {
-                yield return null;
+                if (condition.ShouldPause(step)) return condition;
             }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 하이라이트 멈춤 상태를 UI(버튼)에서 재개시킨다. 대기 중이 아닐 때 호출하면 아무 일도 하지 않는다.
+        /// </summary>
+        /// <param name="intervene">
+        /// false: 개입 없이 다음 타석으로 스킵한다.
+        /// true: 개입을 선택했다는 로그만 남기고 대기를 해제한다 - 실제 투수/타자 교체 UI 연결은 후속 과제다.
+        /// </param>
+        public void ResumeMatch(bool intervene)
+        {
+            if (!isPausedForUser)
+            {
+                Debug.LogWarning("[PlayBallController] 대기 중이 아닌데 ResumeMatch가 호출되었습니다.");
+                return;
+            }
+
+            if (intervene)
+            {
+                // TODO: 투수 교체/대타 등 실제 개입 UI가 만들어지면 여기서 그 흐름을 시작해야 한다.
+                Debug.Log("[PlayBallController] 유저가 개입을 선택했습니다. (교체 UI는 아직 연결되지 않음)");
+            }
+
+            isPausedForUser = false;
         }
 
         /// <summary>
