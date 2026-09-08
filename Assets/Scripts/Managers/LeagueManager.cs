@@ -488,6 +488,11 @@ namespace KBOManager.Managers
             }
         }
 
+        /// <summary>144경기(정규시즌)가 모두 끝났을 때 발생한다. PostSeasonManager가 이 이벤트를 구독해
+        /// IsUserPlayoffEligible이면 포스트시즌 브래킷을 시작하고, 아니면 아무 것도 하지 않는다
+        /// (그 경우 CurrentPhase는 이미 STOVE_LEAGUE로 확정돼 있다).</summary>
+        public event Action OnSeasonFinalized;
+
         private void FinalizeSeason()
         {
             var finalStandings = GetStandings();
@@ -495,7 +500,15 @@ namespace KBOManager.Managers
             UserFinalRank = rank > 0 ? rank : (int?)null;
 
             CurrentPhase = IsUserPlayoffEligible ? LeaguePhase.POST_PREP : LeaguePhase.STOVE_LEAGUE;
+            OnSeasonFinalized?.Invoke();
         }
+
+        /// <summary>PostSeasonManager.BeginPostSeason()이 브래킷을 시작할 때 호출해 단계를 POST_SEASON으로 넘긴다.</summary>
+        public void EnterPostSeason() => CurrentPhase = LeaguePhase.POST_SEASON;
+
+        /// <summary>PostSeasonManager가 한국시리즈까지 마쳤을 때(또는 유저가 포스트시즌에 진출하지 못해
+        /// 곧바로) 호출해 스토브리그 단계로 넘긴다.</summary>
+        public void EnterStoveLeague() => CurrentPhase = LeaguePhase.STOVE_LEAGUE;
 
         /// <summary>
         /// 스토브리그 처리(AI 로스터 자동 성장)까지 마친 뒤 다음 시즌을 개막한다. POST_PREP(포스트시즌
