@@ -415,9 +415,9 @@ namespace KBOManager.Managers
             var homeRoster = ResolveRosterForTeam(fixture.HomeTeam);
             var awayRoster = ResolveRosterForTeam(fixture.AwayTeam);
 
-            var engine = new MatchEngine(skillDB, engineConfig);
+            var engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
-            fixture.Result = engine.PlayFullMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
+            fixture.Result = engine.PlayFullMatch(fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
             fixture.IsPlayed = true;
         }
 

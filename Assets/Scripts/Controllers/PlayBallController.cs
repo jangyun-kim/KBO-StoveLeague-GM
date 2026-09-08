@@ -61,8 +61,11 @@ namespace KBOManager.Controllers
         public Team HomeTeam { get; private set; }
         public Team AwayTeam { get; private set; }
 
-        /// <summary>타석이 1회 진행될 때마다 호출된다 (연출/로그 갱신용).</summary>
-        public event Action<AtBatStepResult> OnAtBatResolved;
+        /// <summary>타석이 1회 진행될 때마다 호출된다 (텍스트 중계 로그 등 연출 갱신용).</summary>
+        public event Action<AtBatStepResult> OnAtBatEnd;
+
+        /// <summary>하프이닝이 끝난 타석에 한해 추가로 호출된다 (이닝별 스코어보드 갱신용).</summary>
+        public event Action<AtBatStepResult> OnInningEnd;
 
         /// <summary>하이라이트 트리거가 발동해 유저 입력 대기 상태로 멈췄을 때 호출된다. UI는 이때 개입/스킵 버튼을 노출한다.</summary>
         public event Action<AtBatStepResult, IHighlightCondition> OnHighlightMoment;
@@ -135,7 +138,7 @@ namespace KBOManager.Controllers
                 return;
             }
 
-            engine = new MatchEngine(skillDB, engineConfig);
+            engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
             IsMatchInProgress = true;
             CurrentMode = mode;
 
@@ -143,18 +146,18 @@ namespace KBOManager.Controllers
             {
                 case PlayMode.QuickPlay:
                     // 빠른 진행: 기존처럼 PlayFullMatch()를 즉시 실행하고 결과만 UI로 반환한다.
-                    engine.PlayFullMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
+                    engine.PlayFullMatch(homeTeamName, awayTeamName, isPostSeason);
                     FinishMatch();
                     break;
 
                 case PlayMode.Highlight:
-                    engine.BeginMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
+                    engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
                     BuildHighlightConditions();
                     StartCoroutine(RunHighlight());
                     break;
 
                 case PlayMode.FullPlay:
-                    engine.BeginMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
+                    engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
                     // 이후 진행은 UI가 PlayNextStep()을 직접 호출한다(타격 연출 등을 보여준 뒤 다음 타석으로).
                     break;
             }
@@ -169,7 +172,7 @@ namespace KBOManager.Controllers
             while (!engine.IsGameOver)
             {
                 var step = engine.PlayNextAtBat();
-                OnAtBatResolved?.Invoke(step);
+                RaiseStepEvents(step);
 
                 if (!step.GameEnded)
                 {
@@ -188,6 +191,16 @@ namespace KBOManager.Controllers
             }
 
             FinishMatch();
+        }
+
+        /// <summary>OnAtBatEnd는 매 타석마다, OnInningEnd는 그 중 하프이닝이 끝난 타석에서만 추가로 발생시킨다.</summary>
+        private void RaiseStepEvents(AtBatStepResult step)
+        {
+            OnAtBatEnd?.Invoke(step);
+            if (step.HalfInningEnded)
+            {
+                OnInningEnd?.Invoke(step);
+            }
         }
 
         private IHighlightCondition FindTriggeredCondition(AtBatStepResult step)
@@ -238,7 +251,7 @@ namespace KBOManager.Controllers
             if (!IsMatchInProgress || engine == null || engine.IsGameOver) return null;
 
             var step = engine.PlayNextAtBat();
-            OnAtBatResolved?.Invoke(step);
+            RaiseStepEvents(step);
 
             if (engine.IsGameOver)
             {

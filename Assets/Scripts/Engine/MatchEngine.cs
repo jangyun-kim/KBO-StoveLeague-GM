@@ -60,6 +60,20 @@ namespace KBOManager.Engine
             Balls = 0;
             Strikes = 0;
         }
+
+        /// <summary>독립된 스냅샷을 만든다. PlayNextAtBat()이 이후 하프이닝 전환으로 원본을 교체하기 전에
+        /// AtBatStepResult에 담아 반환할 "그 타석 시점"의 상태를 보존하는 데 쓰인다.</summary>
+        public MatchState Clone() => new MatchState
+        {
+            Inning = Inning,
+            Outs = Outs,
+            Balls = Balls,
+            Strikes = Strikes,
+            RunnerOnFirst = RunnerOnFirst,
+            RunnerOnSecond = RunnerOnSecond,
+            RunnerOnThird = RunnerOnThird,
+            IsPostSeason = IsPostSeason,
+        };
     }
 
     /// <summary>PlayNextAtBat() 1회 호출의 결과. UI(PlayBallController 등)가 연출/로그/하이라이트 트리거 판정에 사용한다.</summary>
@@ -71,13 +85,16 @@ namespace KBOManager.Engine
         public int RunsScoredThisPlay;
         public bool HalfInningEnded;
         public bool GameEnded;
-        public MatchState State; // 이 타석 종료 직후의 상태 스냅샷 (이닝/아웃/주자 등)
+        public MatchState State; // 이 타석 종료 직후의 상태 스냅샷 (이닝/아웃/주자 등) - 독립 복사본이라 이후 변형되지 않는다
 
         // 이 타석 종료 직후의 누적 스코어. 하이라이트 트리거(접전/끝내기 위기 등)가 MatchEngine 내부에
         // 접근하지 않고도 판정할 수 있도록 스냅샷으로 노출한다.
         public int HomeScore;
         public int AwayScore;
         public bool IsTopHalf; // true = 원정 공격(초) 중이었던 타석
+
+        /// <summary>"9회초 홍길동, 좌월 홈런!" 형태의 중계 텍스트. MatchLogger가 생성한다.</summary>
+        public string LogMessage;
     }
 
     /// <summary>
@@ -139,12 +156,24 @@ namespace KBOManager.Engine
         private readonly Dictionary<Player, int> baseOvrCache = new Dictionary<Player, int>();
         private readonly Dictionary<Player, (bool isActive, float multiplier)> setDeckContext = new Dictionary<Player, (bool, float)>();
 
+        // 양 팀의 28인 로스터 원본. 생성자에서 주입받아 경기 내내 이 엔진 인스턴스가 직접 소유한다.
+        // (원본 리스트 자체는 복사하지만 Player 참조는 공유 - "얕은 복사"로 호출부의 리스트 변형으로부터
+        // 격리하면서도 GameManager.Roster 등이 들고 있는 실제 카드 인스턴스와 동일 객체를 가리키게 유지한다.)
+        // SubstituteBatter/SubstitutePitcher가 "이 팀 로스터에 실제로 있는 선수인가"를 검증하는 데 쓰인다.
+        private readonly List<Player> homeRoster;
+        private readonly List<Player> awayRoster;
+
         /// <summary>
+        /// homeRoster/awayRoster(각 28인)는 필수다 - 이 엔진 인스턴스가 진행할 경기의 양 팀 전체 로스터이며,
+        /// 선수 교체(SubstituteBatter/SubstitutePitcher) 시 "이 팀 소속이 맞는가"를 검증하는 유일한 근거가 된다.
         /// skillDB/config는 선택 사항이다(없으면 각각 스킬 보정 없이, 코드 기본 상수로 진행한다).
         /// randomSeed를 지정하면 결과 재현이 가능하다.
         /// </summary>
-        public MatchEngine(SkillDB skillDB = null, EngineConfig config = null, int? randomSeed = null)
+        public MatchEngine(List<Player> homeRoster, List<Player> awayRoster,
+            SkillDB skillDB = null, EngineConfig config = null, int? randomSeed = null)
         {
+            this.homeRoster = new List<Player>(homeRoster ?? new List<Player>());
+            this.awayRoster = new List<Player>(awayRoster ?? new List<Player>());
             this.skillDB = skillDB;
             this.config = config;
             random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
@@ -214,10 +243,10 @@ namespace KBOManager.Engine
 
         /// <summary>
         /// 스텝 단위 진행(PlayNextAtBat)을 위해 경기를 준비한다. PlayFullMatch()도 내부적으로 이를 사용한다.
+        /// 로스터는 생성자에서 이미 주입받았으므로 여기서는 팀 이름/포스트시즌 여부만 받는다.
         /// isPostSeason은 "가을사나이" 등 포스트시즌 조건부 스킬 판정에 쓰인다.
         /// </summary>
-        public void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
-            string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
+        public void BeginMatch(string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
         {
             homeState = BuildTeamState(homeRoster, homeTeamName);
             awayState = BuildTeamState(awayRoster, awayTeamName);
@@ -257,6 +286,9 @@ namespace KBOManager.Engine
             if (newBatter?.Template == null || newBatter.Template.IsPitcher) return false;
             if (subbedOutList.Contains(newBatter)) return false; // 이미 교체되어 나간 선수는 재출전 불가
 
+            var battingRoster = isTopHalf ? awayRoster : homeRoster;
+            if (!battingRoster.Contains(newBatter)) return false; // 이 팀 28인 로스터 소속이 아니면 거부(엔진 레벨 소속 검증)
+
             var battingTeam = isTopHalf ? awayState : homeState;
             if (battingTeam.BattingOrder.Count == 0) return false;
             if (battingTeam.BattingOrder.Contains(newBatter)) return false; // 이미 라인업에 있는 선수 중복 방지
@@ -282,6 +314,9 @@ namespace KBOManager.Engine
             if (newPitcher?.Template == null || !newPitcher.Template.IsPitcher) return false;
             if (subbedOutList.Contains(newPitcher)) return false; // 이미 교체되어 나간 투수는 재등판 불가
             if (currentHalfInningPitcher == newPitcher) return false; // 동일 투수로의 "교체"는 무의미
+
+            var pitchingRoster = isTopHalf ? homeRoster : awayRoster;
+            if (!pitchingRoster.Contains(newPitcher)) return false; // 이 팀 28인 로스터 소속이 아니면 거부(엔진 레벨 소속 검증)
 
             var pitchingTeam = isTopHalf ? homeState : awayState;
 
@@ -313,13 +348,19 @@ namespace KBOManager.Engine
             }
 
             bool wasTopHalf = isTopHalf; // AdvanceAfterHalfInning()이 isTopHalf를 바꾸기 전에 이 타석 시점 값을 보존
+            var pitcherForThisAtBat = currentHalfInningPitcher; // AdvanceAfterHalfInning()이 다음 하프이닝 투수로 바꾸기 전에 보존
 
             var batter = GetNextBatter(battingTeam);
             currentAtBatState.ResetCount();
             RollPitchCount(currentAtBatState);
 
-            var result = SimulateAtBat(batter, currentHalfInningPitcher, currentAtBatState);
+            var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
             int runs = ResolveAtBatEffect(result, currentAtBatState);
+
+            // AdvanceAfterHalfInning()이 아래에서 currentAtBatState를 다음 하프이닝용 새 객체로 교체할 수 있으므로,
+            // "이 타석 시점"의 상태를 독립 스냅샷으로 미리 떠 둔다 - 로그/AtBatStepResult 모두 이 스냅샷을 쓴다.
+            var stateSnapshot = currentAtBatState.Clone();
+            string logMessage = MatchLogger.BuildLog(stateSnapshot.Inning, wasTopHalf, batter, result, runs);
 
             runsThisHalfInning += runs;
             if (isTopHalf) { Result.AwayTotalScore += runs; awayState.RunsScored += runs; }
@@ -344,15 +385,16 @@ namespace KBOManager.Engine
             return new AtBatStepResult
             {
                 Batter = batter,
-                Pitcher = currentHalfInningPitcher,
+                Pitcher = pitcherForThisAtBat,
                 Result = result,
                 RunsScoredThisPlay = runs,
                 HalfInningEnded = halfInningEnded,
                 GameEnded = IsGameOver,
-                State = currentAtBatState,
+                State = stateSnapshot,
                 HomeScore = Result.HomeTotalScore,
                 AwayScore = Result.AwayTotalScore,
                 IsTopHalf = wasTopHalf,
+                LogMessage = logMessage,
             };
         }
 
@@ -407,13 +449,13 @@ namespace KBOManager.Engine
         }
 
         /// <summary>
-        /// 양 팀의 28인 로스터로 1회부터 9회까지(동점 시 연장 최대 12회) 경기를 즉시 시뮬레이션한다.
-        /// 내부적으로 BeginMatch() + PlayNextAtBat() 반복 호출과 완전히 동일한 규칙을 사용한다("빠른 진행" 모드용).
+        /// 생성자에서 주입받은 양 팀의 28인 로스터로 1회부터 9회까지(동점 시 연장 최대 12회) 경기를
+        /// 즉시 시뮬레이션한다. 내부적으로 BeginMatch() + PlayNextAtBat() 반복 호출과 완전히 동일한
+        /// 규칙을 사용한다("빠른 진행" 모드용).
         /// </summary>
-        public MatchResult PlayFullMatch(List<Player> homeRoster, List<Player> awayRoster,
-            string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
+        public MatchResult PlayFullMatch(string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
         {
-            BeginMatch(homeRoster, awayRoster, homeTeamName, awayTeamName, isPostSeason);
+            BeginMatch(homeTeamName, awayTeamName, isPostSeason);
 
             while (!IsGameOver)
             {
