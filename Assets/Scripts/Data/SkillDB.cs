@@ -88,6 +88,20 @@ namespace KBOManager.Data
             return template == null ? null : GetRandomSkill(ResolveCategory(template));
         }
 
+        /// <summary>
+        /// 스킬 이름으로 티어를 역조회한다. (MatchEngine이 보유 스킬의 OVR 보정치를 계산할 때 사용)
+        /// 3개 풀을 모두 검색하므로, 동일 이름이 여러 풀에 존재하면 검색 순서(타자→선발→불펜)상 먼저 걸리는 항목을 반환한다.
+        /// </summary>
+        public SkillTier? FindTier(string skillName)
+        {
+            if (string.IsNullOrEmpty(skillName)) return null;
+
+            var match = batterSkills.Concat(startingPitcherSkills).Concat(bullpenPitcherSkills)
+                .FirstOrDefault(s => s.SkillName == skillName);
+
+            return match != null ? match.Tier : (SkillTier?)null;
+        }
+
         public static SkillCategory ResolveCategory(PlayerTemplate template)
         {
             if (!template.IsPitcher) return SkillCategory.Batter;
