@@ -24,12 +24,22 @@ namespace KBOManager.UI
         [SerializeField] private Image[] starIcons;
         [SerializeField] private Color inactiveStarColor = new Color(0.35f, 0.35f, 0.35f, 1f);
 
-        public Player BoundPlayer { get; private set; }
+        [Header("Selection Feedback (재료 선택 UI 등에서 사용)")]
+        [Tooltip("선택 시 카드를 어둡게 덮는 Dim 오버레이. 평소 비활성 상태로 둔다.")]
+        [SerializeField] private GameObject selectedOverlay;
+        [Tooltip("선택 시 표시할 체크마크 아이콘. 평소 비활성 상태로 둔다.")]
+        [SerializeField] private GameObject checkmarkIcon;
 
-        /// <summary>카드에 표시할 선수를 지정한다. player나 Template이 없으면 카드를 비워 표시한다.</summary>
+        public Player BoundPlayer { get; private set; }
+        public bool IsSelected { get; private set; }
+
+        /// <summary>카드에 표시할 선수를 지정한다. player나 Template이 없으면 카드를 비워 표시한다.
+        /// 선택 표시는 항상 false로 초기화되므로, 필요하면 Setup() 이후에 SetSelected()를 다시 호출한다.</summary>
         public void Setup(Player player)
         {
             BoundPlayer = player;
+            SetSelected(false);
+
             if (player?.Template == null)
             {
                 Clear();
@@ -57,6 +67,15 @@ namespace KBOManager.UI
             if (ovrText != null) ovrText.text = "";
             if (frameImage != null) frameImage.color = Color.white;
             SetupStars(0, Color.white);
+            SetSelected(false);
+        }
+
+        /// <summary>재료 선택 UI 등에서 이 카드가 선택됐는지를 시각적으로 표시한다(Dim 오버레이 + 체크마크).</summary>
+        public void SetSelected(bool selected)
+        {
+            IsSelected = selected;
+            if (selectedOverlay != null) selectedOverlay.SetActive(selected);
+            if (checkmarkIcon != null) checkmarkIcon.SetActive(selected);
         }
 
         private void SetupStars(int starLevel, Color activeColor)

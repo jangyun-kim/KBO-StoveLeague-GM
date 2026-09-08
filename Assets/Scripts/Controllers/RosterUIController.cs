@@ -75,8 +75,10 @@ namespace KBOManager.Controllers
         {
             if (cardPrefab == null || container == null) return;
 
-            var card = Instantiate(cardPrefab, container);
-            card.gameObject.SetActive(true);
+            var card = CardPoolManager.Instance != null
+                ? CardPoolManager.Instance.Get(cardPrefab, container)
+                : Instantiate(cardPrefab, container);
+
             card.Setup(player);
             tracking.Add(card);
         }
@@ -85,7 +87,10 @@ namespace KBOManager.Controllers
         {
             foreach (var card in tracking)
             {
-                if (card != null) Destroy(card.gameObject);
+                if (card == null) continue;
+
+                if (CardPoolManager.Instance != null) CardPoolManager.Instance.Release(card);
+                else Destroy(card.gameObject);
             }
             tracking.Clear();
         }
