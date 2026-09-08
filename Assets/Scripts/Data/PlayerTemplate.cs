@@ -27,11 +27,25 @@ namespace KBOManager.Data
         public PitcherRole PitcherRole;        // IsPitcher == true 일 때만 유효
 
         [Header("Base Stats")]
-        public int BaseOverall;    // 1성/명함 기준 기본 오버롤
+        [Tooltip("IsPitcher == false 일 때만 유효")]
+        public BatterStats BatterStats;
+        [Tooltip("IsPitcher == true 일 때만 유효")]
+        public PitcherStats PitcherStats;
         public int Cost;           // 샐러리 캡 코스트. 강화/각성해도 변하지 않는 고정값
 
         [Header("Skill Preset (선택)")]
         public SkillTier PresetSkillTier;
         public string PresetSkillName;
+
+        /// <summary>
+        /// 세부 스탯 평균 기준 1성/명함 기본 OVR. 강화/각성/세트덱 보너스가 없는 순수 원본 수치이며,
+        /// 실제 육성 반영 OVR은 Models.Player.CalculateOVR()을 사용한다.
+        /// </summary>
+        public int GetBaseOverall()
+        {
+            return IsPitcher
+                ? Mathf.RoundToInt((PitcherStats.Stuff + PitcherStats.Velocity + PitcherStats.Movement + PitcherStats.Control) / 4f)
+                : Mathf.RoundToInt((BatterStats.Power + BatterStats.Contact + BatterStats.Discipline) / 3f);
+        }
     }
 }

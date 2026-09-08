@@ -1,5 +1,65 @@
+using System;
+
 namespace KBOManager.Models
 {
+    /// <summary>
+    /// 타자 세부 스탯. 파워(장타력)/정확(컨택)/선구(눈).
+    /// MatchEngine이 타석 결과 확률을 계산할 때 이 3개 스탯을 직접 참조한다.
+    /// </summary>
+    [Serializable]
+    public struct BatterStats
+    {
+        public int Power;      // 파워: 장타(2루타/3루타/홈런) 확률에 기여
+        public int Contact;    // 정확: 삼진 감소, 안타 확률에 기여
+        public int Discipline; // 선구: 볼넷 확률 증가, 삼진 감소에 기여
+
+        public BatterStats(int power, int contact, int discipline)
+        {
+            Power = power;
+            Contact = contact;
+            Discipline = discipline;
+        }
+
+        public static BatterStats operator +(BatterStats a, BatterStats b) =>
+            new BatterStats(a.Power + b.Power, a.Contact + b.Contact, a.Discipline + b.Discipline);
+    }
+
+    /// <summary>
+    /// 투수 세부 스탯. 구위(탈삼진력)/구속(구위와 함께 헛스윙 유도)/변화(범타 유도)/제구(볼넷 억제).
+    /// MatchEngine이 타석 결과 확률을 계산할 때 이 4개 스탯을 직접 참조한다.
+    /// </summary>
+    [Serializable]
+    public struct PitcherStats
+    {
+        public int Stuff;      // 구위: 삼진 확률 증가에 기여
+        public int Velocity;   // 구속: 삼진 확률 증가, 장타 억제에 기여
+        public int Movement;   // 변화: 범타(땅볼/뜬공) 유도, 장타 억제에 기여
+        public int Control;    // 제구: 볼넷 확률 감소에 기여
+
+        public PitcherStats(int stuff, int velocity, int movement, int control)
+        {
+            Stuff = stuff;
+            Velocity = velocity;
+            Movement = movement;
+            Control = control;
+        }
+
+        public static PitcherStats operator +(PitcherStats a, PitcherStats b) =>
+            new PitcherStats(a.Stuff + b.Stuff, a.Velocity + b.Velocity, a.Movement + b.Movement, a.Control + b.Control);
+    }
+
+    /// <summary>
+    /// GDD 5절 리그 진행 단계.
+    /// </summary>
+    public enum LeaguePhase
+    {
+        STOVE_LEAGUE,   // 비시즌 (시즌 시작 전)
+        REGULAR_OPEN,   // 1~72경기: 로스터 자유 편성
+        REGULAR_LOCKED, // 73~144경기: 트레이드 마감, 로스터 스냅샷 고정
+        POST_PREP,      // 정규 종료, 포스트시즌 진출 시 로스터 락 해제
+        POST_SEASON     // 가을야구 (수동 개입)
+    }
+
     /// <summary>
     /// 선수 명함(카드) 등급. GDD v3.1 기준 7단계.
     /// </summary>

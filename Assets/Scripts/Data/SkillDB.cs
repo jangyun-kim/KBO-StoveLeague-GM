@@ -19,12 +19,32 @@ namespace KBOManager.Data
         BullpenPitcher
     }
 
+    /// <summary>
+    /// 스킬이 세부 스탯에 실제로 적용되는 방식. GDD 7절은 스킬마다 서로 다른 발동 조건/수치를 갖는
+    /// 텍스트 설명만 제공하므로, 우선 GDD가 구체 수치를 명시한 2개 유형만 구현하고 나머지 스킬은
+    /// None(효과 없음, 이름/티어만 보유)으로 남겨 둔다. 신규 유형은 이 enum에 추가해 확장한다.
+    /// </summary>
+    public enum SkillEffectType
+    {
+        None,
+        FlatStatBonus,      // 조건 없이 보유자의 세부 스탯 전체에 +Value (예: 배팅머신)
+        UnderdogStatBonus   // 보유자의 OVR이 상대보다 낮을 때만 세부 스탯 전체에 +Value (예: 패기)
+    }
+
+    [Serializable]
+    public class SkillEffect
+    {
+        public SkillEffectType EffectType;
+        public int Value;
+    }
+
     [Serializable]
     public class SkillEntry
     {
         public string SkillName;
         public SkillTier Tier;
         [TextArea] public string Description;
+        public SkillEffect Effect = new SkillEffect();
     }
 
     [Serializable]
@@ -89,16 +109,22 @@ namespace KBOManager.Data
         }
 
         /// <summary>
-        /// 스킬 이름으로 티어를 역조회한다. (MatchEngine이 보유 스킬의 OVR 보정치를 계산할 때 사용)
-        /// 3개 풀을 모두 검색하므로, 동일 이름이 여러 풀에 존재하면 검색 순서(타자→선발→불펜)상 먼저 걸리는 항목을 반환한다.
+        /// 스킬 이름으로 전체 항목(티어+효과)을 역조회한다. (MatchEngine이 보유 스킬 효과를 세부 스탯에
+        /// 적용할 때 사용) 3개 풀을 모두 검색하므로, 동일 이름이 여러 풀에 존재하면 검색 순서
+        /// (타자→선발→불펜)상 먼저 걸리는 항목을 반환한다.
         /// </summary>
-        public SkillTier? FindTier(string skillName)
+        public SkillEntry FindSkill(string skillName)
         {
             if (string.IsNullOrEmpty(skillName)) return null;
 
-            var match = batterSkills.Concat(startingPitcherSkills).Concat(bullpenPitcherSkills)
+            return batterSkills.Concat(startingPitcherSkills).Concat(bullpenPitcherSkills)
                 .FirstOrDefault(s => s.SkillName == skillName);
+        }
 
+        /// <summary>스킬 이름으로 티어만 역조회하는 편의 메서드.</summary>
+        public SkillTier? FindTier(string skillName)
+        {
+            var match = FindSkill(skillName);
             return match != null ? match.Tier : (SkillTier?)null;
         }
 
@@ -171,6 +197,22 @@ namespace KBOManager.Data
                 (SkillTier.D, "위닝샷"), (SkillTier.D, "타선지원"), (SkillTier.D, "클러치피쳐"), (SkillTier.D, "흐름끊기(마무리C)"), (SkillTier.D, "첫단추"),
                 (SkillTier.F, "리그의강자")
             );
+
+            // GDD 7절이 구체 수치를 명시한 2개 스킬만 실제 효과를 연결한다. (나머지는 이름/티어만 보유, 효과 None)
+            // 배팅머신: "파워, 정확, 선구 능력치가 9 증가"
+            SetEffect(batterSkills, "배팅머신", SkillEffectType.FlatStatBonus, 9);
+            // 패기: "상대 타자의 OVR이 더 높은 경우 구위, 구속, 변화, 제구 능력치가 10 증가"
+            // (투수 스킬. 배터 D티어의 동명 "패기"는 GDD에 효과가 명시되지 않아 None으로 남겨 둔다.)
+            SetEffect(startingPitcherSkills, "패기", SkillEffectType.UnderdogStatBonus, 10);
+            SetEffect(bullpenPitcherSkills, "패기", SkillEffectType.UnderdogStatBonus, 10);
+        }
+
+        private static void SetEffect(List<SkillEntry> skills, string skillName, SkillEffectType effectType, int value)
+        {
+            foreach (var skill in skills.Where(s => s.SkillName == skillName))
+            {
+                skill.Effect = new SkillEffect { EffectType = effectType, Value = value };
+            }
         }
 
         private static List<SkillEntry> BuildSkills(params (SkillTier tier, string name)[] entries)

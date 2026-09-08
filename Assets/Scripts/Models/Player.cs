@@ -72,27 +72,58 @@ namespace KBOManager.Models
             _ => MinStarLevel
         };
 
+        // 강화/각성 1레벨당 세부 스탯 각각에 붙는 성장치. TODO: 밸런스 확정 전까지의 임시값.
+        private const int ReinforcePerStatBonus = 1;
+        private const int AwakenPerStatBonus = 1;
+
         /// <summary>
-        /// 강화/각성 보너스가 반영된 현재 OVR을 계산한다.
-        /// 세트덱(구단 통일) 보너스가 활성화된 경우 GameManager.CheckSetDeckBonus() 결과로 얻은
-        /// 배율(setDeckBonusMultiplier)을 곱해 OVR이 크게 상승한다.
-        /// 계수(TODO)는 밸런스 확정 전까지의 임시값이다.
+        /// 강화/각성 성장치가 반영된 타자 세부 스탯. Template이 없거나 투수 카드면 default(0,0,0)를 반환한다.
+        /// 스킬/세트덱 보너스는 매치 컨텍스트(상대방 존재)가 필요해 여기 포함하지 않으며, MatchEngine이 계산 시점에 적용한다.
+        /// </summary>
+        public BatterStats GetEffectiveBatterStats()
+        {
+            if (Template == null || Template.IsPitcher) return default;
+
+            int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
+            var baseStats = Template.BatterStats;
+            return new BatterStats(baseStats.Power + growth, baseStats.Contact + growth, baseStats.Discipline + growth);
+        }
+
+        /// <summary>
+        /// 강화/각성 성장치가 반영된 투수 세부 스탯. Template이 없거나 타자 카드면 default(0,0,0,0)를 반환한다.
+        /// 스킬/세트덱 보너스는 매치 컨텍스트(상대방 존재)가 필요해 여기 포함하지 않으며, MatchEngine이 계산 시점에 적용한다.
+        /// </summary>
+        public PitcherStats GetEffectivePitcherStats()
+        {
+            if (Template == null || !Template.IsPitcher) return default;
+
+            int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
+            var baseStats = Template.PitcherStats;
+            return new PitcherStats(baseStats.Stuff + growth, baseStats.Velocity + growth, baseStats.Movement + growth, baseStats.Control + growth);
+        }
+
+        /// <summary>
+        /// 강화/각성이 반영된 세부 스탯의 평균에 세트덱(구단 통일) 보너스 배율을 적용해 최종 OVR을 산출한다.
+        /// GDD 원문은 "OVR이 크게 뻥튀기"라 표현하므로, 세트덱 보너스는 가산이 아닌 배율(setDeckBonusMultiplier)로 구현했다.
+        /// 배율은 GameManager.CheckSetDeckBonus() 결과값을 그대로 전달받아 사용한다.
         /// </summary>
         public int CalculateOVR(bool isSetDeckBonusActive, float setDeckBonusMultiplier = 1.0f)
         {
             if (Template == null) return 0;
 
-            int reinforceBonus = ReinforceLevel * 2;              // TODO: 강화 1단당 OVR 증가폭 밸런스 확정 필요
-            int awakenBonus = CanAwaken ? AwakenLevel * 3 : 0;    // TODO: 각성 1단당 OVR 증가폭 밸런스 확정 필요
-
-            int totalOverall = Template.BaseOverall + reinforceBonus + awakenBonus;
+            float average = Template.IsPitcher
+                ? AverageOf(GetEffectivePitcherStats())
+                : AverageOf(GetEffectiveBatterStats());
 
             if (isSetDeckBonusActive && setDeckBonusMultiplier > 1f)
             {
-                totalOverall = Mathf.RoundToInt(totalOverall * setDeckBonusMultiplier);
+                average *= setDeckBonusMultiplier;
             }
 
-            return totalOverall;
+            return Mathf.RoundToInt(average);
         }
+
+        private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
+        private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;
     }
 }
