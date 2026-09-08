@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using KBOManager.Data;
 using KBOManager.Models;
 using UnityEngine;
 
@@ -25,12 +24,15 @@ namespace KBOManager.Managers
         public List<string> AcquiredSkillIds = new List<string>();
     }
 
+    /// <summary>
+    /// Item도 Player와 동일한 경량화 원칙을 따른다: ItemTemplate 전체를 직렬화하지 않고 TemplateId만
+    /// 저장한다 - 로드 시 ItemDatabase에서 TemplateId로 원본을 다시 찾아 붙인다.
+    /// </summary>
     [Serializable]
     public class ItemSaveData
     {
-        public string ItemId;
-        public MaterialCardType MaterialType;
-        public string DisplayName;
+        public string InstanceId;
+        public string TemplateId;
     }
 
     [Serializable]
@@ -83,6 +85,8 @@ namespace KBOManager.Managers
         [Header("References")]
         [Tooltip("로드 시 저장된 TemplateId로 원본 PlayerTemplate을 복구하기 위해 필요하다.")]
         [SerializeField] private PlayerDatabase playerDatabase;
+        [Tooltip("로드 시 저장된 TemplateId로 원본 ItemTemplate을 복구하기 위해 필요하다.")]
+        [SerializeField] private ItemDatabase itemDatabase;
 
         private string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -186,9 +190,8 @@ namespace KBOManager.Managers
 
         private static ItemSaveData ToSaveData(Item item) => new ItemSaveData
         {
-            ItemId = item.ItemId,
-            MaterialType = item.MaterialType,
-            DisplayName = item.DisplayName,
+            InstanceId = item.InstanceId,
+            TemplateId = item.Template != null ? item.Template.TemplateId : null,
         };
 
         // ----- 역직렬화 -----
@@ -209,7 +212,10 @@ namespace KBOManager.Managers
                 var restoredRoster = restoredPlayers.Where(p => rosterSet.Contains(p.InstanceId)).ToList();
                 gm.OverwriteRoster(restoredRoster);
 
-                var restoredItems = (data.ItemInventory ?? new List<ItemSaveData>()).Select(RestoreItem).ToList();
+                var restoredItems = (data.ItemInventory ?? new List<ItemSaveData>())
+                    .Select(RestoreItem)
+                    .Where(i => i != null)
+                    .ToList();
                 gm.ReplaceItemInventory(restoredItems);
 
                 gm.FavoriteTeam = data.FavoriteTeam;
@@ -250,6 +256,19 @@ namespace KBOManager.Managers
             };
         }
 
-        private static Item RestoreItem(ItemSaveData saved) => new Item(saved.ItemId, saved.MaterialType, saved.DisplayName);
+        private Item RestoreItem(ItemSaveData saved)
+        {
+            if (itemDatabase == null || string.IsNullOrEmpty(saved.TemplateId)) return null;
+
+            var template = itemDatabase.GetTemplateById(saved.TemplateId);
+            if (template == null)
+            {
+                Debug.LogWarning($"[SaveManager] TemplateId '{saved.TemplateId}'를 ItemDatabase에서 찾을 수 없어 " +
+                                  "재료 카드 하나를 복구하지 못했습니다. (해당 .asset이 삭제/변경되었을 수 있습니다)");
+                return null;
+            }
+
+            return new Item(saved.InstanceId, template);
+        }
     }
 }

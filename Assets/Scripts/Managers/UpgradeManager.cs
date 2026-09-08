@@ -41,7 +41,9 @@ namespace KBOManager.Managers
             if (enhanceCards == null || enhanceCards.Count == 0 || enhanceCards.Count > MaxEnhanceMaterials) return false;
 
             int fromLevel = target.ReinforceLevel;
-            float totalRate = enhanceCards.Sum(item => probabilityDB.GetSuccessRate(fromLevel, item.MaterialType));
+            float totalRate = enhanceCards
+                .Where(item => item?.Template != null)
+                .Sum(item => probabilityDB.GetSuccessRate(fromLevel, item.Template.MaterialType));
             totalRate = Mathf.Clamp(totalRate, 0f, 100f);
 
             bool success = Random.Range(0f, 100f) < totalRate;

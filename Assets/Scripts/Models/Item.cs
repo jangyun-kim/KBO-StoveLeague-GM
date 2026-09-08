@@ -4,22 +4,23 @@ using KBOManager.Data;
 namespace KBOManager.Models
 {
     /// <summary>
-    /// 강화(재료) 카드 1종을 나타내는 소모성 아이템. 선수 카드(Player)와 달리 고유 성장 상태를 갖지 않는다.
+    /// 유저가 실제로 보유한 강화 재료 카드 1장. PlayerTemplate/Player와 동일한 패턴으로, 원본(불변)
+    /// 데이터는 ItemTemplate ScriptableObject가 갖고 있고 이 클래스는 그 참조 + 인스턴스 ID만 들고 있는
+    /// 순수 데이터 클래스다. 강화 재료 카드 자체는 성장 상태가 없는 소모품이라 InstanceId/Template 외의
+    /// 추가 필드가 필요 없다.
     /// </summary>
     [Serializable]
     public class Item
     {
-        public string ItemId;
-        public MaterialCardType MaterialType;
-        public string DisplayName;
+        public string InstanceId;
+        public ItemTemplate Template;
 
         public Item() { }
 
-        public Item(string itemId, MaterialCardType materialType, string displayName)
+        public Item(string instanceId, ItemTemplate template)
         {
-            ItemId = itemId;
-            MaterialType = materialType;
-            DisplayName = displayName;
+            InstanceId = instanceId;
+            Template = template;
         }
     }
 }

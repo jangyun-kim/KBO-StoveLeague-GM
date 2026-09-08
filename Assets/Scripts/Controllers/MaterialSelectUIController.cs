@@ -203,7 +203,9 @@ namespace KBOManager.Controllers
             var label = button.GetComponentInChildren<Text>();
             if (label != null)
             {
-                label.text = string.IsNullOrEmpty(item.DisplayName) ? item.MaterialType.ToString() : item.DisplayName;
+                label.text = item.Template != null && !string.IsNullOrEmpty(item.Template.DisplayName)
+                    ? item.Template.DisplayName
+                    : item.Template?.MaterialType.ToString() ?? "알 수 없는 재료";
             }
 
             var image = button.GetComponent<Image>();

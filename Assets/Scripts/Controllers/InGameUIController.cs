@@ -37,7 +37,22 @@ namespace KBOManager.Controllers
         [Tooltip("새 로그가 추가될 때 스크롤 뷰를 맨 아래로 내릴지 여부.")]
         [SerializeField] private ScrollRect logScrollRect;
 
+        [Header("Match End / Return to Lobby (뼈대 수준 패널 전환)")]
+        [Tooltip("스코어보드/중계창을 포함한 인게임 화면 전체 루트.")]
+        [SerializeField] private GameObject inGameScreenRoot;
+        [Tooltip("경기 종료 시 노출되는 결과 요약 패널.")]
+        [SerializeField] private GameObject matchEndPanelRoot;
+        [SerializeField] private Text matchResultSummaryText;
+        [SerializeField] private Button returnToLobbyButton;
+        [SerializeField] private GameObject lobbyScreenRoot;
+        [SerializeField] private LeagueDashboardUIController leagueDashboardUIController;
+
         private readonly List<Text> spawnedLogEntries = new List<Text>();
+
+        private void Awake()
+        {
+            if (returnToLobbyButton != null) returnToLobbyButton.onClick.AddListener(ReturnToLobby);
+        }
 
         private void OnEnable()
         {
@@ -45,6 +60,7 @@ namespace KBOManager.Controllers
             playBallController.OnAtBatEnd += HandleAtBatEnd;
             playBallController.OnInningEnd += HandleInningEnd;
             playBallController.OnSubstitutionLog += AddLog;
+            playBallController.OnMatchCompleted += HandleMatchCompleted;
         }
 
         private void OnDisable()
@@ -53,6 +69,7 @@ namespace KBOManager.Controllers
             playBallController.OnAtBatEnd -= HandleAtBatEnd;
             playBallController.OnInningEnd -= HandleInningEnd;
             playBallController.OnSubstitutionLog -= AddLog;
+            playBallController.OnMatchCompleted -= HandleMatchCompleted;
         }
 
         private void HandleAtBatEnd(AtBatStepResult step)
@@ -143,6 +160,42 @@ namespace KBOManager.Controllers
                 if (entry != null) Destroy(entry.gameObject);
             }
             spawnedLogEntries.Clear();
+        }
+
+        /// <summary>
+        /// PlayBallController.OnMatchCompleted 핸들러. 경기 결과 요약을 채우고 결과 패널을 연다.
+        /// 이 시점에는 이미 LeagueManager.CompleteNextFixture()로 순위표/다음 경기 포인터가 갱신된 뒤다
+        /// (PlayBallController.FinishMatch()가 OnMatchCompleted를 발생시키기 전에 먼저 호출한다).
+        /// </summary>
+        private void HandleMatchCompleted(MatchResult result)
+        {
+            if (matchEndPanelRoot != null) matchEndPanelRoot.SetActive(true);
+
+            if (matchResultSummaryText != null && result != null)
+            {
+                string winnerText = result.WinnerTeamName == null ? "무승부" : $"{result.WinnerTeamName} 승";
+                matchResultSummaryText.text =
+                    $"최종 스코어\n{result.AwayTeamName} {result.AwayTotalScore} : {result.HomeTotalScore} {result.HomeTeamName}\n{winnerText}";
+            }
+        }
+
+        /// <summary>
+        /// 경기 결과 패널의 [로비로 돌아가기] 버튼 OnClick. 인게임 화면을 닫고 리그 대시보드를 다시
+        /// 켠 뒤 RefreshDashboard()로 최신 순위/다음 매치업을 반영한다(뼈대 수준 패널 전환).
+        /// </summary>
+        public void ReturnToLobby()
+        {
+            if (matchEndPanelRoot != null) matchEndPanelRoot.SetActive(false);
+            if (inGameScreenRoot != null) inGameScreenRoot.SetActive(false);
+
+            if (lobbyScreenRoot != null) lobbyScreenRoot.SetActive(true);
+            if (leagueDashboardUIController != null)
+            {
+                leagueDashboardUIController.gameObject.SetActive(true);
+                leagueDashboardUIController.RefreshDashboard();
+            }
+
+            ClearAll();
         }
     }
 }
