@@ -110,6 +110,27 @@ namespace KBOManager.Managers
         }
 
         /// <summary>
+        /// LeagueCalendar.Instance는 둘 다 DontDestroyOnLoad 싱글톤이라 Awake() 호출 순서가 보장되지
+        /// 않는다 - Start()에서 구독해야, "모든 오브젝트의 Awake()가 끝난 뒤에야 Start()가 호출된다"는
+        /// 유니티의 보장에 기대어 LeagueCalendar.Instance가 항상 준비된 상태로 구독을 걸 수 있다.
+        /// </summary>
+        private void Start()
+        {
+            if (LeagueCalendar.Instance != null)
+            {
+                LeagueCalendar.Instance.OnDayAdvanced += HandleDayAdvanced;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (LeagueCalendar.Instance != null)
+            {
+                LeagueCalendar.Instance.OnDayAdvanced -= HandleDayAdvanced;
+            }
+        }
+
+        /// <summary>
         /// 유저 팀 + KBO 나머지 9개 구단으로 리그를 초기화하고 유저의 144경기 스케줄을 생성한다.
         /// 유저 팀의 로스터는 GameManager.Roster를 그대로 참조한다(스냅샷 아님 - 매 경기 시뮬레이션 시점의 현재 로스터를 사용).
         /// </summary>
@@ -130,6 +151,7 @@ namespace KBOManager.Managers
 
             BuildUserSchedule();
             GenerateAiRosters();
+            LeagueCalendar.Instance?.InitializeSeason(DateTime.Now.Year);
         }
 
         /// <summary>
@@ -380,7 +402,11 @@ namespace KBOManager.Managers
         {
             nextFixtureIndex++;
             RecordResult(standings[fixture.HomeTeam], standings[fixture.AwayTeam], fixture.Result);
-            RecoverPitcherStamina();
+
+            // 체력 회복은 더 이상 "경기 1건이 끝났다"는 사실에 직접 반응하지 않는다 - LeagueCalendar가
+            // 날짜를 넘기고, 그 결과로 발생하는 OnDayAdvanced 이벤트(HandleDayAdvanced)가 회복/컨디션
+            // 갱신을 담당한다. 여기서는 오직 "경기 1건 = 하루 경과"를 캘린더에 통지만 한다.
+            LeagueCalendar.Instance?.AdvanceToNextGameDay();
 
             if (fixture.GameNumber == RegularOpenGames && CurrentPhase == LeaguePhase.REGULAR_OPEN)
             {
@@ -393,34 +419,42 @@ namespace KBOManager.Managers
             }
         }
 
-        // 경기(하루) 하나가 끝날 때마다 회복되는 체력. GDD 미명시 - StaminaCostPerBatterFaced(4)로
-        // 소모된 체력을 다음 경기까지 대략 회복하도록 역산한 임시값이다.
-        private const int StarterStaminaRecoveryPerFixture = 25;
-        private const int BullpenStaminaRecoveryPerFixture = 15;
+        // 하루가 지날 때마다 회복되는 체력(평일 기준). GDD 미명시 - StaminaCostPerBatterFaced(4)로
+        // 소모된 체력을 다음 경기까지 대략 회복하도록 역산한 임시값이다. BatchSimulator가 동일 상수를
+        // 참조해 밸런스를 검증하므로 public으로 노출한다.
+        public const int StarterStaminaRecoveryPerDay = 25;
+        public const int BullpenStaminaRecoveryPerDay = 15;
+        // 월요일(휴식일)을 건너뛴 날에는 평소 회복량 위에 이만큼을 추가로 더 회복한다 - "대량 회복".
+        public const int RestDayRecoveryBonus = 50;
+
+        // 하루가 지날 때 선수 1명의 컨디션이 실제로(오르든 내리든) 변할 확률. GDD 미명시 - 매일 절반
+        // 정도는 변화가 있어야 "컨디션을 관리하는 재미"가 체감된다고 보고 잡은 임시값.
+        private const float ConditionChangeChance = 0.5f;
 
         /// <summary>
-        /// 경기(=리그 일정상 하루)가 끝날 때마다 리그 전체 10개 구단 로스터의 모든 투수를 쉬게 한다 -
-        /// 선발은 +25, 불펜(선발 외 전 롤)은 +15. 이 게임에는 별도의 "날짜" 개념이 없어 "경기 1건 완료"를
-        /// 곧 "하루가 지났다"로 취급한다 - CompleteNextFixture()/PlayNextMatch() 양쪽 모두 결국 이
-        /// FinalizeFixtureBookkeeping()을 거치므로, 어느 진행 방식이든 회복이 빠짐없이 적용된다.
-        /// 유저 팀은 standings[userTeam].Roster가 아니라 GameManager.Instance.Roster가 실제 로스터이므로
-        /// (GenerateAiRosters가 유저 팀은 건너뛰어 standings 쪽은 항상 비어 있다) 별도로 처리한다.
+        /// LeagueCalendar.OnDayAdvanced 핸들러. 날짜가 넘어갈 때마다(경기 1건 완료 = 보통 하루,
+        /// 월요일을 건너뛴 경우 passedRestDay=true) 리그 전체 10개 구단 로스터의 체력 회복과 컨디션
+        /// 갱신을 함께 처리한다. 유저 팀은 standings[userTeam].Roster가 아니라
+        /// GameManager.Instance.Roster가 실제 로스터이므로(GenerateAiRosters가 유저 팀은 건너뛰어
+        /// standings 쪽은 항상 비어 있다) 별도로 처리한다.
         /// </summary>
-        private void RecoverPitcherStamina()
+        private void HandleDayAdvanced(DateTime newDate, bool passedRestDay)
         {
             if (GameManager.Instance != null)
             {
-                RecoverRosterStamina(GameManager.Instance.Roster);
+                RecoverRosterStamina(GameManager.Instance.Roster, passedRestDay);
+                UpdateRosterConditions(GameManager.Instance.Roster);
             }
 
             foreach (var info in standings.Values)
             {
                 if (info.IsUserTeam) continue; // 유저 로스터는 위에서 이미 처리함
-                RecoverRosterStamina(info.Roster);
+                RecoverRosterStamina(info.Roster, passedRestDay);
+                UpdateRosterConditions(info.Roster);
             }
         }
 
-        private static void RecoverRosterStamina(IReadOnlyList<Player> roster)
+        private static void RecoverRosterStamina(IReadOnlyList<Player> roster, bool restDayBonus)
         {
             if (roster == null) return;
 
@@ -429,10 +463,28 @@ namespace KBOManager.Managers
                 if (player?.Template == null || !player.Template.IsPitcher) continue;
 
                 int recoveryAmount = player.Template.PitcherRole == PitcherRole.StartingPitcher
-                    ? StarterStaminaRecoveryPerFixture
-                    : BullpenStaminaRecoveryPerFixture;
+                    ? StarterStaminaRecoveryPerDay
+                    : BullpenStaminaRecoveryPerDay;
+                if (restDayBonus) recoveryAmount += RestDayRecoveryBonus;
 
                 player.RecoverStamina(recoveryAmount);
+            }
+        }
+
+        /// <summary>
+        /// 로스터의 모든 선수(타자+투수) 컨디션을 확률적으로 갱신한다. Player.ShiftCondition()이 이미
+        /// 인접 단계로만 이동시키므로, 여기서는 "이번에 변화가 있는지"와 "오를지 내릴지"만 결정한다.
+        /// </summary>
+        private static void UpdateRosterConditions(IReadOnlyList<Player> roster)
+        {
+            if (roster == null) return;
+
+            foreach (var player in roster)
+            {
+                if (player == null) continue;
+                if (UnityEngine.Random.value > ConditionChangeChance) continue; // 이번엔 변화 없음
+
+                player.ShiftCondition(UnityEngine.Random.value < 0.5f);
             }
         }
 

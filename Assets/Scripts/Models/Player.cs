@@ -23,6 +23,11 @@ namespace KBOManager.Models
         public const float LowStaminaThresholdPercent = 0.3f;  // 30% 미만이면 페널티 발동
         public const float LowStaminaOvrPenaltyPercent = 0.15f; // 페널티 크기: 최종 스탯 -15%
 
+        // ----- 일일 컨디션(Condition) -----
+        // 5단계 중 가장 좋은/나쁜 쪽 보너스 크기. 가운데(Normal)는 0%, 그 사이 두 단계(BelowAverage/Good)는
+        // 이 값의 절반씩 선형 보간한다 - 그래서 5단계가 -5% / -2.5% / 0% / +2.5% / +5%로 대칭을 이룬다.
+        public const float ConditionMaxBonusPercent = 0.05f;
+
         public string InstanceId;      // 유저 보유 카드 고유 ID (GUID)
         public PlayerTemplate Template; // 원본 데이터 참조 (이름/구단/기본OVR/코스트/포지션/등급)
 
@@ -38,6 +43,10 @@ namespace KBOManager.Models
         public int MaxStamina;
         public int CurrentStamina;
 
+        // 타자/투수 카드 모두에 적용된다(체력과 달리 컨디션은 투수 전용 개념이 아니다).
+        // LeagueCalendar의 날짜가 바뀔 때마다 LeagueManager가 ShiftCondition()으로 갱신한다.
+        public PlayerCondition CurrentCondition = PlayerCondition.Normal;
+
         public Player() { }
 
         public Player(string instanceId, PlayerTemplate template)
@@ -50,6 +59,18 @@ namespace KBOManager.Models
             StarLevel = template != null ? DefaultStarLevelFor(template.Grade) : MinStarLevel;
             MaxStamina = template != null && template.IsPitcher ? DefaultMaxStaminaFor(template.PitcherRole) : 0;
             CurrentStamina = MaxStamina; // 새로 발급된 카드는 항상 완전 회복 상태로 시작한다.
+            CurrentCondition = PlayerCondition.Normal; // 새로 발급된 카드는 항상 '보통'으로 시작한다.
+        }
+
+        /// <summary>
+        /// CurrentCondition을 인접한 한 단계만 위/아래로 옮긴다(예: Good에서 바로 Poor로 떨어지는 등의
+        /// 급변이 없도록 보장). 이미 최상/최악 단계에서 같은 방향으로 더 이동하려 하면 그 자리에 머문다.
+        /// </summary>
+        public void ShiftCondition(bool up)
+        {
+            int maxIndex = Enum.GetValues(typeof(PlayerCondition)).Length - 1;
+            int shifted = Mathf.Clamp((int)CurrentCondition + (up ? 1 : -1), 0, maxIndex);
+            CurrentCondition = (PlayerCondition)shifted;
         }
 
         /// <summary>투수 롤에 따른 기본 최대 체력. 선발은 오래 던지므로 넉넉하게, 불펜은 짧고 굵게 쓰므로 낮게 잡았다.</summary>
@@ -139,9 +160,15 @@ namespace KBOManager.Models
         }
 
         /// <summary>
-        /// 강화/각성이 반영된 세부 스탯의 평균에 세트덱(구단 통일) 보너스 배율을 적용해 최종 OVR을 산출한다.
-        /// GDD 원문은 "OVR이 크게 뻥튀기"라 표현하므로, 세트덱 보너스는 가산이 아닌 배율(setDeckBonusMultiplier)로 구현했다.
-        /// 배율은 GameManager.CheckSetDeckBonus() 결과값을 그대로 전달받아 사용한다.
+        /// 강화/각성이 반영된 세부 스탯의 평균에 세트덱(구단 통일) 보너스 배율과 일일 컨디션 배율을
+        /// 적용해 최종 OVR을 산출한다. GDD 원문은 "OVR이 크게 뻥튀기"라 표현하므로, 세트덱 보너스는
+        /// 가산이 아닌 배율(setDeckBonusMultiplier)로 구현했다. 배율은 GameManager.CheckSetDeckBonus()
+        /// 결과값을 그대로 전달받아 사용한다.
+        ///
+        /// 컨디션 배율은 이 메서드(카드 목록 정렬, 라인업/로테이션 결정, "패기" 등 OVR 비교 스킬 조건
+        /// 판정 등 OVR을 참조하는 모든 곳)에는 적용되지만, MatchEngine이 실제 타석 결과를 굴릴 때 쓰는
+        /// 세부 스탯(BatterStats/PitcherStats) 자체에는 반영되지 않는다 - 즉 "컨디션이 좋아 보이는 카드가
+        /// 라인업에 더 잘 뽑힌다"까지만 보장하며, 타석 하나하나의 확률 계산에 직접 끼어들지는 않는다.
         /// </summary>
         public int CalculateOVR(bool isSetDeckBonusActive, float setDeckBonusMultiplier = 1.0f)
         {
@@ -156,7 +183,19 @@ namespace KBOManager.Models
                 average *= setDeckBonusMultiplier;
             }
 
+            average *= ConditionMultiplier(CurrentCondition);
+
             return Mathf.RoundToInt(average);
+        }
+
+        /// <summary>5단계를 -5%~+5% 사이에서 대칭 선형 보간한다: Poor -5%, BelowAverage -2.5%,
+        /// Normal 0%, Good +2.5%, Excellent +5%.</summary>
+        private static float ConditionMultiplier(PlayerCondition condition)
+        {
+            int maxIndex = Enum.GetValues(typeof(PlayerCondition)).Length - 1; // Excellent의 인덱스 (4)
+            int midIndex = maxIndex / 2; // Normal의 인덱스 (2)
+            float step = (int)condition - midIndex; // -2 ~ +2
+            return 1f + ConditionMaxBonusPercent * (step / midIndex);
         }
 
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;

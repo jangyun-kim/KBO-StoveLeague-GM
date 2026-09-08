@@ -102,6 +102,19 @@ namespace KBOManager.Models
     }
 
     /// <summary>
+    /// 하루 단위로 오르내리는 선수 컨디션(5단계). enum 선언 순서가 곧 등급 순서라 Player.ShiftCondition()이
+    /// (int)current ± 1로 인접 단계만 이동시킬 수 있다 - 순서를 바꾸면 그 로직도 함께 깨진다.
+    /// </summary>
+    public enum PlayerCondition
+    {
+        Poor,        // 열악
+        BelowAverage,// 저조
+        Normal,      // 보통
+        Good,        // 호조
+        Excellent    // 최상
+    }
+
+    /// <summary>
     /// 타자 선발 포지션 (9자리).
     /// </summary>
     public enum BatterPosition
