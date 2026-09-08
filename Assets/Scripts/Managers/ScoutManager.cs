@@ -92,6 +92,36 @@ namespace KBOManager.Managers
         }
 
         /// <summary>
+        /// 프리미엄 팩(10연뽑): 10장 중 정확히 1장(마지막 슬롯)만 RollGuaranteed(minimumGuaranteedGrade)로
+        /// "확정" 처리하고, 나머지 9장은 완전히 평범한 RollOnce()로 뽑는다. 재화 소모는 이 메서드의
+        /// 책임이 아니다(호출자가 먼저 확인/차감).
+        ///
+        /// 확률 풀(gradeDropRates)에 전혀 간섭하지 않는 이유: RollGuaranteed() 내부의
+        /// RollGradeAtLeast()가 하는 재정규화는 그 메서드 호출 스코프 안의 지역 변수(eligible/total)
+        /// 에서만 일어날 뿐, gradeDropRates 필드 자체는 어떤 슬롯을 뽑을 때도 절대 대입/수정되지
+        /// 않는다. 즉 이 10연뽑의 나머지 9장은 평소 Roll1()을 9번 부른 것과 확률적으로 완전히
+        /// 동일하다 - "확정 슬롯이 있다"는 사실이 다른 9장의 등급 분포에 아무 영향도 주지 않는다.
+        /// 나머지 9장 중에서도 자연 확률로 minimumGuaranteedGrade 이상이 추가로 나올 수 있다(중복
+        /// 허용) - 이를 배제/필터링하지 않는 것이 의도된 동작이다(확정 슬롯을 별도로 빼내 다시
+        /// 채우려 들면 그 자체가 확률 풀에 개입하는 것이 되어 버린다).
+        /// </summary>
+        public List<Player> RollPremiumTen(Grade minimumGuaranteedGrade)
+        {
+            var results = new List<Player>(10);
+
+            for (int i = 0; i < 9; i++)
+            {
+                var player = RollOnce();
+                if (player != null) results.Add(player);
+            }
+
+            var guaranteed = RollGuaranteed(minimumGuaranteedGrade);
+            if (guaranteed != null) results.Add(guaranteed);
+
+            return results;
+        }
+
+        /// <summary>
         /// 등급이 minimumGrade 이상으로 "확정"된 카드 1장을 발급한다. 재화 소모는 이 메서드의 책임이
         /// 아니다 - 호출자(ShopUIController 등)가 자신의 재화(프리미엄 재화 등)를 먼저 확인/차감한
         /// 뒤에만 호출해야 한다. gradeDropRates 중 minimumGrade 이상인 항목들만 남겨 그 상대 확률로
