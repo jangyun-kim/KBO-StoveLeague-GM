@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KBOManager.Controllers;
 using KBOManager.Managers;
 using KBOManager.Models;
+using KBOManager.Tools;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -66,25 +67,27 @@ namespace KBOManager.EditorTools
         {
             var scene = EditorSceneManager.GetActiveScene();
 
-            var (uiManager, onboardingManager) = SetUpGameManagers(scene);
+            var (uiManager, onboardingManager, leagueManager) = SetUpGameManagers(scene);
             var canvas = SetUpCanvas(scene);
             EnsureEventSystem(scene);
             var panelRoots = SetUpPanels(canvas.transform);
             BindUIManagerScreens(uiManager, panelRoots);
             SetUpOnboardingTeamButtons(panelRoots[ScreenType.Onboarding], onboardingManager);
+            SetUpLobbyStandings(panelRoots[ScreenType.Lobby], leagueManager);
+            SetUpDebugPanel(canvas.transform, panelRoots);
 
             EditorSceneManager.MarkSceneDirty(scene);
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"[SceneInitializer] '{scene.name}' 씬 초기화 완료 - GameManagers 7종 컴포넌트, " +
+            Debug.Log($"[SceneInitializer] '{scene.name}' 씬 초기화 완료 - GameManagers 8종 컴포넌트, " +
                       $"Canvas + 패널 {Panels.Length}개, UIManager.screens 바인딩 {Panels.Length}건, " +
-                      $"온보딩 구단 버튼 {OnboardingTeamOrder.Length}개 바인딩.");
+                      $"온보딩 구단 버튼 {OnboardingTeamOrder.Length}개 바인딩, 디버그 패널 연동 완료.");
         }
 
-        /// <summary>GameManagers 오브젝트를 찾거나 만들고, 필요한 매니저 7종을 빠짐없이 부착한다.
+        /// <summary>GameManagers 오브젝트를 찾거나 만들고, 필요한 매니저 8종을 빠짐없이 부착한다.
         /// OnboardingManager가 없으면 OnboardingUIController가 구단 버튼 클릭을 받아도 조용히
         /// 무시하므로(onboardingManager == null 가드) 반드시 함께 만들어 둔다.</summary>
-        private static (UIManager UI, OnboardingManager Onboarding) SetUpGameManagers(Scene scene)
+        private static (UIManager UI, OnboardingManager Onboarding, LeagueManager League) SetUpGameManagers(Scene scene)
         {
             var root = FindRoot(scene, GameManagersName);
             if (root == null)
@@ -94,14 +97,18 @@ namespace KBOManager.EditorTools
             }
 
             GetOrAddComponent<GameManager>(root);
-            GetOrAddComponent<LeagueManager>(root);
+            var leagueManager = GetOrAddComponent<LeagueManager>(root);
             GetOrAddComponent<LeagueCalendar>(root);
             var uiManager = GetOrAddComponent<UIManager>(root);
             GetOrAddComponent<MatchRewardManager>(root);
             GetOrAddComponent<CardPoolManager>(root);
             var onboardingManager = GetOrAddComponent<OnboardingManager>(root);
+            // LeagueManager.SimulateFixture()가 헤드리스 스킵 중에도 SeasonStatManager.Instance를 직접
+            // 찾아 호출한다(PlayBallController 이벤트 구독 없이) - 이 컴포넌트가 씬에 없으면 스킵해도
+            // 시즌 기록이 조용히 누락되므로 반드시 함께 만들어 둔다.
+            GetOrAddComponent<SeasonStatManager>(root);
 
-            return (uiManager, onboardingManager);
+            return (uiManager, onboardingManager, leagueManager);
         }
 
         /// <summary>씬에 Canvas가 이미 있으면 그대로 재사용하고(설정을 건드리지 않는다), 없을 때만 새로 만들어
@@ -187,7 +194,7 @@ namespace KBOManager.EditorTools
             {
                 var screenType = Panels[i].Screen;
                 var element = screensProperty.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("Type").enumValueIndex = (int)screenType;
+                element.FindPropertyRelative("Type").intValue = (int)screenType;
                 element.FindPropertyRelative("Root").objectReferenceValue = panelRoots[screenType];
             }
 
@@ -293,13 +300,252 @@ namespace KBOManager.EditorTools
             for (int i = 0; i < entries.Count; i++)
             {
                 var element = teamButtonsProperty.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("Team").enumValueIndex = (int)entries[i].Team;
+                element.FindPropertyRelative("Team").intValue = (int)entries[i].Team;
                 element.FindPropertyRelative("Button").objectReferenceValue = entries[i].Button;
                 element.FindPropertyRelative("LogoImage").objectReferenceValue = entries[i].LogoImage;
                 element.FindPropertyRelative("TeamNameText").objectReferenceValue = entries[i].TeamNameText;
             }
 
             serializedController.ApplyModifiedProperties();
+        }
+
+        private const string StandingsListName = "StandingsList";
+        private const int StandingsRowCount = 10; // KBO 10개 구단 고정
+
+        /// <summary>
+        /// LeagueDashboardUIController.RefreshDashboard()는 leagueManager와 standingsRowTexts가 둘 다
+        /// 채워져 있어야 실제로 뭔가를 그린다(둘 중 하나라도 null이면 조용히 아무 일도 안 하고
+        /// 리턴한다) - 스킵 직후 "순위표 갱신"이 화면에 보이려면 이 바인딩이 먼저 되어 있어야 한다.
+        /// </summary>
+        private static void SetUpLobbyStandings(GameObject lobbyPanel, LeagueManager leagueManager)
+        {
+            var controller = lobbyPanel.GetComponent<LeagueDashboardUIController>();
+
+            var list = FindChild(lobbyPanel.transform, StandingsListName);
+            if (list == null)
+            {
+                list = new GameObject(StandingsListName, typeof(RectTransform), typeof(VerticalLayoutGroup));
+                Undo.RegisterCreatedObjectUndo(list, "Create StandingsList");
+                list.transform.SetParent(lobbyPanel.transform, false);
+
+                var rect = (RectTransform)list.transform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                var layout = list.GetComponent<VerticalLayoutGroup>();
+                layout.childControlWidth = true;
+                layout.childForceExpandWidth = true;
+                layout.childControlHeight = false;
+                layout.childForceExpandHeight = false;
+                layout.spacing = 4f;
+                layout.padding = new RectOffset(16, 16, 16, 16);
+            }
+
+            var rowTexts = new Text[StandingsRowCount];
+            for (int i = 0; i < StandingsRowCount; i++)
+            {
+                rowTexts[i] = FindOrCreateDebugText(list.transform, $"StandingsRow{i + 1}", 36f);
+            }
+
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("leagueManager").objectReferenceValue = leagueManager;
+
+            var rowsProperty = serializedController.FindProperty("standingsRowTexts");
+            rowsProperty.arraySize = rowTexts.Length;
+            for (int i = 0; i < rowTexts.Length; i++)
+            {
+                rowsProperty.GetArrayElementAtIndex(i).objectReferenceValue = rowTexts[i];
+            }
+
+            serializedController.ApplyModifiedProperties();
+        }
+
+        private const string DebugPanelName = "DebugPanel";
+        private const string CornerTapButtonName = "CornerTapButton";
+        private const string PanelContentName = "PanelContent";
+
+        /// <summary>
+        /// Canvas 우측 상단 구석에 작은 QA 디버그 패널을 만든다. F12 토글(DebugPanelUI.Update)과
+        /// 구석 탭 5연속(HandleCornerTap) 두 경로 모두로 열 수 있고, 닫기 버튼으로만 닫힌다.
+        /// panelRoots[ScreenType.Lobby]에서 LeagueDashboardUIController를 가져와 스킵 완료 후
+        /// 순위표를 새로고침할 대상으로 바로 바인딩한다.
+        /// </summary>
+        private static void SetUpDebugPanel(Transform canvasTransform, Dictionary<ScreenType, GameObject> panelRoots)
+        {
+            var lobbyController = panelRoots[ScreenType.Lobby].GetComponent<LeagueDashboardUIController>();
+
+            var debugPanelRoot = FindChild(canvasTransform, DebugPanelName);
+            if (debugPanelRoot == null)
+            {
+                debugPanelRoot = new GameObject(DebugPanelName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(debugPanelRoot, "Create DebugPanel");
+                debugPanelRoot.transform.SetParent(canvasTransform, false);
+
+                // 화면 우측 상단에 작게: pivot/anchor를 우상단(1,1)에 고정하고 그 지점 기준으로만 크기를 잡는다.
+                var rect = (RectTransform)debugPanelRoot.transform;
+                rect.anchorMin = new Vector2(1f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(1f, 1f);
+                rect.sizeDelta = new Vector2(320f, 460f);
+                rect.anchoredPosition = new Vector2(-20f, -20f);
+            }
+
+            var debugPanelUI = GetOrAddComponent<DebugPanelUI>(debugPanelRoot);
+
+            var cornerTapButton = FindOrCreateCornerTapButton(debugPanelRoot.transform);
+            var panelContent = FindOrCreatePanelContentRoot(debugPanelRoot.transform);
+            var closeButton = FindOrCreateDebugButton(panelContent.transform, "CloseButton", "닫기 (X)", 40f);
+            var resultText = FindOrCreateDebugText(panelContent.transform, "ResultText", 100f);
+            var skipButton = FindOrCreateDebugButton(panelContent.transform, "SkipRegularSeasonButton", "정규 시즌 즉시 스킵", 60f);
+            var grantCurrencyButton = FindOrCreateDebugButton(panelContent.transform, "GrantPremiumCurrencyButton", "프리미엄 재화 +10,000 획득", 60f);
+
+            ConfigureDebugPanel(debugPanelUI, cornerTapButton, panelContent, closeButton, resultText,
+                skipButton, grantCurrencyButton, lobbyController);
+        }
+
+        /// <summary>DebugPanel 전체 영역 중 우측 상단 64x64만 차지하는, 거의 투명한 "숨겨진" 탭 영역.
+        /// HandleCornerTap()이 tapWindowSeconds 안에 requiredTapCount번 눌리는지 센다.</summary>
+        private static Button FindOrCreateCornerTapButton(Transform parent)
+        {
+            var existing = FindChild(parent, CornerTapButtonName);
+            if (existing != null) return existing.GetComponent<Button>();
+
+            var buttonObject = new GameObject(CornerTapButtonName, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, "Create CornerTapButton");
+            buttonObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.sizeDelta = new Vector2(64f, 64f);
+            rect.anchoredPosition = Vector2.zero;
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.02f); // 거의 안 보이는 은닉 탭 영역
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            return button;
+        }
+
+        /// <summary>실제 버튼들이 모이는 패널 본체. DebugPanelUI.panelRoot로 바인딩되어 평소엔 꺼져 있다가
+        /// F12/구석 탭으로 열린다.</summary>
+        private static GameObject FindOrCreatePanelContentRoot(Transform parent)
+        {
+            var existing = FindChild(parent, PanelContentName);
+            if (existing != null) return existing;
+
+            var panelContent = new GameObject(PanelContentName, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+            Undo.RegisterCreatedObjectUndo(panelContent, "Create PanelContent");
+            panelContent.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)panelContent.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var background = panelContent.GetComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.85f);
+
+            var layout = panelContent.GetComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(16, 16, 16, 16);
+            layout.spacing = 10f;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
+
+            panelContent.SetActive(false); // DebugPanelUI.Awake()도 다시 꺼 주지만, 에디터 미리보기도 깔끔하게 유지한다.
+
+            return panelContent;
+        }
+
+        /// <summary>이름으로 기존 요소를 재사용하거나, 없으면 Image+Button 루트 + 전체를 채우는 Text
+        /// 라벨로 새로 조립한다. VerticalLayoutGroup 하위에서 높이를 고정하기 위해 LayoutElement를 함께 붙인다.</summary>
+        private static Button FindOrCreateDebugButton(Transform parent, string name, string label, float preferredHeight)
+        {
+            var existing = FindChild(parent, name);
+            if (existing != null) return existing.GetComponent<Button>();
+
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            buttonObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            return button;
+        }
+
+        /// <summary>이름으로 기존 Text를 재사용하거나, 없으면 LayoutElement가 붙은 새 Text를 만든다.</summary>
+        private static Text FindOrCreateDebugText(Transform parent, string name, float preferredHeight)
+        {
+            var existing = FindChild(parent, name);
+            if (existing != null) return existing.GetComponent<Text>();
+
+            var textObject = new GameObject(name, typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
+            textObject.transform.SetParent(parent, false);
+
+            textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+
+            var text = textObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = Color.white;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            return text;
+        }
+
+        /// <summary>
+        /// DebugPanelUI의 모든 필드가 private [SerializeField]라 지금까지와 동일하게
+        /// SerializedObject/SerializedProperty로 채운다. toggleHotkey(KeyCode)는 ScreenType/Team과 달리
+        /// 선언 순서와 실제 값이 다른 enum이라(KeyCode.F12는 293) enumValueIndex(선언 순서 인덱스)를
+        /// 쓰면 엉뚱한 키가 바인딩된다 - intValue로 실제 정수값(293)을 직접 써야 한다.
+        /// </summary>
+        private static void ConfigureDebugPanel(DebugPanelUI debugPanelUI, Button cornerTapButton, GameObject panelContent,
+            Button closeButton, Text resultText, Button skipButton, Button grantCurrencyButton, LeagueDashboardUIController leagueDashboard)
+        {
+            var serializedPanel = new SerializedObject(debugPanelUI);
+
+            serializedPanel.FindProperty("toggleHotkey").intValue = (int)KeyCode.F12;
+            serializedPanel.FindProperty("hiddenCornerTapButton").objectReferenceValue = cornerTapButton;
+            serializedPanel.FindProperty("panelRoot").objectReferenceValue = panelContent;
+            serializedPanel.FindProperty("closeButton").objectReferenceValue = closeButton;
+            serializedPanel.FindProperty("resultText").objectReferenceValue = resultText;
+            serializedPanel.FindProperty("grantPremiumCurrencyButton").objectReferenceValue = grantCurrencyButton;
+            serializedPanel.FindProperty("skipRegularSeasonButton").objectReferenceValue = skipButton;
+            serializedPanel.FindProperty("leagueDashboard").objectReferenceValue = leagueDashboard;
+
+            serializedPanel.ApplyModifiedProperties();
         }
 
         private static GameObject FindRoot(Scene scene, string objectName)

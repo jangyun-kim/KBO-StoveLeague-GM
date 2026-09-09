@@ -556,6 +556,13 @@ namespace KBOManager.Managers
             }
         }
 
+        /// <summary>
+        /// PlayFullMatch()를 그대로 호출하지 않고 BeginMatch() + PlayNextAtBat() 반복으로 직접 풀어서
+        /// 진행한다 - 결과(MatchResult)만 나오는 PlayFullMatch()와 달리, 타석 단위 AtBatStepResult를
+        /// SeasonStatManager.RecordAtBat()에 그때그때 넘겨야 헤드리스 스킵 중에도 시즌 기록(타율/방어율
+        /// 등)이 정상적으로 누적된다. PlayBallController를 거치지 않으므로 OnAtBatEnd/OnMatchCompleted
+        /// 같은 UI용 이벤트는 전혀 발생하지 않는다 - 애니메이션/연출과는 처음부터 완전히 분리된 경로다.
+        /// </summary>
         private void SimulateFixture(MatchFixture fixture)
         {
             var homeRoster = ResolveRosterForTeam(fixture.HomeTeam);
@@ -563,8 +570,17 @@ namespace KBOManager.Managers
 
             var engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
-            fixture.Result = engine.PlayFullMatch(fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
+
+            engine.BeginMatch(fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
+            while (!engine.IsGameOver)
+            {
+                var step = engine.PlayNextAtBat();
+                SeasonStatManager.Instance?.RecordAtBat(step, fixture.HomeTeam, fixture.AwayTeam);
+            }
+
+            fixture.Result = engine.Result;
             fixture.IsPlayed = true;
+            SeasonStatManager.Instance?.RecordMatchCompleted(fixture.Result);
         }
 
         /// <summary>

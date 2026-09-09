@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using KBOManager.Controllers;
 using KBOManager.Managers;
@@ -35,9 +36,17 @@ namespace KBOManager.Tools
         [SerializeField] private PlayBallController playBallController;
         [SerializeField] private Button skipRegularSeasonButton;
         [SerializeField] private Button recoverAllPlayersButton;
+        [Tooltip("스킵 완료 직후 순위표를 갱신할 로비 화면. 비워두면 갱신 호출을 건너뛴다.")]
+        [SerializeField] private LeagueDashboardUIController leagueDashboard;
+
+        // 한 프레임에 이 개수만큼만 시뮬레이션하고 yield return null로 한 프레임 양보한다 - 144경기를
+        // 전부 한 프레임에 몰아서 처리하면 그 프레임만 스파이크가 나므로, 몇 프레임에 걸쳐 얇게 펴서
+        // 눈에 띄는 끊김 없이 "몇 초" 안에 끝나도록 한다.
+        private const int GamesPerFrameDuringSkip = 20;
 
         private int tapCount;
         private float lastTapTime;
+        private bool isSkipInProgress;
 
         private void Awake()
         {
@@ -112,12 +121,39 @@ namespace KBOManager.Tools
 
         /// <summary>남은 정규시즌 경기를 전부 즉시 시뮬레이션하고, 유저가 포스트시즌에 진출했다면
         /// 그 브래킷까지 챔피언이 나올 때까지 이어서 자동 진행한다 - 어느 경우든 SeasonRollover.
-        /// RolloverToNextSeason()을 호출하기 직전 상태로 맞춘다.</summary>
+        /// RolloverToNextSeason()을 호출하기 직전 상태로 맞춘다. 버튼 중복 클릭으로 코루틴이 여러 개
+        /// 겹쳐 도는 것을 막기 위해 isSkipInProgress로 재진입을 막는다.</summary>
         private void SkipToEndOfRegularSeason()
         {
-            if (LeagueManager.Instance == null) return;
+            if (isSkipInProgress || LeagueManager.Instance == null) return;
 
-            LeagueManager.Instance.PlayUntil(LeagueManager.TotalUserGames);
+            StartCoroutine(SkipToEndOfRegularSeasonRoutine());
+        }
+
+        /// <summary>
+        /// LeagueManager.PlayNextMatch()/PostSeasonManager.PlayNextSeriesGame() 자체는 이미 완전히
+        /// 헤드리스다(PlayBallController를 거치지 않으므로 UI 이벤트/애니메이션이 원천적으로 발생하지
+        /// 않는다) - 이 코루틴이 GamesPerFrameDuringSkip경기마다 한 번 yield return null로 양보하는
+        /// 이유는 그 UI 이벤트를 억제하기 위해서가 아니라, 144경기 전부를 한 프레임에 몰아 계산하면
+        /// 그 한 프레임만 스파이크가 나는 것을 막기 위함이다(여러 프레임에 얇게 펴서 그래도 몇 초 안에
+        /// 끝나도록). 완료 직후 로비 순위표를 명시적으로 새로고침한다 - LeagueDashboardUIController는
+        /// OnEnable()에서만 스스로 갱신하므로, 로비 화면이 이미 켜져 있는 상태로 스킵했다면 아무도
+        /// 대신 다시 그려주지 않기 때문이다.
+        /// </summary>
+        private IEnumerator SkipToEndOfRegularSeasonRoutine()
+        {
+            isSkipInProgress = true;
+            if (skipRegularSeasonButton != null) skipRegularSeasonButton.interactable = false;
+            ShowResult("정규 시즌 스킵 진행 중...");
+
+            int processed = 0;
+            while (LeagueManager.Instance.PeekNextFixture() != null &&
+                   LeagueManager.Instance.PeekNextFixture().GameNumber <= LeagueManager.TotalUserGames)
+            {
+                LeagueManager.Instance.PlayNextMatch();
+
+                if (++processed % GamesPerFrameDuringSkip == 0) yield return null;
+            }
 
             if (PostSeasonManager.Instance != null)
             {
@@ -127,10 +163,18 @@ namespace KBOManager.Tools
                 while (PostSeasonManager.Instance.IsPostSeasonActive && safety-- > 0)
                 {
                     PostSeasonManager.Instance.PlayNextSeriesGame();
+
+                    if (++processed % GamesPerFrameDuringSkip == 0) yield return null;
                 }
             }
 
-            ShowResult("정규 시즌(+포스트시즌)을 전부 스킵했습니다. 이제 SeasonRollover.RolloverToNextSeason() 호출 차례입니다.");
+            if (leagueDashboard != null) leagueDashboard.RefreshDashboard();
+
+            if (skipRegularSeasonButton != null) skipRegularSeasonButton.interactable = true;
+            isSkipInProgress = false;
+
+            ShowResult($"정규 시즌(+포스트시즌) {processed}경기를 전부 스킵하고 로비 순위표를 갱신했습니다. " +
+                       "이제 SeasonRollover.RolloverToNextSeason() 호출 차례입니다.");
         }
 
         private void RecoverAllPlayers()

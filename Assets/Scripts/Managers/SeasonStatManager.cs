@@ -159,11 +159,23 @@ namespace KBOManager.Managers
 
         private void HandleAtBatEnd(AtBatStepResult step)
         {
+            if (playBallController == null) return;
+            RecordAtBat(step, playBallController.HomeTeam, playBallController.AwayTeam);
+        }
+
+        /// <summary>
+        /// LeagueManager의 헤드리스 시즌 스킵(144경기 즉시 시뮬레이션)처럼 PlayBallController를 거치지
+        /// 않고 MatchEngine을 직접 구동하는 경로가 매 타석마다 호출하는 공개 진입점. HandleAtBatEnd와
+        /// 동일한 로직이지만, "지금 진행 중인 PlayBallController 경기"라는 개념이 없는 헤드리스 상황을
+        /// 위해 homeTeam/awayTeam을 playBallController가 아니라 인자로 직접 받는다.
+        /// </summary>
+        public void RecordAtBat(AtBatStepResult step, Team homeTeam, Team awayTeam)
+        {
             if (step?.Batter == null || step.Pitcher == null || step.State == null) return;
 
             RecordBatterResult(step);
             RecordPitcherWorkload(step);
-            RecordTodaysStarter(step);
+            RecordTodaysStarter(step, homeTeam, awayTeam);
         }
 
         private void RecordBatterResult(AtBatStepResult step)
@@ -191,15 +203,18 @@ namespace KBOManager.Managers
             stats.EarnedRuns += step.RunsScoredThisPlay; // 단순화: 모든 실점을 자책점으로 취급(실책 미모델링)
         }
 
-        private void RecordTodaysStarter(AtBatStepResult step)
+        private void RecordTodaysStarter(AtBatStepResult step, Team homeTeam, Team awayTeam)
         {
-            if (playBallController == null) return;
-
-            var pitchingTeam = step.IsTopHalf ? playBallController.HomeTeam : playBallController.AwayTeam;
+            var pitchingTeam = step.IsTopHalf ? homeTeam : awayTeam;
             if (pitchingTeam == Team.None || startersThisGame.ContainsKey(pitchingTeam)) return;
 
             startersThisGame[pitchingTeam] = step.Pitcher;
         }
+
+        /// <summary>LeagueManager의 헤드리스 스킵 경로가 경기 1건이 끝날 때마다 호출하는 공개 진입점.
+        /// MatchResult가 이미 HomeTeamName/AwayTeamName/WinnerTeamName을 자체적으로 담고 있어
+        /// PlayBallController 참조 없이도 완전히 동작한다.</summary>
+        public void RecordMatchCompleted(MatchResult result) => HandleMatchCompleted(result);
 
         private void HandleMatchCompleted(MatchResult result)
         {

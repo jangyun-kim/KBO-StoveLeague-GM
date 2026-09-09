@@ -99,6 +99,13 @@ namespace KBOManager.Managers
             }
 
             GameManager.Instance.IsFirstLogin = false;
+
+            // 새 게임(세이브 파일 없음) 경로에서는 LeagueManager.InitializeLeague()를 호출하는 곳이
+            // 여기 말고 없다(SaveManager.LoadGame()은 기존 세이브를 불러올 때만 RestoreFromSave()를
+            // 호출한다) - 방금 확정된 로스터의 평균 OVR을 AI 목표 스탯으로 삼도록, 로스터 편성이
+            // 끝난 이 시점에 스케줄/AI 로스터/캘린더를 함께 생성한다.
+            LeagueManager.Instance?.InitializeLeague(team);
+
             UIManager.Instance?.ShowScreen(ScreenType.Lobby);
         }
 
