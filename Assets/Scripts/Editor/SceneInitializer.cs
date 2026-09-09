@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KBOManager.Controllers;
 using KBOManager.Managers;
+using KBOManager.Models;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -50,26 +51,40 @@ namespace KBOManager.EditorTools
             new PanelDefinition("ShopPanel", typeof(ShopUIController), ScreenType.Shop),
         };
 
+        private const string TeamButtonGridName = "TeamButtonGrid";
+
+        // OnboardingUIController.Awake()가 Team.None을 건너뛰므로, Team.None을 제외한 KBO 10개 구단을
+        // 요청받은 노출 순서 그대로 나열한다(Team enum 선언 순서와는 다르다).
+        private static readonly Team[] OnboardingTeamOrder =
+        {
+            Team.LG, Team.KT, Team.SSG, Team.NC, Team.Doosan,
+            Team.KIA, Team.Lotte, Team.Samsung, Team.Hanwha, Team.Kiwoom,
+        };
+
         [MenuItem("KBO Manager/Initialize Current Scene")]
         public static void InitializeCurrentScene()
         {
             var scene = EditorSceneManager.GetActiveScene();
 
-            var uiManager = SetUpGameManagers(scene);
+            var (uiManager, onboardingManager) = SetUpGameManagers(scene);
             var canvas = SetUpCanvas(scene);
             EnsureEventSystem(scene);
             var panelRoots = SetUpPanels(canvas.transform);
             BindUIManagerScreens(uiManager, panelRoots);
+            SetUpOnboardingTeamButtons(panelRoots[ScreenType.Onboarding], onboardingManager);
 
             EditorSceneManager.MarkSceneDirty(scene);
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"[SceneInitializer] '{scene.name}' 씬 초기화 완료 - GameManagers 6종 컴포넌트, " +
-                      $"Canvas + 패널 {Panels.Length}개, UIManager.screens 바인딩 {Panels.Length}건.");
+            Debug.Log($"[SceneInitializer] '{scene.name}' 씬 초기화 완료 - GameManagers 7종 컴포넌트, " +
+                      $"Canvas + 패널 {Panels.Length}개, UIManager.screens 바인딩 {Panels.Length}건, " +
+                      $"온보딩 구단 버튼 {OnboardingTeamOrder.Length}개 바인딩.");
         }
 
-        /// <summary>GameManagers 오브젝트를 찾거나 만들고, 필요한 매니저 6종을 빠짐없이 부착한다.</summary>
-        private static UIManager SetUpGameManagers(Scene scene)
+        /// <summary>GameManagers 오브젝트를 찾거나 만들고, 필요한 매니저 7종을 빠짐없이 부착한다.
+        /// OnboardingManager가 없으면 OnboardingUIController가 구단 버튼 클릭을 받아도 조용히
+        /// 무시하므로(onboardingManager == null 가드) 반드시 함께 만들어 둔다.</summary>
+        private static (UIManager UI, OnboardingManager Onboarding) SetUpGameManagers(Scene scene)
         {
             var root = FindRoot(scene, GameManagersName);
             if (root == null)
@@ -84,8 +99,9 @@ namespace KBOManager.EditorTools
             var uiManager = GetOrAddComponent<UIManager>(root);
             GetOrAddComponent<MatchRewardManager>(root);
             GetOrAddComponent<CardPoolManager>(root);
+            var onboardingManager = GetOrAddComponent<OnboardingManager>(root);
 
-            return uiManager;
+            return (uiManager, onboardingManager);
         }
 
         /// <summary>씬에 Canvas가 이미 있으면 그대로 재사용하고(설정을 건드리지 않는다), 없을 때만 새로 만들어
@@ -176,6 +192,114 @@ namespace KBOManager.EditorTools
             }
 
             serializedManager.ApplyModifiedProperties();
+        }
+
+        /// <summary>OnboardingPanel 하위에 Grid Layout Group 컨테이너와 KBO 10개 구단 버튼을 만들고,
+        /// OnboardingUIController.teamButtons에 순서대로 바인딩한다. 버튼에 onClick 리스너를 여기서
+        /// 직접 붙이지는 않는다 - OnboardingUIController.Awake()가 teamButtons를 순회하며 이미
+        /// AddListener(() =&gt; OnClickTeam(team))로 매 실행마다 코드로 붙이므로, 에디터에서 영구
+        /// 리스너(PersistentCall)를 추가하면 중복 호출이 생긴다.</summary>
+        private static void SetUpOnboardingTeamButtons(GameObject onboardingPanel, OnboardingManager onboardingManager)
+        {
+            var controller = onboardingPanel.GetComponent<OnboardingUIController>();
+
+            var grid = FindChild(onboardingPanel.transform, TeamButtonGridName);
+            if (grid == null)
+            {
+                grid = new GameObject(TeamButtonGridName, typeof(RectTransform), typeof(GridLayoutGroup));
+                Undo.RegisterCreatedObjectUndo(grid, "Create TeamButtonGrid");
+                grid.transform.SetParent(onboardingPanel.transform, false);
+
+                var rect = (RectTransform)grid.transform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                var layout = grid.GetComponent<GridLayoutGroup>();
+                layout.cellSize = new Vector2(420f, 160f);
+                layout.spacing = new Vector2(24f, 24f);
+                layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+                layout.constraintCount = 2;
+            }
+
+            var entries = new List<TeamSelectButtonEntry>(OnboardingTeamOrder.Length);
+            foreach (var team in OnboardingTeamOrder)
+            {
+                var (button, label) = FindOrCreateTeamButton(grid.transform, team);
+                entries.Add(new TeamSelectButtonEntry { Team = team, Button = button, TeamNameText = label });
+            }
+
+            ConfigureOnboardingController(controller, onboardingManager, entries);
+        }
+
+        /// <summary>이름으로 기존 버튼을 재사용하거나(재실행 시 중복 생성 방지), 없으면 Image+Button 루트와
+        /// 그 위에 전체를 채우는 Text 라벨 하나로 원시 GameObject를 조립해 새로 만든다.</summary>
+        private static (Button Button, Text Label) FindOrCreateTeamButton(Transform parent, Team team)
+        {
+            string buttonName = $"{team}Button";
+            var existing = FindChild(parent, buttonName);
+            if (existing != null)
+            {
+                return (existing.GetComponent<Button>(), existing.GetComponentInChildren<Text>(true));
+            }
+
+            var buttonObject = new GameObject(buttonName, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {buttonName}");
+            buttonObject.transform.SetParent(parent, false);
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.85f, 0.85f, 0.85f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {buttonName} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var label = labelObject.GetComponent<Text>();
+            label.text = team.ToString();
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = Color.black;
+            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            return (button, label);
+        }
+
+        /// <summary>
+        /// OnboardingUIController.onboardingManager와 teamButtons 모두 private [SerializeField]라
+        /// UIManager.screens 바인딩과 동일하게 SerializedObject/SerializedProperty로 접근한다.
+        /// teamButtons는 TeamSelectButtonEntry([Serializable] 순수 C# 클래스)의 List이므로, ScreenEntry와
+        /// 마찬가지로 SerializedProperty 레벨에서는 고정 배열처럼 arraySize/GetArrayElementAtIndex +
+        /// FindPropertyRelative(필드명)으로 각 원소의 Team/Button/LogoImage/TeamNameText를 채운다.
+        /// </summary>
+        private static void ConfigureOnboardingController(OnboardingUIController controller,
+            OnboardingManager onboardingManager, List<TeamSelectButtonEntry> entries)
+        {
+            var serializedController = new SerializedObject(controller);
+
+            serializedController.FindProperty("onboardingManager").objectReferenceValue = onboardingManager;
+
+            var teamButtonsProperty = serializedController.FindProperty("teamButtons");
+            teamButtonsProperty.arraySize = entries.Count;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var element = teamButtonsProperty.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("Team").enumValueIndex = (int)entries[i].Team;
+                element.FindPropertyRelative("Button").objectReferenceValue = entries[i].Button;
+                element.FindPropertyRelative("LogoImage").objectReferenceValue = entries[i].LogoImage;
+                element.FindPropertyRelative("TeamNameText").objectReferenceValue = entries[i].TeamNameText;
+            }
+
+            serializedController.ApplyModifiedProperties();
         }
 
         private static GameObject FindRoot(Scene scene, string objectName)
