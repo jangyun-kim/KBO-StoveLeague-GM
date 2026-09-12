@@ -4,7 +4,7 @@
 상태: Active
 최종 수정일: 2026-09-13
 담당자: 김장윤
-관련 파일: GameManager.cs, MatchEngine.cs, LeagueManager.cs, PlayBallController.cs, PostSeasonManager.cs, Cheerleader.cs
+관련 파일: GameManager.cs, MatchEngine.cs, LeagueManager.cs, PlayBallController.cs, PostSeasonManager.cs, Cheerleader.cs, MatchRewardManager.cs
 ---
 
 # 1. 목적
@@ -68,3 +68,13 @@
   - **[TBD] 포스트시즌 중립 구장**: `PostSeasonManager`는 시리즈 내내 `HigherSeed`를 고정적으로 "home"에 배정하는 기존 설계를 그대로 따른다(중립 구장이나 시리즈 중 홈/원정 교대 개념 자체가 엔진에 없음) - 유저 팀이 `HigherSeed`인 시리즈 내내 치어리더 홈 버프가 계속 적용된다는 뜻이며, 실제 KBO 한국시리즈 룰과 다를 수 있으나 기획 미확정이라 그대로 둔다.
 - **ClutchMultiplier 방어(Sanitize)**: `GameManager.ResolveCheerleaderClutchMultiplier()`가 `MatchEngine`에 전달되기 직전 비정상 입력을 중립값(1.0f)으로 억제한다 - `NaN`/`Infinity`는 별도로 걸러내고(단순 `Mathf.Max`로는 걸러지지 않음), 그 외 0 이하 값은 `Mathf.Max(1.0f, value)`로 끌어올린다. `Cheerleader` 필드 자체가 `null`일 수 있는 경우(미장착)도 이 함수가 함께 방어한다.
 - **[TBD] 중첩/상한 미확정**: 치어리더 `ClutchMultiplier`가 코치 등 향후 추가될 다른 시너지와 중첩될 때의 합산 방식(가산? 곱셈? 최댓값?)이나 상한선은 아직 기획 확정 전이다. 현재 구현은 치어리더 단독 값만 정규화해서 반환하며, 상한 로직 자체가 없다(무한대만 방어).
+
+# 8. [치어리더 B안: 상시 경제/멘탈 효과 및 팬심 시스템] [TASK-KBO-049/050]
+
+- **성격 구분**: 6·7절의 `ConditionBuff`/`ClutchMultiplier`(A/C안)는 `MatchEngine`에 전달되는 "경기 조건부 적용 전력"이지만, 이번 절의 `EconomicBonusRate`/`SentimentDefense`(B안)는 `MatchEngine`에 전혀 전달되지 않는다 - "스토브리그 로비 연산"(경기 결산 단계)에서만 쓰이는 값이며, 구현 위치는 `Assets/Scripts/Managers/MatchRewardManager.cs`의 `GrantRewardForMatch()`/`ApplyCheerleaderEconomicBonus()`/`UpdateLosingStreakAndFanSentiment()`다.
+- **① 홈 경기 승리 시 경제 증폭**: 유저 팀이 **홈 경기에서 승리**했을 때만 장착된 `Cheerleader.EconomicBonusRate`(float, 기본 1.0f)가 기본 보상(스카우트 리포트)에 곱해진다. 미장착이거나 조건 미충족(AI 팀/원정/패배/무승부)이면 배율 1.0f로 동작한다.
+- **② 연패 시 팬심 하락과 치어리더 방어**: 유저 팀의 연속 패배 횟수(`GameManager.LosingStreak`)가 **3연패 이상**이 되면, 패배할 때마다 팬심(`GameManager.FanSentiment`)이 하락한다. 하락폭은 `Mathf.Max(0, 기본 하락치(5) - Cheerleader.SentimentDefense)`로 계산되어, 장착된 치어리더의 `SentimentDefense`(int, 기본 0)만큼 방어된다(방어가 하락치를 초과해도 팬심이 오히려 오르지는 않는다). 승리 또는 무승부 시 `LosingStreak`은 0으로 리셋된다. **[TBD]** "3연패 이상"이 정확히 몇 회차마다 발동하는지(3연패째 1회만 vs 매 패배마다 반복) GDD에 명시가 없어, 현재 구현은 임계치 도달 이후 매 패배(3연패째, 4연패째, ...)마다 반복 적용한다.
+- **③ 팬심 하락에 따른 홈 관중 수익 페널티 [TASK-KBO-050]**: `GameManager.FanSentiment`는 **0~100** 범위로 정규화되며(`Mathf.Clamp`), 기본값은 **100**이다. 팬심이 **50 미만**으로 떨어지면, 유저 팀의 **모든 홈 경기**(승/무/패 무관) 기본 보상에 **0.8배(20% 감소)** 페널티가 적용된다(정확히 50이면 페널티 미적용 - 경계값은 페널티 없음 쪽으로 귀속).
+- **연산 순서(고정)**: `최종 보상 = Mathf.RoundToInt((기본 보상 × 팬심 페널티 배율) × 치어리더 경제 증폭 배율)`. 두 배율을 먼저 곱한 뒤 단 한 번만 반올림한다 - 중간에 별도로 반올림하지 않아 오차 누적이나 재화 증발이 없다. 팬심 페널티(③)는 홈 경기라면 승/무/패와 무관하게 적용 여부가 결정되고, 치어리더 경제 증폭(①)은 그중에서도 "승리"일 때만 1.0f보다 커질 수 있다 - 두 조건은 서로 독립적으로 판정된 뒤 곱셈으로만 결합된다.
+- **"연패 중 팬심 하락을 막는 치어리더 효과" 검토 결과**: TASK-KBO-050 명령서가 검토를 요청한 "연패 중 치어리더 효과로 팬심 하락을 방어하는 스킬"은 이미 위 ②의 `Cheerleader.SentimentDefense`가 정확히 그 역할을 하고 있다 - 별도의 새 스킬/효과 체계를 추가로 구현하지 않았다(TASK-KBO-050 범위 제외: 신규 기능 추가 금지, 완료 보고서 F 섹션 참고).
+- **[TBD] 팬심 회복 수단 부재**: v0.1 시점에는 팬심을 다시 끌어올리는 이벤트/아이템/승리 보상 등이 전혀 없다(범위 제외) - 한 번 50 미만으로 떨어지면 연승으로 `LosingStreak`만 리셋될 뿐, `FanSentiment` 자체는 별도 회복 수단이 생기기 전까지 낮게 유지된다.

@@ -96,14 +96,15 @@ namespace KBOManager.Managers
 
         // ----- 팬심 / 연패 (TASK-KBO-049, 치어리더 B안 결산 연동용) -----
         [Header("Fan Sentiment / Losing Streak")]
-        [Tooltip("[TBD] 팬심(Fan Sentiment) 수치의 실제 시작값/상한/등급 구간은 기획 미확정이다. " +
-                 "현재는 MatchRewardManager가 유저 팀 연패 시 하락시키는 로직만 구현되어 있고, " +
-                 "상승 요인이나 다른 소모처는 아직 없다. 0 미만으로는 내려가지 않는다.")]
-        [SerializeField] private int fanSentiment;
+        [Tooltip("[TASK-KBO-050] 0~100 범위로 정규화된 팬심 수치. 기본값 100(최상)에서 시작해 유저 팀 " +
+                 "연패 시(MatchRewardManager) 하락한다. 50 미만이면 MatchRewardManager.GrantRewardForMatch() " +
+                 "가 홈 경기 기본 보상에 0.8배 페널티를 적용한다(15_team_power_policy.md 참고). " +
+                 "상승 요인/다른 소모처는 v0.1 범위 밖이라 아직 없다.")]
+        [SerializeField] private int fanSentiment = 100;
         public int FanSentiment
         {
             get => fanSentiment;
-            set => fanSentiment = Mathf.Max(0, value);
+            set => fanSentiment = Mathf.Clamp(value, 0, 100);
         }
 
         [Tooltip("유저 팀의 현재 연속 패배 횟수. MatchRewardManager.GrantRewardForMatch()가 매 경기 " +
