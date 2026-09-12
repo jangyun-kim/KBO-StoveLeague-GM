@@ -268,16 +268,31 @@ namespace KBOManager.Managers
             return baseOvr + synergy;
         }
 
+        // TASK-KBO-034 확정 수치: 28인 로스터 내 유저의 선호 구단(FavoriteTeam)과 일치하는 선수가
+        // 이 인원 이상이면 세트덱 시너지가 발동한다.
+        private const int FavoriteTeamSynergyThreshold = 15;
+        private const int FavoriteTeamSynergyBonus = 12;
+
         /// <summary>
         /// 구단 OVR에 직접 가산되는 시너지 합계(세트덱 + 감독 + 치어리더). GDD 기준 최대 +17
-        /// (세트덱 +12, 감독 +2, 치어리더 +3)까지 가산될 수 있으나, 세트덱/감독/치어리더 데이터 매핑은
-        /// 아직 구현되지 않아 현재는 항상 0을 반환하는 자리표시자(placeholder)다.
-        /// [TASK-KBO-033] CalculateTeamOVR()가 이 값을 "반올림된 25인 평균"에 더하는 마지막 단계로
-        /// 호출한다 - 실제 세트덱/감독/치어리더 연동 시 이 메서드 내부만 채우면 된다.
+        /// (세트덱 +12, 감독 +2, 치어리더 +3)까지 가산될 수 있으나, 감독/치어리더는 아직 데이터 시스템이
+        /// 없어 이번 작업(TASK-KBO-034) 범위에서 제외한다 - 세트덱(+12)만 실제로 계산한다.
+        ///
+        /// [TASK-KBO-033] CalculateTeamOVR()가 이 값을 "반올림된 25인 평균"에 더하는 마지막 단계로 호출한다.
+        ///
+        /// 세트덱: 28인 로스터 중 선호 구단(FavoriteTeam)과 소속이 일치하는 선수가 15명 이상이면 +12,
+        /// 아니면 0. FavoriteTeam이 Team.None(온보딩 이전 등 미지정 상태)이면 무조건 0 - 그렇지 않으면
+        /// 구단 미지정 선수(Template.Team == Team.None)가 우연히 "일치"하는 것으로 잘못 집계될 수 있다
+        /// (GameManager.CheckSetDeckBonus()가 Team.None을 집계에서 제외하는 것과 동일한 이유).
+        /// 로스터가 비어 있거나 28명이 다 차지 않은 상태에서는 일치 인원이 자연히 15명 미만이 되어
+        /// 별도 분기 없이도 0이 반환된다.
         /// </summary>
         private int CalculateTeamSynergy()
         {
-            return 0;
+            if (roster == null || favoriteTeam == Team.None) return 0;
+
+            int matchingCount = roster.Count(p => p?.Template != null && p.Template.Team == favoriteTeam);
+            return matchingCount >= FavoriteTeamSynergyThreshold ? FavoriteTeamSynergyBonus : 0;
         }
     }
 }

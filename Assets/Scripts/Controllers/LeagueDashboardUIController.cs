@@ -32,6 +32,13 @@ namespace KBOManager.Controllers
         [Header("Next Matchup")]
         [SerializeField] private Text nextMatchupText;
 
+        [Header("Team OVR (GDD v4.0 14절)")]
+        [Tooltip("GameManager.Instance.CalculateTeamOVR() 결과를 표시. 씬에 아직 전용 텍스트 오브젝트가 " +
+                 "없다면, 유니티 에디터에서 로비 패널 아래 남는(미사용) Text 오브젝트를 하나 이 필드에 " +
+                 "드래그해 연결하거나 새 Text를 만들어 연결할 것 - 비워두면(null) 아무 것도 표시되지 않을 " +
+                 "뿐 에러는 나지 않는다.")]
+        [SerializeField] private Text teamOVRText;
+
         [Header("Play Mode Buttons")]
         [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
         [SerializeField] private Button quickPlayButton;
@@ -63,6 +70,7 @@ namespace KBOManager.Controllers
             RefreshSeasonProgress();
             RefreshStandings();
             RefreshNextMatchup();
+            RefreshTeamOVR();
         }
 
         private void RefreshSeasonProgress()
@@ -121,6 +129,16 @@ namespace KBOManager.Controllers
 
             string venue = userIsHome ? "홈" : "원정";
             nextMatchupText.text = $"다음 경기: vs {opponentTeam} ({venue})  상대 평균 OVR {opponentOvr:F1}";
+        }
+
+        /// <summary>GameManager.Instance.CalculateTeamOVR()(주전15*0.8 + 후보10*0.2, 반올림 후 시너지 가산)
+        /// 결과를 그대로 표시한다. teamOVRText가 인스펙터에 연결되지 않았거나 GameManager가 아직 없으면
+        /// (씬 초기화 순서 등) 조용히 건너뛴다 - NullReferenceException을 내지 않는다.</summary>
+        private void RefreshTeamOVR()
+        {
+            if (teamOVRText == null || GameManager.Instance == null) return;
+
+            teamOVRText.text = $"OVR {GameManager.Instance.CalculateTeamOVR()}";
         }
 
         /// <summary>
