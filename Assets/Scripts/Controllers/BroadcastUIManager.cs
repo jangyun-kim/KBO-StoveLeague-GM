@@ -236,10 +236,14 @@ namespace KBOManager.Controllers
 
         /// <summary>
         /// 스킵 버튼 OnClick(또는 코드에서 직접 호출). 재생 중(Playing)이 아니면 무시한다(중복 클릭·
-        /// 재생 전/종료 후 호출 방어). 진행 중이던 재생 코루틴을 먼저 확실히 멈춘 뒤(StopCoroutine),
-        /// 남은 이벤트를 연출(딜레이) 없이 전부 즉시 로그에 반영하고, 그 다음에야 결과 화면으로 전환한다 -
-        /// 이 순서를 지켜야 "스킵으로 넘어갔는데 이전 프레임의 재생 결과가 뒤섞여 보이는" 레이스
-        /// 컨디션이 생기지 않는다.
+        /// 재생 전/종료 후 호출 방어 - 7항 경계 조건). 진행 중이던 재생 코루틴을 먼저 확실히 멈춘 뒤
+        /// (StopCoroutine), [TASK-KBO-044] 잔여 이벤트를 하나씩 PlayOneEvent()로 순회하며 로그를
+        /// Instantiate()하고 스코어보드를 반복 갱신하던 기존 방식(경기 후반부일수록 수백 개 이벤트를
+        /// 한 프레임에 몰아 그려 프레임 드랍을 유발했다) 대신, 커서만 끝까지 이동시키고 스코어보드는
+        /// 딱 한 번만 최종 상태로 갱신, 로그는 요약 한 줄만 남긴다. MatchResult(pendingResult)는 이미
+        /// StartMatch()에서 PlayFullMatchAsEventQueue()가 전체 계산을 끝낸 최종값을 받아 둔 것이므로,
+        /// 잔여 이벤트를 하나도 그리지 않아도 결과 데이터 자체(최종 스코어/승패)는 정확하다 -
+        /// 그 다음에야 결과 화면으로 전환한다(가드레일: 결과 누락/오염 없음).
         /// </summary>
         public void RequestSkip()
         {
@@ -253,10 +257,10 @@ namespace KBOManager.Controllers
                 playbackHandle = null;
             }
 
-            for (; playbackCursor < eventLog.Count; playbackCursor++)
-            {
-                PlayOneEvent(eventLog[playbackCursor]);
-            }
+            playbackCursor = eventLog.Count; // 남은 이벤트를 전부 "재생한 것"으로 커서만 이동(연출 없음)
+
+            inGameUIController?.RefreshScoreboard(); // 최종 스코어보드를 한 번만 즉시 반영
+            inGameUIController?.AddLog("[중계 스킵됨]"); // 대량 로그 대신 요약 한 줄만
 
             State = BroadcastPlaybackState.Finished;
             ShowResult();
