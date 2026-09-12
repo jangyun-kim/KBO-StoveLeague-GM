@@ -185,13 +185,22 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// PlayBallController.OnMatchCompleted 핸들러. 경기 결과 요약을 채우고 결과 패널을 연다.
+        /// PlayBallController.OnMatchCompleted 핸들러. ShowMatchResult()에 위임한다.
         /// 이 시점에는 이미 LeagueManager.CompleteNextFixture()로 순위표/다음 경기 포인터가 갱신된 뒤다
         /// (PlayBallController.FinishMatch()가 OnMatchCompleted를 발생시키기 전에 먼저 호출한다).
         /// 보상 지급은 별도로 MatchRewardManager가 같은 이벤트를 구독해 처리하고, 그 결과가
         /// OnRewardGranted로 도착하면 HandleRewardGranted가 이어서 화면에 반영한다.
         /// </summary>
-        private void HandleMatchCompleted(MatchResult result)
+        private void HandleMatchCompleted(MatchResult result) => ShowMatchResult(result);
+
+        /// <summary>
+        /// [TASK-KBO-040] 경기 결과 요약을 채우고 결과 패널을 연다. PlayBallController.OnMatchCompleted를
+        /// 통해서만이 아니라, BroadcastUIManager처럼 자체적으로 경기를 재생하는 외부 컨트롤러도 재생 종료
+        /// 시(또는 스킵 시) 직접 호출할 수 있도록 public으로 노출한다 - 이 메서드는 순수 UI 갱신만 하며
+        /// 어떤 매니저/엔진 상태도 직접 건드리지 않는다. result가 null이어도(호출부 오류 등) 결과 패널은
+        /// 그대로 열되 텍스트만 갱신을 건너뛴다.
+        /// </summary>
+        public void ShowMatchResult(MatchResult result)
         {
             if (matchEndPanelRoot != null) matchEndPanelRoot.SetActive(true);
 
