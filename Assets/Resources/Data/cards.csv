@@ -1,0 +1,5 @@
+card_id,player_id,grade_id,grade_name,base_ovr,salary_cost,max_enhance,max_awaken,is_droppable
+CRD_0001,PLY_0001,0,SEASON,68,15,10,0,TRUE
+CRD_0002,PLY_0001,2,LIVE_EPIC,74,18,10,0,TRUE
+CRD_0003,PLY_0001,6,GOLDEN_GLOVE,79,35,10,10,FALSE
+CRD_0004,PLY_0002,0,SEASON,65,12,10,0,TRUE

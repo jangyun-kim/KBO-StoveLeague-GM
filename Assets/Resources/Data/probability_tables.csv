@@ -1,0 +1,4 @@
+probability_id,system_type,pool_id,pool_name,game_version,start_at,end_at,attempt_unit,result_type,result_id,result_name,grade_id,individual_probability,grade_total_probability,weight,pity_rule_id,duplicate_rule_id,variable_rate_rule_id,active_flag,public_disclosure_required,change_reason,source_document,updated_at
+PRB_001,GACHA,POOL_01,라이브_일반팩,v0.1,2026-09-01,9999-12-31,1,CARD,CRD_0001,시즌_구자욱,0,0.025,0.800,250,PITY_001,DUP_001,NONE,TRUE,TRUE,초기 밸런스 세팅,09_probability_policy.md,2026-09-12
+PRB_002,GACHA,POOL_01,라이브_일반팩,v0.1,2026-09-01,9999-12-31,1,CARD,CRD_0002,에픽_구자욱,2,0.005,0.020,50,PITY_001,DUP_001,NONE,TRUE,TRUE,초기 밸런스 세팅,09_probability_policy.md,2026-09-12
+PRB_003,SKILL,POOL_S1,일반스킬변경,v0.1,2026-09-01,9999-12-31,1,SKILL,SKL_101,배팅머신(A),A,0.100,0.100,100,NONE,NONE,NONE,TRUE,TRUE,초기 밸런스 세팅,09_probability_policy.md,2026-09-12

@@ -1,0 +1,8 @@
+event_id,event_name,category,base_weight,ovr_diff_modifier,description
+EVT_001,STRIKEOUT,OUT,250,-2.0,투수 제구/구위가 타자 선구/정확보다 높을 때 가중치 증가
+EVT_002,FLY_OUT,OUT,350,0.0,기본 범타 (뜬공)
+EVT_003,GROUND_OUT,OUT,300,0.0,기본 범타 (땅볼)
+EVT_004,SINGLE,HIT,180,1.5,단타 (정확 차이에 비례)
+EVT_005,DOUBLE,HIT,50,2.0,2루타
+EVT_006,HOME_RUN,HIT,15,3.0,홈런 (파워 차이에 비례)
+EVT_007,WALK,BASE,80,-1.0,볼넷 (선구안 차이에 비례)
