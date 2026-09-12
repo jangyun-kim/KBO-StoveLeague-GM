@@ -61,17 +61,27 @@ namespace KBOManager.Models
     }
 
     /// <summary>
-    /// 선수 명함(카드) 등급. GDD v3.1 기준 7단계.
+    /// 선수 명함(카드) 등급. GDD v4.0 기준 8단계. 가장 낮은 SEASON이 신설되었고(강화만 가능/각성 불가 -
+    /// cards.csv의 CRD_0001 SEASON 샘플이 max_awaken=0인 것과 일치), 나머지 7종의 상대적 희귀도 순서는
+    /// v3.1과 동일하게 유지한다(GOLDEN_GLOVE(골드 5성) &lt; SIGNATURE(플래티넘 6성) - ScoutManager의
+    /// GradeDropRate 확률표(GOLDEN_GLOVE 3% &gt; SIGNATURE 1.5%)와 어긋나지 않도록).
+    ///
+    /// [중요] SaveManager는 JsonUtility로 직렬화하며, JsonUtility는 enum을 이름이 아닌 "정수 ordinal"로
+    /// 저장한다. 따라서 기존 7종(LIVE_NORMAL=0 ~ DYNASTY=6) 각각에 v3.1 시절과 동일한 정수값을 명시적으로
+    /// 고정해 두어야 기존 세이브 파일의 등급이 깨지지 않는다(예: 값 고정 없이 SEASON을 맨 앞에 추가했다면
+    /// 기존 세이브의 LIVE_NORMAL(0)이 로드 시 SEASON(0)으로 잘못 해석되었을 것). SEASON은 기존에 없던
+    /// 값이므로 안전하게 새 번호(7)를 받는다.
     /// </summary>
     public enum Grade
     {
-        LIVE_NORMAL,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
-        LIVE_EPIC,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
-        ALLSTAR,        // 올스타 (보라 4성)
-        TITLE_HOLDER,   // 타이틀 홀더 (실버 5성)
-        GOLDEN_GLOVE,   // 골든 글러브 (골드 5성)
-        SIGNATURE,      // 시그니처 (플래티넘 6성)
-        DYNASTY         // 왕조 (구단색 6성)
+        LIVE_NORMAL = 0,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
+        LIVE_EPIC = 1,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
+        ALLSTAR = 2,        // 올스타 (보라 4성)
+        TITLE_HOLDER = 3,   // 타이틀 홀더 (실버 5성)
+        GOLDEN_GLOVE = 4,   // 골든 글러브 (골드 5성)
+        SIGNATURE = 5,      // 시그니처 (플래티넘 6성)
+        DYNASTY = 6,        // 왕조 (구단색 6성)
+        SEASON = 7          // 시즌 카드 (기본/무등급, 강화만 가능/각성 불가) - v4.0 신설, 기존 세이브 호환을 위해 마지막 번호로 배정
     }
 
     /// <summary>

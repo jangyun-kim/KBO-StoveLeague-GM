@@ -18,6 +18,9 @@ namespace KBOManager.Managers
 
         public const int BenchBatterCount = 6; // 타자 15 = 선발 9 + 후보 6
 
+        /// <summary>GDD v4.0 확정 상한선: 28인 엔트리 샐러리 캡 총합은 이 값을 넘을 수 없다.</summary>
+        public const float FullRosterSalaryCap = 1350f;
+
         // 투수 13명 배분 (기획 확정치): 선발 5 + 승리조 2 + 추격조 4 + 롱릴리프 1 + 마무리 1 = 13명.
         private static readonly (PitcherRole role, int count)[] PitcherRoleQuota =
         {
@@ -49,8 +52,9 @@ namespace KBOManager.Managers
         /// 인벤토리에서 샐러리 캡 이내 최적(OVR 최우선) 28인을 자동 편성해 반환한다.
         /// 포지션 후보가 부족하거나 캡을 초과해도, 코스트가 가장 낮은 잉여 선수로 억지로 채워
         /// 28인 빈칸을 반드시 채우는 Fallback 로직을 포함한다.
+        /// salaryCap을 생략하면 GDD v4.0 상한선(FullRosterSalaryCap = 1350)을 사용한다.
         /// </summary>
-        public List<Player> AutoSetRoster(List<Player> inventory, int salaryCap)
+        public List<Player> AutoSetRoster(List<Player> inventory, float salaryCap = FullRosterSalaryCap)
         {
             var slots = BuildEmptySlots();
             var pool = (inventory ?? new List<Player>())
@@ -117,7 +121,7 @@ namespace KBOManager.Managers
                 if (slot.Assigned != null) continue;
                 if (pool.Count == 0) break;
 
-                var cheapest = pool.OrderBy(p => p.Template.Cost).First();
+                var cheapest = pool.OrderBy(p => p.CalculateSalaryCost()).First();
                 slot.Assigned = cheapest;
                 pool.Remove(cheapest);
             }
@@ -128,23 +132,24 @@ namespace KBOManager.Managers
         /// 더 저렴한 잉여 인벤토리 선수로 교체해 캡 이내로 맞춘다.
         /// 대체 가능한 후보가 없으면 28인 채움을 우선시하여 캡 초과 상태를 그대로 유지한다.
         /// </summary>
-        private static void EnforceSalaryCap(List<RosterSlot> slots, List<Player> pool, int salaryCap)
+        private static void EnforceSalaryCap(List<RosterSlot> slots, List<Player> pool, float salaryCap)
         {
-            int TotalCost() => slots.Where(s => s.Assigned != null).Sum(s => s.Assigned.Template.Cost);
+            float TotalCost() => slots.Where(s => s.Assigned != null).Sum(s => s.Assigned.CalculateSalaryCost());
 
             int safety = slots.Count * Mathf.Max(1, pool.Count) + 1; // 무한루프 방지
             while (TotalCost() > salaryCap && safety-- > 0)
             {
                 var expensiveSlot = slots
                     .Where(s => s.Assigned != null)
-                    .OrderByDescending(s => s.Assigned.Template.Cost)
+                    .OrderByDescending(s => s.Assigned.CalculateSalaryCost())
                     .FirstOrDefault();
 
                 if (expensiveSlot == null) break;
 
+                float expensiveCost = expensiveSlot.Assigned.CalculateSalaryCost();
                 var cheaperAlternative = pool
-                    .Where(p => MatchesSlot(p, expensiveSlot) && p.Template.Cost < expensiveSlot.Assigned.Template.Cost)
-                    .OrderBy(p => p.Template.Cost)
+                    .Where(p => MatchesSlot(p, expensiveSlot) && p.CalculateSalaryCost() < expensiveCost)
+                    .OrderBy(p => p.CalculateSalaryCost())
                     .FirstOrDefault();
 
                 if (cheaperAlternative == null) break; // 더 교체할 대체자가 없음 -> 28인 채움 유지, 캡 초과 허용

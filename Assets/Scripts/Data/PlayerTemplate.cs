@@ -31,7 +31,9 @@ namespace KBOManager.Data
         public BatterStats BatterStats;
         [Tooltip("IsPitcher == true 일 때만 유효")]
         public PitcherStats PitcherStats;
-        public int Cost;           // 샐러리 캡 코스트. 강화/각성해도 변하지 않는 고정값
+        public int Cost;           // [레거시] GDD v3.1 시절 고정 코스트. v4.0부터 실제 샐러리 캡 검증은
+                                    // Player.CalculateSalaryCost()(등급 기본 코스트 + OVR/각성 연동)를 쓴다.
+                                    // 이 필드는 더 이상 RosterManager에서 참조되지 않는다.
 
         [Header("Skill Preset (선택)")]
         public SkillTier PresetSkillTier;

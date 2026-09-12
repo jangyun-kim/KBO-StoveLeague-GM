@@ -95,6 +95,64 @@ namespace KBOManager.Engine
 
         /// <summary>"9회초 홍길동, 좌월 홈런!" 형태의 중계 텍스트. MatchLogger가 생성한다.</summary>
         public string LogMessage;
+
+        /// <summary>이 타석에서 실제로 발생한 주자 이동(득점 포함) 목록. 아웃으로 주자 변화가 없으면 빈 리스트.
+        /// PlayFullMatchAsEventQueue()가 이걸 그대로 RunnerAdvance PlayEvent로 변환한다.</summary>
+        public List<RunnerMovement> RunnerMovements = new List<RunnerMovement>();
+    }
+
+    /// <summary>
+    /// 한 주자(타자 본인 포함)의 단일 베이스 이동. 0 = 타자석(홈에서 출발), 1~3 = 1~3루, 4 = 득점(홈 생환).
+    /// 2.5D 중계 미니맵이 주자 Dot을 FromBase에서 ToBase로 애니메이션시키는 데 쓴다.
+    /// </summary>
+    public readonly struct RunnerMovement
+    {
+        public readonly int FromBase;
+        public readonly int ToBase;
+
+        public RunnerMovement(int fromBase, int toBase)
+        {
+            FromBase = fromBase;
+            ToBase = toBase;
+        }
+    }
+
+    /// <summary>Queue&lt;PlayEvent&gt;에 담기는 개별 이벤트의 종류.</summary>
+    public enum PlayEventType
+    {
+        AtBatResult,   // 타석 결과 확정 (삼진/범타/안타/홈런/사사구 등) - 중계 로그 1줄에 대응
+        RunnerAdvance, // 주자(타자 포함) 1명의 베이스 이동 1회
+        HalfInningEnd, // 하프이닝 종료 (공수 교대)
+        GameEnd        // 경기 종료
+    }
+
+    /// <summary>
+    /// 2.5D 중계 뷰가 순서대로 재생(Playback)할 단위 이벤트. MatchEngine은 결과를 즉시 UI에 쏘지 않고
+    /// 경기 전체를 시뮬레이션한 뒤 이 이벤트들을 Queue&lt;PlayEvent&gt;에 담아 한 번에 반환한다
+    /// (PlayFullMatchAsEventQueue() 참고) - UI는 큐를 하나씩 꺼내 타이핑 로그/주자 애니메이션으로 재생하면 된다.
+    /// </summary>
+    public class PlayEvent
+    {
+        public PlayEventType Type;
+
+        // ----- 공통 컨텍스트 -----
+        public int Inning;
+        public bool IsTopHalf;
+        public int HomeScore;
+        public int AwayScore;
+
+        // ----- Type == AtBatResult 일 때만 유효 -----
+        public Player Batter;
+        public Player Pitcher;
+        public AtBatResult Result;
+        public int Outs;
+        public int RunsScoredThisPlay;
+        /// <summary>"9회초 홍길동, 좌월 홈런!" 형태의 중계 텍스트. 하단 텍스트 창 타이핑 연출에 그대로 사용.</summary>
+        public string LogMessage;
+
+        // ----- Type == RunnerAdvance 일 때만 유효 -----
+        public int FromBase;
+        public int ToBase;
     }
 
     /// <summary>
@@ -390,7 +448,7 @@ namespace KBOManager.Engine
             var situationBeforePlay = currentAtBatState.Clone();
             int outsBeforePlay = currentAtBatState.Outs;
 
-            int runs = ResolveAtBatEffect(result, currentAtBatState);
+            var (runs, runnerMovements) = ResolveAtBatEffect(result, currentAtBatState);
             bool isDoublePlay = result == AtBatResult.Groundout && currentAtBatState.Outs - outsBeforePlay == 2;
 
             // 퀵후크(조기 강판) 판정용 누적 실점. 이닝 로테이션 로직(SelectPitcherForInning)이 다음
@@ -439,6 +497,7 @@ namespace KBOManager.Engine
                 AwayScore = Result.AwayTotalScore,
                 IsTopHalf = wasTopHalf,
                 LogMessage = logMessage,
+                RunnerMovements = runnerMovements,
             };
         }
 
@@ -530,6 +589,80 @@ namespace KBOManager.Engine
             }
 
             return Result;
+        }
+
+        /// <summary>
+        /// GDD v4.0 2.5D 중계 뷰 전용 진입점. PlayFullMatch()와 동일한 규칙으로 경기 전체를 내부적으로
+        /// 즉시 시뮬레이션하되, 결과를 UI로 그때그때 흘려보내지 않고 발생한 모든 이벤트(타석 결과 +
+        /// 주자 이동 + 하프이닝/경기 종료)를 순서대로 Queue&lt;PlayEvent&gt;에 담아 마지막에 한 번에 반환한다.
+        /// BroadcastUIManager 등 UI 계층은 이 큐를 하나씩 Dequeue하며 텍스트 로그 타이핑 + 미니맵 주자
+        /// 애니메이션을 재생하면 된다. 기존 PlayNextAtBat()/PlayFullMatch() 스텝 API는 대체 없이 그대로
+        /// 유지된다(대타/투수 교체 등 수동 개입이 필요한 화면이 아직 이를 참조하기 때문).
+        /// </summary>
+        public Queue<PlayEvent> PlayFullMatchAsEventQueue(string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
+        {
+            var queue = new Queue<PlayEvent>();
+            BeginMatch(homeTeamName, awayTeamName, isPostSeason);
+
+            while (!IsGameOver)
+            {
+                var step = PlayNextAtBat();
+                if (step.Batter == null && step.Pitcher == null && step.GameEnded)
+                {
+                    break; // 로스터 이상 등으로 더 진행할 타자/투수가 전혀 없는 극단적 상황의 안전장치
+                }
+
+                queue.Enqueue(new PlayEvent
+                {
+                    Type = PlayEventType.AtBatResult,
+                    Inning = step.State?.Inning ?? currentInning,
+                    IsTopHalf = step.IsTopHalf,
+                    HomeScore = step.HomeScore,
+                    AwayScore = step.AwayScore,
+                    Batter = step.Batter,
+                    Pitcher = step.Pitcher,
+                    Result = step.Result,
+                    Outs = step.State?.Outs ?? 0,
+                    RunsScoredThisPlay = step.RunsScoredThisPlay,
+                    LogMessage = step.LogMessage,
+                });
+
+                foreach (var movement in step.RunnerMovements)
+                {
+                    queue.Enqueue(new PlayEvent
+                    {
+                        Type = PlayEventType.RunnerAdvance,
+                        Inning = step.State?.Inning ?? currentInning,
+                        IsTopHalf = step.IsTopHalf,
+                        HomeScore = step.HomeScore,
+                        AwayScore = step.AwayScore,
+                        FromBase = movement.FromBase,
+                        ToBase = movement.ToBase,
+                    });
+                }
+
+                if (step.HalfInningEnded && !step.GameEnded)
+                {
+                    queue.Enqueue(new PlayEvent
+                    {
+                        Type = PlayEventType.HalfInningEnd,
+                        Inning = step.State?.Inning ?? currentInning,
+                        IsTopHalf = step.IsTopHalf,
+                        HomeScore = step.HomeScore,
+                        AwayScore = step.AwayScore,
+                    });
+                }
+            }
+
+            queue.Enqueue(new PlayEvent
+            {
+                Type = PlayEventType.GameEnd,
+                Inning = currentInning,
+                HomeScore = Result.HomeTotalScore,
+                AwayScore = Result.AwayTotalScore,
+            });
+
+            return queue;
         }
 
         /// <summary>
@@ -818,10 +951,10 @@ namespace KBOManager.Engine
         // ----- 이닝/타석 진행 -----
 
         /// <summary>
-        /// 타석 1회의 결과를 state(아웃/주자)에 반영하고, 이 플레이로 발생한 득점 수를 반환한다.
-        /// 병살타/희생플라이 판정이 여기 포함된다.
+        /// 타석 1회의 결과를 state(아웃/주자)에 반영하고, 이 플레이로 발생한 득점 수와 실제 주자 이동
+        /// 목록(PlayEvent 변환용)을 함께 반환한다. 병살타/희생플라이 판정이 여기 포함된다.
         /// </summary>
-        private int ResolveAtBatEffect(AtBatResult result, MatchState state)
+        private (int runs, List<RunnerMovement> movements) ResolveAtBatEffect(AtBatResult result, MatchState state)
         {
             bool isOut = result == AtBatResult.Strikeout || result == AtBatResult.Groundout || result == AtBatResult.Flyout;
 
@@ -835,7 +968,7 @@ namespace KBOManager.Engine
                 // 희생플라이: 3루 주자 생환, 배터만 아웃 처리
                 state.RunnerOnThird = false;
                 state.Outs++;
-                return 1;
+                return (1, new List<RunnerMovement> { new RunnerMovement(3, 4) });
             }
 
             if (result == AtBatResult.Groundout && state.RunnerOnFirst && state.Outs < 2
@@ -844,11 +977,11 @@ namespace KBOManager.Engine
                 // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
                 state.RunnerOnFirst = false;
                 state.Outs += 2;
-                return 0;
+                return (0, new List<RunnerMovement>());
             }
 
             state.Outs++;
-            return 0;
+            return (0, new List<RunnerMovement>());
         }
 
         /// <summary>
@@ -988,10 +1121,12 @@ namespace KBOManager.Engine
             return pick;
         }
 
-        /// <summary>타석 결과에 따라 state의 주자를 이동시키고 이번 타석에서 발생한 득점 수를 반환한다.</summary>
-        private static int AdvanceRunners(AtBatResult result, MatchState state)
+        /// <summary>타석 결과에 따라 state의 주자를 이동시키고, 이번 타석에서 발생한 득점 수와
+        /// 실제 발생한 주자 이동(타자 본인 포함) 목록을 함께 반환한다.</summary>
+        private static (int runs, List<RunnerMovement> movements) AdvanceRunners(AtBatResult result, MatchState state)
         {
             int runs = 0;
+            var movements = new List<RunnerMovement>();
 
             switch (result)
             {
@@ -999,43 +1134,69 @@ namespace KBOManager.Engine
                     bool forcedHome = state.RunnerOnFirst && state.RunnerOnSecond && state.RunnerOnThird;
                     bool forceToThird = state.RunnerOnFirst && state.RunnerOnSecond;
                     bool forceToSecond = state.RunnerOnFirst;
-                    if (forcedHome) runs++;
-                    if (forceToThird) state.RunnerOnThird = true;
-                    if (forceToSecond) state.RunnerOnSecond = true;
+                    if (forcedHome) { runs++; movements.Add(new RunnerMovement(3, 4)); }
+                    if (forceToThird) { state.RunnerOnThird = true; movements.Add(new RunnerMovement(2, 3)); }
+                    if (forceToSecond) { state.RunnerOnSecond = true; movements.Add(new RunnerMovement(1, 2)); }
                     state.RunnerOnFirst = true;
+                    movements.Add(new RunnerMovement(0, 1)); // 타자 1루 진루(볼넷)
                     break;
 
                 case AtBatResult.Single:
-                    if (state.RunnerOnThird) runs++;
+                {
+                    bool thirdScores = state.RunnerOnThird;
+                    bool secondToThird = state.RunnerOnSecond;
+                    bool firstToSecond = state.RunnerOnFirst;
+                    if (thirdScores) { runs++; movements.Add(new RunnerMovement(3, 4)); }
                     state.RunnerOnThird = state.RunnerOnSecond;
+                    if (secondToThird) movements.Add(new RunnerMovement(2, 3));
                     state.RunnerOnSecond = state.RunnerOnFirst;
+                    if (firstToSecond) movements.Add(new RunnerMovement(1, 2));
                     state.RunnerOnFirst = true;
+                    movements.Add(new RunnerMovement(0, 1));
                     break;
+                }
 
                 case AtBatResult.Double:
-                    if (state.RunnerOnThird) runs++;
-                    if (state.RunnerOnSecond) runs++;
-                    state.RunnerOnThird = state.RunnerOnFirst; // 단순화: 1루 주자는 3루에서 멈춘다고 가정
+                {
+                    bool thirdScores = state.RunnerOnThird;
+                    bool secondScores = state.RunnerOnSecond;
+                    bool firstToThird = state.RunnerOnFirst; // 단순화: 1루 주자는 3루에서 멈춘다고 가정
+                    if (thirdScores) { runs++; movements.Add(new RunnerMovement(3, 4)); }
+                    if (secondScores) { runs++; movements.Add(new RunnerMovement(2, 4)); }
+                    state.RunnerOnThird = state.RunnerOnFirst;
+                    if (firstToThird) movements.Add(new RunnerMovement(1, 3));
                     state.RunnerOnSecond = true;
                     state.RunnerOnFirst = false;
+                    movements.Add(new RunnerMovement(0, 2));
                     break;
+                }
 
                 case AtBatResult.Triple:
-                    if (state.RunnerOnThird) runs++;
-                    if (state.RunnerOnSecond) runs++;
-                    if (state.RunnerOnFirst) runs++;
+                {
+                    bool thirdScores = state.RunnerOnThird;
+                    bool secondScores = state.RunnerOnSecond;
+                    bool firstScores = state.RunnerOnFirst;
+                    if (thirdScores) { runs++; movements.Add(new RunnerMovement(3, 4)); }
+                    if (secondScores) { runs++; movements.Add(new RunnerMovement(2, 4)); }
+                    if (firstScores) { runs++; movements.Add(new RunnerMovement(1, 4)); }
                     state.RunnerOnThird = true;
                     state.RunnerOnSecond = false;
                     state.RunnerOnFirst = false;
+                    movements.Add(new RunnerMovement(0, 3));
                     break;
+                }
 
                 case AtBatResult.HomeRun:
+                    if (state.RunnerOnThird) movements.Add(new RunnerMovement(3, 4));
+                    if (state.RunnerOnSecond) movements.Add(new RunnerMovement(2, 4));
+                    if (state.RunnerOnFirst) movements.Add(new RunnerMovement(1, 4));
                     runs = 1 + (state.RunnerOnFirst ? 1 : 0) + (state.RunnerOnSecond ? 1 : 0) + (state.RunnerOnThird ? 1 : 0);
                     state.RunnerOnFirst = state.RunnerOnSecond = state.RunnerOnThird = false;
+                    movements.Add(new RunnerMovement(0, 4)); // 타자 본인 득점(홈런)
                     break;
             }
 
-            return runs;
+            return (runs, movements);
         }
     }
 }

@@ -96,13 +96,15 @@ namespace KBOManager.Models
             CurrentStamina = Mathf.Min(MaxStamina, CurrentStamina + amount);
         }
 
-        /// <summary>LIVE_NORMAL / LIVE_EPIC 등급은 강화만 가능하고 각성은 불가하다.</summary>
+        /// <summary>SEASON / LIVE_NORMAL / LIVE_EPIC 등급은 강화만 가능하고 각성은 불가하다.</summary>
         public bool CanAwaken => Template != null
+            && Template.Grade != Grade.SEASON
             && Template.Grade != Grade.LIVE_NORMAL
             && Template.Grade != Grade.LIVE_EPIC;
 
         private static StarType DefaultStarTypeFor(Grade grade) => grade switch
         {
+            Grade.SEASON => StarType.NORMAL,
             Grade.LIVE_NORMAL => StarType.NORMAL,
             Grade.LIVE_EPIC => StarType.NORMAL,
             Grade.ALLSTAR => StarType.PURPLE,
@@ -119,6 +121,7 @@ namespace KBOManager.Models
         /// </summary>
         private static int DefaultStarLevelFor(Grade grade) => grade switch
         {
+            Grade.SEASON => MinStarLevel,
             Grade.LIVE_NORMAL => MinStarLevel,
             Grade.LIVE_EPIC => 4,
             Grade.ALLSTAR => 4,
@@ -200,5 +203,37 @@ namespace KBOManager.Models
 
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
         private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;
+
+        // 등급별 기본 코스트. GDD v4.0 공식(CalculateSalaryCost 참고)의 입력값이며, 등급 간 상대적 격차만
+        // 희귀도 순서(SEASON < LIVE_NORMAL < ... < DYNASTY)를 따르도록 맞춘 잠정값이다.
+        // TODO: 밸런스 확정 전까지의 임시 테이블 - 실제 수치는 기획 확정 후 교체 필요.
+        private static float GradeBaseCostFor(Grade grade) => grade switch
+        {
+            Grade.SEASON => 5f,
+            Grade.LIVE_NORMAL => 5f,
+            Grade.LIVE_EPIC => 8f,
+            Grade.ALLSTAR => 12f,
+            Grade.TITLE_HOLDER => 16f,
+            Grade.GOLDEN_GLOVE => 20f,
+            Grade.SIGNATURE => 25f,
+            Grade.DYNASTY => 30f,
+            _ => 5f
+        };
+
+        /// <summary>
+        /// GDD v4.0 샐러리 캡 코스트 공식: 등급 기본 코스트 + (최종 OVR - 60) + (각성 단계 * 1.5).
+        /// "최종 OVR"은 CalculateOVR()과 동일한 값(강화/세트덱/컨디션 반영)을 그대로 사용한다 - 즉 컨디션이
+        /// 하루 단위로 오르내리면 이 코스트도 함께(±5% 이내로) 미세하게 흔들릴 수 있다는 뜻이다.
+        /// PlayerTemplate.Cost(고정값)를 대체하는 새 공식으로, RosterManager의 샐러리 캡 검증이 이 값을 사용한다.
+        /// </summary>
+        public float CalculateSalaryCost(bool isSetDeckBonusActive = false, float setDeckBonusMultiplier = 1.0f)
+        {
+            if (Template == null) return 0f;
+
+            int finalOvr = CalculateOVR(isSetDeckBonusActive, setDeckBonusMultiplier);
+            float baseCost = GradeBaseCostFor(Template.Grade);
+
+            return baseCost + (finalOvr - 60) + (AwakenLevel * 1.5f);
+        }
     }
 }

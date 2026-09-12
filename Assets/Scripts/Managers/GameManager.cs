@@ -203,5 +203,62 @@ namespace KBOManager.Managers
 
             return countByTeam;
         }
+
+        // ----- 팀 OVR (GDD v4.0) -----
+
+        private static readonly BatterPosition[] AllBatterPositions =
+            (BatterPosition[])System.Enum.GetValues(typeof(BatterPosition));
+
+        private const int BenchBatterQuota = 4;  // 후보 타자 인원
+        private const int BenchReliefQuota = 6;  // 후보 구원(롱/중/셋) 인원
+
+        /// <summary>
+        /// 구단 OVR = (주전 15인 평균 OVR * 0.8) + (후보 10인 평균 OVR * 0.2).
+        /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 5 + 마무리 1.
+        /// 후보 10 = 나머지 타자 중 OVR 상위 4 + 나머지 구원(승리조/추격조/롱릴리프) 중 OVR 상위 6.
+        /// 28인 로스터 중 (28 - 15 - 10 =) 3명은 실제 KBO의 "엔트리 말소"처럼 이 계산에서 제외된다 -
+        /// 어느 3명이 빠지는지는 각 그룹(벤치 타자/구원) 내 OVR 최하위가 자동으로 정해진다.
+        /// 로스터가 비어 있거나 해당 그룹에 아무도 없으면 그 그룹의 평균은 0으로 취급한다(0으로 나누기 방지).
+        /// 세트덱 보너스는 로스터 구성 자체가 세트덱 활성화 여부를 좌우하는 순환 참조를 피하기 위해
+        /// (RosterManager의 다른 OVR 계산들과 동일하게) 반영하지 않는다.
+        /// </summary>
+        public float CalculateTeamOVR()
+        {
+            var batters = roster.Where(p => p?.Template != null && !p.Template.IsPitcher).ToList();
+            var pitchers = roster.Where(p => p?.Template != null && p.Template.IsPitcher).ToList();
+
+            var starterBatters = new List<Player>();
+            foreach (var position in AllBatterPositions)
+            {
+                var pick = batters
+                    .Where(p => p.Template.BatterPosition == position && !starterBatters.Contains(p))
+                    .OrderByDescending(p => p.CalculateOVR(false))
+                    .FirstOrDefault();
+                if (pick != null) starterBatters.Add(pick);
+            }
+
+            var benchBatters = batters
+                .Except(starterBatters)
+                .OrderByDescending(p => p.CalculateOVR(false))
+                .Take(BenchBatterQuota)
+                .ToList();
+
+            var startingPitchers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).ToList();
+            var closers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.Closer).ToList();
+
+            var benchRelief = pitchers
+                .Except(startingPitchers).Except(closers)
+                .OrderByDescending(p => p.CalculateOVR(false))
+                .Take(BenchReliefQuota)
+                .ToList();
+
+            var starters15 = starterBatters.Concat(startingPitchers).Concat(closers).ToList();
+            var bench10 = benchBatters.Concat(benchRelief).ToList();
+
+            float starterAvg = starters15.Count > 0 ? (float)starters15.Average(p => p.CalculateOVR(false)) : 0f;
+            float benchAvg = bench10.Count > 0 ? (float)bench10.Average(p => p.CalculateOVR(false)) : 0f;
+
+            return (starterAvg * 0.8f) + (benchAvg * 0.2f);
+        }
     }
 }
