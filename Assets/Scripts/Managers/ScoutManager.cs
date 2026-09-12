@@ -177,7 +177,7 @@ namespace KBOManager.Managers
         private Grade RollGrade()
         {
             float total = gradeDropRates.Sum(g => g.RatePercent);
-            if (total <= 0f) return Grade.LIVE_NORMAL;
+            if (total <= 0f) return Grade.SEASON; // TASK-KBO-033: 시스템의 가장 기본/흔한 등급은 SEASON
 
             float roll = UnityEngine.Random.Range(0f, total);
             float cumulative = 0f;
@@ -210,6 +210,9 @@ namespace KBOManager.Managers
         {
             switch (grade)
             {
+                // SEASON은 LIVE_NORMAL과 동일하게 취급한다 - 둘 다 각성 불가(Player.CanAwaken 제외 목록)에
+                // 속하는 "기본/무과금 베이스" 등급이라는 점이 cards.csv 샘플(max_awaken=0)과도 일치한다.
+                case Grade.SEASON:
                 case Grade.LIVE_NORMAL:
                     player.CurrentStarType = StarType.NORMAL;
                     player.StarLevel = UnityEngine.Random.Range(1, 4); // 일반 1~3성 무작위

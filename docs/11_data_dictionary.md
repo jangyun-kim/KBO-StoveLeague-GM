@@ -65,4 +65,3 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 
 - 28인 엔트리 샐러리 캡 상한선: **1350** (구현: `RosterManager.FullRosterSalaryCap`).
 - `PlayerTemplate.Cost`(구 v3.1 고정 코스트 필드)는 더 이상 샐러리 캡 계산에 쓰이지 않는다 - 레거시 필드로만 남아 있다.
-- `[결정 필요]` 위 테이블의 SIGNATURE(20) < GOLDEN_GLOVE(25) 순서는 `04_card_grade_policy.md`의 등급 ID 순서(5=SIGNATURE, 6=GOLDEN_GLOVE)와는 일치하지만, `ScoutManager.cs`의 가챠 등급 확률표(GOLDEN_GLOVE 3% > SIGNATURE 1.5%, 즉 SIGNATURE가 더 희귀)와는 상대적 희귀도가 반대로 읽힌다. 이번 작업 범위(TASK-KBO-031)에는 포함되지 않아 코드를 수정하지 않았다 - 후속 작업에서 확인 필요.

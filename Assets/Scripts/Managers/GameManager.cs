@@ -213,17 +213,20 @@ namespace KBOManager.Managers
         private const int BenchReliefQuota = 6;  // 후보 구원(롱/중/셋) 인원
 
         /// <summary>
-        /// 구단 OVR = (주전 15인 평균 OVR * 0.8) + (후보 10인 평균 OVR * 0.2).
+        /// 구단 OVR = (주전 15인 평균 OVR * 0.8) + (후보 10인 평균 OVR * 0.2) + 시너지 합산.
         /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 5 + 마무리 1.
         /// 후보 10 = 나머지 타자 중 OVR 상위 4 + 나머지 구원(승리조/추격조/롱릴리프) 중 OVR 상위 6.
         /// [TASK-KBO-031 공식화] 28인 로스터 중 (28 - 15 - 10 =) 3명(타자 2명, 투수 1명)은 각 그룹
         /// (벤치 타자/구원) 내 OVR 최하위 순으로 자동 제외된다 - 실제 KBO의 28인 등록/25인 경기 엔트리
         /// 구조를 본뜬 공식 스펙으로 확정됨(이 계산 방식 자체는 변경 없음, 기존 구현을 그대로 유지).
         /// 로스터가 비어 있거나 해당 그룹에 아무도 없으면 그 그룹의 평균은 0으로 취급한다(0으로 나누기 방지).
-        /// 세트덱 보너스는 로스터 구성 자체가 세트덱 활성화 여부를 좌우하는 순환 참조를 피하기 위해
-        /// (RosterManager의 다른 OVR 계산들과 동일하게) 반영하지 않는다.
+        /// 세트덱 보너스(Player.CalculateOVR의 setDeckBonus)는 로스터 구성 자체가 세트덱 활성화 여부를
+        /// 좌우하는 순환 참조를 피하기 위해(RosterManager의 다른 OVR 계산들과 동일하게) 개별 선수 OVR에는
+        /// 반영하지 않는다 - 대신 세트덱 시너지는 CalculateTeamSynergy()의 가산 항목으로 별도 처리된다.
+        /// [TASK-KBO-033] 25인 가중평균은 시너지를 더하기 "전"에 정수로 반올림한다(반올림 시점 고정 -
+        /// 시너지 가산 이후로 옮기지 말 것).
         /// </summary>
-        public float CalculateTeamOVR()
+        public int CalculateTeamOVR()
         {
             var batters = roster.Where(p => p?.Template != null && !p.Template.IsPitcher).ToList();
             var pitchers = roster.Where(p => p?.Template != null && p.Template.IsPitcher).ToList();
@@ -259,7 +262,22 @@ namespace KBOManager.Managers
             float starterAvg = starters15.Count > 0 ? (float)starters15.Average(p => p.CalculateOVR(false)) : 0f;
             float benchAvg = bench10.Count > 0 ? (float)bench10.Average(p => p.CalculateOVR(false)) : 0f;
 
-            return (starterAvg * 0.8f) + (benchAvg * 0.2f);
+            int baseOvr = Mathf.RoundToInt((starterAvg * 0.8f) + (benchAvg * 0.2f));
+            int synergy = CalculateTeamSynergy();
+
+            return baseOvr + synergy;
+        }
+
+        /// <summary>
+        /// 구단 OVR에 직접 가산되는 시너지 합계(세트덱 + 감독 + 치어리더). GDD 기준 최대 +17
+        /// (세트덱 +12, 감독 +2, 치어리더 +3)까지 가산될 수 있으나, 세트덱/감독/치어리더 데이터 매핑은
+        /// 아직 구현되지 않아 현재는 항상 0을 반환하는 자리표시자(placeholder)다.
+        /// [TASK-KBO-033] CalculateTeamOVR()가 이 값을 "반올림된 25인 평균"에 더하는 마지막 단계로
+        /// 호출한다 - 실제 세트덱/감독/치어리더 연동 시 이 메서드 내부만 채우면 된다.
+        /// </summary>
+        private int CalculateTeamSynergy()
+        {
+            return 0;
         }
     }
 }
