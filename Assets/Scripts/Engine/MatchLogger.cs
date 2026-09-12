@@ -22,7 +22,6 @@ namespace KBOManager.Engine
         // 색만으로 의미를 구분하지 않도록 굵게/기울임 + 텍스트 자체("병살타" 등)로도 항상 이중 전달한다.
         private const string HighlightColor = "#FF5252"; // 홈런/장타/득점
         private const string OutColor = "#448AFF";        // 삼진/병살타
-        private const string SubstitutionColor = "#9E9E9E"; // 대타/투수 교체
 
         /// <summary>
         /// situationBeforePlay(타석 진입 시점의 이닝/아웃/주자 상황)와 결과를 조합해 한 줄짜리 중계 로그를 만든다.
@@ -60,16 +59,6 @@ namespace KBOManager.Engine
             }
 
             return body;
-        }
-
-        /// <summary>대타/투수 교체를 알리는 로그. "대타: 홍길동 → 김철수" 형태이며 회색+기울임체로 강조한다.</summary>
-        public static string BuildSubstitutionLog(Player outgoing, Player incoming, bool isBatterSubstitution)
-        {
-            string outgoingName = outgoing?.Template?.PlayerName ?? "선수";
-            string incomingName = incoming?.Template?.PlayerName ?? "선수";
-            string label = isBatterSubstitution ? "대타" : "투수 교체";
-
-            return Colorize($"{label}: {outgoingName} → {incomingName}", SubstitutionColor, bold: false, italic: true);
         }
 
         private static string DescribeResult(AtBatResult result, bool isDoublePlay) => result switch

@@ -61,27 +61,33 @@ namespace KBOManager.Models
     }
 
     /// <summary>
-    /// 선수 명함(카드) 등급. GDD v4.0 기준 8단계. 가장 낮은 SEASON이 신설되었고(강화만 가능/각성 불가 -
-    /// cards.csv의 CRD_0001 SEASON 샘플이 max_awaken=0인 것과 일치), 나머지 7종의 상대적 희귀도 순서는
-    /// v3.1과 동일하게 유지한다(GOLDEN_GLOVE(골드 5성) &lt; SIGNATURE(플래티넘 6성) - ScoutManager의
-    /// GradeDropRate 확률표(GOLDEN_GLOVE 3% &gt; SIGNATURE 1.5%)와 어긋나지 않도록).
+    /// 선수 명함(카드) 등급. GDD v4.0/04_card_grade_policy.md 확정 서열(SEASON=0 ~ DYNASTY=7)과
+    /// 정수값을 완전히 일치시킨다(TASK-KBO-032-IMPLEMENT). 이렇게 하면 (int)Grade 캐스팅 값이 곧
+    /// 등급의 랭크(희귀도)가 되어, ScoutManager.RollGradeAtLeast()의 등급 대소 비교(&gt;=)가 별도의
+    /// 랭크 테이블 없이도 안전하게 성립한다.
     ///
-    /// [중요] SaveManager는 JsonUtility로 직렬화하며, JsonUtility는 enum을 이름이 아닌 "정수 ordinal"로
-    /// 저장한다. 따라서 기존 7종(LIVE_NORMAL=0 ~ DYNASTY=6) 각각에 v3.1 시절과 동일한 정수값을 명시적으로
-    /// 고정해 두어야 기존 세이브 파일의 등급이 깨지지 않는다(예: 값 고정 없이 SEASON을 맨 앞에 추가했다면
-    /// 기존 세이브의 LIVE_NORMAL(0)이 로드 시 SEASON(0)으로 잘못 해석되었을 것). SEASON은 기존에 없던
-    /// 값이므로 안전하게 새 번호(7)를 받는다.
+    /// [TASK-KBO-032 사전 조사 결과] SaveManager는 Grade 자체를 JSON에 저장하지 않는다(유저 카드는
+    /// TemplateId로 PlayerTemplate 원본을 다시 찾아 붙이는 구조) - 따라서 이 정수값 재배치는 기존 JSON
+    /// 세이브 파일을 깨뜨리지 않는다(TASK-KBO-031 당시의 "세이브 호환을 위해 SEASON=7 고정" 판단은
+    /// 이 조사로 전제가 사라져 철회됨).
+    ///
+    /// [Inspector 직렬화 주의] 단, Grade가 [SerializeField]로 노출된 곳(PlayerTemplate.Grade,
+    /// ScoutManager.gradeDropRates, ShopUIController의 guaranteedMinimumGrade/premiumTenPullMinimumGrade,
+    /// SeasonRewardManager의 championGuaranteedGrade/lastPlaceGuaranteedGrade)은 유니티가 정수값으로
+    /// 직렬화하므로, 이 재배치 이전에 씬/프리팹/.asset에 이미 값을 지정해 둔 로컬 작업이 있다면 그
+    /// Inspector 값이 엉뚱한 등급을 가리키게 될 수 있다 - 재배치 후 반드시 각 Inspector 값을 다시
+    /// 확인/재지정할 것.
     /// </summary>
     public enum Grade
     {
-        LIVE_NORMAL = 0,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
-        LIVE_EPIC = 1,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
-        ALLSTAR = 2,        // 올스타 (보라 4성)
-        TITLE_HOLDER = 3,   // 타이틀 홀더 (실버 5성)
-        GOLDEN_GLOVE = 4,   // 골든 글러브 (골드 5성)
+        SEASON = 0,         // 시즌 카드 (기본/무등급, 강화만 가능/각성 불가)
+        LIVE_NORMAL = 1,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
+        LIVE_EPIC = 2,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
+        ALLSTAR = 3,        // 올스타 (보라 4성)
+        TITLE_HOLDER = 4,   // 타이틀 홀더 (실버 5성)
         SIGNATURE = 5,      // 시그니처 (플래티넘 6성)
-        DYNASTY = 6,        // 왕조 (구단색 6성)
-        SEASON = 7          // 시즌 카드 (기본/무등급, 강화만 가능/각성 불가) - v4.0 신설, 기존 세이브 호환을 위해 마지막 번호로 배정
+        GOLDEN_GLOVE = 6,   // 골든 글러브 (골드 5성)
+        DYNASTY = 7         // 왕조 (구단색 6성)
     }
 
     /// <summary>

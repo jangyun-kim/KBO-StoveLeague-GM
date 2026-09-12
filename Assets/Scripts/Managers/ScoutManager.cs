@@ -32,17 +32,14 @@ namespace KBOManager.Managers
         [SerializeField] private int roll10Cost = 10;
 
         [Header("Grade Drop Rates (총합 100%)")]
-        [Tooltip("GDD에 가챠 등급별 확률이 명시되지 않아 임시값. 기획 확정 후 인스펙터에서 조정할 것.")]
+        [Tooltip("v0.1 확정 스펙(04_card_grade_policy.md): 활성 등급 3종(SEASON/LIVE_NORMAL/LIVE_EPIC)만 뽑힌다. " +
+                 "ALLSTAR 이상은 v0.5/v2.0에서 활성화 예정이라 이 표에서 제외했다.")]
         [SerializeField]
         private List<GradeDropRate> gradeDropRates = new List<GradeDropRate>
         {
-            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = 60f },
-            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 20f },
-            new GradeDropRate { Grade = Grade.ALLSTAR, RatePercent = 10f },
-            new GradeDropRate { Grade = Grade.TITLE_HOLDER, RatePercent = 5f },
-            new GradeDropRate { Grade = Grade.GOLDEN_GLOVE, RatePercent = 3f },
-            new GradeDropRate { Grade = Grade.SIGNATURE, RatePercent = 1.5f },
-            new GradeDropRate { Grade = Grade.DYNASTY, RatePercent = 0.5f },
+            new GradeDropRate { Grade = Grade.SEASON, RatePercent = 70f },
+            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = 25f },
+            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 5f },
         };
 
         private void Awake()
@@ -144,6 +141,9 @@ namespace KBOManager.Managers
 
         private Grade RollGradeAtLeast(Grade minimumGrade)
         {
+            // Grade enum 정수값이 04_card_grade_policy.md 확정 서열(SEASON=0 ~ DYNASTY=7)과 완전히
+            // 일치하도록 재배치되었으므로(TASK-KBO-032-IMPLEMENT), 이 정수 대소 비교(>=)는 곧 "등급
+            // 랭크가 minimumGrade 이상인가"와 정확히 같은 의미가 되어 별도 랭크 테이블 없이도 안전하다.
             var eligible = gradeDropRates.Where(g => g.Grade >= minimumGrade).ToList();
             if (eligible.Count == 0) return minimumGrade; // 확률표에 해당 등급 이상이 없으면 최소 등급으로 확정
 
