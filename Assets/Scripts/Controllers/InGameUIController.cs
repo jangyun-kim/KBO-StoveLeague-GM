@@ -171,6 +171,12 @@ namespace KBOManager.Controllers
 
             if (logScrollRect != null)
             {
+                // [TASK-KBO-043] Instantiate() 직후에는 ContentSizeFitter/VerticalLayoutGroup이 아직
+                // 이번 프레임의 레이아웃을 재계산하지 않은 상태라, 이 강제 갱신 없이 곧바로
+                // verticalNormalizedPosition을 설정하면 content 크기가 한 프레임 뒤처져 스크롤이
+                // 살짝 덜 내려가거나 튀는 현상이 생긴다. ForceUpdateCanvases()로 레이아웃을 즉시
+                // 재계산시킨 뒤에 최하단으로 고정한다.
+                Canvas.ForceUpdateCanvases();
                 logScrollRect.verticalNormalizedPosition = 0f; // 가장 최근 로그(맨 아래)로 스크롤
             }
         }
