@@ -103,6 +103,8 @@ namespace KBOManager.Engine
 
     /// <summary>
     /// 한 주자(타자 본인 포함)의 단일 베이스 이동. 0 = 타자석(홈에서 출발), 1~3 = 1~3루, 4 = 득점(홈 생환).
+    /// [TASK-KBO-047] -1 = 아웃(그 베이스에서 주자가 사라짐 - 현재는 병살타로 1루 주자가 아웃되는
+    /// 경우에만 씀. FromBase에 아웃된 주자의 원래 베이스 번호, ToBase에 -1을 담아 표현한다).
     /// 2.5D 중계 미니맵이 주자 Dot을 FromBase에서 ToBase로 애니메이션시키는 데 쓴다.
     /// </summary>
     public readonly struct RunnerMovement
@@ -149,6 +151,13 @@ namespace KBOManager.Engine
         public int RunsScoredThisPlay;
         /// <summary>"9회초 홍길동, 좌월 홈런!" 형태의 중계 텍스트. 하단 텍스트 창 타이핑 연출에 그대로 사용.</summary>
         public string LogMessage;
+        /// <summary>[TASK-KBO-047] 볼/스트라이크 카운트 다이아몬드 UI를 밋밋하지 않게 보여주기 위한 연출용
+        /// 값(Flavor)이다 - MatchEngine이 투구 단위로 시뮬레이션하지 않고 타석 결과를 한 번에 확정하므로
+        /// (RollPitchCount() 참고), 이 값은 실제 판정 확률 계산에는 전혀 관여하지 않는다.
+        /// PlayFullMatchAsEventQueue()가 Result가 확정된 뒤 결과와 모순되지 않는 범위에서 무작위로
+        /// 채운다(예: 삼진=3S/0~2B, 볼넷=4B/0~2S, 그 외=0~2S/0~3B).</summary>
+        public int Balls;
+        public int Strikes;
 
         // ----- Type == RunnerAdvance 일 때만 유효 -----
         public int FromBase;
@@ -659,6 +668,8 @@ namespace KBOManager.Engine
                     break; // 로스터 이상 등으로 더 진행할 타자/투수가 전혀 없는 극단적 상황의 안전장치
                 }
 
+                var (flavorBalls, flavorStrikes) = RollFlavorCount(step.Result, random);
+
                 queue.Enqueue(new PlayEvent
                 {
                     Type = PlayEventType.AtBatResult,
@@ -672,6 +683,8 @@ namespace KBOManager.Engine
                     Outs = step.State?.Outs ?? 0,
                     RunsScoredThisPlay = step.RunsScoredThisPlay,
                     LogMessage = step.LogMessage,
+                    Balls = flavorBalls,
+                    Strikes = flavorStrikes,
                 });
 
                 foreach (var movement in step.RunnerMovements)
@@ -710,6 +723,26 @@ namespace KBOManager.Engine
             });
 
             return queue;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-047] PlayEvent.Balls/Strikes에 담을 연출용(Flavor) 카운트를 결과와 모순되지 않는
+        /// 범위에서 무작위로 만든다. 이미 확정된 result를 "포장"만 할 뿐 - 이 값 자체가 result에
+        /// 영향을 주거나 어떤 확률 계산에도 관여하지 않는다(SimulateAtBat()의 판정 로직과는 완전히
+        /// 무관). 삼진은 반드시 3스트라이크, 볼넷은 반드시 4볼이어야 앞뒤가 맞으므로 그 결과만 고정값을
+        /// 쓰고, 나머지(안타/범타/뜬공 등)는 0~2스트라이크/0~3볼 범위에서 자유롭게 채운다.
+        /// </summary>
+        private static (int balls, int strikes) RollFlavorCount(AtBatResult result, Random rng)
+        {
+            switch (result)
+            {
+                case AtBatResult.Strikeout:
+                    return (rng.Next(0, 3), 3); // 0~2B, 확정 3S
+                case AtBatResult.Walk:
+                    return (4, rng.Next(0, 3)); // 확정 4B, 0~2S
+                default:
+                    return (rng.Next(0, 4), rng.Next(0, 3)); // 0~3B, 0~2S
+            }
         }
 
         /// <summary>
@@ -1035,7 +1068,11 @@ namespace KBOManager.Engine
                 // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
                 state.RunnerOnFirst = false;
                 state.Outs += 2;
-                return (0, new List<RunnerMovement>());
+                // [TASK-KBO-047] 1루 주자가 사라졌다는 사실을 PlayEvent로 흘려보내 UI(MatchStatusUI)가
+                // 1루 다이아몬드를 비울 수 있도록, "베이스 1에서 아웃(-1)"으로 기록한다(RunnerMovement.cs
+                // 주석 참고). 판정 확률(DoublePlayChance)이나 아웃 수 계산 등 시뮬레이션 로직 자체는
+                // 위 두 줄에서 이미 끝났고, 이 한 줄은 그 결과를 UI로 전달하기 위한 포장일 뿐이다.
+                return (0, new List<RunnerMovement> { new RunnerMovement(1, -1) });
             }
 
             state.Outs++;

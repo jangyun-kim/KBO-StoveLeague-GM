@@ -9,9 +9,14 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// PlayBallController의 진행 이벤트(OnAtBatEnd/OnInningEnd)를 구독해 이닝별 스코어보드와
-    /// 텍스트 중계창을 실시간으로 갱신하는 UI 브릿지. 시뮬레이션 로직은 전혀 갖지 않는다 -
+    /// 결과 패널/보상 표시를 담당하는 UI 브릿지. 시뮬레이션 로직은 전혀 갖지 않는다 -
     /// 여기서 하는 일은 오직 "받은 데이터를 화면에 그린다"뿐이다.
+    ///
+    /// [TASK-KBO-047] 과거에는 PlayBallController.OnAtBatEnd/OnInningEnd를 직접 구독해 텍스트 중계
+    /// 로그와 스코어보드를 실시간으로 갱신했으나, TASK-KBO-041 이후 그 두 이벤트가 죽은 이벤트가
+    /// 되어(CS0067 경고 유발) 구독을 완전히 삭제했다. 이제 텍스트 로그(AddLog())와 스코어보드
+    /// (RefreshScoreboard(), public)는 BroadcastUIManager.PlayOneEvent()가 PlayEvent 큐를 재생하며
+    /// 직접 호출한다 - 경기 종료(OnMatchCompleted)만 여전히 살아있는 이벤트라 계속 구독한다.
     ///
     /// UGUI Text로 작성했다. 프로젝트에 TextMeshPro(TMP Essentials)가 설치돼 있다면 필드 타입을
     /// UnityEngine.UI.Text -> TMPro.TextMeshProUGUI로, using UnityEngine.UI -> using TMPro로만
@@ -67,8 +72,6 @@ namespace KBOManager.Controllers
         {
             if (playBallController != null)
             {
-                playBallController.OnAtBatEnd += HandleAtBatEnd;
-                playBallController.OnInningEnd += HandleInningEnd;
                 playBallController.OnMatchCompleted += HandleMatchCompleted;
             }
 
@@ -82,8 +85,6 @@ namespace KBOManager.Controllers
         {
             if (playBallController != null)
             {
-                playBallController.OnAtBatEnd -= HandleAtBatEnd;
-                playBallController.OnInningEnd -= HandleInningEnd;
                 playBallController.OnMatchCompleted -= HandleMatchCompleted;
             }
 
@@ -91,17 +92,6 @@ namespace KBOManager.Controllers
             {
                 matchRewardManager.OnRewardGranted -= HandleRewardGranted;
             }
-        }
-
-        private void HandleAtBatEnd(AtBatStepResult step)
-        {
-            if (step == null || string.IsNullOrEmpty(step.LogMessage)) return;
-            AddLog(step.LogMessage);
-        }
-
-        private void HandleInningEnd(AtBatStepResult step)
-        {
-            RefreshScoreboard();
         }
 
         /// <summary>

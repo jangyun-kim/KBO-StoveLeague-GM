@@ -41,16 +41,13 @@ namespace KBOManager.UI
         /// <summary>
         /// [TASK-KBO-046] BroadcastUIManager.PlayOneEvent()가 재생 중인 PlayEvent 하나를 그대로
         /// 전달하면 이벤트 타입에 맞춰 필요한 만큼만 갱신한다. PlayEvent는 MatchState 전체 스냅샷이
-        /// 아니라 이벤트 타입별로 필요한 값만 담고 있다(Outs는 AtBatResult 타입에만, FromBase/ToBase는
-        /// RunnerAdvance 타입에만 유효 - MatchEngine.cs의 PlayEvent 클래스 정의 참고).
+        /// 아니라 이벤트 타입별로 필요한 값만 담고 있다(Outs/Balls/Strikes는 AtBatResult 타입에만,
+        /// FromBase/ToBase는 RunnerAdvance 타입에만 유효 - MatchEngine.cs의 PlayEvent 클래스 정의 참고).
         ///
-        /// [알려진 제약] PlayEvent는 볼/스트라이크 카운트를 담지 않는다 - MatchEngine이 투구 단위로
-        /// 시뮬레이션하지 않고 타석 결과를 한 번에 확정하기 때문이다(MatchEngine.RollPitchCount() 주석:
-        /// "state.Balls는 구조적으로만 채워두며 현재 어떤 확률 계산에도 쓰이지 않는다"). 그래서 매
-        /// AtBatResult 이벤트마다 볼/스트라이크 핍은 "이번 타석이 새로 시작됐다"는 뜻으로 0개로
-        /// 리셋할 뿐, 실제 구 단위 카운트는 표시하지 않는다(이번 작업은 MatchEngine 내부 상태 산출
-        /// 로직을 건드리지 않는 어댑터 역할만 수행하므로, PlayEvent에 볼/스트라이크 필드를 새로
-        /// 추가하지 않았다 - 완료 보고서 F 섹션에 [결정 필요]로 별도 기록).
+        /// [TASK-KBO-047] Balls/Strikes는 MatchEngine이 실제 확률 계산에 쓰지 않는 연출용(Flavor) 값이다
+        /// (타석 결과를 투구 단위로 쌓지 않고 한 번에 확정하기 때문 - MatchEngine.RollFlavorCount() 주석
+        /// 참고). 결과와 모순되지 않는 범위(삼진=3S 고정, 볼넷=4B 고정 등)에서만 채워지므로 UI에 그대로
+        /// 표시해도 이상하지 않다.
         /// </summary>
         public void UpdateStatus(PlayEvent evt)
         {
@@ -60,13 +57,16 @@ namespace KBOManager.UI
             {
                 case PlayEventType.AtBatResult:
                     SetPips(outPips, evt.Outs, outOnColor);
-                    SetPips(ballPips, 0, ballOnColor);
-                    SetPips(strikePips, 0, strikeOnColor);
+                    SetPips(ballPips, evt.Balls, ballOnColor);
+                    SetPips(strikePips, evt.Strikes, strikeOnColor);
                     break;
 
                 case PlayEventType.RunnerAdvance:
+                    // [TASK-KBO-047] ToBase == -1은 "그 주자가 아웃되어 베이스에서 사라졌다"는 뜻이다
+                    // (병살타 등 - MatchEngine.RunnerMovement 주석 참고). FromBase는 항상 먼저 비우고,
+                    // 정상 진루(ToBase가 1~3)일 때만 목적지 베이스를 점유 처리한다.
                     SetBaseOccupied(evt.FromBase, false);
-                    SetBaseOccupied(evt.ToBase, true);
+                    if (evt.ToBase != -1) SetBaseOccupied(evt.ToBase, true);
                     break;
 
                 case PlayEventType.HalfInningEnd:
@@ -76,7 +76,7 @@ namespace KBOManager.UI
         }
 
         /// <summary>
-        /// 1~3만 실제 베이스(다이아몬드)를 갱신한다. 0(타자석 출발)과 4(득점/생환)는 다이아몬드에
+        /// 1~3만 실제 베이스(다이아몬드)를 갱신한다. 0(타자석 출발)·4(득점/생환)·-1(아웃)은 다이아몬드에
         /// 표시할 베이스가 아니므로 조용히 무시한다.
         /// </summary>
         private void SetBaseOccupied(int baseNumber, bool occupied)

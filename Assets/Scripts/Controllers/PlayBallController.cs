@@ -18,9 +18,11 @@ namespace KBOManager.Controllers
     /// 넘겨 "재생"(딜레이를 둔 순차 표시)하는 단일 경로로 통합했다 - 실시간 텍스트 중계는 이제
     /// BroadcastUIManager의 책임이다(이 컨트롤러는 더 이상 화면을 직접 갱신하지 않는다).
     ///
-    /// OnAtBatEnd/OnInningEnd 이벤트 선언 자체는 남겨 두었다 - SeasonStatManager는 더 이상 이 이벤트를
-    /// 구독하지 않고 RecordSeasonStatsFromEvents()를 통해 직접 기록을 받지만(아래 참고), 혹시 모를
-    /// 외부 참조와의 컴파일 호환을 위해 삭제하지 않았다(현재는 아무도 발생시키지 않는 죽은 이벤트).
+    /// [TASK-KBO-047] 위 OnAtBatEnd/OnInningEnd 이벤트는 TASK-KBO-041 이후 아무도 발생시키지 않는
+    /// 죽은 이벤트로 남아 CS0067 경고를 유발하고 있었다 - 실제 구독부(SeasonStatManager/
+    /// InGameUIController)도 함께 더 이상 필요 없어져 선언 자체를 완전히 삭제했다. 시즌 기록은
+    /// RecordSeasonStatsFromEvents()가, 텍스트 로그/스코어보드는 BroadcastUIManager.PlayOneEvent()가
+    /// 각자 PlayEvent 큐를 직접 읽어 처리하므로 기능 손실은 없다.
     ///
     /// (TASK-KBO-031: 과거 GDD v3.1의 3방식 - 빠른 진행/하이라이트(개입 대기)/풀 플레이(수동 스텝) -
     /// 중 하이라이트/풀 플레이는 대타·투수 교체 개입 UI와 함께 제거되었다. SubstitutionUIController/
@@ -49,13 +51,6 @@ namespace KBOManager.Controllers
 
         public Team HomeTeam { get; private set; }
         public Team AwayTeam { get; private set; }
-
-        /// <summary>[TASK-KBO-041] 더 이상 아무도 발생시키지 않는다(과거 실시간 스텝 루프 전용 이벤트였음).
-        /// SeasonStatManager 등 기존 구독부와의 컴파일 호환을 위해 선언만 유지한다.</summary>
-        public event Action<AtBatStepResult> OnAtBatEnd;
-
-        /// <summary>[TASK-KBO-041] 더 이상 아무도 발생시키지 않는다. 위 OnAtBatEnd와 동일한 사유로 선언만 유지.</summary>
-        public event Action<AtBatStepResult> OnInningEnd;
 
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
         public event Action<MatchResult> OnMatchCompleted;

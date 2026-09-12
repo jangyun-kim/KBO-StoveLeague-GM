@@ -38,9 +38,14 @@ namespace KBOManager.Managers
     /// 타자/투수 시즌 누적 기록을 관리하는 싱글톤. GDD 원문은 "MatchEngine 이벤트를 구독"하라고
     /// 명시하지만, MatchEngine은 MonoBehaviour가 아닌 순수 C# 클래스라 C# event를 노출하지 않는다
     /// (씬/프레임 오버헤드 없이 여러 경기를 즉시 계산하기 위해 의도적으로 그렇게 설계됐다 - MatchEngine.cs
-    /// 클래스 주석 참고). 실제로 타석/경기 단위 이벤트를 던지는 쪽은 그 결과를 소비해 UI에 전달하는
-    /// PlayBallController(OnAtBatEnd/OnMatchCompleted)이므로, 이 매니저도 InGameUIController/
-    /// MatchRewardManager와 동일하게 PlayBallController를 구독한다.
+    /// 클래스 주석 참고).
+    ///
+    /// [TASK-KBO-047] 과거에는 PlayBallController.OnAtBatEnd를 구독해 매 타석마다 기록했으나, 그
+    /// 이벤트가 TASK-KBO-041 이후 죽은 이벤트가 되어(CS0067 경고 유발) 구독 자체를 삭제했다. 이제는
+    /// PlayBallController.RecordSeasonStatsFromEvents()가 재생용 PlayEvent 큐를 역변환해
+    /// RecordAtBat()(아래, public)을 직접 호출하는 경로 하나만 남았다. 경기 종료(OnMatchCompleted)는
+    /// 여전히 살아있는 이벤트라 PlayBallController를 그대로 구독한다(InGameUIController/
+    /// MatchRewardManager와 동일한 패턴).
     /// </summary>
     public class SeasonStatManager : MonoBehaviour
     {
@@ -77,7 +82,6 @@ namespace KBOManager.Managers
         {
             if (playBallController != null)
             {
-                playBallController.OnAtBatEnd += HandleAtBatEnd;
                 playBallController.OnMatchCompleted += HandleMatchCompleted;
             }
         }
@@ -86,7 +90,6 @@ namespace KBOManager.Managers
         {
             if (playBallController != null)
             {
-                playBallController.OnAtBatEnd -= HandleAtBatEnd;
                 playBallController.OnMatchCompleted -= HandleMatchCompleted;
             }
         }
@@ -157,17 +160,11 @@ namespace KBOManager.Managers
 
         // ----- PlayBallController 이벤트 핸들러 -----
 
-        private void HandleAtBatEnd(AtBatStepResult step)
-        {
-            if (playBallController == null) return;
-            RecordAtBat(step, playBallController.HomeTeam, playBallController.AwayTeam);
-        }
-
         /// <summary>
-        /// LeagueManager의 헤드리스 시즌 스킵(144경기 즉시 시뮬레이션)처럼 PlayBallController를 거치지
-        /// 않고 MatchEngine을 직접 구동하는 경로가 매 타석마다 호출하는 공개 진입점. HandleAtBatEnd와
-        /// 동일한 로직이지만, "지금 진행 중인 PlayBallController 경기"라는 개념이 없는 헤드리스 상황을
-        /// 위해 homeTeam/awayTeam을 playBallController가 아니라 인자로 직접 받는다.
+        /// [TASK-KBO-047] PlayBallController.RecordSeasonStatsFromEvents()(재생용 PlayEvent 큐를 역변환)와
+        /// LeagueManager의 헤드리스 시즌 스킵(144경기 즉시 시뮬레이션)이 MatchEngine을 직접 구동하는
+        /// 경로 양쪽 모두가 매 타석마다 호출하는 공개 진입점. 호출부가 "지금 진행 중인 PlayBallController
+        /// 경기"라는 개념을 갖고 있지 않을 수도 있어(헤드리스 스킵), homeTeam/awayTeam을 인자로 직접 받는다.
         /// </summary>
         public void RecordAtBat(AtBatStepResult step, Team homeTeam, Team awayTeam)
         {
