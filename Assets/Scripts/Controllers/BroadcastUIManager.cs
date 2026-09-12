@@ -68,13 +68,63 @@ namespace KBOManager.Controllers
 
         private void Awake()
         {
-            // [TASK-KBO-041] 인스펙터에서 연결하지 않았다면 같은 오브젝트 -> 자식 순으로 InGameUIController를
-            // 찾아 자동 바인딩한다. 그래도 못 찾으면 null로 남아(AddLog/ShowMatchResult 호출부의 기존 null
-            // 가드가 그대로 방어한다) 크래시 없이 로그만 Debug.Log로 대체된다.
-            if (inGameUIController == null) inGameUIController = GetComponent<InGameUIController>();
-            if (inGameUIController == null) inGameUIController = GetComponentInChildren<InGameUIController>(true);
+            FindOrBindUIComponents();
 
             if (skipButton != null) skipButton.onClick.AddListener(RequestSkip);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-042] 인스펙터에서 개발자가 이미 연결해 둔 값은 절대 덮어쓰지 않는다(가드레일) -
+        /// 각 필드는 null일 때만 아래 순서로 자동 탐색을 시도한다: 같은 오브젝트 -&gt; 자식(비활성
+        /// 포함) -&gt; 부모 -&gt; 씬 전체(FindAnyObjectByType, Unity 6/2023.1+ API). 그래도 못 찾으면
+        /// null로 남기고 Debug.LogWarning만 남긴다 - 게임 진행 자체는 멈추지 않는다(7항 경계 조건).
+        /// AddLog()/ShowMatchResult()/RequestSkip() 등 실제 사용부는 이미 전부 null 가드가 되어 있어
+        /// (TASK-KBO-040/041), 여기서 끝내 아무것도 못 찾아도 크래시로 이어지지 않는다.
+        /// </summary>
+        private void FindOrBindUIComponents()
+        {
+            if (inGameUIController == null) inGameUIController = GetComponent<InGameUIController>();
+            if (inGameUIController == null) inGameUIController = GetComponentInChildren<InGameUIController>(true);
+            if (inGameUIController == null) inGameUIController = GetComponentInParent<InGameUIController>();
+            if (inGameUIController == null) inGameUIController = FindAnyObjectByType<InGameUIController>();
+
+            if (inGameUIController == null)
+            {
+                Debug.LogWarning("[BroadcastUIManager] InGameUIController를 씬에서 찾지 못했습니다 - " +
+                    "텍스트 로그/결과 화면이 실제 UI에 표시되지 않고 Debug.Log로만 출력됩니다. " +
+                    "인스펙터에서 직접 연결하거나 씬에 InGameUIController를 배치해 주세요.");
+            }
+
+            if (skipButton == null) skipButton = FindSkipButtonCandidate();
+
+            if (skipButton == null)
+            {
+                Debug.LogWarning("[BroadcastUIManager] 스킵 버튼을 찾지 못했습니다 - RequestSkip()을 " +
+                    "코드(다른 UI 등)에서 직접 호출해야 스킵 기능이 동작합니다.");
+            }
+        }
+
+        /// <summary>
+        /// [TASK-KBO-042] 자식 계층(비활성 포함)에서 Button 후보를 찾는다. InGamePanel 아래에는
+        /// InGameUIController.returnToLobbyButton처럼 스킵과 무관한 Button도 함께 있을 수 있으므로,
+        /// GameObject 이름에 "skip"이 포함된 후보를 우선하고, 없으면 발견된 첫 번째 Button으로
+        /// 폴백한다. 이 이름 기반 우선순위 자체가 완벽한 판별은 아니다 - 씬 구조에 따라 여전히
+        /// 엉뚱한 버튼을 잡을 위험이 있다는 점을 인지하고 쓸 것(완료 보고서 리스크 참고).
+        /// </summary>
+        private Button FindSkipButtonCandidate()
+        {
+            var candidates = GetComponentsInChildren<Button>(true);
+            if (candidates == null || candidates.Length == 0) return null;
+
+            foreach (var candidate in candidates)
+            {
+                if (candidate != null && candidate.gameObject.name.ToLowerInvariant().Contains("skip"))
+                {
+                    return candidate;
+                }
+            }
+
+            return candidates[0];
         }
 
         /// <summary>
