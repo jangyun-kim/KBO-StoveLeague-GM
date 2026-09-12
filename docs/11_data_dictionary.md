@@ -65,3 +65,8 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 
 - 28인 엔트리 샐러리 캡 상한선: **1350** (구현: `RosterManager.FullRosterSalaryCap`).
 - `PlayerTemplate.Cost`(구 v3.1 고정 코스트 필드)는 더 이상 샐러리 캡 계산에 쓰이지 않는다 - 레거시 필드로만 남아 있다.
+
+# 6. v0.1 마일스톤 마감 정합성 확인 (TASK-KBO-045)
+
+- 위 3절(`grade_id`)과 5절(GradeBaseCost 표)의 `SEASON=0 ~ DYNASTY=7` 서열은 `Assets/Scripts/Models/Types.cs`의 `Grade` enum 실제 정수값(DCL-006 확정)과 재대조해 여전히 일치함을 확인했다. 이번 작업에서 CSV/JSON 스키마 자체의 변경 사항은 없다.
+- 데이터 사전이 다루지 않는 런타임 전용 구조체(`TeamPowerModifiers`, `PlayEvent`/`PlayEventType`)는 CSV/JSON으로 직렬화되지 않으므로 본 문서의 스키마 범위 밖이며, 관련 정책은 `docs/15_team_power_policy.md`에서 별도로 관리한다.
