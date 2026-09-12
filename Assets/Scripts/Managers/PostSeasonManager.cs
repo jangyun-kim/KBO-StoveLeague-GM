@@ -177,7 +177,9 @@ namespace KBOManager.Managers
             var homeRoster = leagueManager.ResolveRosterForTeam(CurrentSeries.HigherSeed);
             var awayRoster = leagueManager.ResolveRosterForTeam(CurrentSeries.LowerSeed);
 
-            var engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
+            var homeModifiers = BuildTeamPowerModifiers(CurrentSeries.HigherSeed, homeRoster);
+            var awayModifiers = BuildTeamPowerModifiers(CurrentSeries.LowerSeed, awayRoster);
+            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             var result = engine.PlayFullMatch(CurrentSeries.HigherSeed.ToString(), CurrentSeries.LowerSeed.ToString(), isPostSeason: true);
 
             if (result.WinnerTeamName == CurrentSeries.HigherSeed.ToString()) CurrentSeries.WinsHigherSeed++;
@@ -191,6 +193,22 @@ namespace KBOManager.Managers
             {
                 AdvanceAfterSeriesDecided();
             }
+        }
+
+        /// <summary>
+        /// [TASK-KBO-037] team이 유저 팀(leagueManager.UserTeam)이면 GameManager.Instance.FavoriteTeam을
+        /// 기준으로, 그 외(AI 팀)는 favoriteTeam 없이(null) GameManager.CalculateSynergy()를 호출해
+        /// 로스터 내 최다 구단 기준으로 판정한다. ConditionBuff(치어리더/홈 어드밴티지)는 아직 데이터
+        /// 시스템이 없어 항상 0이다(이번 작업 범위에서 명시적으로 제외됨).
+        /// </summary>
+        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster)
+        {
+            bool isUserTeamWithFavorite = leagueManager != null && team == leagueManager.UserTeam
+                && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
+            string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
+
+            int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
+            return new TeamPowerModifiers(synergy, conditionBuff: 0);
         }
 
         /// <summary>시리즈가 끝날 때까지 PlayNextSeriesGame()을 반복한다(빠른 진행 편의 메서드).</summary>

@@ -222,7 +222,7 @@ namespace KBOManager.Managers
         /// 로스터가 비어 있거나 해당 그룹에 아무도 없으면 그 그룹의 평균은 0으로 취급한다(0으로 나누기 방지).
         /// 세트덱 보너스(Player.CalculateOVR의 setDeckBonus)는 로스터 구성 자체가 세트덱 활성화 여부를
         /// 좌우하는 순환 참조를 피하기 위해(RosterManager의 다른 OVR 계산들과 동일하게) 개별 선수 OVR에는
-        /// 반영하지 않는다 - 대신 세트덱 시너지는 CalculateTeamSynergy()의 가산 항목으로 별도 처리된다.
+        /// 반영하지 않는다 - 대신 세트덱 시너지는 CalculateSynergy()의 가산 항목으로 별도 처리된다.
         /// [TASK-KBO-033] 25인 가중평균은 시너지를 더하기 "전"에 정수로 반올림한다(반올림 시점 고정 -
         /// 시너지 가산 이후로 옮기지 말 것).
         /// </summary>
@@ -263,36 +263,52 @@ namespace KBOManager.Managers
             float benchAvg = bench10.Count > 0 ? (float)bench10.Average(p => p.CalculateOVR(false)) : 0f;
 
             int baseOvr = Mathf.RoundToInt((starterAvg * 0.8f) + (benchAvg * 0.2f));
-            int synergy = CalculateTeamSynergy();
+
+            // favoriteTeam이 Team.None(온보딩 이전 등 미지정 상태)이면 null을 넘겨, CalculateSynergy()의
+            // "지정 없음 -> 최다 구단 기준" 경로를 그대로 태운다 - AI와 동일한 규칙을 적용하는 셈이라,
+            // 특별 취급(항상 0)을 위한 별도 분기가 필요 없다.
+            string favoriteTeamName = favoriteTeam != Team.None ? favoriteTeam.ToString() : null;
+            int synergy = CalculateSynergy(roster, favoriteTeamName);
 
             return baseOvr + synergy;
         }
 
-        // TASK-KBO-034 확정 수치: 28인 로스터 내 유저의 선호 구단(FavoriteTeam)과 일치하는 선수가
-        // 이 인원 이상이면 세트덱 시너지가 발동한다.
-        private const int FavoriteTeamSynergyThreshold = 15;
-        private const int FavoriteTeamSynergyBonus = 12;
+        // TASK-KBO-037 확정 수치: 28인 로스터 내 특정(선호 또는 최다) 구단 소속 선수가 이 인원 이상이면
+        // 세트덱 시너지가 발동한다. 유저/AI 공통 기준.
+        private const int TeamSynergyThreshold = 15;
+        private const int TeamSynergyBonus = 12;
 
         /// <summary>
-        /// 구단 OVR에 직접 가산되는 시너지 합계(세트덱 + 감독 + 치어리더). GDD 기준 최대 +17
-        /// (세트덱 +12, 감독 +2, 치어리더 +3)까지 가산될 수 있으나, 감독/치어리더는 아직 데이터 시스템이
-        /// 없어 이번 작업(TASK-KBO-034) 범위에서 제외한다 - 세트덱(+12)만 실제로 계산한다.
+        /// 로스터의 세트덱 시너지(+12 또는 0)를 계산하는 정적 유틸리티 - 유저/AI 양쪽에서 공용으로 쓴다.
         ///
-        /// [TASK-KBO-033] CalculateTeamOVR()가 이 값을 "반올림된 25인 평균"에 더하는 마지막 단계로 호출한다.
+        /// [TASK-KBO-037 통폐합] 그동안 세트덱 판정이 세 갈래로 파편화되어 있었다: (1) MatchEngine.
+        /// EvaluateSetDeckBonus() - 로스터 내 최다 구단 5명 이상이면 세부 스탯에 배율 1.15배 적용(실제
+        /// 경기 판정에 반영됨, 이번에 삭제), (2) GameManager.CheckSetDeckBonus() - 동일 기준(5명, 배율
+        /// 1.15배)이지만 로스터 화면(RosterUIController)의 게이지 표시 전용(경기 판정과 무관, 호출부가
+        /// 있어 이번 작업에서는 보존 - 완료 보고서 F 섹션 참고), (3) 구 GameManager.CalculateTeamSynergy()
+        /// - 15명 기준 +12(유저 전용, AI 미지원). 이 메서드가 (3)을 대체하며 AI까지 포함해 "15명 이상 +12"
+        /// 단일 기준으로 통합한다 - 실제 경기 판정(MatchEngine)에 쓰이는 시너지는 이제 이 메서드의
+        /// 결과값이 유일한 근거다.
         ///
-        /// 세트덱: 28인 로스터 중 선호 구단(FavoriteTeam)과 소속이 일치하는 선수가 15명 이상이면 +12,
-        /// 아니면 0. FavoriteTeam이 Team.None(온보딩 이전 등 미지정 상태)이면 무조건 0 - 그렇지 않으면
-        /// 구단 미지정 선수(Template.Team == Team.None)가 우연히 "일치"하는 것으로 잘못 집계될 수 있다
-        /// (GameManager.CheckSetDeckBonus()가 Team.None을 집계에서 제외하는 것과 동일한 이유).
-        /// 로스터가 비어 있거나 28명이 다 차지 않은 상태에서는 일치 인원이 자연히 15명 미만이 되어
-        /// 별도 분기 없이도 0이 반환된다.
+        /// favoriteTeam을 지정하면(Team.ToString() 형태의 문자열) 그 구단과 일치하는 인원을 센다(유저
+        /// 경로). 지정하지 않으면(null/빈 문자열) 로스터 내 가장 많은 비중을 차지하는 구단의 인원을
+        /// 센다(AI 경로 - AI는 FavoriteTeam 개념이 없으므로 최다 구단을 기준으로 삼는다). 일치/최다
+        /// 인원이 TeamSynergyThreshold(15) 이상이면 TeamSynergyBonus(+12), 아니면 0을 반환한다.
+        /// 구단 미지정 선수(Template.Team == Team.None)는 두 경로 모두에서 집계 대상에서 제외한다.
+        /// 로스터가 비어 있거나 null이면 0(7항 경계 조건).
         /// </summary>
-        private int CalculateTeamSynergy()
+        public static int CalculateSynergy(List<Player> roster, string favoriteTeam = null)
         {
-            if (roster == null || favoriteTeam == Team.None) return 0;
+            if (roster == null || roster.Count == 0) return 0;
 
-            int matchingCount = roster.Count(p => p?.Template != null && p.Template.Team == favoriteTeam);
-            return matchingCount >= FavoriteTeamSynergyThreshold ? FavoriteTeamSynergyBonus : 0;
+            var validPlayers = roster.Where(p => p?.Template != null && p.Template.Team != Team.None).ToList();
+            if (validPlayers.Count == 0) return 0;
+
+            int matchingCount = !string.IsNullOrEmpty(favoriteTeam)
+                ? validPlayers.Count(p => p.Template.Team.ToString() == favoriteTeam)
+                : validPlayers.GroupBy(p => p.Template.Team).Select(g => g.Count()).DefaultIfEmpty(0).Max();
+
+            return matchingCount >= TeamSynergyThreshold ? TeamSynergyBonus : 0;
         }
     }
 }

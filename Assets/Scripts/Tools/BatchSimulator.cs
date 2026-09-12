@@ -91,9 +91,13 @@ namespace KBOManager.Tools
                     bool ourTeamIsHome = gameIndex % 2 == 0;
 
                     int? seed = useFixedSeed ? fixedSeed + gameIndex : (int?)null;
+                    // [TASK-KBO-037] 이 도구는 절차적으로 생성한 대칭(동일 baseStatLevel) 로스터로 체력/
+                    // 로테이션 궤적만 검증하는 밸런스 도구다 - GameManager/세이브 데이터와 무관하므로
+                    // 팀 버프는 양쪽 모두 TeamPowerModifiers.None(버프 없음)으로 고정한다.
                     var engine = new MatchEngine(
                         ourTeamIsHome ? ourTeam : opponentRoster,
                         ourTeamIsHome ? opponentRoster : ourTeam,
+                        TeamPowerModifiers.None, TeamPowerModifiers.None,
                         skillDB, engineConfig, seed);
 
                     SimulateOneGame(engine, ourTeamIsHome, statsByPitcher);

@@ -73,10 +73,31 @@ namespace KBOManager.Controllers
             HomeTeam = fixture.HomeTeam;
             AwayTeam = fixture.AwayTeam;
 
-            BeginMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
+            var homeModifiers = BuildTeamPowerModifiers(fixture.HomeTeam, homeRoster);
+            var awayModifiers = BuildTeamPowerModifiers(fixture.AwayTeam, awayRoster);
+
+            BeginMatch(homeRoster, awayRoster, homeModifiers, awayModifiers,
+                fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-037] team이 유저 팀(LeagueManager.Instance.UserTeam)이면 GameManager.Instance.
+        /// FavoriteTeam을 기준으로, 그 외(AI 팀)는 favoriteTeam 없이(null) GameManager.CalculateSynergy()를
+        /// 호출해 로스터 내 최다 구단 기준으로 판정한다. ConditionBuff(치어리더/홈 어드밴티지)는 아직
+        /// 데이터 시스템이 없어 항상 0이다(이번 작업 범위에서 명시적으로 제외됨).
+        /// </summary>
+        private static TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster)
+        {
+            bool isUserTeamWithFavorite = LeagueManager.Instance != null && team == LeagueManager.Instance.UserTeam
+                && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
+            string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
+
+            int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
+            return new TeamPowerModifiers(synergy, conditionBuff: 0);
         }
 
         private void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
+            TeamPowerModifiers homeModifiers, TeamPowerModifiers awayModifiers,
             string homeTeamName, string awayTeamName, bool isPostSeason)
         {
             if (IsMatchInProgress)
@@ -85,7 +106,7 @@ namespace KBOManager.Controllers
                 return;
             }
 
-            engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
+            engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             IsMatchInProgress = true;
 
             engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);

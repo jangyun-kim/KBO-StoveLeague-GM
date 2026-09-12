@@ -156,6 +156,29 @@ namespace KBOManager.Engine
     }
 
     /// <summary>
+    /// 한 팀의 "경기 적용 전력" 보정치(15_team_power_policy.md 3층위 중 마지막 층위).
+    /// SynergyBuff(상시 시너지 - 세트덱 등)와 ConditionBuff(경기별 조건부 버프 - 치어리더/홈 어드밴티지
+    /// 등, TASK-KBO-037 시점에는 항상 0)를 분리해 담되, MatchEngine은 둘의 합계(TotalBuff)만 사용한다.
+    /// 호출부(LeagueManager 등)가 경기 시작 전에 구성해 MatchEngine 생성자로 주입한다 - 엔진 스스로는
+    /// 절대 이 값을 계산하지 않는다(엔진 내부 계산 로직은 로지스틱/랜덤 판정을 그대로 유지).
+    /// </summary>
+    public readonly struct TeamPowerModifiers
+    {
+        public readonly int SynergyBuff;
+        public readonly int ConditionBuff;
+        public int TotalBuff => SynergyBuff + ConditionBuff;
+
+        public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0)
+        {
+            SynergyBuff = synergyBuff;
+            ConditionBuff = conditionBuff;
+        }
+
+        /// <summary>버프 없음(0, 0). 치어리더/홈 어드밴티지가 아직 없는 호출부(BatchSimulator 등)가 쓴다.</summary>
+        public static readonly TeamPowerModifiers None = new TeamPowerModifiers(0, 0);
+    }
+
+    /// <summary>
     /// 1이닝 1구(타석) 단위로 진행되는 순수 C# 시뮬레이션 엔진. MonoBehaviour를 상속하지 않아
     /// 씬/프레임 오버헤드 없이 다수의 경기를 즉시(백그라운드) 계산할 수 있다.
     /// </summary>
@@ -212,8 +235,9 @@ namespace KBOManager.Engine
         // config가 없을 때 쓰는 기본값. EngineConfig.PopulateDefaults()의 값과 동일하게 맞춰 둔다.
         private const float DefaultSkillInfluence = 0.6f;
         private const float DefaultStatDiffNormalizer = 50f;
-        private const int DefaultSetDeckActivationThreshold = 5;
-        private const float DefaultSetDeckBonusMultiplier = 1.15f;
+
+        // TASK-KBO-037: 팀 버프 가산 후 세부 스탯이 0 이하로 떨어지지 않도록 하는 하한선(7항 방어 코드).
+        private const int MinEffectiveStatValue = 1;
 
         private static readonly BatterPosition[] StarterBatterPositions =
             (BatterPosition[])Enum.GetValues(typeof(BatterPosition));
@@ -222,15 +246,20 @@ namespace KBOManager.Engine
         private readonly EngineConfig config;
         private readonly Random random;
 
+        // TASK-KBO-037: 경기 시작 전 호출부가 구성해 주입하는 "경기 적용 전력" 보정치. 엔진은 이 값을
+        // 그대로 세부 스탯에 가산할 뿐, 절대 스스로 계산하지 않는다(계산 책임은 GameManager.CalculateSynergy
+        // 등 호출부에 있다). 레거시 EvaluateSetDeckBonus()(로스터 내 최다 구단 5명 이상 -> 배율 1.15배)는
+        // 이 필드로 완전히 대체되어 삭제됨 - GameManager/LeagueManager 쪽의 파편화된 세트덱 판정과의
+        // 계산 충돌을 막기 위함.
+        private readonly TeamPowerModifiers homeModifiers;
+        private readonly TeamPowerModifiers awayModifiers;
+
         private float SkillInfluence => config != null ? config.SkillInfluence : DefaultSkillInfluence;
         private float StatDiffNormalizer => config != null ? config.StatDiffNormalizer : DefaultStatDiffNormalizer;
-        private int SetDeckActivationThreshold => config != null ? config.SetDeckActivationThreshold : DefaultSetDeckActivationThreshold;
-        private float SetDeckBonusMultiplier => config != null ? config.SetDeckBonusMultiplier : DefaultSetDeckBonusMultiplier;
 
-        // 스킬이 섞이지 않은 순수 OVR(강화/각성/세트덱만 반영). 투수 로테이션 정렬과, "패기"류 스킬의
-        // OVR 비교 조건(GDD: 상대 스킬 효과로 인한 OVR 증가 제외)에 사용한다.
+        // 스킬이 섞이지 않은 순수 OVR(강화/각성만 반영 - 세트덱 배율은 TASK-KBO-037에서 제거됨). 투수
+        // 로테이션 정렬과, "패기"류 스킬의 OVR 비교 조건(GDD: 상대 스킬 효과로 인한 OVR 증가 제외)에 사용한다.
         private readonly Dictionary<Player, int> baseOvrCache = new Dictionary<Player, int>();
-        private readonly Dictionary<Player, (bool isActive, float multiplier)> setDeckContext = new Dictionary<Player, (bool, float)>();
 
         // 이번 경기에서 투수별로 누적 허용한 실점. 퀵후크(조기 강판) 판정에 쓴다 - 경기 전체 누적이며
         // 이닝별로 나뉘어 있지 않다(간단한 "대량 실점" 기준이라 이 정도 단순화로 충분하다고 봤다).
@@ -246,14 +275,20 @@ namespace KBOManager.Engine
         /// <summary>
         /// homeRoster/awayRoster(각 28인)는 필수다 - 이 엔진 인스턴스가 진행할 경기의 양 팀 전체 로스터이며,
         /// 선수 교체(SubstituteBatter/SubstitutePitcher) 시 "이 팀 소속이 맞는가"를 검증하는 유일한 근거가 된다.
+        /// homeModifiers/awayModifiers(TASK-KBO-037)는 "경기 적용 전력" 보정치 - 호출부가 경기 시작 전
+        /// GameManager.CalculateSynergy() 등으로 미리 계산해 주입해야 한다(엔진은 계산하지 않는다).
+        /// 버프가 필요 없으면 TeamPowerModifiers.None을 넘기면 된다.
         /// skillDB/config는 선택 사항이다(없으면 각각 스킬 보정 없이, 코드 기본 상수로 진행한다).
         /// randomSeed를 지정하면 결과 재현이 가능하다.
         /// </summary>
         public MatchEngine(List<Player> homeRoster, List<Player> awayRoster,
+            TeamPowerModifiers homeModifiers, TeamPowerModifiers awayModifiers,
             SkillDB skillDB = null, EngineConfig config = null, int? randomSeed = null)
         {
             this.homeRoster = new List<Player>(homeRoster ?? new List<Player>());
             this.awayRoster = new List<Player>(awayRoster ?? new List<Player>());
+            this.homeModifiers = homeModifiers;
+            this.awayModifiers = awayModifiers;
             this.skillDB = skillDB;
             this.config = config;
             random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
@@ -734,12 +769,12 @@ namespace KBOManager.Engine
         private TeamGameState BuildTeamState(List<Player> roster, string teamName)
         {
             var valid = (roster ?? new List<Player>()).Where(p => p?.Template != null).ToList();
-            var (isSetDeckActive, multiplier) = EvaluateSetDeckBonus(valid);
 
             foreach (var player in valid)
             {
-                setDeckContext[player] = (isSetDeckActive, multiplier);
-                baseOvrCache[player] = player.CalculateOVR(isSetDeckActive, multiplier); // 스킬 미포함 순수 OVR
+                // 세트덱 배율은 TASK-KBO-037에서 제거됨(팀 버프는 이제 homeModifiers/awayModifiers를 통한
+                // 균등 가산으로만 반영된다) - 순수 강화/각성만 반영한 OVR.
+                baseOvrCache[player] = player.CalculateOVR(false);
             }
 
             return new TeamGameState
@@ -779,25 +814,7 @@ namespace KBOManager.Engine
             return order;
         }
 
-        private (bool isActive, float multiplier) EvaluateSetDeckBonus(List<Player> teamRoster)
-        {
-            int maxCount = teamRoster
-                .Where(p => p.Template.Team != Team.None)
-                .GroupBy(p => p.Template.Team)
-                .Select(g => g.Count())
-                .DefaultIfEmpty(0)
-                .Max();
-
-            bool isActive = maxCount >= SetDeckActivationThreshold;
-            return (isActive, isActive ? SetDeckBonusMultiplier : 1f);
-        }
-
-        // ----- 세부 스탯 계산(세트덱 + 스킬 효과 반영) -----
-
-        private (bool isActive, float multiplier) GetSetDeckContext(Player player)
-        {
-            return setDeckContext.TryGetValue(player, out var context) ? context : (false, 1f);
-        }
+        // ----- 세부 스탯 계산(팀 버프 + 스킬 효과 반영) -----
 
         private int GetBaseOvr(Player player)
         {
@@ -805,41 +822,42 @@ namespace KBOManager.Engine
             return baseOvrCache.TryGetValue(player, out var cached) ? cached : player.CalculateOVR(false);
         }
 
+        /// <summary>player가 homeRoster 소속이면 homeModifiers를, 그 외(awayRoster 소속 등)에는
+        /// awayModifiers를 반환한다. 두 로스터는 생성자에서 서로 다른 리스트로 주입받으므로 교집합이
+        /// 없다는 전제 하에 동작한다(경기당 한 MatchEngine 인스턴스가 한 경기만 진행한다는 기존 전제와 동일).</summary>
+        private TeamPowerModifiers GetModifiersFor(Player player)
+        {
+            return player != null && homeRoster.Contains(player) ? homeModifiers : awayModifiers;
+        }
+
         /// <summary>
-        /// 최종 스탯 = (Base + Growth) * SetDeckMultiplier + SkillBonus.
-        /// 세트덱 배율은 원본 성장분까지만 곱하고, 스킬 보정은 그 뒤에 가산한다 - 스킬 보너스가
-        /// 세트덱 배율의 영향을 받아 함께 부풀려지는 복리 현상을 방지하기 위함이다.
+        /// 최종 스탯 = Base + Growth + SkillBonus + 팀 버프(TASK-KBO-037: TotalBuff를 세부 스탯 전항목에
+        /// 균등 가산). 레거시 세트덱 배율(곱셈)은 삭제되었다 - 이제 팀 단위 보정은 전부 이 가산 항목
+        /// 하나로 통일된다. 버프가 음수(향후 페널티)여도 최종 스탯이 MinEffectiveStatValue(1) 밑으로
+        /// 떨어지지 않도록 클램핑한다.
         /// </summary>
         private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher, MatchState state)
         {
             var stats = batter.GetEffectiveBatterStats(); // Base + Growth
-            var (isActive, multiplier) = GetSetDeckContext(batter);
-            if (isActive && multiplier > 1f)
-            {
-                stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
-            }
 
             // 본인이 보유한 Target=Self 스킬
             stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher, state);
             // 상대 투수가 보유한 Target=Opponent 스킬(나를 겨냥한 효과) - 조건 판정은 스킬 소유자(투수) 기준
             stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
 
+            stats = AddTeamBuff(stats, GetModifiersFor(batter).TotalBuff);
+
             return stats;
         }
 
         /// <summary>
-        /// ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용하되, 체력 페널티를 세트덱
-        /// 배율과 같은 단계(스킬 보정 이전)에 곱한다 - 스킬 보너스는 가산이므로 지친 투수라도 스킬
-        /// 효과 자체의 절댓값은 깎이지 않는다(세트덱 배율이 스킬 보너스를 부풀리지 않게 한 것과 동일한 이유).
+        /// ResolveEffectiveBatterStats와 동일한 연산 순서를 투수 스탯에 적용하되, 체력 페널티(곱셈)는
+        /// 스킬 보정 이전 단계에 적용해 스킬 효과 자체의 절댓값이 깎이지 않게 한다. 팀 버프(가산)는
+        /// ResolveEffectiveBatterStats와 동일하게 맨 마지막에 더한다.
         /// </summary>
         private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter, MatchState state)
         {
             var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
-            var (isActive, multiplier) = GetSetDeckContext(pitcher);
-            if (isActive && multiplier > 1f)
-            {
-                stats = Scale(stats, multiplier); // (Base + Growth) * SetDeckMultiplier
-            }
 
             if (pitcher.IsLowStamina)
             {
@@ -849,8 +867,23 @@ namespace KBOManager.Engine
             stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter, state);
             stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher, state);
 
+            stats = AddTeamBuff(stats, GetModifiersFor(pitcher).TotalBuff);
+
             return stats;
         }
+
+        // TASK-KBO-037: 팀 버프(N)를 세부 스탯 전항목에 균등 가산한다. 7항 방어 코드 - 음수 버프(향후
+        // 페널티 도입 시)로 스탯이 0 이하로 떨어지지 않도록 MinEffectiveStatValue(1)로 클램핑한다.
+        private static BatterStats AddTeamBuff(BatterStats stats, int buff) => new BatterStats(
+            Mathf.Max(MinEffectiveStatValue, stats.Power + buff),
+            Mathf.Max(MinEffectiveStatValue, stats.Contact + buff),
+            Mathf.Max(MinEffectiveStatValue, stats.Discipline + buff));
+
+        private static PitcherStats AddTeamBuff(PitcherStats stats, int buff) => new PitcherStats(
+            Mathf.Max(MinEffectiveStatValue, stats.Stuff + buff),
+            Mathf.Max(MinEffectiveStatValue, stats.Velocity + buff),
+            Mathf.Max(MinEffectiveStatValue, stats.Movement + buff),
+            Mathf.Max(MinEffectiveStatValue, stats.Control + buff));
 
         private static BatterStats Scale(BatterStats stats, float multiplier) => new BatterStats(
             Mathf.RoundToInt(stats.Power * multiplier),

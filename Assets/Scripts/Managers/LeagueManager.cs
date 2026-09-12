@@ -568,7 +568,9 @@ namespace KBOManager.Managers
             var homeRoster = ResolveRosterForTeam(fixture.HomeTeam);
             var awayRoster = ResolveRosterForTeam(fixture.AwayTeam);
 
-            var engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
+            var homeModifiers = BuildTeamPowerModifiers(fixture.HomeTeam, homeRoster);
+            var awayModifiers = BuildTeamPowerModifiers(fixture.AwayTeam, awayRoster);
+            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
 
             engine.BeginMatch(fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
@@ -581,6 +583,23 @@ namespace KBOManager.Managers
             fixture.Result = engine.Result;
             fixture.IsPlayed = true;
             SeasonStatManager.Instance?.RecordMatchCompleted(fixture.Result);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-037] 경기 시작 전 MatchEngine에 주입할 "경기 적용 전력" 보정치를 구성한다.
+        /// team이 유저 팀(userTeam)이면 GameManager.Instance.FavoriteTeam을 기준으로, 그 외(AI 팀)는
+        /// favoriteTeam 없이(null) GameManager.CalculateSynergy()를 호출해 로스터 내 최다 구단 기준으로
+        /// 판정한다. ConditionBuff(치어리더/홈 어드밴티지)는 아직 데이터 시스템이 없어 항상 0이다
+        /// (이번 작업 범위에서 명시적으로 제외됨).
+        /// </summary>
+        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster)
+        {
+            bool isUserTeamWithFavorite = team == userTeam && GameManager.Instance != null
+                && GameManager.Instance.FavoriteTeam != Team.None;
+            string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
+
+            int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
+            return new TeamPowerModifiers(synergy, conditionBuff: 0);
         }
 
         /// <summary>
