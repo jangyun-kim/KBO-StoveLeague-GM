@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -59,8 +60,20 @@ namespace KBOManager.Controllers
         /// 이후에도 절대 변형되지 않는다 - 다시보기/리플레이 기능이 이 리스트를 그대로 재순회하면 된다.</summary>
         public IReadOnlyList<PlayEvent> EventLog => eventLog;
 
+        /// <summary>[TASK-KBO-041] 재생이 끝났을 때(자연 종료 또는 스킵) 1회 발생한다. 결과 패널 자체는
+        /// 이미 ShowResult()가 직접 InGameUIController.ShowMatchResult()로 열어 두므로, 이 이벤트는
+        /// PlayBallController처럼 "재생이 끝난 뒤에 보상 지급/시즌 기록/다음 경기 스케줄 진행" 등 UI가
+        /// 아닌 게임 상태 처리를 이어서 해야 하는 외부 오케스트레이터를 위한 것이다.</summary>
+        public event Action<MatchResult> OnPlaybackFinished;
+
         private void Awake()
         {
+            // [TASK-KBO-041] 인스펙터에서 연결하지 않았다면 같은 오브젝트 -> 자식 순으로 InGameUIController를
+            // 찾아 자동 바인딩한다. 그래도 못 찾으면 null로 남아(AddLog/ShowMatchResult 호출부의 기존 null
+            // 가드가 그대로 방어한다) 크래시 없이 로그만 Debug.Log로 대체된다.
+            if (inGameUIController == null) inGameUIController = GetComponent<InGameUIController>();
+            if (inGameUIController == null) inGameUIController = GetComponentInChildren<InGameUIController>(true);
+
             if (skipButton != null) skipButton.onClick.AddListener(RequestSkip);
         }
 
@@ -87,16 +100,20 @@ namespace KBOManager.Controllers
 
         /// <summary>
         /// rawEvents를 List&lt;PlayEvent&gt;로 변환해 원본으로 보존하고 재생 커서를 0으로 초기화한 뒤
-        /// 재생 코루틴을 시작한다. 이미 재생 중이던 코루틴이 있다면 먼저 멈춰서 중복 실행을 막는다.
-        /// rawEvents가 null이거나 비어 있으면(7항 경계 조건: 빈 이벤트 목록) 재생 없이 즉시 결과
-        /// 화면으로 분기한다.
+        /// 재생 코루틴을 시작한다. rawEvents가 null이거나 비어 있으면(7항 경계 조건: 빈 이벤트 목록)
+        /// 재생 없이 즉시 결과 화면으로 분기한다.
+        /// [TASK-KBO-041 7항] 이미 재생 중(Playing) 또는 스킵 처리 중(Skipping)이면 새 로드 요청을
+        /// 거부한다(경고 로그만 남기고 아무 일도 하지 않음) - 진행 중인 경기 재생 위에 새 코루틴이
+        /// 겹쳐 실행되거나, 재생 중이던 경기가 중간에 다른 경기로 조용히 대체되는 것을 막는 안전장치다.
+        /// 정상적인 흐름에서는 호출부(PlayBallController.IsMatchInProgress)가 애초에 진입 버튼 연타
+        /// 자체를 막아 주므로, 이 가드는 이중 방어선이다.
         /// </summary>
         public void LoadEvents(IEnumerable<PlayEvent> rawEvents)
         {
-            if (playbackHandle != null)
+            if (State == BroadcastPlaybackState.Playing || State == BroadcastPlaybackState.Skipping)
             {
-                StopCoroutine(playbackHandle);
-                playbackHandle = null;
+                Debug.LogWarning("[BroadcastUIManager] 이미 재생 중이라 새 LoadEvents 요청을 무시합니다.");
+                return;
             }
 
             eventLog = rawEvents != null ? rawEvents.ToList() : new List<PlayEvent>();
@@ -141,15 +158,30 @@ namespace KBOManager.Controllers
             }
         }
 
-        /// <summary>AtBatResult 타입 이벤트만 텍스트 로그를 남긴다. RunnerAdvance/HalfInningEnd/GameEnd는
-        /// 이번 범위(2D 미니맵 애니메이션 제외)에서는 조용히 통과한다.</summary>
+        /// <summary>
+        /// AtBatResult 타입 이벤트만 텍스트 로그를 남긴다. HalfInningEnd/GameEnd 타입은 로그를 남기지
+        /// 않는 대신 스코어보드(이닝별 점수)를 갱신한다. RunnerAdvance는 2D 미니맵 애니메이션 전용이라
+        /// 이번 범위에서는(로그도, 스코어보드도 건드리지 않고) 조용히 통과한다.
+        /// </summary>
         private void PlayOneEvent(PlayEvent evt)
         {
-            if (evt == null || evt.Type != PlayEventType.AtBatResult) return;
-            if (string.IsNullOrEmpty(evt.LogMessage)) return;
+            if (evt == null) return;
 
-            if (inGameUIController != null) inGameUIController.AddLog(evt.LogMessage);
-            else Debug.Log($"[BroadcastUIManager] {evt.LogMessage}");
+            switch (evt.Type)
+            {
+                case PlayEventType.AtBatResult:
+                    if (!string.IsNullOrEmpty(evt.LogMessage))
+                    {
+                        if (inGameUIController != null) inGameUIController.AddLog(evt.LogMessage);
+                        else Debug.Log($"[BroadcastUIManager] {evt.LogMessage}");
+                    }
+                    break;
+
+                case PlayEventType.HalfInningEnd:
+                case PlayEventType.GameEnd:
+                    inGameUIController?.RefreshScoreboard();
+                    break;
+            }
         }
 
         /// <summary>
@@ -180,11 +212,14 @@ namespace KBOManager.Controllers
             ShowResult();
         }
 
-        /// <summary>InGameUIController.ShowMatchResult()에 위임한다. inGameUIController가 미할당이면
-        /// 조용히 건너뛴다(AC-03: NullReferenceException 없이 방어).</summary>
+        /// <summary>InGameUIController.ShowMatchResult()에 위임하고, OnPlaybackFinished를 발생시킨다.
+        /// inGameUIController가 미할당이면 결과 패널 표시만 조용히 건너뛴다(AC-03: NullReferenceException
+        /// 없이 방어) - OnPlaybackFinished는 그것과 무관하게 항상 발생한다(구독자가 있다면 보상 지급/
+        /// 시즌 기록/스케줄 진행 등은 UI 유무와 상관없이 계속 진행되어야 하기 때문이다).</summary>
         private void ShowResult()
         {
             if (inGameUIController != null) inGameUIController.ShowMatchResult(pendingResult);
+            OnPlaybackFinished?.Invoke(pendingResult);
         }
     }
 }

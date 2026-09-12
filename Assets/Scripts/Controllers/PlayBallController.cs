@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using KBOManager.Data;
 using KBOManager.Engine;
@@ -10,9 +9,18 @@ using UnityEngine;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// GDD v4.0("단장 시선" - 수동 개입 배제) 기준의 유일한 인게임 플레이 방식: MatchEngine의 스텝
-    /// 단위 API(BeginMatch/PlayNextAtBat)를 유저 입력 대기 없이 끝까지 논스톱으로 소비하며, 매
-    /// 타석마다 OnAtBatEnd/OnInningEnd를 발생시켜 텍스트 중계/스코어보드가 실시간으로 갱신되게 한다.
+    /// GDD v4.0("단장 시선" - 수동 개입 배제) 기준의 유일한 인게임 플레이 방식.
+    ///
+    /// [TASK-KBO-041] 경로 단일화: 과거(TASK-KBO-031~040)에는 이 컨트롤러가 MatchEngine의 스텝 단위
+    /// API(BeginMatch/PlayNextAtBat)를 유저 입력 대기 없이 직접 순회하며 매 타석마다 OnAtBatEnd/
+    /// OnInningEnd를 실시간으로 발생시켰다. 이제는 MatchEngine.PlayFullMatchAsEventQueue()를 한 번
+    /// 호출해 경기 전체를 즉시 계산한 뒤, 그 결과(Queue&lt;PlayEvent&gt;)를 BroadcastUIManager에
+    /// 넘겨 "재생"(딜레이를 둔 순차 표시)하는 단일 경로로 통합했다 - 실시간 텍스트 중계는 이제
+    /// BroadcastUIManager의 책임이다(이 컨트롤러는 더 이상 화면을 직접 갱신하지 않는다).
+    ///
+    /// OnAtBatEnd/OnInningEnd 이벤트 선언 자체는 남겨 두었다 - SeasonStatManager는 더 이상 이 이벤트를
+    /// 구독하지 않고 RecordSeasonStatsFromEvents()를 통해 직접 기록을 받지만(아래 참고), 혹시 모를
+    /// 외부 참조와의 컴파일 호환을 위해 삭제하지 않았다(현재는 아무도 발생시키지 않는 죽은 이벤트).
     ///
     /// (TASK-KBO-031: 과거 GDD v3.1의 3방식 - 빠른 진행/하이라이트(개입 대기)/풀 플레이(수동 스텝) -
     /// 중 하이라이트/풀 플레이는 대타·투수 교체 개입 UI와 함께 제거되었다. SubstitutionUIController/
@@ -27,6 +35,9 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private SkillDB skillDB;
         [SerializeField] private EngineConfig engineConfig;
+        [Tooltip("[TASK-KBO-041] 실제 텍스트 중계 재생을 맡는 컴포넌트. 비워두면 재생 없이 즉시 " +
+                 "결과 처리(보상/시즌기록/스케줄 진행)만 수행한다(화면에는 아무 것도 표시되지 않음).")]
+        [SerializeField] private BroadcastUIManager broadcastUIManager;
 
         private MatchEngine engine;
 
@@ -39,10 +50,11 @@ namespace KBOManager.Controllers
         public Team HomeTeam { get; private set; }
         public Team AwayTeam { get; private set; }
 
-        /// <summary>타석이 1회 진행될 때마다 호출된다 (텍스트 중계 로그 등 연출 갱신용).</summary>
+        /// <summary>[TASK-KBO-041] 더 이상 아무도 발생시키지 않는다(과거 실시간 스텝 루프 전용 이벤트였음).
+        /// SeasonStatManager 등 기존 구독부와의 컴파일 호환을 위해 선언만 유지한다.</summary>
         public event Action<AtBatStepResult> OnAtBatEnd;
 
-        /// <summary>하프이닝이 끝난 타석에 한해 추가로 호출된다 (이닝별 스코어보드 갱신용).</summary>
+        /// <summary>[TASK-KBO-041] 더 이상 아무도 발생시키지 않는다. 위 OnAtBatEnd와 동일한 사유로 선언만 유지.</summary>
         public event Action<AtBatStepResult> OnInningEnd;
 
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
@@ -111,37 +123,79 @@ namespace KBOManager.Controllers
             engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             IsMatchInProgress = true;
 
-            engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
-            StartCoroutine(PlayNonstop());
+            // 경기 전체를 즉시 계산한다(랜덤 판정은 이 한 번의 호출 안에서만 일어난다 - 재생은 그 결과를
+            // "보여주기"만 할 뿐 시뮬레이션을 다시 돌리지 않는다). engine.Result는 이 시점에 이미 최종값이다.
+            var queue = engine.PlayFullMatchAsEventQueue(homeTeamName, awayTeamName, isPostSeason);
+            var events = new List<PlayEvent>(queue);
+
+            RecordSeasonStatsFromEvents(events);
+
+            if (broadcastUIManager != null)
+            {
+                broadcastUIManager.OnPlaybackFinished += HandlePlaybackFinished;
+                broadcastUIManager.LoadEvents(events);
+            }
+            else
+            {
+                Debug.LogWarning("[PlayBallController] BroadcastUIManager가 연결되지 않아 재생 없이 결과만 즉시 처리합니다.");
+                FinishMatch();
+            }
         }
 
         /// <summary>
-        /// 유저 입력 대기(WaitUntil 등) 없이 경기가 끝날 때까지(9회말 종료, 필요 시 연장 12회 상한)
-        /// 타석을 자동으로 연속 진행한다. 매 타석마다 OnAtBatEnd/OnInningEnd를 발생시켜 텍스트 중계/
-        /// 스코어보드가 실시간으로 갱신된다. 타석 사이에 프레임 하나(yield return null)만 넘기는데,
-        /// 이는 유저 입력을 "기다리는" 것이 아니라 - 어떤 외부 신호도 없이 다음 프레임에 스스로 이어감 -
-        /// 텍스트 중계가 한 프레임에 몰아서 출력되지 않고 실시간으로 흘러가도록, 그리고
-        /// DebugForceWinCurrentMatch()가 경기 도중 개입할 수 있도록 하기 위함이다.
+        /// [TASK-KBO-041] BroadcastUIManager.OnPlaybackFinished 핸들러. 재생이 끝난 뒤(자연 종료 또는
+        /// 스킵) 정확히 한 번만 실행되도록 즉시 구독을 해제한 뒤 FinishMatch()로 넘긴다.
         /// </summary>
-        private IEnumerator PlayNonstop()
+        private void HandlePlaybackFinished(MatchResult result)
         {
-            while (!engine.IsGameOver)
-            {
-                var step = engine.PlayNextAtBat();
-                RaiseStepEvents(step);
-                yield return null;
-            }
-
-            if (IsMatchInProgress) FinishMatch();
+            if (broadcastUIManager != null) broadcastUIManager.OnPlaybackFinished -= HandlePlaybackFinished;
+            FinishMatch();
         }
 
-        /// <summary>OnAtBatEnd는 매 타석마다, OnInningEnd는 그 중 하프이닝이 끝난 타석에서만 추가로 발생시킨다.</summary>
-        private void RaiseStepEvents(AtBatStepResult step)
+        /// <summary>
+        /// [TASK-KBO-041] PlayFullMatchAsEventQueue()는 경기 전체를 한 번에 계산해 Queue&lt;PlayEvent&gt;만
+        /// 반환하므로, LeagueManager.SimulateFixture()처럼 매 타석의 AtBatStepResult를 실시간으로 받아
+        /// SeasonStatManager.RecordAtBat()에 넘기던 기존 경로가 사라진다 - 이 메서드는 그 회귀를 막기
+        /// 위한 어댑터다. PlayEvent(AtBatResult 타입)를 RecordAtBat()이 실제로 읽는 필드만 채운
+        /// AtBatStepResult로 되돌려 그대로 넘긴다(MatchEngine.cs/SeasonStatManager.cs 둘 다 수정하지
+        /// 않고 기존 공개 API를 그대로 재사용).
+        ///
+        /// HalfInningEnded는 "이 AtBatResult 이후 다음 AtBatResult가 나오기 전에 HalfInningEnd 타입
+        /// 이벤트가 있는가"로 정확히 역산한다 - PlayFullMatchAsEventQueue()가 큐를 채우는 순서
+        /// (AtBatResult -&gt; RunnerAdvance* -&gt; [HalfInningEnd] -&gt; 다음 AtBatResult...)와 정확히
+        /// 대응하므로 안전하다.
+        /// </summary>
+        private void RecordSeasonStatsFromEvents(List<PlayEvent> events)
         {
-            OnAtBatEnd?.Invoke(step);
-            if (step.HalfInningEnded)
+            if (SeasonStatManager.Instance == null) return;
+
+            for (int i = 0; i < events.Count; i++)
             {
-                OnInningEnd?.Invoke(step);
+                var evt = events[i];
+                if (evt.Type != PlayEventType.AtBatResult) continue;
+
+                bool halfInningEnded = false;
+                for (int j = i + 1; j < events.Count; j++)
+                {
+                    if (events[j].Type == PlayEventType.AtBatResult) break;
+                    if (events[j].Type == PlayEventType.HalfInningEnd) { halfInningEnded = true; break; }
+                }
+
+                var step = new AtBatStepResult
+                {
+                    Batter = evt.Batter,
+                    Pitcher = evt.Pitcher,
+                    Result = evt.Result,
+                    RunsScoredThisPlay = evt.RunsScoredThisPlay,
+                    HalfInningEnded = halfInningEnded,
+                    IsTopHalf = evt.IsTopHalf,
+                    HomeScore = evt.HomeScore,
+                    AwayScore = evt.AwayScore,
+                    State = new MatchState { Inning = evt.Inning, Outs = evt.Outs },
+                    LogMessage = evt.LogMessage,
+                };
+
+                SeasonStatManager.Instance.RecordAtBat(step, HomeTeam, AwayTeam);
             }
         }
 
@@ -156,24 +210,20 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// [디버그/QA 전용] 진행 중인 경기를 즉시 유저 팀 승리로 강제 종료한다(DebugPanelUI 전용 진입점).
+        /// [디버그/QA 전용] 진행 중인 재생을 즉시 스킵한다(DebugPanelUI 전용 진입점).
         ///
-        /// PlayNonstop() 코루틴이 아직 살아 있는 상태(타석 사이 yield return null 지점)이므로, 그 코루틴이
-        /// 다음 프레임에 깨어나 while(!engine.IsGameOver) 확인 후 스스로 FinishMatch()를 또 호출해
-        /// LeagueManager.CompleteNextFixture()가 엉뚱한 다음 경기에 이번 결과를 잘못 기록하는 일이
-        /// 없도록, 여기서 먼저 StopAllCoroutines()로 코루틴을 확실히 멈춘 뒤 FinishMatch()를 직접 호출한다.
+        /// [TASK-KBO-041 의미 변경] 과거에는 engine.DebugForceEndGame()으로 스코어를 조작해 "유저 팀
+        /// 승리로 강제 종료"했다. 이제는 BeginMatch() 시점에 PlayFullMatchAsEventQueue()가 경기를
+        /// 이미 완전히 계산해 버려서(engine.IsGameOver가 항상 true) 승자를 사후에 바꿀 수 없다 - 그래서
+        /// 이 메서드는 "경기 결과를 유저 팀 승리로 조작"하는 대신 "재생을 즉시 스킵해 결과 화면으로
+        /// 넘어간다"로 의미가 축소되었다. broadcastUIManager가 없으면 재생 자체가 없었을 것이므로
+        /// (BeginMatch()가 이미 FinishMatch()까지 처리했다) 여기서는 아무 것도 하지 않는다.
         /// </summary>
         public void DebugForceWinCurrentMatch()
         {
-            if (!IsMatchInProgress || engine == null || engine.IsGameOver) return;
+            if (!IsMatchInProgress) return;
 
-            var userTeam = LeagueManager.Instance != null ? LeagueManager.Instance.UserTeam : Team.None;
-            string winningTeamName = (userTeam == HomeTeam ? HomeTeam : AwayTeam).ToString();
-
-            engine.DebugForceEndGame(winningTeamName);
-
-            StopAllCoroutines();
-            FinishMatch();
+            broadcastUIManager?.RequestSkip();
         }
     }
 }

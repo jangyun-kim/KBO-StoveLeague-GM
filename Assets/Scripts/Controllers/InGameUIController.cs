@@ -103,9 +103,17 @@ namespace KBOManager.Controllers
             RefreshScoreboard();
         }
 
-        /// <summary>PlayBallController.Engine.Result의 이닝별 스코어(HomeInningScores/AwayInningScores)를
-        /// 그대로 읽어 스코어보드 텍스트를 다시 그린다. 별도 상태를 들고 있지 않고 항상 엔진 결과를 그대로 반영한다.</summary>
-        private void RefreshScoreboard()
+        /// <summary>
+        /// PlayBallController.Engine.Result의 이닝별 스코어(HomeInningScores/AwayInningScores)를
+        /// 그대로 읽어 스코어보드 텍스트를 다시 그린다. 별도 상태를 들고 있지 않고 항상 엔진 결과를 그대로 반영한다.
+        /// [TASK-KBO-041] BroadcastUIManager가 PlayEventType.HalfInningEnd/GameEnd 재생 시점마다 직접
+        /// 호출할 수 있도록 public으로 노출한다. PlayFullMatchAsEventQueue() 기반 경로에서는 재생을
+        /// 시작하는 시점에 이미 경기 전체가 계산 완료되어 있어(Engine.Result가 최종값으로 고정됨), 이
+        /// 메서드를 재생 도중 여러 번 호출해도 매번 "이미 확정된 최종 이닝별 스코어" 전체가 채워진다는
+        /// 한계가 있다(완전한 실시간 순차 공개는 MatchEngine/PlayEvent 스키마 확장 없이는 불가능 - 완료
+        /// 보고서 리스크 참고).
+        /// </summary>
+        public void RefreshScoreboard()
         {
             var result = playBallController?.Engine?.Result;
             if (result == null) return;
