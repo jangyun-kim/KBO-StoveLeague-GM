@@ -26,8 +26,9 @@ namespace KBOManager.Controllers
         [SerializeField] private PlayBallController playBallController;
         [Tooltip("MatchRewardManager.OnRewardGranted를 구독해 보상 내역을 결과창에 표시한다. 비워두면 보상 표시를 생략한다.")]
         [SerializeField] private MatchRewardManager matchRewardManager;
-        [Tooltip("다이아몬드/볼카운트 UI. PlayBallController.OnAtBatEnd는 스스로 구독하므로, 여기서는 " +
-                 "새 경기 시작 전 잔상을 지우는 ResetDisplay() 호출만 위임한다. 비워두면 초기화를 생략한다.")]
+        [Tooltip("다이아몬드/볼카운트 UI. [TASK-KBO-046] 실시간 갱신은 BroadcastUIManager가 PlayEvent를 " +
+                 "직접 밀어 넣는 방식(UpdateStatus())으로 처리하므로, 여기서는 새 경기 시작 전 잔상을 " +
+                 "지우는 ResetDisplay() 호출만 위임한다. 비워두면 초기화를 생략한다.")]
         [SerializeField] private MatchStatusUI matchStatusUI;
 
         [Header("Scoreboard - 이닝별 득점 (배열 순서 = 1회, 2회, ... 연장 포함)")]

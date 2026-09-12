@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using KBOManager.Engine;
+using KBOManager.UI;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -43,6 +44,11 @@ namespace KBOManager.Controllers
         [Header("Skip")]
         [Tooltip("스킵 버튼. 비워두면 코드에서 RequestSkip()을 직접 호출해야 한다.")]
         [SerializeField] private Button skipButton;
+
+        [Header("Match Status (Diamond/Count)")]
+        [Tooltip("다이아몬드(주자)/볼카운트 UI. 씬에 없으면(TASK-KBO-046 이전 좀비 상태이던 뼈대 UI가 " +
+                 "아직 배치되지 않은 씬 등) 조용히 건너뛴다 - 필수 컴포넌트가 아니다.")]
+        [SerializeField] private MatchStatusUI matchStatusUI;
 
         [Header("Playback Timing")]
         [Tooltip("타석(AtBatResult) 이벤트 1개당 대기 시간(초). 유저 입력을 기다리는 게 아니라 " +
@@ -102,6 +108,13 @@ namespace KBOManager.Controllers
                 Debug.LogWarning("[BroadcastUIManager] 스킵 버튼을 찾지 못했습니다 - RequestSkip()을 " +
                     "코드(다른 UI 등)에서 직접 호출해야 스킵 기능이 동작합니다.");
             }
+
+            // [TASK-KBO-046] MatchStatusUI는 다이아몬드/볼카운트를 보여주는 선택적 보조 UI라
+            // inGameUIController/skipButton과 달리 못 찾아도 경고를 남기지 않고 조용히 건너뛴다(7항 경계 조건).
+            if (matchStatusUI == null) matchStatusUI = GetComponent<MatchStatusUI>();
+            if (matchStatusUI == null) matchStatusUI = GetComponentInChildren<MatchStatusUI>(true);
+            if (matchStatusUI == null) matchStatusUI = GetComponentInParent<MatchStatusUI>();
+            if (matchStatusUI == null) matchStatusUI = FindAnyObjectByType<MatchStatusUI>();
         }
 
         /// <summary>
@@ -212,10 +225,17 @@ namespace KBOManager.Controllers
         /// AtBatResult 타입 이벤트만 텍스트 로그를 남긴다. HalfInningEnd/GameEnd 타입은 로그를 남기지
         /// 않는 대신 스코어보드(이닝별 점수)를 갱신한다. RunnerAdvance는 2D 미니맵 애니메이션 전용이라
         /// 이번 범위에서는(로그도, 스코어보드도 건드리지 않고) 조용히 통과한다.
+        ///
+        /// [TASK-KBO-046] evt 타입과 무관하게 matchStatusUI.UpdateStatus(evt)를 항상 먼저 호출한다 -
+        /// 다이아몬드(주자) 갱신에 필요한 RunnerAdvance 이벤트까지 놓치지 않기 위함이다(로그 출력
+        /// switch문과 달리 이쪽은 이벤트 타입을 자기 내부에서 직접 분기한다). matchStatusUI가
+        /// null이면(씬 미배치) null 조건부 연산자로 조용히 건너뛴다.
         /// </summary>
         private void PlayOneEvent(PlayEvent evt)
         {
             if (evt == null) return;
+
+            matchStatusUI?.UpdateStatus(evt);
 
             switch (evt.Type)
             {
