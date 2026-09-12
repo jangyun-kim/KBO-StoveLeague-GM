@@ -156,26 +156,35 @@ namespace KBOManager.Engine
     }
 
     /// <summary>
-    /// 한 팀의 "경기 적용 전력" 보정치(15_team_power_policy.md 3층위 중 마지막 층위).
-    /// SynergyBuff(상시 시너지 - 세트덱 등)와 ConditionBuff(경기별 조건부 버프 - 치어리더/홈 어드밴티지
-    /// 등, TASK-KBO-037 시점에는 항상 0)를 분리해 담되, MatchEngine은 둘의 합계(TotalBuff)만 사용한다.
+    /// 한 팀의 "경기 적용 전력" 보정치(15_team_power_policy.md 3층위 중 마지막 층위, TASK-KBO-039에서
+    /// B+C 하이브리드로 확장). B안(가산) - SynergyBuff(상시 시너지 - 세트덱 등)와 ConditionBuff(경기별
+    /// 조건부 가산 - 홈 어드밴티지/치어리더)의 합계(TotalBuff)를 세부 스탯에 균등 가산한다.
+    /// C안(배율) - ClutchMultiplier(득점권 상황에서 타자 긍정적 결과 가중치에 곱할 배율, 기본 1.0f =
+    /// 효과 없음)는 TotalBuff와 별개로 SimulateAtBat()이 직접 사용한다.
     /// 호출부(LeagueManager 등)가 경기 시작 전에 구성해 MatchEngine 생성자로 주입한다 - 엔진 스스로는
     /// 절대 이 값을 계산하지 않는다(엔진 내부 계산 로직은 로지스틱/랜덤 판정을 그대로 유지).
     /// </summary>
     public readonly struct TeamPowerModifiers
     {
+        /// <summary>[TASK-KBO-039 확정 수치] 매치 생성 시 홈팀 ConditionBuff에 부여할 기본 홈 어드밴티지.
+        /// 호출부(LeagueManager 등)의 BuildTeamPowerModifiers가 이 상수를 참조해 매직넘버를 피한다.</summary>
+        public const int HomeAdvantageConditionBuff = 2;
+
         public readonly int SynergyBuff;
         public readonly int ConditionBuff;
+        public readonly float ClutchMultiplier;
         public int TotalBuff => SynergyBuff + ConditionBuff;
 
-        public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0)
+        public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f)
         {
             SynergyBuff = synergyBuff;
             ConditionBuff = conditionBuff;
+            ClutchMultiplier = clutchMultiplier;
         }
 
-        /// <summary>버프 없음(0, 0). 치어리더/홈 어드밴티지가 아직 없는 호출부(BatchSimulator 등)가 쓴다.</summary>
-        public static readonly TeamPowerModifiers None = new TeamPowerModifiers(0, 0);
+        /// <summary>버프 없음(0, 0, 1.0f = 클러치 효과 없음). 치어리더/홈 어드밴티지가 없는 호출부
+        /// (BatchSimulator 등)가 쓴다.</summary>
+        public static readonly TeamPowerModifiers None = new TeamPowerModifiers(0, 0, 1.0f);
     }
 
     /// <summary>
@@ -220,16 +229,19 @@ namespace KBOManager.Engine
 
         // 타석 결과 기본(fallback) 확률표. EngineConfig가 있으면 결과별 BaseWeight는 그쪽 값을 우선 사용하고,
         // driver/direction 관계(어떤 스탯 매치업이 무엇을 좌우하는지)는 물리적 의미가 있는 구조이므로 코드에 고정한다.
-        private static readonly (AtBatResult result, float defaultBaseWeight, OutcomeDriver driver, float direction)[] OutcomeTable =
+        // isBatterPositive(TASK-KBO-039): 타자에게 유리한 결과인가 - Strikeout은 direction이 +1이지만
+        // "투수 유리 방향"이라 타자 긍정 이벤트가 아니다(direction은 스탯 매치업의 부호일 뿐, 타자 유불리와는
+        // 별개 축이다). 득점권 클러치 배율(ClutchMultiplier)은 이 플래그가 true인 결과에만 곱해진다.
+        private static readonly (AtBatResult result, float defaultBaseWeight, OutcomeDriver driver, float direction, bool isBatterPositive)[] OutcomeTable =
         {
-            (AtBatResult.Strikeout, 0.22f, OutcomeDriver.Strikeout,      +1f),
-            (AtBatResult.Walk,      0.08f, OutcomeDriver.Walk,           +1f),
-            (AtBatResult.Groundout, 0.23f, OutcomeDriver.ContactQuality, -1f),
-            (AtBatResult.Flyout,    0.20f, OutcomeDriver.ContactQuality, -1f),
-            (AtBatResult.Single,    0.16f, OutcomeDriver.ContactQuality, +1f),
-            (AtBatResult.Double,    0.06f, OutcomeDriver.Power,          +1f),
-            (AtBatResult.Triple,    0.01f, OutcomeDriver.Power,          +1f),
-            (AtBatResult.HomeRun,   0.04f, OutcomeDriver.Power,          +1f),
+            (AtBatResult.Strikeout, 0.22f, OutcomeDriver.Strikeout,      +1f, false),
+            (AtBatResult.Walk,      0.08f, OutcomeDriver.Walk,           +1f, true),
+            (AtBatResult.Groundout, 0.23f, OutcomeDriver.ContactQuality, -1f, false),
+            (AtBatResult.Flyout,    0.20f, OutcomeDriver.ContactQuality, -1f, false),
+            (AtBatResult.Single,    0.16f, OutcomeDriver.ContactQuality, +1f, true),
+            (AtBatResult.Double,    0.06f, OutcomeDriver.Power,          +1f, true),
+            (AtBatResult.Triple,    0.01f, OutcomeDriver.Power,          +1f, true),
+            (AtBatResult.HomeRun,   0.04f, OutcomeDriver.Power,          +1f, true),
         };
 
         // config가 없을 때 쓰는 기본값. EngineConfig.PopulateDefaults()의 값과 동일하게 맞춰 둔다.
@@ -731,11 +743,17 @@ namespace KBOManager.Engine
             // 장타(2루타 이상) 여부: 타자 파워 vs 투수 변화
             float powerSkill = NormalizeDiff(batterStats.Power - pitcherStats.Movement);
 
+            // TASK-KBO-039: 득점권(2루 또는 3루 주자)이면 공격 팀(타자)의 ClutchMultiplier를 타자
+            // 긍정 이벤트(OutcomeTable.isBatterPositive)의 가중치에만 곱한다. 수비 팀(투수)의 위기 탈출
+            // 배율은 이번 스코프에 포함되지 않는다(7항) - 오직 타자 쪽에만 적용한다.
+            bool isScoringPosition = state.HasRunnerInScoringPosition;
+            float batterClutchMultiplier = GetModifiersFor(batter).ClutchMultiplier;
+
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
             {
-                var (result, defaultBaseWeight, driver, direction) = OutcomeTable[i];
+                var (result, defaultBaseWeight, driver, direction, isBatterPositive) = OutcomeTable[i];
                 float baseWeight = config != null ? config.GetBaseWeight(result, defaultBaseWeight) : defaultBaseWeight;
                 float skill = driver switch
                 {
@@ -747,8 +765,15 @@ namespace KBOManager.Engine
                 };
 
                 float multiplier = Mathf.Max(1f + direction * skill * SkillInfluence, 0.05f); // 확률 붕괴 방지 하한
-                weights[i] = baseWeight * multiplier;
-                total += weights[i];
+                float weight = baseWeight * multiplier;
+
+                if (isScoringPosition && isBatterPositive && batterClutchMultiplier > 1f)
+                {
+                    weight *= batterClutchMultiplier; // 기존 로지스틱/가중치 계산 결과에 단순 곱셈으로만 개입
+                }
+
+                weights[i] = weight;
+                total += weight;
             }
 
             double roll = random.NextDouble() * total;

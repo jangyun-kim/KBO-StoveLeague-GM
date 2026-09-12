@@ -568,8 +568,8 @@ namespace KBOManager.Managers
             var homeRoster = ResolveRosterForTeam(fixture.HomeTeam);
             var awayRoster = ResolveRosterForTeam(fixture.AwayTeam);
 
-            var homeModifiers = BuildTeamPowerModifiers(fixture.HomeTeam, homeRoster);
-            var awayModifiers = BuildTeamPowerModifiers(fixture.AwayTeam, awayRoster);
+            var homeModifiers = BuildTeamPowerModifiers(fixture.HomeTeam, homeRoster, isHome: true);
+            var awayModifiers = BuildTeamPowerModifiers(fixture.AwayTeam, awayRoster, isHome: false);
             var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
 
@@ -589,17 +589,20 @@ namespace KBOManager.Managers
         /// [TASK-KBO-037] 경기 시작 전 MatchEngine에 주입할 "경기 적용 전력" 보정치를 구성한다.
         /// team이 유저 팀(userTeam)이면 GameManager.Instance.FavoriteTeam을 기준으로, 그 외(AI 팀)는
         /// favoriteTeam 없이(null) GameManager.CalculateSynergy()를 호출해 로스터 내 최다 구단 기준으로
-        /// 판정한다. ConditionBuff(치어리더/홈 어드밴티지)는 아직 데이터 시스템이 없어 항상 0이다
-        /// (이번 작업 범위에서 명시적으로 제외됨).
+        /// 판정한다.
+        /// [TASK-KBO-039] ConditionBuff는 홈팀이면 TeamPowerModifiers.HomeAdvantageConditionBuff(+2),
+        /// 원정팀이면 0이다. 치어리더 효과(ConditionBuff 추가 가산)와 ClutchMultiplier(치어리더 스킬 등)는
+        /// 실제 치어리더 데이터 시스템이 아직 없어 이번 작업 범위에서 제외되며, 기본값(1.0f = 효과 없음)을 쓴다.
         /// </summary>
-        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster)
+        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster, bool isHome)
         {
             bool isUserTeamWithFavorite = team == userTeam && GameManager.Instance != null
                 && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
             int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
-            return new TeamPowerModifiers(synergy, conditionBuff: 0);
+            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
+            return new TeamPowerModifiers(synergy, conditionBuff);
         }
 
         /// <summary>

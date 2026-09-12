@@ -44,8 +44,17 @@
 - 가산은 **엔진 내부 런타임 계산에서만** 일어난다(`ResolveEffectiveBatterStats`/`ResolveEffectivePitcherStats`의 마지막 단계). `Player` 객체의 저장된 스탯(`ReinforceLevel`, `AwakenLevel` 등)이나 CalculateOVR() 등 다른 경로의 계산에는 전혀 영향을 주지 않는다 - 매 타석 계산 시 임시로 만들어지는 지역 값에만 더해진다.
 - 가산 순서: Base+Growth → 스킬 효과(강화/각성/스킬) → 팀 버프(맨 마지막). 세트덱이 배율에서 가산으로 바뀌었으므로 더 이상 "배율이 스킬 보너스까지 부풀리는" 복리 문제가 없다.
 - **방어적 클램핑**: 버프가 음수(향후 페널티 도입 시)여도 최종 세부 스탯 값이 1 미만으로 떨어지지 않도록 `Mathf.Max(1, stat + buff)`로 하한을 둔다.
-- **ConditionBuff는 현재 항상 0**이다(치어리더 효과, 홈 어드밴티지 수치 산출 로직 모두 아직 미구현 - 후속 작업 범위).
+- **[TASK-KBO-039] ConditionBuff 기본값**: 매치 생성 시 홈팀 `ConditionBuff`에 `TeamPowerModifiers.HomeAdvantageConditionBuff`(**+2**)가 기본 부여된다(원정팀은 0). 치어리더로 인한 추가 `ConditionBuff` 가산은 실제 치어리더 데이터 시스템이 아직 없어 미구현 상태다(후속 작업 범위).
 
 # 5. 로지스틱 승률 공식과의 관계
 
 - `06_match_engine_formula.md`가 언급하는 로지스틱 승률 공식(`1/(1+10^(-(타자OVR-투수OVR)/30))`)은 `KBOManager.Broadcast`(CSV/Z-score 기반 병행 시스템) 쪽 스펙이며, 실제로 모든 경기에 쓰이는 `KBOManager.Engine.MatchEngine`은 OVR이 아닌 세부 스탯 매치업 차이 기반의 가중 룰렛 방식을 쓴다(TASK-KBO-036 조사에서 확인). 본 문서의 "경기 적용 전력"(③) 가산도 이 세부 스탯 매치업 계산에 반영되며, 로지스틱 공식 자체와는 무관하다.
+
+# 6. B+C 하이브리드 - 클러치(Clutch) 배율 [TASK-KBO-039]
+
+- `TeamPowerModifiers`에 `SynergyBuff`/`ConditionBuff`(B안 - 세부 스탯 가산, 4절)와 별개로 **`ClutchMultiplier`**(C안 - 확률 가중치 배율, `float`, 기본값 **1.0f** = 효과 없음)를 추가했다. `TotalBuff`(`SynergyBuff + ConditionBuff`) 계산식에는 포함되지 않는다 - 가산 채널과 배율 채널은 완전히 분리되어 있다.
+- **득점권 판정**: `MatchState.HasRunnerInScoringPosition`(2루 또는 3루에 주자가 있는지)을 그대로 쓴다.
+- **적용 대상**: 득점권 상황에서 **타석에 들어선 타자가 속한 팀**의 `ClutchMultiplier`만 사용한다. `MatchEngine.OutcomeTable`의 8개 결과 후보 중 타자에게 유리한 5개(볼넷, 안타, 2루타, 3루타, 홈런)의 가중치(`weight`)에만 곱해진다 - 삼진/땅볼/뜬공(타자에게 불리한 3개)에는 곱해지지 않는다. 수비 팀(투수)의 위기 탈출 배율은 이번 스코프에 포함되지 않는다.
+- **개입 지점**: 이미 계산된 `weight`(기존 로지스틱/랜덤 판정 로직으로 산출된 값)에 `weight *= ClutchMultiplier`로 단순 곱셈만 한다 - `SimulateAtBat()`의 확률 계산 근간(스탯 매치업 diff, 정규화, 랜덤 룰렛) 자체는 전혀 바뀌지 않았다.
+- **안전장치**: `ClutchMultiplier > 1f`일 때만 곱셈을 수행하므로, 값이 실수로 0에 가깝게 설정되더라도 안타 확률이 증발하는 버그가 발생하지 않는다. 기본값(1.0f)은 생성자 기본 파라미터와 `TeamPowerModifiers.None` 양쪽에서 보장된다.
+- 치어리더 스킬로 인한 실제 `ClutchMultiplier` 값 산출(1.0f보다 큰 값을 실제로 채워 넣는 로직)은 치어리더 데이터 시스템이 아직 없어 미구현 상태다(후속 작업 범위) - 현재 모든 호출부가 기본값(1.0f)만 전달한다.

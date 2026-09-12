@@ -177,8 +177,8 @@ namespace KBOManager.Managers
             var homeRoster = leagueManager.ResolveRosterForTeam(CurrentSeries.HigherSeed);
             var awayRoster = leagueManager.ResolveRosterForTeam(CurrentSeries.LowerSeed);
 
-            var homeModifiers = BuildTeamPowerModifiers(CurrentSeries.HigherSeed, homeRoster);
-            var awayModifiers = BuildTeamPowerModifiers(CurrentSeries.LowerSeed, awayRoster);
+            var homeModifiers = BuildTeamPowerModifiers(CurrentSeries.HigherSeed, homeRoster, isHome: true);
+            var awayModifiers = BuildTeamPowerModifiers(CurrentSeries.LowerSeed, awayRoster, isHome: false);
             var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
             var result = engine.PlayFullMatch(CurrentSeries.HigherSeed.ToString(), CurrentSeries.LowerSeed.ToString(), isPostSeason: true);
 
@@ -198,17 +198,22 @@ namespace KBOManager.Managers
         /// <summary>
         /// [TASK-KBO-037] team이 유저 팀(leagueManager.UserTeam)이면 GameManager.Instance.FavoriteTeam을
         /// 기준으로, 그 외(AI 팀)는 favoriteTeam 없이(null) GameManager.CalculateSynergy()를 호출해
-        /// 로스터 내 최다 구단 기준으로 판정한다. ConditionBuff(치어리더/홈 어드밴티지)는 아직 데이터
-        /// 시스템이 없어 항상 0이다(이번 작업 범위에서 명시적으로 제외됨).
+        /// 로스터 내 최다 구단 기준으로 판정한다.
+        /// [TASK-KBO-039] ConditionBuff는 홈팀이면 TeamPowerModifiers.HomeAdvantageConditionBuff(+2),
+        /// 원정팀이면 0이다. 이 클래스는 시리즈 내내 HigherSeed를 고정적으로 MatchEngine의 "home" 슬롯에
+        /// 배정하므로(PlayNextSeriesGame() 참고, 기존 설계 - 실제 KBO처럼 시리즈 중 홈/원정이 바뀌지
+        /// 않는다), 홈 어드밴티지도 항상 HigherSeed에만 부여된다. 치어리더 효과와 ClutchMultiplier는
+        /// 아직 데이터 시스템이 없어 기본값(1.0f)을 쓴다.
         /// </summary>
-        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster)
+        private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster, bool isHome)
         {
             bool isUserTeamWithFavorite = leagueManager != null && team == leagueManager.UserTeam
                 && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
             int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
-            return new TeamPowerModifiers(synergy, conditionBuff: 0);
+            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
+            return new TeamPowerModifiers(synergy, conditionBuff);
         }
 
         /// <summary>시리즈가 끝날 때까지 PlayNextSeriesGame()을 반복한다(빠른 진행 편의 메서드).</summary>
