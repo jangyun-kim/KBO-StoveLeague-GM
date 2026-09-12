@@ -2,9 +2,9 @@
 문서명: 데이터 사전 (Data Dictionary)
 버전: v0.1
 상태: Active
-최종 수정일: 2026-09-12
+최종 수정일: 2026-09-13
 담당자: 김장윤
-관련 파일: 모든 data/*.csv 파일
+관련 파일: 모든 data/*.csv 파일, Cheerleader.cs
 ---
 
 # 1. 목적
@@ -70,3 +70,10 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 
 - 위 3절(`grade_id`)과 5절(GradeBaseCost 표)의 `SEASON=0 ~ DYNASTY=7` 서열은 `Assets/Scripts/Models/Types.cs`의 `Grade` enum 실제 정수값(DCL-006 확정)과 재대조해 여전히 일치함을 확인했다. 이번 작업에서 CSV/JSON 스키마 자체의 변경 사항은 없다.
 - 데이터 사전이 다루지 않는 런타임 전용 구조체(`TeamPowerModifiers`, `PlayEvent`/`PlayEventType`)는 CSV/JSON으로 직렬화되지 않으므로 본 문서의 스키마 범위 밖이며, 관련 정책은 `docs/15_team_power_policy.md`에서 별도로 관리한다.
+
+# 7. 치어리더(Cheerleader) 등급 체계 [TASK-KBO-048]
+
+- 2절의 `CHR_001` 접두사 규칙은 이번 작업에서 실제 코드 모델(`Assets/Scripts/Models/Cheerleader.cs`)로 처음 구현되었다. `Cheerleader.InstanceId`(string)가 이 ID를 담을 필드다.
+- **`CheerleaderGrade` enum**(선수 카드 등급 `Grade`와 완전히 분리된 별도 체계, 혼용 금지): `NONE = 0`, `TEST = 1`. **[TBD]** v0.1 시점에는 실제 등급 서열/획득 방식/개수가 기획 확정되지 않아 개발·테스트용 값만 존재한다. 후속 작업에서 정식 등급을 추가할 때는 `Grade` enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)를 참고해 신중히 배치할 것 - 다만 치어리더는 아직 세이브/로드 대상이 아니므로(범위 제외) TASK-KBO-048 시점에는 직렬화 안정성 이슈가 발생하지 않는다.
+- 이번 작업의 개발용 더미 데이터(`GameManager.InitializeDevOnlyTestCheerleader()`, 에디터 전용)는 `InstanceId`로 `DEV_TEST_CHEER_001`을 쓴다 - 의도적으로 `CHR_` 접두사를 쓰지 않았다(실제 카탈로그 데이터가 아직 없는 상태에서 향후 정식 `CHR_XXX` ID와 혼동되지 않도록 구분하기 위함).
+- CSV 스키마(`cheerleaders.csv` 등)는 아직 존재하지 않는다 - 가챠/획득 시스템이 이번 작업 범위에서 제외되었기 때문이며, 현재는 `GameManager.EquippedCheerleader` 필드에 코드/인스펙터로 직접 값을 채우는 방식만 지원한다.

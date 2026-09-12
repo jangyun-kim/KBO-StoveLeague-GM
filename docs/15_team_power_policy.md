@@ -2,9 +2,9 @@
 문서명: 구단 전력 보정 정책 (Team Power Policy)
 버전: v0.1
 상태: Active
-최종 수정일: 2026-09-12
+최종 수정일: 2026-09-13
 담당자: 김장윤
-관련 파일: GameManager.cs, MatchEngine.cs, LeagueManager.cs
+관련 파일: GameManager.cs, MatchEngine.cs, LeagueManager.cs, PlayBallController.cs, PostSeasonManager.cs, Cheerleader.cs
 ---
 
 # 1. 목적
@@ -44,7 +44,7 @@
 - 가산은 **엔진 내부 런타임 계산에서만** 일어난다(`ResolveEffectiveBatterStats`/`ResolveEffectivePitcherStats`의 마지막 단계). `Player` 객체의 저장된 스탯(`ReinforceLevel`, `AwakenLevel` 등)이나 CalculateOVR() 등 다른 경로의 계산에는 전혀 영향을 주지 않는다 - 매 타석 계산 시 임시로 만들어지는 지역 값에만 더해진다.
 - 가산 순서: Base+Growth → 스킬 효과(강화/각성/스킬) → 팀 버프(맨 마지막). 세트덱이 배율에서 가산으로 바뀌었으므로 더 이상 "배율이 스킬 보너스까지 부풀리는" 복리 문제가 없다.
 - **방어적 클램핑**: 버프가 음수(향후 페널티 도입 시)여도 최종 세부 스탯 값이 1 미만으로 떨어지지 않도록 `Mathf.Max(1, stat + buff)`로 하한을 둔다.
-- **[TASK-KBO-039] ConditionBuff 기본값**: 매치 생성 시 홈팀 `ConditionBuff`에 `TeamPowerModifiers.HomeAdvantageConditionBuff`(**+2**)가 기본 부여된다(원정팀은 0). 치어리더로 인한 추가 `ConditionBuff` 가산은 실제 치어리더 데이터 시스템이 아직 없어 미구현 상태다(후속 작업 범위).
+- **[TASK-KBO-039] ConditionBuff 기본값**: 매치 생성 시 홈팀 `ConditionBuff`에 `TeamPowerModifiers.HomeAdvantageConditionBuff`(**+2**)가 기본 부여된다(원정팀은 0). **[TASK-KBO-048]** 유저 팀의 홈 경기라면 여기에 장착된 `Cheerleader.ConditionBuff`가 추가로 가산된다(7절 참고) - AI 팀이거나 유저 팀이라도 원정 경기면 가산되지 않는다.
 
 # 5. 로지스틱 승률 공식과의 관계
 
@@ -57,4 +57,14 @@
 - **적용 대상**: 득점권 상황에서 **타석에 들어선 타자가 속한 팀**의 `ClutchMultiplier`만 사용한다. `MatchEngine.OutcomeTable`의 8개 결과 후보 중 타자에게 유리한 5개(볼넷, 안타, 2루타, 3루타, 홈런)의 가중치(`weight`)에만 곱해진다 - 삼진/땅볼/뜬공(타자에게 불리한 3개)에는 곱해지지 않는다. 수비 팀(투수)의 위기 탈출 배율은 이번 스코프에 포함되지 않는다.
 - **개입 지점**: 이미 계산된 `weight`(기존 로지스틱/랜덤 판정 로직으로 산출된 값)에 `weight *= ClutchMultiplier`로 단순 곱셈만 한다 - `SimulateAtBat()`의 확률 계산 근간(스탯 매치업 diff, 정규화, 랜덤 룰렛) 자체는 전혀 바뀌지 않았다.
 - **안전장치**: `ClutchMultiplier > 1f`일 때만 곱셈을 수행하므로, 값이 실수로 0에 가깝게 설정되더라도 안타 확률이 증발하는 버그가 발생하지 않는다. 기본값(1.0f)은 생성자 기본 파라미터와 `TeamPowerModifiers.None` 양쪽에서 보장된다.
-- 치어리더 스킬로 인한 실제 `ClutchMultiplier` 값 산출(1.0f보다 큰 값을 실제로 채워 넣는 로직)은 치어리더 데이터 시스템이 아직 없어 미구현 상태다(후속 작업 범위) - 현재 모든 호출부가 기본값(1.0f)만 전달한다.
+- **[TASK-KBO-048]** 치어리더 스킬로 인한 실제 `ClutchMultiplier` 값 산출이 구현되었다 - 유저 팀의 홈 경기이고 치어리더가 장착되어 있으면 `Cheerleader.ClutchMultiplier`가 전달되고, 그 외(AI 팀/원정/미장착)에는 기본값(1.0f)이 전달된다(7절 참고).
+
+# 7. 치어리더 데이터 모델 및 경기 조건부 적용 전력(MatchConditionModifier) [TASK-KBO-048]
+
+- **데이터 모델**: `Cheerleader`(`Assets/Scripts/Models/Cheerleader.cs`)가 `ConditionBuff`(int)와 `ClutchMultiplier`(float, 기본 1.0f)를 들고 있다. `CheerleaderGrade` enum(`NONE=0`, `TEST=1`)은 선수 카드 등급(`Grade` enum)과 완전히 분리된 별도 체계이며 혼용하지 않는다. **[TBD]** v0.1 시점에는 치어리더 획득 방식/등급 서열/개수가 기획 확정되지 않아 테스트용 값만 우선 존재한다.
+- **장착 슬롯**: `GameManager.EquippedCheerleader`(단일 슬롯, `Cheerleader` 또는 `null`). 가챠/획득/세이브 시스템은 이번 작업 범위 밖이라, 실제 UI가 생기기 전까지는 인스펙터 직접 할당 또는 `GameManager`의 에디터 전용(`#if UNITY_EDITOR`) 개발용 더미 데이터로만 채워진다.
+- **"경기 조건부 적용 전력(MatchConditionModifier)" 정의**: 치어리더의 두 버프는 ①·②(로스터 OVR/표시 팀 OVR)에 절대 영구 반영되지 않는다 - 오직 경기 시작 직전 각 매니저의 `BuildTeamPowerModifiers()`류 헬퍼가 `GameManager.ResolveCheerleaderConditionBuff()`/`ResolveCheerleaderClutchMultiplier()`를 통해 `TeamPowerModifiers`에 일회성으로 실어 `MatchEngine`에 전달하는 값 - 즉 ③(경기 적용 전력) 층위에만 속한다.
+- **적용 조건**: "유저 팀이면서 홈 경기"(`isUserTeamHome`)일 때만 합산된다. AI 팀이거나, 유저 팀이라도 원정 경기면 치어리더의 어떠한 버프도 적용되지 않는다. `LeagueManager`/`PlayBallController`/`PostSeasonManager` 3개 호출부 모두 동일한 규칙을 따른다.
+  - **[TBD] 포스트시즌 중립 구장**: `PostSeasonManager`는 시리즈 내내 `HigherSeed`를 고정적으로 "home"에 배정하는 기존 설계를 그대로 따른다(중립 구장이나 시리즈 중 홈/원정 교대 개념 자체가 엔진에 없음) - 유저 팀이 `HigherSeed`인 시리즈 내내 치어리더 홈 버프가 계속 적용된다는 뜻이며, 실제 KBO 한국시리즈 룰과 다를 수 있으나 기획 미확정이라 그대로 둔다.
+- **ClutchMultiplier 방어(Sanitize)**: `GameManager.ResolveCheerleaderClutchMultiplier()`가 `MatchEngine`에 전달되기 직전 비정상 입력을 중립값(1.0f)으로 억제한다 - `NaN`/`Infinity`는 별도로 걸러내고(단순 `Mathf.Max`로는 걸러지지 않음), 그 외 0 이하 값은 `Mathf.Max(1.0f, value)`로 끌어올린다. `Cheerleader` 필드 자체가 `null`일 수 있는 경우(미장착)도 이 함수가 함께 방어한다.
+- **[TBD] 중첩/상한 미확정**: 치어리더 `ClutchMultiplier`가 코치 등 향후 추가될 다른 시너지와 중첩될 때의 합산 방식(가산? 곱셈? 최댓값?)이나 상한선은 아직 기획 확정 전이다. 현재 구현은 치어리더 단독 값만 정규화해서 반환하며, 상한 로직 자체가 없다(무한대만 방어).

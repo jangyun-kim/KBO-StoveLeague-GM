@@ -591,18 +591,28 @@ namespace KBOManager.Managers
         /// favoriteTeam 없이(null) GameManager.CalculateSynergy()를 호출해 로스터 내 최다 구단 기준으로
         /// 판정한다.
         /// [TASK-KBO-039] ConditionBuff는 홈팀이면 TeamPowerModifiers.HomeAdvantageConditionBuff(+2),
-        /// 원정팀이면 0이다. 치어리더 효과(ConditionBuff 추가 가산)와 ClutchMultiplier(치어리더 스킬 등)는
-        /// 실제 치어리더 데이터 시스템이 아직 없어 이번 작업 범위에서 제외되며, 기본값(1.0f = 효과 없음)을 쓴다.
+        /// 원정팀이면 0이다.
+        /// [TASK-KBO-048] 치어리더 효과(ConditionBuff 추가 가산 + ClutchMultiplier)는 "유저 팀이면서
+        /// 홈경기"(isUserTeamHome)일 때만 합산된다 - AI 팀이거나 유저 팀이라도 원정 경기면 치어리더의
+        /// 어떠한 버프도 적용되지 않는다(요구사항 6항). 정규 시즌은 홈/원정이 고정 대진표(BuildUserSchedule())
+        /// 로 명확히 갈리므로 중립 구장 개념이 없다 - isHome 판별에 모호함이 없다.
         /// </summary>
         private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster, bool isHome)
         {
-            bool isUserTeamWithFavorite = team == userTeam && GameManager.Instance != null
+            bool isUserTeam = team == userTeam;
+            bool isUserTeamWithFavorite = isUserTeam && GameManager.Instance != null
                 && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
             int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
-            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
-            return new TeamPowerModifiers(synergy, conditionBuff);
+
+            bool isUserTeamHome = isUserTeam && isHome;
+            var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
+            int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
+                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader);
+            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader);
+
+            return new TeamPowerModifiers(synergy, conditionBuff, clutchMultiplier);
         }
 
         /// <summary>

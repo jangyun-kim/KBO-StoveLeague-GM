@@ -50,6 +50,26 @@ namespace KBOManager.Managers
             set => isFirstLogin = value;
         }
 
+        // ----- 치어리더 장착 슬롯 (TASK-KBO-048) -----
+        [Header("Cheerleader")]
+        [Tooltip("유저가 장착한 치어리더 1명(v0.1은 단일 슬롯). null이면 '미장착' 상태 - 경기 조건부 " +
+                 "버프(ConditionBuff/ClutchMultiplier)가 전혀 적용되지 않는다. 가챠/획득/세이브 시스템은 " +
+                 "이번 작업 범위 밖이라, 실제 장착 UI가 생기기 전까지는 아래 에디터 전용 더미 데이터나 " +
+                 "인스펙터 직접 할당으로만 값이 채워진다.")]
+        [SerializeField] private Cheerleader equippedCheerleader;
+        public Cheerleader EquippedCheerleader
+        {
+            get => equippedCheerleader;
+            set => equippedCheerleader = value;
+        }
+
+#if UNITY_EDITOR
+        [Tooltip("[에디터 전용] true면 Awake() 시 EquippedCheerleader가 비어 있을 때만 테스트용 치어리더를 " +
+                 "자동 장착한다. '미장착(null)' 상태를 그대로 테스트하고 싶다면 이 토글을 꺼 두면 된다 - " +
+                 "이 필드와 관련 로직 전체가 #if UNITY_EDITOR로 감싸여 있어 릴리스 빌드에는 포함되지 않는다.")]
+        [SerializeField] private bool devAutoEquipTestCheerleader = true;
+#endif
+
         // ----- 재화 -----
         [Header("Currency")]
         [SerializeField] private int scoutReport;     // 스카우트 리포트 (뽑기 재화)
@@ -84,7 +104,70 @@ namespace KBOManager.Managers
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+
+#if UNITY_EDITOR
+            InitializeDevOnlyTestCheerleader();
+            LogCheerleaderBuffSelfCheck();
+#endif
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// [TASK-KBO-048][에디터 전용] devAutoEquipTestCheerleader가 켜져 있고 EquippedCheerleader가
+        /// 비어 있을 때만 개발/QA 검증용 치어리더를 1명 장착시킨다 - 인스펙터나 세이브 로드로 이미
+        /// 값이 채워져 있으면 절대 덮어쓰지 않는다(요구사항 3항 가드레일). 릴리스 빌드에서는 이
+        /// 메서드 자체가 컴파일되지 않는다(#if UNITY_EDITOR).
+        /// </summary>
+        private void InitializeDevOnlyTestCheerleader()
+        {
+            if (!devAutoEquipTestCheerleader) return;
+            if (equippedCheerleader != null) return;
+
+            equippedCheerleader = new Cheerleader(
+                instanceId: "DEV_TEST_CHEER_001",
+                name: "[개발용] 테스트 치어리더",
+                grade: CheerleaderGrade.TEST,
+                conditionBuff: 1,
+                clutchMultiplier: 1.05f);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-048][에디터 전용][검증용] 프로젝트에 Unity Test Framework 어셈블리(EditMode Test용
+        /// asmdef)가 아직 없어(요구사항 9항 "분리 불가능 시" 경로를 택함), ResolveCheerleaderConditionBuff()/
+        /// ResolveCheerleaderClutchMultiplier() 순수 정적 함수에 AC-01~AC-04, AC-06 시나리오를 직접
+        /// 대입해 콘솔에 기대값과 함께 출력한다. 실제 EquippedCheerleader 등 게임 상태는 전혀 건드리지
+        /// 않는 격리된 셀프체크이며, 매치 생성 파이프라인(BuildTeamPowerModifiers)과는 별도로 이 두
+        /// 정적 함수 자체의 입출력만 검증한다.
+        /// </summary>
+        private static void LogCheerleaderBuffSelfCheck()
+        {
+            var equipped = new Cheerleader("SELFCHECK", "SelfCheck", CheerleaderGrade.TEST, conditionBuff: 3, clutchMultiplier: 1.2f);
+
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-01(유저 홈+장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, equipped)}(기대 3), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, equipped)}(기대 1.2)");
+
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-02(유저 홈+미장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, null)}(기대 0), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, null)}(기대 1)");
+
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-03(유저 원정+장착): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped)}(기대 0), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(false, equipped)}(기대 1)");
+
+            // AC-04(AI 홈): 팀 식별 자체는 각 매니저의 BuildTeamPowerModifiers가 책임지고, 이 정적
+            // 함수는 그 판별 결과(isUserTeamHome)만 입력으로 받는다 - "AI 팀"이라는 조건은 여기서
+            // isUserTeamHome=false로 표현되며 입력 형태상 AC-03과 동일하다(둘 다 0/1.0 기대).
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-04(AI 홈, isUserTeamHome=false로 표현): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped)}(기대 0)");
+
+            var nanCheer = new Cheerleader("SELFCHECK_NAN", "NaN", CheerleaderGrade.TEST, 0, float.NaN);
+            var infCheer = new Cheerleader("SELFCHECK_INF", "Inf", CheerleaderGrade.TEST, 0, float.PositiveInfinity);
+            var zeroCheer = new Cheerleader("SELFCHECK_ZERO", "Zero", CheerleaderGrade.TEST, 0, 0f);
+            var negCheer = new Cheerleader("SELFCHECK_NEG", "Neg", CheerleaderGrade.TEST, 0, -5f);
+            Debug.Log("[TASK-KBO-048 SelfCheck] AC-06(방어적 설계, 모두 기대값 1): " +
+                $"NaN->{ResolveCheerleaderClutchMultiplier(true, nanCheer)}, " +
+                $"Infinity->{ResolveCheerleaderClutchMultiplier(true, infCheer)}, " +
+                $"0->{ResolveCheerleaderClutchMultiplier(true, zeroCheer)}, " +
+                $"음수->{ResolveCheerleaderClutchMultiplier(true, negCheer)}");
+        }
+#endif
 
         // ----- 인벤토리/로스터 헬퍼 -----
 
@@ -272,6 +355,46 @@ namespace KBOManager.Managers
                 : validPlayers.GroupBy(p => p.Template.Team).Select(g => g.Count()).DefaultIfEmpty(0).Max();
 
             return matchingCount >= TeamSynergyThreshold ? TeamSynergyBonus : 0;
+        }
+
+        // ----- 치어리더 경기 조건부 버프 해석 (TASK-KBO-048) -----
+
+        /// <summary>기본/중립 배율. 치어리더 미장착이거나 조건(유저 팀 + 홈경기) 미충족일 때 이 값을 반환한다.</summary>
+        public const float NeutralClutchMultiplier = 1.0f;
+
+        /// <summary>
+        /// [TASK-KBO-048] "유저 팀의 홈 경기"(isUserTeamHome)일 때만 장착된 치어리더의 ConditionBuff를
+        /// 반환한다(조건 미충족이거나 equippedCheerleader가 null이면 0). 호출부(각 매니저의
+        /// BuildTeamPowerModifiers 계열 헬퍼)가 이 값을 기본 홈 어드밴티지(Engine.TeamPowerModifiers.
+        /// HomeAdvantageConditionBuff, +2)에 그대로 더하면 된다 - 이 메서드 자체는 시너지/홈버프
+        /// 상수를 알지 못하며(GameManager.cs는 Engine 네임스페이스를 참조하지 않는다), 오직 치어리더
+        /// 쪽 가산분만 계산해서 넘긴다. 치어리더 효과는 Player.CalculateOVR()/CalculateTeamOVR()
+        /// (영구·표시용 구단 OVR)에는 절대 반영되지 않는다(Cheerleader.cs 클래스 주석 참고).
+        /// </summary>
+        public static int ResolveCheerleaderConditionBuff(bool isUserTeamHome, Cheerleader equippedCheerleader)
+        {
+            if (!isUserTeamHome || equippedCheerleader == null) return 0;
+            return equippedCheerleader.ConditionBuff;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-048] "유저 팀의 홈 경기"일 때만 장착된 치어리더의 ClutchMultiplier를 반환하고
+        /// (조건 미충족/미장착이면 중립값 NeutralClutchMultiplier), MatchEngine에 전달되기 전 비정상
+        /// 입력을 반드시 정규화(Sanitize)한다: NaN/Infinity는 곱셈 시 확률 가중치를 각각 깨뜨리거나
+        /// (NaN) 무한대로 발산시키므로(Infinity) 단순 Mathf.Max로는 걸러지지 않아 별도로 먼저
+        /// 걸러내고, 그 외 0 이하 값은 Mathf.Max(NeutralClutchMultiplier, value)로 중립값 이상으로
+        /// 끌어올린다.
+        /// [TBD] 코치 등 다른 시너지와 이 값이 중첩될 때의 합산 방식/상한선은 아직 기획 확정 전이다 -
+        /// 지금은 치어리더 단독 값만 정규화해서 반환한다(7항 경계 조건).
+        /// </summary>
+        public static float ResolveCheerleaderClutchMultiplier(bool isUserTeamHome, Cheerleader equippedCheerleader)
+        {
+            if (!isUserTeamHome || equippedCheerleader == null) return NeutralClutchMultiplier;
+
+            float raw = equippedCheerleader.ClutchMultiplier;
+            if (float.IsNaN(raw) || float.IsInfinity(raw)) return NeutralClutchMultiplier;
+
+            return Mathf.Max(NeutralClutchMultiplier, raw);
         }
     }
 }

@@ -202,18 +202,30 @@ namespace KBOManager.Managers
         /// [TASK-KBO-039] ConditionBuff는 홈팀이면 TeamPowerModifiers.HomeAdvantageConditionBuff(+2),
         /// 원정팀이면 0이다. 이 클래스는 시리즈 내내 HigherSeed를 고정적으로 MatchEngine의 "home" 슬롯에
         /// 배정하므로(PlayNextSeriesGame() 참고, 기존 설계 - 실제 KBO처럼 시리즈 중 홈/원정이 바뀌지
-        /// 않는다), 홈 어드밴티지도 항상 HigherSeed에만 부여된다. 치어리더 효과와 ClutchMultiplier는
-        /// 아직 데이터 시스템이 없어 기본값(1.0f)을 쓴다.
+        /// 않는다), 홈 어드밴티지도 항상 HigherSeed에만 부여된다.
+        /// [TASK-KBO-048][TBD] 포스트시즌 중립 구장(예: 한국시리즈 일부 룰) 개념은 이 엔진에 아예 없다 -
+        /// HigherSeed = 항상 "home"이라는 기존 설계를 그대로 따르므로, 유저 팀이 HigherSeed인 시리즈
+        /// 내내 치어리더 홈 버프가 (원정 없이) 계속 적용된다는 뜻이다. 실제 KBO 한국시리즈처럼 시리즈
+        /// 중 홈/원정이 번갈아 바뀌는 진짜 중립/교대 방식을 도입할지는 기획 미확정이라 [TBD]로 남긴다.
+        /// 치어리더 효과(ConditionBuff 추가 가산 + ClutchMultiplier)는 "유저 팀이면서 홈경기"일 때만
+        /// 합산되고, AI 팀이거나 유저 팀이 원정(LowerSeed)이면 적용되지 않는다(요구사항 6항).
         /// </summary>
         private TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster, bool isHome)
         {
-            bool isUserTeamWithFavorite = leagueManager != null && team == leagueManager.UserTeam
+            bool isUserTeam = leagueManager != null && team == leagueManager.UserTeam;
+            bool isUserTeamWithFavorite = isUserTeam
                 && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
             int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
-            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
-            return new TeamPowerModifiers(synergy, conditionBuff);
+
+            bool isUserTeamHome = isUserTeam && isHome;
+            var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
+            int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
+                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader);
+            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader);
+
+            return new TeamPowerModifiers(synergy, conditionBuff, clutchMultiplier);
         }
 
         /// <summary>시리즈가 끝날 때까지 PlayNextSeriesGame()을 반복한다(빠른 진행 편의 메서드).</summary>

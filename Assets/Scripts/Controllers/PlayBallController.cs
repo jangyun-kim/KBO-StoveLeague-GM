@@ -92,17 +92,28 @@ namespace KBOManager.Controllers
         /// FavoriteTeam을 기준으로, 그 외(AI 팀)는 favoriteTeam 없이(null) GameManager.CalculateSynergy()를
         /// 호출해 로스터 내 최다 구단 기준으로 판정한다.
         /// [TASK-KBO-039] ConditionBuff는 홈팀이면 TeamPowerModifiers.HomeAdvantageConditionBuff(+2),
-        /// 원정팀이면 0이다. 치어리더 효과와 ClutchMultiplier는 아직 데이터 시스템이 없어 기본값(1.0f)을 쓴다.
+        /// 원정팀이면 0이다.
+        /// [TASK-KBO-048] 치어리더 효과(ConditionBuff 추가 가산 + ClutchMultiplier)는 "유저 팀이면서
+        /// 홈경기"일 때만 합산된다 - AI 팀이거나 유저 팀이라도 원정 경기면 적용되지 않는다(요구사항 6항).
+        /// PlayBallController는 항상 유저가 실제로 참여하는 경기(LeagueManager.PeekNextFixture 기준)만
+        /// 다루므로 fixture.HomeTeam/AwayTeam 중 하나는 반드시 유저 팀이다 - 중립 구장 개념은 없다.
         /// </summary>
         private static TeamPowerModifiers BuildTeamPowerModifiers(Team team, List<Player> roster, bool isHome)
         {
-            bool isUserTeamWithFavorite = LeagueManager.Instance != null && team == LeagueManager.Instance.UserTeam
+            bool isUserTeam = LeagueManager.Instance != null && team == LeagueManager.Instance.UserTeam;
+            bool isUserTeamWithFavorite = isUserTeam
                 && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
             int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
-            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
-            return new TeamPowerModifiers(synergy, conditionBuff);
+
+            bool isUserTeamHome = isUserTeam && isHome;
+            var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
+            int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
+                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader);
+            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader);
+
+            return new TeamPowerModifiers(synergy, conditionBuff, clutchMultiplier);
         }
 
         private void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
