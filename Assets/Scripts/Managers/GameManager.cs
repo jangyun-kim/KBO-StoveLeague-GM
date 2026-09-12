@@ -94,6 +94,27 @@ namespace KBOManager.Managers
             set => gameGold = Mathf.Max(0, value);
         }
 
+        // ----- 팬심 / 연패 (TASK-KBO-049, 치어리더 B안 결산 연동용) -----
+        [Header("Fan Sentiment / Losing Streak")]
+        [Tooltip("[TBD] 팬심(Fan Sentiment) 수치의 실제 시작값/상한/등급 구간은 기획 미확정이다. " +
+                 "현재는 MatchRewardManager가 유저 팀 연패 시 하락시키는 로직만 구현되어 있고, " +
+                 "상승 요인이나 다른 소모처는 아직 없다. 0 미만으로는 내려가지 않는다.")]
+        [SerializeField] private int fanSentiment;
+        public int FanSentiment
+        {
+            get => fanSentiment;
+            set => fanSentiment = Mathf.Max(0, value);
+        }
+
+        [Tooltip("유저 팀의 현재 연속 패배 횟수. MatchRewardManager.GrantRewardForMatch()가 매 경기 " +
+                 "종료 시 갱신한다(승리 또는 무승부 시 0으로 리셋). 0 미만으로는 내려가지 않는다.")]
+        [SerializeField] private int losingStreak;
+        public int LosingStreak
+        {
+            get => losingStreak;
+            set => losingStreak = Mathf.Max(0, value);
+        }
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -128,7 +149,9 @@ namespace KBOManager.Managers
                 name: "[개발용] 테스트 치어리더",
                 grade: CheerleaderGrade.TEST,
                 conditionBuff: 1,
-                clutchMultiplier: 1.05f);
+                clutchMultiplier: 1.05f,
+                economicBonusRate: 1.2f,
+                sentimentDefense: 3);
         }
 
         /// <summary>

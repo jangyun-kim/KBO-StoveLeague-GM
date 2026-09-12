@@ -4,7 +4,7 @@
 상태: Active
 최종 수정일: 2026-09-13
 담당자: 김장윤
-관련 파일: 모든 data/*.csv 파일, Cheerleader.cs
+관련 파일: 모든 data/*.csv 파일, Cheerleader.cs, GameManager.cs, MatchRewardManager.cs
 ---
 
 # 1. 목적
@@ -77,3 +77,11 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 - **`CheerleaderGrade` enum**(선수 카드 등급 `Grade`와 완전히 분리된 별도 체계, 혼용 금지): `NONE = 0`, `TEST = 1`. **[TBD]** v0.1 시점에는 실제 등급 서열/획득 방식/개수가 기획 확정되지 않아 개발·테스트용 값만 존재한다. 후속 작업에서 정식 등급을 추가할 때는 `Grade` enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)를 참고해 신중히 배치할 것 - 다만 치어리더는 아직 세이브/로드 대상이 아니므로(범위 제외) TASK-KBO-048 시점에는 직렬화 안정성 이슈가 발생하지 않는다.
 - 이번 작업의 개발용 더미 데이터(`GameManager.InitializeDevOnlyTestCheerleader()`, 에디터 전용)는 `InstanceId`로 `DEV_TEST_CHEER_001`을 쓴다 - 의도적으로 `CHR_` 접두사를 쓰지 않았다(실제 카탈로그 데이터가 아직 없는 상태에서 향후 정식 `CHR_XXX` ID와 혼동되지 않도록 구분하기 위함).
 - CSV 스키마(`cheerleaders.csv` 등)는 아직 존재하지 않는다 - 가챠/획득 시스템이 이번 작업 범위에서 제외되었기 때문이며, 현재는 `GameManager.EquippedCheerleader` 필드에 코드/인스펙터로 직접 값을 채우는 방식만 지원한다.
+
+# 8. 치어리더 B안(상시 경제/멘탈) 필드 및 유저 결산 스탯 [TASK-KBO-049]
+
+- **`Cheerleader.EconomicBonusRate`**(float, 기본 1.0f): 유저 팀 홈 승리 시 경기 보상(재화)에 곱해지는 배율. A/C안(`ConditionBuff`/`ClutchMultiplier`, TASK-KBO-048)과 달리 `MatchEngine`에는 전달되지 않고, `MatchRewardManager.GrantRewardForMatch()`(경기 결산 단계)에서만 읽는다.
+- **`Cheerleader.SentimentDefense`**(int, 기본 0): 유저 팀 연패 시 팬심 하락폭을 방어하는 수치. 동일하게 `MatchRewardManager`에서만 읽는다.
+- **`GameManager.FanSentiment`**(int, 기본 0, `Mathf.Max(0, value)`로 0 미만 방지): 신규 유저 스탯. **[TBD]** 실제 시작값/상한/구간별 의미는 기획 미확정 - 현재는 연패 시 하락만 구현되어 있고 상승 요인/다른 소모처는 없다.
+- **`GameManager.LosingStreak`**(int, 기본 0, 0 미만 방지): 유저 팀의 현재 연속 패배 횟수. 승리 또는 무승부 시 0으로 리셋된다.
+- 위 4개 필드 모두 CSV/JSON 스키마 없이 코드에만 존재한다(가챠/획득/세이브 시스템이 범위 제외 - 4절의 "역호환성" 마이그레이션 규칙이 실제로 적용될 시점은 세이브 대상이 되는 후속 작업부터다).

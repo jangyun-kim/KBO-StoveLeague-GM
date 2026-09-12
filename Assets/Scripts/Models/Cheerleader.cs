@@ -59,15 +59,36 @@ namespace KBOManager.Models
         /// </summary>
         public float ClutchMultiplier = 1.0f;
 
+        /// <summary>
+        /// [TASK-KBO-049] B안(상시 경제 효과) - 유저 팀이 "홈 경기에서 승리"했을 때 경기 보상(재화)에
+        /// 곱해지는 배율. 기본/중립값은 1.0f(효과 없음). 위 ConditionBuff/ClutchMultiplier(A/C안)와
+        /// 달리 MatchEngine에는 전혀 전달되지 않는다 - 시뮬레이션이 아니라 "스토브리그 로비 연산"
+        /// (경기 결산 단계)에서만 쓰이는 값이며, 적용 지점은 MatchRewardManager.GrantRewardForMatch()
+        /// 참고(15_team_power_policy.md 7절).
+        /// </summary>
+        public float EconomicBonusRate = 1.0f;
+
+        /// <summary>
+        /// [TASK-KBO-049] B안(상시 멘탈 효과) - 유저 팀이 연패했을 때 팬심(GameManager.FanSentiment)
+        /// 하락폭을 방어하는 수치. 기본/중립값은 0(방어 없음). MatchRewardManager가
+        /// `Mathf.Max(0, 기본 하락치 - SentimentDefense)`로 적용해, 방어가 하락폭을 초과해도 팬심이
+        /// 오히려 상승하는 일이 없도록 클램핑한다. 위 두 필드와 마찬가지로 MatchEngine에는 전달되지
+        /// 않으며, 오직 경기 결산 단계에서만 쓰인다.
+        /// </summary>
+        public int SentimentDefense = 0;
+
         public Cheerleader() { }
 
-        public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier)
+        public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier,
+            float economicBonusRate = 1.0f, int sentimentDefense = 0)
         {
             InstanceId = instanceId;
             Name = name;
             Grade = grade;
             ConditionBuff = conditionBuff;
             ClutchMultiplier = clutchMultiplier;
+            EconomicBonusRate = economicBonusRate;
+            SentimentDefense = sentimentDefense;
         }
     }
 }
