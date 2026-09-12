@@ -26,10 +26,6 @@ namespace KBOManager.Engine
         [Tooltip("매치업 격차(skill)가 타석 결과 확률에 미치는 영향력 계수")]
         public float SkillInfluence = 0.6f;
 
-        [Header("Set Deck Bonus")]
-        public int SetDeckActivationThreshold = 5;
-        public float SetDeckBonusMultiplier = 1.15f;
-
         [Header("Outcome Base Weights (총합 1.0 권장)")]
         public List<OutcomeWeight> OutcomeWeights = new List<OutcomeWeight>();
 
@@ -45,8 +41,6 @@ namespace KBOManager.Engine
         {
             StatDiffNormalizer = 50f;
             SkillInfluence = 0.6f;
-            SetDeckActivationThreshold = 5;
-            SetDeckBonusMultiplier = 1.15f;
 
             OutcomeWeights = new List<OutcomeWeight>
             {

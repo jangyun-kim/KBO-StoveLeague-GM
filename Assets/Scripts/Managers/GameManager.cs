@@ -32,11 +32,6 @@ namespace KBOManager.Managers
         /// <summary>유저가 보유한 강화 재료(Item) 카드.</summary>
         public IReadOnlyList<Item> ItemInventory => itemInventory;
 
-        [Header("Set Deck Rule")]
-        [Tooltip("동일 구단 선수가 이 인원 이상이면 세트덱 보너스 활성화 (TODO: GDD 밸런스 확정 후 구간별 세분화)")]
-        [SerializeField] private int setDeckActivationThreshold = 5;
-        [SerializeField] private float setDeckBonusMultiplier = 1.15f;
-
         // ----- 유저 프로필 -----
         [Header("Profile")]
         [SerializeField] private Team favoriteTeam = Team.None;
@@ -170,38 +165,6 @@ namespace KBOManager.Managers
             int batterCount = roster.Count(p => !p.Template.IsPitcher);
             int pitcherCount = roster.Count(p => p.Template.IsPitcher);
             return batterCount == RequiredBatterCount && pitcherCount == RequiredPitcherCount;
-        }
-
-        /// <summary>
-        /// 1군 로스터(28인) 내 구단별 인원수를 집계하고, 세트덱 보너스 활성화 여부/배율을 판단한다.
-        /// TODO: GDD 밸런스 확정 후 인원 구간(예: 5/10/15명)에 따른 보너스 단계 세분화 필요.
-        /// </summary>
-        /// <param name="dominantTeam">로스터 내 가장 많은 인원을 보유한 구단</param>
-        /// <param name="isBonusActive">세트덱 보너스 활성화 여부</param>
-        /// <param name="bonusMultiplier">활성화 시 적용할 OVR 배율 (Player.CalculateOVR에 전달)</param>
-        /// <returns>구단별 편성 인원수</returns>
-        public Dictionary<Team, int> CheckSetDeckBonus(out Team dominantTeam, out bool isBonusActive, out float bonusMultiplier)
-        {
-            var countByTeam = roster
-                .Where(p => p.Template != null && p.Template.Team != Team.None)
-                .GroupBy(p => p.Template.Team)
-                .ToDictionary(g => g.Key, g => g.Count());
-
-            dominantTeam = Team.None;
-            int maxCount = 0;
-            foreach (var pair in countByTeam)
-            {
-                if (pair.Value > maxCount)
-                {
-                    maxCount = pair.Value;
-                    dominantTeam = pair.Key;
-                }
-            }
-
-            isBonusActive = maxCount >= setDeckActivationThreshold;
-            bonusMultiplier = isBonusActive ? setDeckBonusMultiplier : 1.0f;
-
-            return countByTeam;
         }
 
         // ----- 팀 OVR (GDD v4.0) -----

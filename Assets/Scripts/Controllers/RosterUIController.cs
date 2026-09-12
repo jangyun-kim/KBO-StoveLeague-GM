@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -13,8 +14,9 @@ namespace KBOManager.Controllers
     /// 구독해 ExecuteAutoRoster()가 로스터를 덮어쓸 때마다 자동으로 다시 그려진다.
     ///
     /// GDD 1절 "구단 세트덱 중심 플레이"를 유저가 체감하도록, 화면 상단에 현재 로스터의 최다 구단
-    /// 인원수를 게이지/텍스트로 보여주고, GameManager.CheckSetDeckBonus()가 활성화로 판정하면
-    /// 게이지/텍스트 색상과 별도 글로우 오브젝트로 시각적 피드백을 준다.
+    /// 인원수를 게이지/텍스트로 보여준다. [TASK-KBO-038] 15_team_power_policy.md 확정 기준(15명 이상
+    /// -> +12 OVR)에 맞춰, 이 컨트롤러가 직접 로스터를 그룹핑해 최다 구단/인원수를 구한다 - 더 이상
+    /// GameManager.CheckSetDeckBonus()(구식 5명/배율 1.15배 기준, 이번 작업에서 삭제됨)에 의존하지 않는다.
     /// </summary>
     public class RosterUIController : MonoBehaviour
     {
@@ -30,10 +32,10 @@ namespace KBOManager.Controllers
         [Header("Pitcher Roster (13명)")]
         [SerializeField] private Transform pitcherContainer;
 
-        [Header("Set Deck Visualization (GDD 1절)")]
-        [Tooltip("예: 'LG 트윈스 세트덱 활성화: 18/28'. 최다 구단이 없으면(로스터가 비어 있으면) 표시를 생략한다.")]
+        [Header("Set Deck Visualization (GDD 1절 / 15_team_power_policy.md)")]
+        [Tooltip("예: 'LG 트윈스 세트덱 활성화: 18/15 (+12 OVR)' 또는 '세트덱 미달성: 7/15'.")]
         [SerializeField] private Text setDeckStatusText;
-        [Tooltip("Image.Type=Filled로 설정된 게이지 바. fillAmount = 최다 구단 인원 / 28.")]
+        [Tooltip("Image.Type=Filled로 설정된 게이지 바. fillAmount = 최다 구단 인원 / 15.")]
         [SerializeField] private Image setDeckGaugeFillImage;
         [Tooltip("세트덱 보너스가 활성화됐을 때만 켜지는 배경 빛망울 등 장식용 오브젝트. 비워두면 생략.")]
         [SerializeField] private GameObject setDeckActiveGlowRoot;
@@ -88,33 +90,52 @@ namespace KBOManager.Controllers
             RefreshSetDeckStatus();
         }
 
+        // [TASK-KBO-038] 15_team_power_policy.md 확정 기준. GameManager.CalculateSynergy()가 쓰는
+        // 값과 동일하나, 이 UI는 "어느 구단이 최다인지"(dominantTeam)까지 표시해야 해서 GroupBy 결과를
+        // 직접 들고 있어야 한다 - 그래서 그 메서드를 호출하는 대신 여기서 독립적으로 계산한다.
+        private const int SetDeckSynergyThreshold = 15;
+        private const int SetDeckSynergyBonus = 12;
+
         /// <summary>
-        /// GameManager.CheckSetDeckBonus()로 현재 로스터의 최다 구단/인원수/활성화 여부를 다시 읽어
-        /// 상단 게이지·텍스트·글로우 오브젝트를 갱신한다. RefreshRoster()가 호출될 때마다 함께 갱신되므로
-        /// 별도로 구독할 이벤트가 없다 - 로스터가 바뀌는 모든 경로(오토 라인업, 강화/각성 등)가 이미
-        /// RefreshRoster()를 거치기 때문이다.
+        /// 현재 로스터를 직접 그룹핑해 최다 구단/인원수를 구하고, 상단 게이지·텍스트·글로우 오브젝트를
+        /// 갱신한다. RefreshRoster()가 호출될 때마다 함께 갱신되므로 별도로 구독할 이벤트가 없다 -
+        /// 로스터가 바뀌는 모든 경로(오토 라인업, 강화/각성 등)가 이미 RefreshRoster()를 거치기 때문이다.
+        /// Team.None(무소속) 선수는 집계 대상에서 제외하며, 로스터가 비어 있으면 0/15·미활성으로 표시한다.
         /// </summary>
         private void RefreshSetDeckStatus()
         {
             if (GameManager.Instance == null) return;
 
-            var countByTeam = GameManager.Instance.CheckSetDeckBonus(out Team dominantTeam, out bool isBonusActive, out float bonusMultiplier);
-            int dominantCount = dominantTeam != Team.None && countByTeam.TryGetValue(dominantTeam, out var count) ? count : 0;
+            var validPlayers = GameManager.Instance.Roster
+                .Where(p => p?.Template != null && p.Template.Team != Team.None)
+                .ToList();
 
+            Team dominantTeam = Team.None;
+            int maxTeamCount = 0;
+            if (validPlayers.Count > 0)
+            {
+                var dominantGroup = validPlayers
+                    .GroupBy(p => p.Template.Team)
+                    .OrderByDescending(g => g.Count())
+                    .First();
+                dominantTeam = dominantGroup.Key;
+                maxTeamCount = dominantGroup.Count();
+            }
+
+            bool isBonusActive = maxTeamCount >= SetDeckSynergyThreshold;
             var themeColor = isBonusActive ? setDeckActiveColor : setDeckInactiveColor;
 
             if (setDeckStatusText != null)
             {
-                string teamLabel = dominantTeam != Team.None ? dominantTeam.ToString() : "없음";
                 setDeckStatusText.text = isBonusActive
-                    ? $"{teamLabel} 세트덱 활성화! {dominantCount}/{GameManager.RequiredRosterSize} (x{bonusMultiplier:F2})"
-                    : $"{teamLabel} {dominantCount}/{GameManager.RequiredRosterSize} (세트덱 미활성)";
+                    ? $"{dominantTeam} 세트덱 활성화: {maxTeamCount}/{SetDeckSynergyThreshold} (+{SetDeckSynergyBonus} OVR)"
+                    : $"세트덱 미달성: {maxTeamCount}/{SetDeckSynergyThreshold}";
                 setDeckStatusText.color = themeColor;
             }
 
             if (setDeckGaugeFillImage != null)
             {
-                setDeckGaugeFillImage.fillAmount = Mathf.Clamp01((float)dominantCount / GameManager.RequiredRosterSize);
+                setDeckGaugeFillImage.fillAmount = Mathf.Clamp01((float)maxTeamCount / SetDeckSynergyThreshold);
                 setDeckGaugeFillImage.color = themeColor;
             }
 
