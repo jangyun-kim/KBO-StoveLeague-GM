@@ -204,19 +204,19 @@ namespace KBOManager.Models
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
         private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;
 
-        // 등급별 기본 코스트. GDD v4.0 공식(CalculateSalaryCost 참고)의 입력값이며, 등급 간 상대적 격차만
-        // 희귀도 순서(SEASON < LIVE_NORMAL < ... < DYNASTY)를 따르도록 맞춘 잠정값이다.
-        // TODO: 밸런스 확정 전까지의 임시 테이블 - 실제 수치는 기획 확정 후 교체 필요.
+        // 등급별 기본 코스트. TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨(이전 커밋 8e597f9의
+        // 잠정값을 대체). GradeBaseCostFor는 Grade를 "이름"으로 매칭하므로 Types.cs의 Grade enum
+        // 정수값(ordinal) 배정과는 무관하다.
         private static float GradeBaseCostFor(Grade grade) => grade switch
         {
             Grade.SEASON => 5f,
             Grade.LIVE_NORMAL => 5f,
             Grade.LIVE_EPIC => 8f,
             Grade.ALLSTAR => 12f,
-            Grade.TITLE_HOLDER => 16f,
-            Grade.GOLDEN_GLOVE => 20f,
-            Grade.SIGNATURE => 25f,
-            Grade.DYNASTY => 30f,
+            Grade.TITLE_HOLDER => 15f,
+            Grade.SIGNATURE => 20f,
+            Grade.GOLDEN_GLOVE => 25f,
+            Grade.DYNASTY => 35f,
             _ => 5f
         };
 

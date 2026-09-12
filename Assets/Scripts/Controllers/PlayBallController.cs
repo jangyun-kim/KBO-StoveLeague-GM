@@ -9,17 +9,14 @@ using UnityEngine;
 
 namespace KBOManager.Controllers
 {
-    /// <summary>GDD 5절에 명시된 3가지 인게임 플레이 방식.</summary>
-    public enum PlayMode
-    {
-        QuickPlay,  // 빠른 진행: 결과만 즉시 산출
-        Highlight,  // 하이라이트: 득점권 상황 등에서 멈추고 유저에게 제어권을 넘김
-        FullPlay    // 풀 플레이: 타석 1개씩 유저가 직접 진행
-    }
-
     /// <summary>
-    /// GDD 5절의 3가지 플레이 방식(빠른 진행/하이라이트/풀 플레이)에 맞춰 MatchEngine의 스텝 단위 API
-    /// (BeginMatch/PlayNextAtBat)를 어떻게 소비할지 제어하는 UI 브릿지.
+    /// GDD v4.0("단장 시선" - 수동 개입 배제) 기준의 유일한 인게임 플레이 방식: MatchEngine의 스텝
+    /// 단위 API(BeginMatch/PlayNextAtBat)를 유저 입력 대기 없이 끝까지 논스톱으로 소비하며, 매
+    /// 타석마다 OnAtBatEnd/OnInningEnd를 발생시켜 텍스트 중계/스코어보드가 실시간으로 갱신되게 한다.
+    ///
+    /// (TASK-KBO-031: 과거 GDD v3.1의 3방식 - 빠른 진행/하이라이트(개입 대기)/풀 플레이(수동 스텝) -
+    /// 중 하이라이트/풀 플레이는 대타·투수 교체 개입 UI와 함께 제거되었다. SubstitutionUIController/
+    /// InterventionController/HighlightConditions/HighlightConfig도 이때 함께 삭제됨.)
     ///
     /// LeagueManager.PeekNextFixture()로 "이번에 치를 경기"를 가져와 직접 시뮬레이션을 진행하고,
     /// 끝나면 LeagueManager.CompleteNextFixture(result)로 결과만 돌려준다 - LeagueManager가 같은
@@ -30,32 +27,13 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private SkillDB skillDB;
         [SerializeField] private EngineConfig engineConfig;
-        [Tooltip("하이라이트 정지 조건(득점권/후반 접전/끝내기 위기)의 활성화 여부와 임계값. " +
-                 "비워두면 기본값(전부 활성화, 7회/3점차/9회 기준)으로 동작한다.")]
-        [SerializeField] private HighlightConfig highlightConfig;
 
         private MatchEngine engine;
 
-        /// <summary>
-        /// 하이라이트 모드에서 시뮬레이션을 멈출 트리거 목록(OR 조합 - 하나라도 만족하면 멈춘다).
-        /// highlightConfig 에셋의 값으로 BuildHighlightConditions()가 채운다. 코드로만 표현 가능한
-        /// 커스텀 트리거는 AddHighlightCondition()으로 추가로 등록할 수 있다(개방-폐쇄 원칙 유지).
-        /// </summary>
-        private readonly List<IHighlightCondition> highlightConditions = new List<IHighlightCondition>();
-
-        /// <summary>대기 중(WaitUntil)인 코루틴을 풀어주는 스위치. ResumeMatch(false)가 내려서 재개시킨다.</summary>
-        private bool isPausedForUser;
-
-        // ResumeMatch(true)로 개입이 요청됐을 때 InterventionController에게 넘겨줄, 멈춘 시점의 상황 스냅샷.
-        private AtBatStepResult pausedStep;
-        private IHighlightCondition pausedTrigger;
-
         public bool IsMatchInProgress { get; private set; }
-        public bool IsPausedForUser => isPausedForUser;
-        public PlayMode CurrentMode { get; private set; }
         public MatchResult LastResult { get; private set; }
 
-        /// <summary>진행 중인 MatchEngine. InterventionController 등이 SubstituteBatter/Pitcher를 직접 호출할 때 쓴다.</summary>
+        /// <summary>진행 중인 MatchEngine.</summary>
         public MatchEngine Engine => engine;
 
         public Team HomeTeam { get; private set; }
@@ -67,54 +45,13 @@ namespace KBOManager.Controllers
         /// <summary>하프이닝이 끝난 타석에 한해 추가로 호출된다 (이닝별 스코어보드 갱신용).</summary>
         public event Action<AtBatStepResult> OnInningEnd;
 
-        /// <summary>하이라이트 트리거가 발동해 유저 입력 대기 상태로 멈췄을 때 호출된다. UI는 이때 개입/스킵 버튼을 노출한다.</summary>
-        public event Action<AtBatStepResult, IHighlightCondition> OnHighlightMoment;
-
-        /// <summary>ResumeMatch(true)(개입)가 호출됐을 때 발생한다. InterventionController가 이 이벤트를 구독해
-        /// 교체 UI 흐름을 시작한다. 이 시점에는 아직 시뮬레이션이 재개되지 않는다(교체 확정 후 재개된다).</summary>
-        public event Action<AtBatStepResult, IHighlightCondition> OnInterventionRequested;
-
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
         public event Action<MatchResult> OnMatchCompleted;
 
-        /// <summary>대타/투수 교체가 확정됐을 때 발생하는 중계 로그. InGameUIController가 OnAtBatEnd와
-        /// 동일하게 구독해 텍스트 중계창에 이어 붙인다.</summary>
-        public event Action<string> OnSubstitutionLog;
-
-        /// <summary>InterventionController 등 외부에서 교체가 확정된 뒤 호출해, 그 로그를 중계창으로 내보낸다.</summary>
-        public void RaiseSubstitutionLog(string message)
-        {
-            if (!string.IsNullOrEmpty(message)) OnSubstitutionLog?.Invoke(message);
-        }
-
-        /// <summary>새 하이라이트 트리거를 등록한다. (개방-폐쇄 원칙: 이 클래스를 고치지 않고 트리거를 추가하는 진입점)</summary>
-        public void AddHighlightCondition(IHighlightCondition condition)
-        {
-            if (condition != null) highlightConditions.Add(condition);
-        }
-
-        /// <summary>highlightConfig 에셋(없으면 기본값)을 기준으로 표준 3종 트리거 목록을 다시 구성한다.</summary>
-        private void BuildHighlightConditions()
-        {
-            highlightConditions.Clear();
-
-            bool enableScoringPosition = highlightConfig == null || highlightConfig.enableScoringPosition;
-            bool enableLateInning = highlightConfig == null || highlightConfig.enableLateInningCloseGame;
-            bool enableWalkOff = highlightConfig == null || highlightConfig.enableWalkOffDanger;
-
-            int lateInningThreshold = highlightConfig != null ? highlightConfig.lateInningThreshold : 7;
-            int closeGameMargin = highlightConfig != null ? highlightConfig.closeGameScoreMargin : 3;
-            int walkOffInnings = highlightConfig != null ? highlightConfig.walkOffRegulationInnings : 9;
-
-            if (enableScoringPosition) highlightConditions.Add(new ScoringPositionCondition());
-            if (enableLateInning) highlightConditions.Add(new LateInningCloseGameCondition(lateInningThreshold, closeGameMargin));
-            if (enableWalkOff) highlightConditions.Add(new WalkOffDangerCondition(walkOffInnings));
-        }
-
         /// <summary>
-        /// LeagueManager.PeekNextFixture()가 가리키는 "다음 경기"를 지정한 모드로 시작한다.
+        /// LeagueManager.PeekNextFixture()가 가리키는 "다음 경기"를 논스톱으로 시작한다.
         /// </summary>
-        public void StartMatch(PlayMode mode)
+        public void StartMatch()
         {
             if (LeagueManager.Instance == null)
             {
@@ -136,11 +73,11 @@ namespace KBOManager.Controllers
             HomeTeam = fixture.HomeTeam;
             AwayTeam = fixture.AwayTeam;
 
-            BeginMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason, mode);
+            BeginMatch(homeRoster, awayRoster, fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);
         }
 
         private void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
-            string homeTeamName, string awayTeamName, bool isPostSeason, PlayMode mode)
+            string homeTeamName, string awayTeamName, bool isPostSeason)
         {
             if (IsMatchInProgress)
             {
@@ -150,57 +87,29 @@ namespace KBOManager.Controllers
 
             engine = new MatchEngine(homeRoster, awayRoster, skillDB, engineConfig);
             IsMatchInProgress = true;
-            CurrentMode = mode;
 
-            switch (mode)
-            {
-                case PlayMode.QuickPlay:
-                    // 빠른 진행: 기존처럼 PlayFullMatch()를 즉시 실행하고 결과만 UI로 반환한다.
-                    engine.PlayFullMatch(homeTeamName, awayTeamName, isPostSeason);
-                    FinishMatch();
-                    break;
-
-                case PlayMode.Highlight:
-                    engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
-                    BuildHighlightConditions();
-                    StartCoroutine(RunHighlight());
-                    break;
-
-                case PlayMode.FullPlay:
-                    engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
-                    // 이후 진행은 UI가 PlayNextStep()을 직접 호출한다(타격 연출 등을 보여준 뒤 다음 타석으로).
-                    break;
-            }
+            engine.BeginMatch(homeTeamName, awayTeamName, isPostSeason);
+            StartCoroutine(PlayNonstop());
         }
 
         /// <summary>
-        /// 하이라이트: 백그라운드로 타석을 진행하되, highlightConditions 중 하나라도 발동하면 멈추고
-        /// OnHighlightMoment로 제어권을 UI에 넘긴 뒤, 유저가 ResumeMatch()를 호출할 때까지 무한정 대기한다.
+        /// 유저 입력 대기(WaitUntil 등) 없이 경기가 끝날 때까지(9회말 종료, 필요 시 연장 12회 상한)
+        /// 타석을 자동으로 연속 진행한다. 매 타석마다 OnAtBatEnd/OnInningEnd를 발생시켜 텍스트 중계/
+        /// 스코어보드가 실시간으로 갱신된다. 타석 사이에 프레임 하나(yield return null)만 넘기는데,
+        /// 이는 유저 입력을 "기다리는" 것이 아니라 - 어떤 외부 신호도 없이 다음 프레임에 스스로 이어감 -
+        /// 텍스트 중계가 한 프레임에 몰아서 출력되지 않고 실시간으로 흘러가도록, 그리고
+        /// DebugForceWinCurrentMatch()가 경기 도중 개입할 수 있도록 하기 위함이다.
         /// </summary>
-        private IEnumerator RunHighlight()
+        private IEnumerator PlayNonstop()
         {
             while (!engine.IsGameOver)
             {
                 var step = engine.PlayNextAtBat();
                 RaiseStepEvents(step);
-
-                if (!step.GameEnded)
-                {
-                    var triggered = FindTriggeredCondition(step);
-                    if (triggered != null)
-                    {
-                        Debug.Log($"[PlayBallController] 하이라이트 정지: {triggered.Name}");
-                        pausedStep = step;
-                        pausedTrigger = triggered;
-                        OnHighlightMoment?.Invoke(step, triggered);
-
-                        isPausedForUser = true;
-                        yield return new WaitUntil(() => !isPausedForUser);
-                    }
-                }
+                yield return null;
             }
 
-            FinishMatch();
+            if (IsMatchInProgress) FinishMatch();
         }
 
         /// <summary>OnAtBatEnd는 매 타석마다, OnInningEnd는 그 중 하프이닝이 끝난 타석에서만 추가로 발생시킨다.</summary>
@@ -211,64 +120,6 @@ namespace KBOManager.Controllers
             {
                 OnInningEnd?.Invoke(step);
             }
-        }
-
-        private IHighlightCondition FindTriggeredCondition(AtBatStepResult step)
-        {
-            foreach (var condition in highlightConditions)
-            {
-                if (condition.ShouldPause(step)) return condition;
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 하이라이트 멈춤 상태에서 UI(버튼)가 호출하는 진입점. 대기 중이 아닐 때 호출하면 아무 일도 하지 않는다.
-        /// </summary>
-        /// <param name="intervene">
-        /// false: 개입 없이 다음 타석으로 진행한다(시뮬레이션이 실제로 재개된다).
-        /// true: 아직 재개하지 않고 OnInterventionRequested를 발생시켜 InterventionController에게 교체 흐름을
-        /// 넘긴다 - 교체(또는 스킵)가 확정되어 InterventionController가 ResumeMatch(false)를 다시 호출할 때
-        /// 비로소 실제로 재개된다.
-        /// </param>
-        public void ResumeMatch(bool intervene)
-        {
-            if (!isPausedForUser)
-            {
-                Debug.LogWarning("[PlayBallController] 대기 중이 아닌데 ResumeMatch가 호출되었습니다.");
-                return;
-            }
-
-            if (intervene)
-            {
-                Debug.Log("[PlayBallController] 유저가 개입을 선택했습니다 - 교체 흐름으로 위임합니다.");
-                OnInterventionRequested?.Invoke(pausedStep, pausedTrigger);
-                return; // isPausedForUser는 그대로 true 유지 - 교체가 끝난 뒤 ResumeMatch(false)가 다시 호출되어야 재개된다.
-            }
-
-            pausedStep = null;
-            pausedTrigger = null;
-            isPausedForUser = false;
-        }
-
-        /// <summary>
-        /// 풀 플레이: 타석 1회를 진행하고 결과를 반환한다. UI가 연출(타격 모션/결과 로그)을 다 보여준 뒤
-        /// 다시 호출하는 식으로 사용한다. QuickPlay/Highlight 모드에서 호출하면 아무 일도 하지 않는다.
-        /// </summary>
-        public AtBatStepResult PlayNextStep()
-        {
-            if (!IsMatchInProgress || engine == null || engine.IsGameOver) return null;
-
-            var step = engine.PlayNextAtBat();
-            RaiseStepEvents(step);
-
-            if (engine.IsGameOver)
-            {
-                FinishMatch();
-            }
-
-            return step;
         }
 
         private void FinishMatch()
@@ -284,13 +135,10 @@ namespace KBOManager.Controllers
         /// <summary>
         /// [디버그/QA 전용] 진행 중인 경기를 즉시 유저 팀 승리로 강제 종료한다(DebugPanelUI 전용 진입점).
         ///
-        /// 하이라이트 모드로 정지(isPausedForUser) 중이면 FinishMatch()를 여기서 직접 부르지 않는다 -
-        /// RunHighlight() 코루틴이 아직 살아 있어서, isPausedForUser만 풀어 주면 그 코루틴이 스스로
-        /// while(!engine.IsGameOver) 조건을 다시 확인해 루프를 빠져나가며 FinishMatch()를 호출한다.
-        /// 만약 여기서도 FinishMatch()를 직접 부르면 두 번 호출되어 LeagueManager.CompleteNextFixture()가
-        /// (이미 nextFixtureIndex가 전진한 뒤라) 엉뚱한 다음 경기에 이번 결과를 잘못 기록해 버린다.
-        /// 반대로 풀 플레이(수동 진행) 등 정지 상태가 아니면 아무도 대신 불러줄 코루틴이 없으므로
-        /// 여기서 직접 FinishMatch()를 호출해야 한다.
+        /// PlayNonstop() 코루틴이 아직 살아 있는 상태(타석 사이 yield return null 지점)이므로, 그 코루틴이
+        /// 다음 프레임에 깨어나 while(!engine.IsGameOver) 확인 후 스스로 FinishMatch()를 또 호출해
+        /// LeagueManager.CompleteNextFixture()가 엉뚱한 다음 경기에 이번 결과를 잘못 기록하는 일이
+        /// 없도록, 여기서 먼저 StopAllCoroutines()로 코루틴을 확실히 멈춘 뒤 FinishMatch()를 직접 호출한다.
         /// </summary>
         public void DebugForceWinCurrentMatch()
         {
@@ -301,16 +149,8 @@ namespace KBOManager.Controllers
 
             engine.DebugForceEndGame(winningTeamName);
 
-            if (isPausedForUser)
-            {
-                pausedStep = null;
-                pausedTrigger = null;
-                isPausedForUser = false;
-            }
-            else
-            {
-                FinishMatch();
-            }
+            StopAllCoroutines();
+            FinishMatch();
         }
     }
 }

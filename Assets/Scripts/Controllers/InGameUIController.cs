@@ -68,7 +68,6 @@ namespace KBOManager.Controllers
             {
                 playBallController.OnAtBatEnd += HandleAtBatEnd;
                 playBallController.OnInningEnd += HandleInningEnd;
-                playBallController.OnSubstitutionLog += AddLog;
                 playBallController.OnMatchCompleted += HandleMatchCompleted;
             }
 
@@ -84,7 +83,6 @@ namespace KBOManager.Controllers
             {
                 playBallController.OnAtBatEnd -= HandleAtBatEnd;
                 playBallController.OnInningEnd -= HandleInningEnd;
-                playBallController.OnSubstitutionLog -= AddLog;
                 playBallController.OnMatchCompleted -= HandleMatchCompleted;
             }
 

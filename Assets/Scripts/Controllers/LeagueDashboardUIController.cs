@@ -7,8 +7,8 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// 메인 로비 화면. 현재 시즌 진행도/순위표/다음 매치업을 보여주고, GDD 5절의 3가지 플레이 방식
-    /// 버튼(빠른 진행/하이라이트/풀 플레이)을 PlayBallController.StartMatch(PlayMode)에 연결한다.
+    /// 메인 로비 화면. 현재 시즌 진행도/순위표/다음 매치업을 보여주고, 관전 시작 버튼을
+    /// PlayBallController.StartMatch()에 연결한다(GDD v4.0: 수동 개입 방식 폐지로 단일 플레이 방식만 남음).
     /// 표시 데이터는 전부 LeagueManager를 그대로 읽어오기만 하며 시뮬레이션/저장 로직은 갖지 않는다.
     ///
     /// 화면 전환은 UIManager.Instance.ShowScreen()에만 위임한다 - InGameUIController를 직접 참조하지
@@ -33,9 +33,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Text nextMatchupText;
 
         [Header("Play Mode Buttons")]
+        [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
         [SerializeField] private Button quickPlayButton;
-        [SerializeField] private Button highlightButton;
-        [SerializeField] private Button fullPlayButton;
 
         [Header("Navigation Buttons")]
         [Tooltip("상점 화면(UIManager.ScreenType.Shop)으로 전환하는 버튼. UIManager.ShowScreen()만 호출하므로" +
@@ -46,9 +45,7 @@ namespace KBOManager.Controllers
 
         private void Awake()
         {
-            if (quickPlayButton != null) quickPlayButton.onClick.AddListener(() => StartMatch(PlayMode.QuickPlay));
-            if (highlightButton != null) highlightButton.onClick.AddListener(() => StartMatch(PlayMode.Highlight));
-            if (fullPlayButton != null) fullPlayButton.onClick.AddListener(() => StartMatch(PlayMode.FullPlay));
+            if (quickPlayButton != null) quickPlayButton.onClick.AddListener(StartMatch);
             if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
             if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
         }
@@ -127,14 +124,14 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// 플레이 모드 버튼 OnClick. PlayBallController.StartMatch(mode)를 호출한 뒤, UIManager에게
+        /// 관전 시작 버튼 OnClick. PlayBallController.StartMatch()를 호출한 뒤, UIManager에게
         /// 인게임 화면으로 전환해 달라고만 요청한다 - InGameUIController를 직접 참조하지 않는다.
         /// </summary>
-        private void StartMatch(PlayMode mode)
+        private void StartMatch()
         {
             if (playBallController == null) return;
 
-            playBallController.StartMatch(mode);
+            playBallController.StartMatch();
             UIManager.Instance?.ShowScreen(ScreenType.InGame);
         }
     }
