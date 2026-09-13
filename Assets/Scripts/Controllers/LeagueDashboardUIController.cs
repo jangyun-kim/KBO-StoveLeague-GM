@@ -56,6 +56,10 @@ namespace KBOManager.Controllers
                  "CheerleaderInventoryUIController를 직접 참조하지 않는다. 기존 ScreenType.Inventory는 " +
                  "선수 카드 인벤토리(InventoryUIController) 전용으로 이미 예약돼 있어 재사용하지 않았다.")]
         [SerializeField] private Button manageCheerleaderButton;
+        [Tooltip("치어리더 가챠 상점 화면(UIManager.ScreenType.CheerleaderShop)으로 전환하는 버튼. " +
+                 "CheerleaderShopUIController를 직접 참조하지 않는다. 기존 ScreenType.Shop은 선수 카드 " +
+                 "상점(ShopUIController) 전용으로 이미 쓰이고 있어 재사용하지 않았다.")]
+        [SerializeField] private Button gachaShopButton;
 
         private void Awake()
         {
@@ -63,6 +67,7 @@ namespace KBOManager.Controllers
             if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
             if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
             if (manageCheerleaderButton != null) manageCheerleaderButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderInventory));
+            if (gachaShopButton != null) gachaShopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderShop));
         }
 
         private void OnEnable()

@@ -20,7 +20,12 @@ namespace KBOManager.Managers
         // 않았지만, 이름/주석/컨트롤러 존재로 미루어 다른 용도였음이 명확하다). 치어리더 인벤토리는
         // 완전히 다른 화면이므로 기존 값을 재사용하지 않고 새 값을 끝에 추가했다(중간 삽입 시 이미
         // 씬에 저장된 enum 정수값이 밀려 다른 화면을 가리키게 되는 사고를 피하기 위해 항상 끝에 추가).
-        CheerleaderInventory
+        CheerleaderInventory,
+        // [TASK-KBO-067] 기존 Shop은 ShopUIController(선수 카드 확정 패키지/프리미엄 10연뽑/스킬
+        // 변경권)를 위한 값으로 이미 쓰이고 있다. 치어리더 가챠 상점(CheerleaderShopUIController,
+        // TASK-KBO-066)은 완전히 다른 컨트롤러/화면이라 CheerleaderInventory와 동일한 이유로 값을
+        // 재사용하지 않고 끝에 추가했다.
+        CheerleaderShop
     }
 
     /// <summary>
