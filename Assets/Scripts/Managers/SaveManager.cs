@@ -113,7 +113,10 @@ namespace KBOManager.Managers
         // v3: 명예의 전당(HallOfFame), 리그 캘린더 날짜(CalendarDateIso), 포스트시즌 브래킷(PostSeason)
         // 추가. 이 값 자체를 읽어 분기하지는 않는다 - 대신 "새 필드가 비어 있으면 구버전"이라는 더 안전한
         // 필드-존재 기반 판별을 쓴다(SaveVersion은 사람이 읽는 기록용).
-        public int SaveVersion = 3;
+        // v4: 팬심/연패(FanSentiment/LosingStreak) 필드 추가(TASK-KBO-051). 필드 초기값을
+        // GameManager 기본값과 동일하게 맞춰 두어(UserFinalRank=-1 패턴과 동일), 이 필드가 없는
+        // 구버전 JSON을 역직렬화해도 자동으로 안전한 기본값이 채워진다.
+        public int SaveVersion = 4;
         public string SavedAtUtc;
 
         // GameManager
@@ -126,6 +129,8 @@ namespace KBOManager.Managers
         public int PremiumCurrency;
         public int GameGold;
         public bool IsFirstLogin = true;
+        public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
+        public int LosingStreak;
 
         // LeagueManager
         public bool HasLeagueData;
@@ -234,6 +239,8 @@ namespace KBOManager.Managers
                 data.PremiumCurrency = gm.PremiumCurrency;
                 data.GameGold = gm.GameGold;
                 data.IsFirstLogin = gm.IsFirstLogin;
+                data.FanSentiment = gm.FanSentiment;
+                data.LosingStreak = gm.LosingStreak;
             }
 
             if (LeagueManager.Instance != null)
@@ -335,6 +342,8 @@ namespace KBOManager.Managers
                 gm.PremiumCurrency = data.PremiumCurrency;
                 gm.GameGold = data.GameGold;
                 gm.IsFirstLogin = data.IsFirstLogin;
+                gm.FanSentiment = data.FanSentiment;
+                gm.LosingStreak = data.LosingStreak;
             }
 
             if (data.HasLeagueData && LeagueManager.Instance != null)
