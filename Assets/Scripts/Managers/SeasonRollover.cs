@@ -6,13 +6,16 @@ using UnityEngine;
 namespace KBOManager.Managers
 {
     /// <summary>시즌 1개의 아카이빙된 요약 기록. 살아있는 Player/TeamInfo 객체를 참조하지 않고, 전부 값
-    /// 타입(string/int/Team?)으로만 구성된 독립 스냅샷이다 - SeasonStatManager.ResetSeason()이 원본
-    /// 딕셔너리를 비워도 이미 여기 문자열로 굳어진 기록은 전혀 영향을 받지 않는다.</summary>
+    /// 타입(string/int/Team)으로만 구성된 독립 스냅샷이다 - SeasonStatManager.ResetSeason()이 원본
+    /// 딕셔너리를 비워도 이미 여기 문자열로 굳어진 기록은 전혀 영향을 받지 않는다.
+    /// [TASK-KBO-055] ChampionTeam은 원래 Team?(Nullable)이었으나, [Serializable] 클래스의 Nullable
+    /// 필드는 Unity가 직렬화를 지원하지 않아(UAC1001) Team.None을 "우승팀 미확정" 대용으로 쓰는
+    /// PostSeasonSaveData/HallOfFameEntrySaveData와 동일한 관례로 통일했다.</summary>
     [Serializable]
     public class HallOfFameEntry
     {
         public int SeasonYear;
-        public Team? ChampionTeam;
+        public Team ChampionTeam = Team.None;
         public string BattingAverageLeader;
         public string HomeRunLeader;
         public string WinsLeader;
@@ -82,7 +85,7 @@ namespace KBOManager.Managers
             var entry = new HallOfFameEntry
             {
                 SeasonYear = LeagueCalendar.Instance != null ? LeagueCalendar.Instance.CurrentDate.Year : DateTime.Now.Year,
-                ChampionTeam = postSeasonManager?.ChampionTeam,
+                ChampionTeam = postSeasonManager?.ChampionTeam ?? Team.None,
                 BattingAverageLeader = FirstLeaderLabel(seasonStatManager.GetBattingAverageLeaders(teamGamesPlayed, 1),
                     s => $"{s.BattingAverage:F3}"),
                 HomeRunLeader = FirstLeaderLabel(seasonStatManager.GetHomeRunLeaders(1), s => $"{s.HomeRuns}개"),

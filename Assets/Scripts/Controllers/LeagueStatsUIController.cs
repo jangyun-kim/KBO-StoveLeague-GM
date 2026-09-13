@@ -120,7 +120,7 @@ namespace KBOManager.Controllers
 
             foreach (var record in seasonRollover.HallOfFame)
             {
-                string championLabel = record.ChampionTeam.HasValue ? record.ChampionTeam.Value.ToString() : "기록 없음";
+                string championLabel = record.ChampionTeam != Team.None ? record.ChampionTeam.ToString() : "기록 없음";
 
                 var text = Instantiate(hallOfFameEntryPrefab, hallOfFameListContainer);
                 text.gameObject.SetActive(true);

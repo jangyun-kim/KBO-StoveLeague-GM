@@ -66,9 +66,9 @@ namespace KBOManager.Managers
         public int Losses;
     }
 
-    /// <summary>명예의 전당(SeasonRollover.HallOfFame) 항목 1개의 저장 포맷. HallOfFameEntry의
-    /// Team? ChampionTeam은 JsonUtility가 Nullable&lt;T&gt;를 지원하지 않아 그대로 저장할 수 없으므로,
-    /// 여기서는 Team.None을 "그 시즌 우승팀 기록 없음" 대용으로 쓴다(UserFinalRank의 -1과 같은 관례).</summary>
+    /// <summary>명예의 전당(SeasonRollover.HallOfFame) 항목 1개의 저장 포맷. [TASK-KBO-055] HallOfFameEntry.
+    /// ChampionTeam도 이제 이 클래스와 동일하게 Team(non-nullable)이라 그대로 대입하면 되며, 양쪽 모두
+    /// Team.None을 "그 시즌 우승팀 기록 없음" 대용으로 쓴다(UserFinalRank의 -1과 같은 관례).</summary>
     [Serializable]
     public class HallOfFameEntrySaveData
     {
@@ -271,7 +271,7 @@ namespace KBOManager.Managers
                 data.HallOfFame = SeasonRollover.Instance.HallOfFame.Select(e => new HallOfFameEntrySaveData
                 {
                     SeasonYear = e.SeasonYear,
-                    ChampionTeam = e.ChampionTeam ?? Team.None,
+                    ChampionTeam = e.ChampionTeam,
                     BattingAverageLeader = e.BattingAverageLeader,
                     HomeRunLeader = e.HomeRunLeader,
                     WinsLeader = e.WinsLeader,
@@ -372,7 +372,7 @@ namespace KBOManager.Managers
                     .Select(saved => new HallOfFameEntry
                     {
                         SeasonYear = saved.SeasonYear,
-                        ChampionTeam = saved.ChampionTeam == Team.None ? (Team?)null : saved.ChampionTeam,
+                        ChampionTeam = saved.ChampionTeam,
                         BattingAverageLeader = saved.BattingAverageLeader,
                         HomeRunLeader = saved.HomeRunLeader,
                         WinsLeader = saved.WinsLeader,
