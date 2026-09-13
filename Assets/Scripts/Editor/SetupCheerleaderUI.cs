@@ -1,0 +1,311 @@
+using KBOManager.Controllers;
+using KBOManager.Managers;
+using KBOManager.Models;
+using KBOManager.UI;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace KBOManager.EditorTools
+{
+    /// <summary>
+    /// [TASK-KBO-059] TASK-KBO-058에서 만든 CheerleaderInventoryUIController/CheerleaderSlotUI를 QA가
+    /// 메뉴 클릭 한 번으로 씬에 조립하고 테스트할 수 있게 하는 에디터 자동화. SceneInitializer/
+    /// ItemDataSeeder/SetupLobbyUI와 동일한 관례로 여러 번 실행해도 안전하다(이미 있으면 찾아 재사용).
+    /// </summary>
+    public static class SetupCheerleaderUI
+    {
+        private const string CanvasName = "Canvas";
+        private const string PanelName = "CheerleaderInventoryPanel";
+        private const string ScrollViewName = "ScrollView";
+        private const string ViewportName = "Viewport";
+        private const string ContentName = "Content";
+        private const string TemplatesHolderName = "_Templates (Hidden)";
+        private const string SlotTemplateName = "CheerleaderSlotTemplate";
+
+        [MenuItem("KBO Manager/Setup/Auto-Create Cheerleader Inventory UI")]
+        public static void AutoCreateInventoryUI()
+        {
+            var canvas = EnsureCanvas();
+            var controller = FindOrCreateInventoryPanel(canvas.transform);
+            var content = FindOrCreateScrollView(controller.transform);
+            var slotTemplate = FindOrCreateSlotTemplate(canvas.transform);
+
+            BindController(controller, content, slotTemplate);
+
+            EditorUtility.SetDirty(controller);
+            EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+
+            Debug.Log("[SetupCheerleaderUI] 치어리더 인벤토리 UI 자동 생성/바인딩 완료.");
+        }
+
+        private static Canvas EnsureCanvas()
+        {
+            var existing = Object.FindAnyObjectByType<Canvas>(FindObjectsInactive.Exclude);
+            if (existing != null) return existing;
+
+            var canvasObject = new GameObject(CanvasName, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            Undo.RegisterCreatedObjectUndo(canvasObject, "Create Canvas");
+
+            var canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            return canvas;
+        }
+
+        private static CheerleaderInventoryUIController FindOrCreateInventoryPanel(Transform canvasTransform)
+        {
+            var existingChild = canvasTransform.Find(PanelName);
+            if (existingChild != null)
+            {
+                var existingController = existingChild.GetComponent<CheerleaderInventoryUIController>();
+                if (existingController != null) return existingController;
+            }
+
+            var panelObject = new GameObject(PanelName, typeof(RectTransform));
+            Undo.RegisterCreatedObjectUndo(panelObject, $"Create {PanelName}");
+            panelObject.transform.SetParent(canvasTransform, false);
+
+            var rect = (RectTransform)panelObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            return panelObject.AddComponent<CheerleaderInventoryUIController>();
+        }
+
+        /// <summary>패널 아래에 ScrollRect+Viewport(Mask)+Content(VerticalLayoutGroup) 최소 스크롤 뷰
+        /// 구조를 만든다. 앵커/수치는 명령서 5항 지시대로 대략적인 기본값만 적용한다(디자인 확정 아님).</summary>
+        private static Transform FindOrCreateScrollView(Transform panelTransform)
+        {
+            var existingScrollView = panelTransform.Find(ScrollViewName);
+            if (existingScrollView != null)
+            {
+                var existingContent = existingScrollView.Find(ViewportName)?.Find(ContentName);
+                if (existingContent != null) return existingContent;
+            }
+
+            var scrollViewObject = new GameObject(ScrollViewName, typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+            Undo.RegisterCreatedObjectUndo(scrollViewObject, $"Create {ScrollViewName}");
+            scrollViewObject.transform.SetParent(panelTransform, false);
+
+            var scrollViewRect = (RectTransform)scrollViewObject.transform;
+            scrollViewRect.anchorMin = Vector2.zero;
+            scrollViewRect.anchorMax = Vector2.one;
+            scrollViewRect.offsetMin = Vector2.zero;
+            scrollViewRect.offsetMax = Vector2.zero;
+
+            scrollViewObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.15f);
+
+            var viewportObject = new GameObject(ViewportName, typeof(RectTransform), typeof(Image), typeof(Mask));
+            Undo.RegisterCreatedObjectUndo(viewportObject, $"Create {ViewportName}");
+            viewportObject.transform.SetParent(scrollViewObject.transform, false);
+
+            var viewportRect = (RectTransform)viewportObject.transform;
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = Vector2.zero;
+            viewportRect.offsetMax = Vector2.zero;
+
+            viewportObject.GetComponent<Image>().color = Color.white;
+            viewportObject.GetComponent<Mask>().showMaskGraphic = false;
+
+            var contentObject = new GameObject(ContentName, typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            Undo.RegisterCreatedObjectUndo(contentObject, $"Create {ContentName}");
+            contentObject.transform.SetParent(viewportObject.transform, false);
+
+            var contentRect = (RectTransform)contentObject.transform;
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(1f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.sizeDelta = Vector2.zero;
+
+            var layout = contentObject.GetComponent<VerticalLayoutGroup>();
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
+            layout.spacing = 6f;
+
+            contentObject.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var scrollRect = scrollViewObject.GetComponent<ScrollRect>();
+            scrollRect.viewport = viewportRect;
+            scrollRect.content = contentRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+
+            return contentObject.transform;
+        }
+
+        /// <summary>
+        /// CheerleaderSlotUI가 부착된 "프리팹 대용" 오브젝트를 만든다. 부모(_Templates)를 비활성화해
+        /// 씬에서는 보이지 않게 숨기지만, 이 템플릿 오브젝트 자신의 activeSelf는 반드시 true로 둔다 -
+        /// CheerleaderInventoryUIController.RefreshInventory()(TASK-KBO-058, 런타임 코드라 이번 작업에서
+        /// 수정 불가)가 Instantiate(slotPrefab, contentContainer)로 복제할 때 원본의 activeSelf를
+        /// 그대로 복사하므로, 여기서 false를 두면 실제 인벤토리 슬롯 전부가 비활성 상태로 태어나
+        /// 화면에 아무것도 표시되지 않게 된다.
+        /// </summary>
+        private static GameObject FindOrCreateSlotTemplate(Transform canvasTransform)
+        {
+            var holderTransform = canvasTransform.Find(TemplatesHolderName);
+            if (holderTransform == null)
+            {
+                var holderObject = new GameObject(TemplatesHolderName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(holderObject, $"Create {TemplatesHolderName}");
+                holderObject.transform.SetParent(canvasTransform, false);
+                holderObject.SetActive(false);
+                holderTransform = holderObject.transform;
+            }
+
+            var existingSlot = holderTransform.Find(SlotTemplateName);
+            if (existingSlot != null)
+            {
+                var existingSlotUI = existingSlot.GetComponent<CheerleaderSlotUI>();
+                if (existingSlotUI != null) return existingSlot.gameObject;
+            }
+
+            var slotObject = new GameObject(SlotTemplateName, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+            Undo.RegisterCreatedObjectUndo(slotObject, $"Create {SlotTemplateName}");
+            slotObject.transform.SetParent(holderTransform, false);
+
+            var rect = (RectTransform)slotObject.transform;
+            rect.sizeDelta = new Vector2(0f, 140f);
+
+            slotObject.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.08f);
+
+            var layout = slotObject.GetComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(8, 8, 8, 8);
+            layout.spacing = 2f;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
+
+            var nameText = FindOrCreateText(slotObject.transform, "NameText", 24f);
+            var gradeText = FindOrCreateText(slotObject.transform, "GradeText", 24f);
+            var buffText = FindOrCreateText(slotObject.transform, "BuffText", 24f);
+            var economicRateText = FindOrCreateText(slotObject.transform, "EconomicRateText", 24f);
+            var equipButton = FindOrCreateButton(slotObject.transform, "EquipButton", "장착", 36f);
+            var equipButtonLabel = equipButton.GetComponentInChildren<Text>();
+
+            var slotUI = slotObject.GetComponent<CheerleaderSlotUI>();
+            if (slotUI == null) slotUI = slotObject.AddComponent<CheerleaderSlotUI>();
+
+            var serializedSlot = new SerializedObject(slotUI);
+            serializedSlot.FindProperty("nameText").objectReferenceValue = nameText;
+            serializedSlot.FindProperty("gradeText").objectReferenceValue = gradeText;
+            serializedSlot.FindProperty("buffText").objectReferenceValue = buffText;
+            serializedSlot.FindProperty("economicRateText").objectReferenceValue = economicRateText;
+            serializedSlot.FindProperty("equipButton").objectReferenceValue = equipButton;
+            serializedSlot.FindProperty("equipButtonLabel").objectReferenceValue = equipButtonLabel;
+            serializedSlot.ApplyModifiedProperties();
+
+            return slotObject;
+        }
+
+        private static Text FindOrCreateText(Transform parent, string name, float preferredHeight)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null)
+            {
+                var existingText = existingChild.GetComponent<Text>();
+                if (existingText != null) return existingText;
+            }
+
+            var textObject = new GameObject(name, typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
+            textObject.transform.SetParent(parent, false);
+
+            textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+
+            var text = textObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = Color.white;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            return text;
+        }
+
+        private static Button FindOrCreateButton(Transform parent, string name, string label, float preferredHeight)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null)
+            {
+                var existingButton = existingChild.GetComponent<Button>();
+                if (existingButton != null) return existingButton;
+            }
+
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            buttonObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            return button;
+        }
+
+        private static void BindController(CheerleaderInventoryUIController controller, Transform content, GameObject slotTemplate)
+        {
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("contentContainer").objectReferenceValue = content;
+            serializedController.FindProperty("slotPrefab").objectReferenceValue = slotTemplate;
+            serializedController.ApplyModifiedProperties();
+        }
+
+        /// <summary>[TASK-KBO-059] 인벤토리가 비어 있어 렌더링을 눈으로 확인할 수 없는 상황을 대비한
+        /// QA 전용 더미 데이터 주입 메뉴. 플레이 모드가 아니면(GameManager.Instance == null) 경고만
+        /// 남기고 안전하게 종료한다.</summary>
+        [MenuItem("KBO Manager/Debug/Add Dummy Cheerleader to Inventory")]
+        public static void AddDummyCheerleaderToInventory()
+        {
+            if (GameManager.Instance == null)
+            {
+                Debug.LogWarning("[SetupCheerleaderUI] 플레이 모드에서만 실행 가능합니다.");
+                return;
+            }
+
+            // 명령서 예시 코드는 InstanceId를 지정하지 않지만, TASK-KBO-057/058에서 확립된 불변식
+            // ("치어리더 인스턴스는 항상 비어 있지 않은 InstanceId를 가진다" - SaveManager의 null 판별
+            // 로직과 CheerleaderInventoryUIController.IsSameCheerleader()가 모두 이 값에 의존한다)을
+            // 어기면, 이 더미를 장착해도 "장착됨"으로 표시되지 않거나 세이브 후 사라질 수 있다. 그래서
+            // 명령서 예시에 InstanceId 한 필드만 추가했다 - 나머지 필드는 예시 그대로다.
+            var dummy = new Cheerleader
+            {
+                InstanceId = System.Guid.NewGuid().ToString(),
+                Name = "Dummy Cheerleader",
+                Grade = CheerleaderGrade.TEST,
+                ConditionBuff = 2,
+                EconomicBonusRate = 1.1f,
+            };
+
+            GameManager.Instance.AddCheerleader(dummy);
+            Debug.Log($"[SetupCheerleaderUI] 더미 치어리더 추가 완료: {dummy.Name} (InstanceId={dummy.InstanceId})");
+        }
+    }
+}
