@@ -1,6 +1,7 @@
 using KBOManager.Controllers;
 using KBOManager.Managers;
 using KBOManager.Models;
+using KBOManager.Services;
 using KBOManager.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -321,6 +322,30 @@ namespace KBOManager.EditorTools
                 : $"[SetupCheerleaderUI] 이미 보유 중인 CatalogId({DummyCatalogId})와 중복되어 인벤토리에 추가되지 않고 " +
                   "재화로 변환되었습니다(자세한 변환량은 GameManager 로그 참고) - 신규 추가를 다시 보려면 " +
                   "먼저 인벤토리에서 이 더미를 제거해야 합니다.");
+        }
+
+        /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.
+        /// 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로, 여기서는
+        /// 실패 시 보충 안내만 한 줄 추가한다.</summary>
+        [MenuItem("KBO Manager/Debug/Roll 1x Gacha")]
+        public static void Roll1xGacha()
+        {
+            bool success = CheerleaderGachaService.RollGacha(1);
+            if (!success)
+            {
+                Debug.LogWarning("[SetupCheerleaderUI] 1연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
+            }
+        }
+
+        /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(10)을 호출하는 QA 실기 테스트 메뉴.</summary>
+        [MenuItem("KBO Manager/Debug/Roll 10x Gacha")]
+        public static void Roll10xGacha()
+        {
+            bool success = CheerleaderGachaService.RollGacha(10);
+            if (!success)
+            {
+                Debug.LogWarning("[SetupCheerleaderUI] 10연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
+            }
         }
     }
 }
