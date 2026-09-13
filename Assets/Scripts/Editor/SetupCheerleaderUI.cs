@@ -278,6 +278,12 @@ namespace KBOManager.EditorTools
             serializedController.ApplyModifiedProperties();
         }
 
+        // [TASK-KBO-064] 모든 클릭이 같은 CatalogId를 쓴다 - 최초 1회는 인벤토리에 실제로 추가되고,
+        // 그 이후 클릭은 GameManager.AddCheerleader()의 중복 판별 로직(CatalogId 일치)에 걸려
+        // PremiumCurrency로 변환된다. 신규 추가 경로와 중복 변환 경로를 이 메뉴 하나로 반복 테스트할
+        // 수 있게 하기 위한 의도적 설계다.
+        private const string DummyCatalogId = "DEV_TEST_CHEER_CATALOG_001";
+
         /// <summary>[TASK-KBO-059] 인벤토리가 비어 있어 렌더링을 눈으로 확인할 수 없는 상황을 대비한
         /// QA 전용 더미 데이터 주입 메뉴. 플레이 모드가 아니면(GameManager.Instance == null) 경고만
         /// 남기고 안전하게 종료한다.</summary>
@@ -295,9 +301,12 @@ namespace KBOManager.EditorTools
             // 로직과 CheerleaderInventoryUIController.IsSameCheerleader()가 모두 이 값에 의존한다)을
             // 어기면, 이 더미를 장착해도 "장착됨"으로 표시되지 않거나 세이브 후 사라질 수 있다. 그래서
             // 명령서 예시에 InstanceId 한 필드만 추가했다 - 나머지 필드는 예시 그대로다.
+            // [TASK-KBO-064] CatalogId도 함께 채운다 - 비어 있으면 GameManager.AddCheerleader()의
+            // 중복 검사 자체가 통째로 건너뛰어져 이 메뉴로는 중복 변환 경로를 테스트할 수 없다.
             var dummy = new Cheerleader
             {
                 InstanceId = System.Guid.NewGuid().ToString(),
+                CatalogId = DummyCatalogId,
                 Name = "Dummy Cheerleader",
                 Grade = CheerleaderGrade.TEST,
                 ConditionBuff = 2,
@@ -305,7 +314,13 @@ namespace KBOManager.EditorTools
             };
 
             GameManager.Instance.AddCheerleader(dummy);
-            Debug.Log($"[SetupCheerleaderUI] 더미 치어리더 추가 완료: {dummy.Name} (InstanceId={dummy.InstanceId})");
+
+            bool wasAddedToInventory = GameManager.Instance.OwnedCheerleaders.Contains(dummy);
+            Debug.Log(wasAddedToInventory
+                ? $"[SetupCheerleaderUI] 더미 치어리더 추가 완료: {dummy.Name} (InstanceId={dummy.InstanceId}, CatalogId={dummy.CatalogId})"
+                : $"[SetupCheerleaderUI] 이미 보유 중인 CatalogId({DummyCatalogId})와 중복되어 인벤토리에 추가되지 않고 " +
+                  "재화로 변환되었습니다(자세한 변환량은 GameManager 로그 참고) - 신규 추가를 다시 보려면 " +
+                  "먼저 인벤토리에서 이 더미를 제거해야 합니다.");
         }
     }
 }

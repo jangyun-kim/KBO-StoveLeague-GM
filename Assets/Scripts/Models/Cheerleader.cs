@@ -6,17 +6,20 @@ namespace KBOManager.Models
     /// 치어리더 등급. 선수 카드 등급(Types.cs의 Grade enum - GDD 문서/코드 주석에서는 종종
     /// "PlayerGrade"로도 불린다)과는 완전히 분리된 별도 체계이며, 서로 혼용하지 않는다.
     ///
-    /// [TBD] v0.1 시점에는 치어리더 획득 방식/등급 서열/개수가 기획 확정되지 않아 개발·테스트용
-    /// 값만 우선 둔다. 실제 등급 체계(단계 수, 명칭, 등급별 버프 수치 밸런스 등)는 후속 작업에서
-    /// 확정되는 대로 이 enum에 값을 추가/재배치한다(Grade enum이 JsonUtility 정수 직렬화 이슈로
-    /// 정수값을 명시적으로 고정했던 선례 - docs/13_decision_change_log.md DCL-006 - 를 참고할 것.
-    /// 단, 이번 작업은 세이브/로드 대상이 아니므로 TASK-KBO-048 시점에는 직렬화 안정성 이슈가
-    /// 아직 발생하지 않는다).
+    /// [TASK-KBO-064] docs/16_shop_and_gacha_policy.md 2절의 v0.2 가챠 정식 등급 제안(NORMAL/RARE/
+    /// EPIC/LEGEND)을 실제로 반영했다. 기존 NONE=0/TEST=1은 절대 바꾸지 않고 값을 이어 붙였다 -
+    /// TASK-KBO-057부터 Cheerleader가 GameSaveData로 직렬화되는 대상이라(11_data_dictionary.md 7절),
+    /// Grade enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)와 동일한
+    /// 주의가 필요하다 - 앞으로 등급을 더 추가할 때도 반드시 끝에만 이어 붙일 것.
     /// </summary>
     public enum CheerleaderGrade
     {
         NONE = 0,
         TEST = 1,
+        NORMAL = 2,
+        RARE = 3,
+        EPIC = 4,
+        LEGEND = 5,
     }
 
     /// <summary>
@@ -34,6 +37,17 @@ namespace KBOManager.Models
     public class Cheerleader
     {
         public string InstanceId;
+
+        /// <summary>
+        /// [TASK-KBO-064] 원본(카탈로그) 식별자 - "어떤 종류의 치어리더인가"를 나타낸다.
+        /// InstanceId(발급된 개체 고유값, 세이브 null 판별 불변식에 쓰임 - 11_data_dictionary.md 9절)와
+        /// 완전히 별개다. 같은 CatalogId를 가진 치어리더를 또 획득하면 GameManager.AddCheerleader()가
+        /// 인벤토리에 중복 추가하지 않고 재화로 변환한다(docs/16_shop_and_gacha_policy.md 4절 A안).
+        /// 아직 카탈로그(cheerleaders.csv 등)가 없는 구버전 더미 데이터는 비워 둘 수 있으며, 비어 있으면
+        /// AddCheerleader()가 중복 검사를 건너뛴다.
+        /// </summary>
+        public string CatalogId;
+
         public string Name;
         public CheerleaderGrade Grade = CheerleaderGrade.NONE;
 
@@ -80,7 +94,7 @@ namespace KBOManager.Models
         public Cheerleader() { }
 
         public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier,
-            float economicBonusRate = 1.0f, int sentimentDefense = 0)
+            float economicBonusRate = 1.0f, int sentimentDefense = 0, string catalogId = null)
         {
             InstanceId = instanceId;
             Name = name;
@@ -89,6 +103,7 @@ namespace KBOManager.Models
             ClutchMultiplier = clutchMultiplier;
             EconomicBonusRate = economicBonusRate;
             SentimentDefense = sentimentDefense;
+            CatalogId = catalogId;
         }
     }
 }

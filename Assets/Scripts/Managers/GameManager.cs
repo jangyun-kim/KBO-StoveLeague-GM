@@ -93,15 +93,45 @@ namespace KBOManager.Managers
         /// 등으로 새 치어리더를 얻으면 AddCheerleader()로 여기 추가된다.</summary>
         public List<Cheerleader> OwnedCheerleaders { get; private set; } = new List<Cheerleader>();
 
-        /// <summary>신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면 아무 일도
-        /// 하지 않는다.</summary>
+        /// <summary>
+        /// [TASK-KBO-064] 신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면
+        /// 아무 일도 하지 않는다. CatalogId(원본 식별자)가 채워져 있고 이미 같은 CatalogId를 가진
+        /// 치어리더를 보유 중이면(docs/16_shop_and_gacha_policy.md 4절 A안) 인벤토리에 중복 추가하지
+        /// 않고 등급에 비례한 PremiumCurrency로 변환 지급한다. CatalogId가 비어 있으면(카탈로그가
+        /// 아직 없던 구버전 더미 데이터 등) 중복 검사 없이 그냥 추가한다.
+        /// </summary>
         public void AddCheerleader(Cheerleader newCheerleader)
         {
             if (newCheerleader == null) return;
             if (OwnedCheerleaders == null) OwnedCheerleaders = new List<Cheerleader>();
 
+            bool hasCatalogId = !string.IsNullOrEmpty(newCheerleader.CatalogId);
+            bool isDuplicate = hasCatalogId &&
+                OwnedCheerleaders.Any(c => c.CatalogId == newCheerleader.CatalogId);
+
+            if (isDuplicate)
+            {
+                int convertedAmount = ResolveCheerleaderDuplicateConversionValue(newCheerleader.Grade);
+                PremiumCurrency += convertedAmount;
+                Debug.Log($"[GameManager] 중복 획득으로 재화 변환됨: {newCheerleader.Name} " +
+                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> PremiumCurrency +{convertedAmount}");
+                return;
+            }
+
             OwnedCheerleaders.Add(newCheerleader);
         }
+
+        /// <summary>[TASK-KBO-064] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
+        /// 환급량([Draft], v0.2 밸런싱에서 조정 가능) - 정식 등급(NORMAL~LEGEND) 외의 값(NONE/TEST 등
+        /// 구버전 더미 등급)은 최저 등급(NORMAL)과 동일하게 취급한다.</summary>
+        private static int ResolveCheerleaderDuplicateConversionValue(CheerleaderGrade grade) => grade switch
+        {
+            CheerleaderGrade.NORMAL => 10,
+            CheerleaderGrade.RARE => 50,
+            CheerleaderGrade.EPIC => 200,
+            CheerleaderGrade.LEGEND => 1000,
+            _ => 10,
+        };
 
 #if UNITY_EDITOR
         [Tooltip("[에디터 전용] true면 Awake() 시 EquippedCheerleader가 비어 있을 때만 테스트용 치어리더를 " +
