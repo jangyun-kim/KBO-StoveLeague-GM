@@ -13,10 +13,11 @@ namespace KBOManager.Models
     /// 뒤 다시 호출해도 재파싱하지 않는다. GetCheerleadersByGrade()도 방어적으로 지연 초기화를
     /// 시도하므로, 혹시 Initialize() 호출 전에 먼저 조회되어도 크래시하지 않는다.
     ///
-    /// CSV 스키마(헤더): CatalogId,Name,Grade,ConditionBuff,EconomicBonusRate - 5개 컬럼만 다룬다.
-    /// [중요] ClutchMultiplier/SentimentDefense는 이 CSV 스키마에 포함되지 않아 Cheerleader의 필드
-    /// 기본값(각각 1.0f/0)을 그대로 쓴다 - TASK-KBO-065의 하드코딩 버전이 등급별로 갖고 있던 값과
-    /// 달라진 점이니 주의할 것(자세한 내용은 완료 보고서 F 섹션 및 DCL 참고).
+    /// CSV 스키마(헤더): CatalogId,Name,Grade,ConditionBuff,EconomicBonusRate,ClutchMultiplier,
+    /// SentimentDefense - 7개 컬럼. [TASK-KBO-069] 뒤 2개 컬럼(ClutchMultiplier/SentimentDefense)은
+    /// TASK-KBO-068 당시 스키마 축소로 누락되어 모든 CSV 기반 치어리더가 중립값(1.0f/0)으로 통일되는
+    /// 문제(docs/16_shop_and_gacha_policy.md 2절의 등급별 차등화 무효화, DCL-038)가 있었으나, 이번
+    /// 작업에서 복원했다.
     ///
     /// 복잡한 외부 CSV 라이브러리를 쓰지 않고 string.Split(',') 수준의 단순 파서만 쓴다(명령서 5항) -
     /// 따라서 값에 콤마가 포함된 필드(따옴표 이스케이프 등)는 지원하지 않는다. 현재 카탈로그 데이터는
@@ -25,7 +26,7 @@ namespace KBOManager.Models
     public static class CheerleaderCatalog
     {
         private const string ResourcePath = "Data/cheerleaders";
-        private const int ExpectedColumnCount = 5;
+        private const int ExpectedColumnCount = 7;
 
         private static Dictionary<CheerleaderGrade, List<Cheerleader>> templatesByGrade;
 
@@ -82,6 +83,8 @@ namespace KBOManager.Models
                     var grade = (CheerleaderGrade)Enum.Parse(typeof(CheerleaderGrade), columns[2].Trim(), ignoreCase: true);
                     int conditionBuff = int.Parse(columns[3].Trim(), CultureInfo.InvariantCulture);
                     float economicBonusRate = float.Parse(columns[4].Trim(), CultureInfo.InvariantCulture);
+                    float clutchMultiplier = float.Parse(columns[5].Trim(), CultureInfo.InvariantCulture);
+                    int sentimentDefense = int.Parse(columns[6].Trim(), CultureInfo.InvariantCulture);
 
                     var template = new Cheerleader
                     {
@@ -90,6 +93,8 @@ namespace KBOManager.Models
                         Grade = grade,
                         ConditionBuff = conditionBuff,
                         EconomicBonusRate = economicBonusRate,
+                        ClutchMultiplier = clutchMultiplier,
+                        SentimentDefense = sentimentDefense,
                     };
 
                     if (!templatesByGrade.TryGetValue(grade, out var list))
