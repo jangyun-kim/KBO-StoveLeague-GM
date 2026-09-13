@@ -14,7 +14,13 @@ namespace KBOManager.Managers
         Scout,
         Shop,
         Onboarding,
-        LeagueStats
+        LeagueStats,
+        // [TASK-KBO-060] 기존 Inventory는 InventoryUIController(GameManager.Instance.Inventory, 선수
+        // 카드 인벤토리)를 위한 값으로 이미 예약되어 있다(아직 UIManager.screens에 실제 연결되진
+        // 않았지만, 이름/주석/컨트롤러 존재로 미루어 다른 용도였음이 명확하다). 치어리더 인벤토리는
+        // 완전히 다른 화면이므로 기존 값을 재사용하지 않고 새 값을 끝에 추가했다(중간 삽입 시 이미
+        // 씬에 저장된 enum 정수값이 밀려 다른 화면을 가리키게 되는 사고를 피하기 위해 항상 끝에 추가).
+        CheerleaderInventory
     }
 
     /// <summary>

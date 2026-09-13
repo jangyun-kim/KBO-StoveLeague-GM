@@ -52,12 +52,17 @@ namespace KBOManager.Controllers
         [SerializeField] private Button shopButton;
         [Tooltip("리그 기록실(UIManager.ScreenType.LeagueStats)로 전환하는 버튼.")]
         [SerializeField] private Button leagueStatsButton;
+        [Tooltip("치어리더 관리 화면(UIManager.ScreenType.CheerleaderInventory)으로 전환하는 버튼. " +
+                 "CheerleaderInventoryUIController를 직접 참조하지 않는다. 기존 ScreenType.Inventory는 " +
+                 "선수 카드 인벤토리(InventoryUIController) 전용으로 이미 예약돼 있어 재사용하지 않았다.")]
+        [SerializeField] private Button manageCheerleaderButton;
 
         private void Awake()
         {
             if (quickPlayButton != null) quickPlayButton.onClick.AddListener(StartMatch);
             if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
             if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
+            if (manageCheerleaderButton != null) manageCheerleaderButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderInventory));
         }
 
         private void OnEnable()

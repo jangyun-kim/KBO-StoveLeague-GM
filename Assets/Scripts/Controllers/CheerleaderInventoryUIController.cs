@@ -2,6 +2,7 @@ using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace KBOManager.Controllers
 {
@@ -16,6 +17,21 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private Transform contentContainer;
         [SerializeField] private GameObject slotPrefab;
+
+        [Header("Navigation")]
+        [Tooltip("로비 화면(UIManager.ScreenType.Lobby)으로 돌아가는 버튼. LeagueDashboardUIController를 " +
+                 "직접 참조하지 않고 UIManager.ShowScreen()만 호출한다. 이 화면 자신은 " +
+                 "UIManager.ScreenType.CheerleaderInventory에 등록된다(기존 ScreenType.Inventory는 " +
+                 "선수 카드 인벤토리 전용으로 이미 예약돼 있어 재사용하지 않음).")]
+        [SerializeField] private Button closeButton;
+
+        /// <summary>[TASK-KBO-060] 버튼 리스너는 Awake()에서 한 번만 등록한다 - OnEnable은 화면 전환마다
+        /// (UIManager.ShowScreen()이 SetActive(true)할 때마다) 반복 호출되므로, 거기서 AddListener를
+        /// 하면 열 때마다 리스너가 중복 등록된다.</summary>
+        private void Awake()
+        {
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+        }
 
         private void OnEnable()
         {
