@@ -85,3 +85,12 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 - **`GameManager.FanSentiment`**(int, 기본 0, `Mathf.Max(0, value)`로 0 미만 방지): 신규 유저 스탯. **[TBD]** 실제 시작값/상한/구간별 의미는 기획 미확정 - 현재는 연패 시 하락만 구현되어 있고 상승 요인/다른 소모처는 없다.
 - **`GameManager.LosingStreak`**(int, 기본 0, 0 미만 방지): 유저 팀의 현재 연속 패배 횟수. 승리 또는 무승부 시 0으로 리셋된다.
 - 위 4개 필드 모두 CSV/JSON 스키마 없이 코드에만 존재한다(가챠/획득/세이브 시스템이 범위 제외 - 4절의 "역호환성" 마이그레이션 규칙이 실제로 적용될 시점은 세이브 대상이 되는 후속 작업부터다).
+- **[TASK-KBO-057 시점 갱신 안내]** 위 문장 중 "`FanSentiment`(기본 0)"과 "세이브 시스템 범위 제외" 서술은 TASK-KBO-050/051(`DCL-027`/`DCL-028`)에서 이미 각각 기본값 100/`Mathf.Clamp(0,100)`으로 확정, `SaveManager` 연동 완료로 바뀌었으나 이 문서 8절 자체는 그때 갱신되지 않았다. 이번 작업(TASK-KBO-057)의 지시 범위는 9절 신설이라 8절 본문은 임의로 고치지 않고 이 안내문만 남긴다 - 8절 갱신은 별도 결정 필요.
+
+# 9. 치어리더 세이브 연동(EquippedCheerleader/OwnedCheerleaders) [TASK-KBO-057]
+
+- **`GameSaveData.EquippedCheerleader`**(`Cheerleader`, SaveVersion 5부터): `GameManager.EquippedCheerleader`(장착 슬롯, 여전히 v0.1 기준 단일 슬롯)를 그대로 저장한다.
+- **`GameSaveData.OwnedCheerleaders`**(`List<Cheerleader>`, 기본값 빈 리스트, SaveVersion 5부터): `GameManager.OwnedCheerleaders`(유저가 영구 보유한 치어리더 전체 목록, 장착 여부와 무관)를 그대로 저장한다.
+- **[중요, JsonUtility 한계]** `JsonUtility`는 null 참조 필드를 JSON `null`이 아니라 "필드가 전부 기본값으로 채워진 인스턴스"로 직렬화한다(실측 확인: `EquippedCheerleader`가 `null`이어도 저장 시 `{"InstanceId": "", ...}` 형태의 non-null 객체가 됨). 그 결과 `SaveManager.ApplySaveData()`는 `data.EquippedCheerleader.InstanceId`가 비어 있는지로 "실제 장착된 치어리더가 있었는지"를 판별한다 - 실제 치어리더는 모든 생성 경로(`GameManager.InitializeDevOnlyTestCheerleader()` 등)에서 `InstanceId`를 항상 채우므로 안전한 기준이다. 향후 가챠/획득 시스템을 붙일 때도 이 불변식(치어리더 인스턴스는 항상 비어 있지 않은 `InstanceId`를 가진다)을 반드시 지켜야 한다.
+- `GameManager.AddCheerleader(Cheerleader)`가 `OwnedCheerleaders`에 새 치어리더를 추가하는 유일한 정식 진입점이다(null 인자는 무시). 아직 가챠/획득 UI가 없어(범위 제외) 실제 호출부는 없다.
+- CSV 스키마(`cheerleaders.csv` 등)는 여전히 존재하지 않는다 - 7절에서 이미 밝힌 대로 카탈로그 데이터/가챠 시스템 자체가 아직 범위 밖이며, 이번 작업은 "유저가 이미 보유한 치어리더 인스턴스"를 세이브에 영속화하는 것만 다룬다.
