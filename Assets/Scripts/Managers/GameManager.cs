@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KBOManager.Models;
@@ -63,11 +64,38 @@ namespace KBOManager.Managers
             set => equippedCheerleader = value;
         }
 
+        /// <summary>[TASK-KBO-056] 치어리더 장착 상태(EquippedCheerleader)가 바뀔 때마다 발생한다.
+        /// TeamSynergyUIController 등 UI가 Update() 폴링 없이 이 이벤트만 구독해 갱신할 수 있다.</summary>
+        public event Action OnCheerleaderChanged;
+
+        /// <summary>인벤토리에서 고른 치어리더를 정식으로 장착한다. target이 null이면 방어적으로
+        /// UnequipCheerleader()를 대신 호출한다.</summary>
+        public void EquipCheerleader(Cheerleader target)
+        {
+            if (target == null)
+            {
+                UnequipCheerleader();
+                return;
+            }
+
+            equippedCheerleader = target;
+            OnCheerleaderChanged?.Invoke();
+        }
+
+        /// <summary>현재 장착된 치어리더를 해제한다(미장착 상태로 되돌림).</summary>
+        public void UnequipCheerleader()
+        {
+            equippedCheerleader = null;
+            OnCheerleaderChanged?.Invoke();
+        }
+
 #if UNITY_EDITOR
         [Tooltip("[에디터 전용] true면 Awake() 시 EquippedCheerleader가 비어 있을 때만 테스트용 치어리더를 " +
-                 "자동 장착한다. '미장착(null)' 상태를 그대로 테스트하고 싶다면 이 토글을 꺼 두면 된다 - " +
-                 "이 필드와 관련 로직 전체가 #if UNITY_EDITOR로 감싸여 있어 릴리스 빌드에는 포함되지 않는다.")]
-        [SerializeField] private bool devAutoEquipTestCheerleader = true;
+                 "자동 장착한다. [TASK-KBO-056] EquipCheerleader()/UnequipCheerleader() 정식 API가 생겨 " +
+                 "더 이상 기본으로 켜 둘 필요가 없어 기본값을 false로 변경했다 - QA 목적으로 필요하면 " +
+                 "인스펙터에서 직접 켤 수 있다. 이 필드와 관련 로직 전체가 #if UNITY_EDITOR로 감싸여 있어 " +
+                 "릴리스 빌드에는 포함되지 않는다.")]
+        [SerializeField] private bool devAutoEquipTestCheerleader = false;
 #endif
 
         // ----- 재화 -----
