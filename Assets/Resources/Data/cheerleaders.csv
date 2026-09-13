@@ -1,0 +1,11 @@
+CatalogId,Name,Grade,ConditionBuff,EconomicBonusRate
+CHR_001,가상 치어리더 A,NORMAL,1,1.05
+CHR_002,가상 치어리더 B,NORMAL,1,1.05
+CHR_003,가상 치어리더 C,NORMAL,1,1.05
+CHR_004,스타 치어리더 A,RARE,2,1.10
+CHR_005,스타 치어리더 B,RARE,2,1.10
+CHR_006,스타 치어리더 C,RARE,2,1.10
+CHR_007,그랜드 치어리더 A,EPIC,3,1.15
+CHR_008,그랜드 치어리더 B,EPIC,3,1.15
+CHR_009,레전드 치어리더 A,LEGEND,4,1.20
+CHR_010,레전드 치어리더 B,LEGEND,4,1.20

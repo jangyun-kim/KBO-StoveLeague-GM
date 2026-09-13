@@ -199,6 +199,11 @@ namespace KBOManager.Managers
             Instance = this;
             DontDestroyOnLoad(gameObject);
 
+            // [TASK-KBO-068] 치어리더 가챠 카탈로그(cheerleaders.csv)를 게임 시작 시 1회 로드한다.
+            // CheerleaderCatalog.Initialize() 자체가 이미 초기화됐으면 재실행을 건너뛰므로, 씬 재로드
+            // 등으로 이 Awake()가 다시 호출돼도 안전하다.
+            CheerleaderCatalog.Initialize();
+
 #if UNITY_EDITOR
             InitializeDevOnlyTestCheerleader();
             LogCheerleaderBuffSelfCheck();
