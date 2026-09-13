@@ -74,23 +74,23 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 # 7. 치어리더(Cheerleader) 등급 체계 [TASK-KBO-048]
 
 - 2절의 `CHR_001` 접두사 규칙은 이번 작업에서 실제 코드 모델(`Assets/Scripts/Models/Cheerleader.cs`)로 처음 구현되었다. `Cheerleader.InstanceId`(string)가 이 ID를 담을 필드다.
-- **`CheerleaderGrade` enum**(선수 카드 등급 `Grade`와 완전히 분리된 별도 체계, 혼용 금지): `NONE = 0`, `TEST = 1`. **[TBD]** v0.1 시점에는 실제 등급 서열/획득 방식/개수가 기획 확정되지 않아 개발·테스트용 값만 존재한다. 후속 작업에서 정식 등급을 추가할 때는 `Grade` enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)를 참고해 신중히 배치할 것 - 다만 치어리더는 아직 세이브/로드 대상이 아니므로(범위 제외) TASK-KBO-048 시점에는 직렬화 안정성 이슈가 발생하지 않는다.
+- **`CheerleaderGrade` enum**(선수 카드 등급 `Grade`와 완전히 분리된 별도 체계, 혼용 금지): `NONE = 0`, `TEST = 1`. **[v0.1 마감/TASK-KBO-062]** 실제 등급 서열/획득 방식/개수는 여전히 기획 확정 전이라 개발·테스트용 값만 존재한다 - **v0.1 현재 상태를 유지하며, 폴리싱 및 밸런싱 단계인 v0.2에서 확정할 것**으로 공식 확정한다. **[중요, 정정]** 이 단락은 원래 "치어리더는 아직 세이브/로드 대상이 아니므로 직렬화 안정성 이슈가 발생하지 않는다"고 서술했으나, TASK-KBO-057부터 `Cheerleader`가 `GameSaveData`를 통해 실제로 JsonUtility로 직렬화되고 있어 더 이상 사실이 아니다 - 오히려 지금부터는 `Grade` enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)와 동일한 주의가 `CheerleaderGrade`에도 그대로 적용된다. **v0.2에서 정식 등급을 추가할 때는 반드시 기존 `NONE=0`/`TEST=1` 값을 유지한 채 새 값을 끝에만 추가할 것** - 중간 삽입이나 재배치는 이미 저장된 세이브 파일의 치어리더 등급을 손상시킨다.
 - 이번 작업의 개발용 더미 데이터(`GameManager.InitializeDevOnlyTestCheerleader()`, 에디터 전용)는 `InstanceId`로 `DEV_TEST_CHEER_001`을 쓴다 - 의도적으로 `CHR_` 접두사를 쓰지 않았다(실제 카탈로그 데이터가 아직 없는 상태에서 향후 정식 `CHR_XXX` ID와 혼동되지 않도록 구분하기 위함).
-- CSV 스키마(`cheerleaders.csv` 등)는 아직 존재하지 않는다 - 가챠/획득 시스템이 이번 작업 범위에서 제외되었기 때문이며, 현재는 `GameManager.EquippedCheerleader` 필드에 코드/인스펙터로 직접 값을 채우는 방식만 지원한다.
+- CSV 스키마(`cheerleaders.csv` 등)는 아직 존재하지 않는다 - 가챠/획득 시스템이 여전히 범위 밖이기 때문이다. **[v0.1 마감/TASK-KBO-062 정정]** "현재는 `GameManager.EquippedCheerleader` 필드에 코드/인스펙터로 직접 값을 채우는 방식만 지원한다"는 이 절의 원래 서술은 더 이상 정확하지 않다 - TASK-KBO-056/057부터 `EquipCheerleader()`/`UnequipCheerleader()`/`AddCheerleader()` 정식 API가 생겼고, TASK-KBO-058~061에서 UI까지 연결되었다(9절 참고).
 
-# 8. 치어리더 B안(상시 경제/멘탈) 필드 및 유저 결산 스탯 [TASK-KBO-049]
+# 8. 치어리더 B안(상시 경제/멘탈) 필드 및 유저 결산 스탯 [TASK-KBO-049, v0.1 마감 시점 최종 정정 TASK-KBO-062]
 
 - **`Cheerleader.EconomicBonusRate`**(float, 기본 1.0f): 유저 팀 홈 승리 시 경기 보상(재화)에 곱해지는 배율. A/C안(`ConditionBuff`/`ClutchMultiplier`, TASK-KBO-048)과 달리 `MatchEngine`에는 전달되지 않고, `MatchRewardManager.GrantRewardForMatch()`(경기 결산 단계)에서만 읽는다.
 - **`Cheerleader.SentimentDefense`**(int, 기본 0): 유저 팀 연패 시 팬심 하락폭을 방어하는 수치. 동일하게 `MatchRewardManager`에서만 읽는다.
-- **`GameManager.FanSentiment`**(int, 기본 0, `Mathf.Max(0, value)`로 0 미만 방지): 신규 유저 스탯. **[TBD]** 실제 시작값/상한/구간별 의미는 기획 미확정 - 현재는 연패 시 하락만 구현되어 있고 상승 요인/다른 소모처는 없다.
+- **`GameManager.FanSentiment`**(int, **기본값 100**, `Mathf.Clamp(value, 0, 100)`로 0~100 범위 고정): 신규 유저 스탯. TASK-KBO-050(`DCL-027`)에서 기본값 100/`Mathf.Clamp`로 확정되었고, TASK-KBO-057(`DCL-030`)에서 세이브 연동까지 완료되었다(아래 9절 참고). **[v0.1 마감/TASK-KBO-062]** 팬심을 끌어올리는 회복 수단은 여전히 없다(하락 전용 스탯) - **v0.1 현재 상태를 유지하며, 폴리싱 및 밸런싱 단계인 v0.2에서 확정할 것**(자세한 배경은 `docs/15_team_power_policy.md` 9절 참고).
 - **`GameManager.LosingStreak`**(int, 기본 0, 0 미만 방지): 유저 팀의 현재 연속 패배 횟수. 승리 또는 무승부 시 0으로 리셋된다.
-- 위 4개 필드 모두 CSV/JSON 스키마 없이 코드에만 존재한다(가챠/획득/세이브 시스템이 범위 제외 - 4절의 "역호환성" 마이그레이션 규칙이 실제로 적용될 시점은 세이브 대상이 되는 후속 작업부터다).
-- **[TASK-KBO-057 시점 갱신 안내]** 위 문장 중 "`FanSentiment`(기본 0)"과 "세이브 시스템 범위 제외" 서술은 TASK-KBO-050/051(`DCL-027`/`DCL-028`)에서 이미 각각 기본값 100/`Mathf.Clamp(0,100)`으로 확정, `SaveManager` 연동 완료로 바뀌었으나 이 문서 8절 자체는 그때 갱신되지 않았다. 이번 작업(TASK-KBO-057)의 지시 범위는 9절 신설이라 8절 본문은 임의로 고치지 않고 이 안내문만 남긴다 - 8절 갱신은 별도 결정 필요.
+- **[v0.1 마감 정정]** 이전 버전의 이 절은 "위 4개 필드 모두 CSV/JSON 스키마 없이 코드에만 존재한다(세이브 시스템 범위 제외)"라고 서술했으나, 이는 TASK-KBO-051(`FanSentiment`/`LosingStreak`, `SaveVersion` 4)과 TASK-KBO-057(`EquippedCheerleader`/`OwnedCheerleaders`, `SaveVersion` 5)을 거치며 더 이상 사실이 아니게 되었다 - 현재는 치어리더 관련 4개 필드(`FanSentiment`/`LosingStreak`/`EquippedCheerleader`/`OwnedCheerleaders`) 모두 `GameSaveData`를 통해 세이브/로드된다(아래 9절 참고). 이 정정으로 TASK-KBO-057 당시 남겨둔 "8절 갱신은 별도 결정 필요" 메모를 해소한다.
 
 # 9. 치어리더 세이브 연동(EquippedCheerleader/OwnedCheerleaders) [TASK-KBO-057]
 
 - **`GameSaveData.EquippedCheerleader`**(`Cheerleader`, SaveVersion 5부터): `GameManager.EquippedCheerleader`(장착 슬롯, 여전히 v0.1 기준 단일 슬롯)를 그대로 저장한다.
 - **`GameSaveData.OwnedCheerleaders`**(`List<Cheerleader>`, 기본값 빈 리스트, SaveVersion 5부터): `GameManager.OwnedCheerleaders`(유저가 영구 보유한 치어리더 전체 목록, 장착 여부와 무관)를 그대로 저장한다.
 - **[중요, JsonUtility 한계]** `JsonUtility`는 null 참조 필드를 JSON `null`이 아니라 "필드가 전부 기본값으로 채워진 인스턴스"로 직렬화한다(실측 확인: `EquippedCheerleader`가 `null`이어도 저장 시 `{"InstanceId": "", ...}` 형태의 non-null 객체가 됨). 그 결과 `SaveManager.ApplySaveData()`는 `data.EquippedCheerleader.InstanceId`가 비어 있는지로 "실제 장착된 치어리더가 있었는지"를 판별한다 - 실제 치어리더는 모든 생성 경로(`GameManager.InitializeDevOnlyTestCheerleader()` 등)에서 `InstanceId`를 항상 채우므로 안전한 기준이다. 향후 가챠/획득 시스템을 붙일 때도 이 불변식(치어리더 인스턴스는 항상 비어 있지 않은 `InstanceId`를 가진다)을 반드시 지켜야 한다.
-- `GameManager.AddCheerleader(Cheerleader)`가 `OwnedCheerleaders`에 새 치어리더를 추가하는 유일한 정식 진입점이다(null 인자는 무시). 아직 가챠/획득 UI가 없어(범위 제외) 실제 호출부는 없다.
+- `GameManager.AddCheerleader(Cheerleader)`가 `OwnedCheerleaders`에 새 치어리더를 추가하는 유일한 정식 진입점이다(null 인자는 무시). **[v0.1 마감/TASK-KBO-062 정정]** 정식 가챠/획득 UI를 통한 호출부는 여전히 없으나, TASK-KBO-059에서 만든 에디터 QA 메뉴(`KBO Manager/Debug/Add Dummy Cheerleader to Inventory`)가 플레이 모드에서 이 메서드를 실제로 호출한다 - 정식 획득 경로는 v0.2 과제로 이관.
 - CSV 스키마(`cheerleaders.csv` 등)는 여전히 존재하지 않는다 - 7절에서 이미 밝힌 대로 카탈로그 데이터/가챠 시스템 자체가 아직 범위 밖이며, 이번 작업은 "유저가 이미 보유한 치어리더 인스턴스"를 세이브에 영속화하는 것만 다룬다.
+- **[v0.1 마감/TASK-KBO-062]** 장착/해제/화면 전환 UI(`CheerleaderInventoryUIController`/`CheerleaderSlotUI`, `LeagueDashboardUIController`의 "치어리더 관리" 버튼, `UIManager.ScreenType.CheerleaderInventory`)까지 TASK-KBO-058~061에서 완료되어, v0.1 기준 치어리더 시스템(획득 경로 제외)의 데이터·백엔드·UI 전 층위가 연결되었다.
