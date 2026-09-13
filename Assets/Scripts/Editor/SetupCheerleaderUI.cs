@@ -344,6 +344,29 @@ namespace KBOManager.EditorTools
                   "먼저 인벤토리에서 이 더미를 제거해야 합니다.");
         }
 
+        /// <summary>
+        /// [TASK-KBO-074] 가챠 테스트 시 재화(PremiumCurrency) 부족으로 1회/10회 뽑기가 막히는 QA
+        /// 불편을 해소하는 재화 충전 메뉴. GachaSimulationMenu.cs가 아니라 이 파일에 둔 이유는,
+        /// GachaSimulationMenu는 "GameManager를 전혀 건드리지 않는 완전 독립 Mocking 시뮬레이션
+        /// 전용" 도구로 스스로 문서화하고 있어(TASK-KBO-073) 실제 GameManager 상태를 바꾸는 이
+        /// 메서드를 넣으면 그 문서화된 계약과 모순되기 때문이다 - 반면 이 파일은 이미
+        /// AddDummyCheerleaderToInventory() 등으로 GameManager 상태를 직접 조작하는 QA 메뉴들을
+        /// 담아 왔으므로 관례상 더 적합하다. 플레이 모드가 아니면(GameManager.Instance == null)
+        /// 경고만 남기고 안전하게 종료한다.
+        /// </summary>
+        [MenuItem("KBO Manager/Debug/Add 10,000 Premium Currency")]
+        public static void AddPremiumCurrency()
+        {
+            if (GameManager.Instance == null)
+            {
+                Debug.LogWarning("플레이 모드에서만 실행 가능합니다.");
+                return;
+            }
+
+            GameManager.Instance.PremiumCurrency += 10000;
+            Debug.Log($"테스트용 재화 지급 완료. 현재 잔액: {GameManager.Instance.PremiumCurrency}");
+        }
+
         /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.
         /// 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로, 여기서는
         /// 실패 시 보충 안내만 한 줄 추가한다. [TASK-KBO-066] RollGacha()가 bool 대신
