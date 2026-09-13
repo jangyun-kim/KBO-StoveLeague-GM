@@ -81,13 +81,16 @@ namespace KBOManager.EditorTools
 
         /// <summary>
         /// 현재 열려 있는 씬에서 ItemDatabase 컴포넌트를 찾아 방금 생성/갱신한 템플릿들을 자동으로
-        /// AllTemplates에 등록한다(Dirty 마킹 + 씬 저장 포함). Object.FindFirstObjectByType은 비활성
-        /// 오브젝트를 찾지 못하므로, 씬에 ItemDatabase가 비활성 상태로 배치돼 있다면 감지되지 않는다는
-        /// 한계가 있다 - 그런 경우엔 이 메서드가 "찾지 못함" 경고를 남기고 종전처럼 수동 등록을 안내한다.
+        /// AllTemplates에 등록한다(Dirty 마킹 + 씬 저장 포함). [TASK-KBO-056] Unity 6000.6에서
+        /// Object.FindFirstObjectByType 자체가 Obsolete 처리되어(인스턴스ID 정렬에 의존한다는 이유로,
+        /// 파라미터 유무와 무관) Object.FindAnyObjectByType으로 교체했다 - 두 API 모두 기본적으로
+        /// 비활성 오브젝트는 찾지 못하므로, 씬에 ItemDatabase가 비활성 상태로 배치돼 있다면 감지되지
+        /// 않는다는 기존 한계는 동일하다 - 그런 경우엔 이 메서드가 "찾지 못함" 경고를 남기고 종전처럼
+        /// 수동 등록을 안내한다.
         /// </summary>
         private static string RegisterIntoSceneDatabase(List<ItemTemplate> templates)
         {
-            var itemDatabase = Object.FindFirstObjectByType<ItemDatabase>();
+            var itemDatabase = Object.FindAnyObjectByType<ItemDatabase>();
             if (itemDatabase == null)
             {
                 return "ItemDatabase.AllTemplates에는 자동 등록되지 않았습니다(열려 있는 씬에서 ItemDatabase 컴포넌트를 " +

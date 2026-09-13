@@ -25,10 +25,11 @@ namespace KBOManager.EditorTools
         [MenuItem("KBO Manager/Setup/Auto-Create Synergy UI")]
         public static void AutoCreateSynergyUI()
         {
-            // Object.FindFirstObjectByType는 비활성 오브젝트를 찾지 못한다(ItemDataSeeder.cs와 동일한
-            // 한계) - 로비 패널이 다른 화면 전환으로 비활성화돼 있으면 이 메뉴 실행 전에 로비 화면을
-            // 먼저 띄워 둬야 한다.
-            var dashboard = Object.FindFirstObjectByType<LeagueDashboardUIController>();
+            // [TASK-KBO-056] Unity 6000.6에서 Object.FindFirstObjectByType 자체가 Obsolete 처리되어
+            // Object.FindAnyObjectByType으로 교체했다(ItemDataSeeder.cs와 동일). 두 API 모두 비활성
+            // 오브젝트는 찾지 못한다는 한계는 동일하므로 - 로비 패널이 다른 화면 전환으로 비활성화돼
+            // 있으면 이 메뉴 실행 전에 로비 화면을 먼저 띄워 둬야 한다.
+            var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>();
             Transform parent = dashboard != null ? dashboard.transform : EnsureFallbackCanvas().transform;
 
             var synergyController = FindOrCreateSynergyController(parent);
@@ -57,7 +58,7 @@ namespace KBOManager.EditorTools
         /// 재사용하고, 전혀 없을 때만 새로 만든다(중복 Canvas로 인한 렌더링 충돌 방지).</summary>
         private static Canvas EnsureFallbackCanvas()
         {
-            var existing = Object.FindFirstObjectByType<Canvas>();
+            var existing = Object.FindAnyObjectByType<Canvas>();
             if (existing != null) return existing;
 
             var canvasObject = new GameObject(CanvasName, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -71,7 +72,7 @@ namespace KBOManager.EditorTools
 
         private static TeamSynergyUIController FindOrCreateSynergyController(Transform parent)
         {
-            var existing = Object.FindFirstObjectByType<TeamSynergyUIController>();
+            var existing = Object.FindAnyObjectByType<TeamSynergyUIController>();
             if (existing != null) return existing;
 
             var panelObject = new GameObject(SynergyPanelName, typeof(RectTransform), typeof(VerticalLayoutGroup));
