@@ -116,7 +116,13 @@ namespace KBOManager.Managers
         // v4: 팬심/연패(FanSentiment/LosingStreak) 필드 추가(TASK-KBO-051). 필드 초기값을
         // GameManager 기본값과 동일하게 맞춰 두어(UserFinalRank=-1 패턴과 동일), 이 필드가 없는
         // 구버전 JSON을 역직렬화해도 자동으로 안전한 기본값이 채워진다.
-        public int SaveVersion = 4;
+        // v5: 치어리더 장착 슬롯/보유 목록(EquippedCheerleader/OwnedCheerleaders) 추가(TASK-KBO-057).
+        // JsonUtility는 null 참조 필드를 JSON null이 아니라 "기본값으로 채워진 인스턴스"로 직렬화한다
+        // (실측 확인 - InstanceId가 빈 문자열인 필드-값 객체로 저장됨). 그래서 EquippedCheerleader가
+        // null인지 여부는 SaveManager.ApplySaveData()에서 InstanceId 존재 여부로 판별한다(자세한
+        // 내용은 ApplySaveData() 주석 참고) - "필드 존재 여부로 구버전 판별" 관례와는 별개의, JsonUtility
+        // 자체의 null 처리 한계에 대한 방어다.
+        public int SaveVersion = 5;
         public string SavedAtUtc;
 
         // GameManager
@@ -131,6 +137,8 @@ namespace KBOManager.Managers
         public bool IsFirstLogin = true;
         public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
         public int LosingStreak;
+        public Cheerleader EquippedCheerleader; // null 여부는 ApplySaveData()에서 InstanceId로 판별(위 v5 주석 참고)
+        public List<Cheerleader> OwnedCheerleaders = new List<Cheerleader>();
 
         // LeagueManager
         public bool HasLeagueData;
@@ -241,6 +249,8 @@ namespace KBOManager.Managers
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
+                data.EquippedCheerleader = gm.EquippedCheerleader;
+                data.OwnedCheerleaders = new List<Cheerleader>(gm.OwnedCheerleaders);
             }
 
             if (LeagueManager.Instance != null)
@@ -344,6 +354,26 @@ namespace KBOManager.Managers
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
+
+                // JsonUtility는 null 참조 필드를 저장할 때 JSON null이 아니라 "필드가 전부 기본값인
+                // 인스턴스"로 직렬화한다(실측 확인 - 위 GameSaveData의 v5 주석 참고). 그 결과
+                // data.EquippedCheerleader는 원본이 null이었어도 항상 non-null 객체로 역직렬화되므로,
+                // InstanceId가 비어 있는지로 "실제로 저장된 치어리더가 있었는지"를 판별한다 - 실제
+                // 치어리더는 GameManager.InitializeDevOnlyTestCheerleader() 등 모든 생성 경로에서
+                // InstanceId를 항상 채우므로 안전한 판별 기준이다. EquipCheerleader(null)은
+                // UnequipCheerleader()로 위임되므로 이 한 줄로 장착/해제 복원이 모두 처리된다.
+                bool hasEquippedCheerleader = data.EquippedCheerleader != null &&
+                    !string.IsNullOrEmpty(data.EquippedCheerleader.InstanceId);
+                gm.EquipCheerleader(hasEquippedCheerleader ? data.EquippedCheerleader : null);
+
+                // OwnedCheerleaders가 없는 구버전 세이브(필드 자체가 JSON에 없음)를 불러오면
+                // JsonUtility가 필드 초기값(빈 리스트)을 그대로 유지하므로 보통은 null이 되지 않지만,
+                // 명령서 지시대로 방어적으로 null 체크를 유지한다.
+                gm.OwnedCheerleaders.Clear();
+                if (data.OwnedCheerleaders != null)
+                {
+                    gm.OwnedCheerleaders.AddRange(data.OwnedCheerleaders);
+                }
             }
 
             if (data.HasLeagueData && LeagueManager.Instance != null)

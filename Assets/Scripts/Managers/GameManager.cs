@@ -89,6 +89,20 @@ namespace KBOManager.Managers
             OnCheerleaderChanged?.Invoke();
         }
 
+        /// <summary>[TASK-KBO-057] 유저가 영구적으로 보유한 치어리더 목록(장착 여부와 무관). 가챠/보상
+        /// 등으로 새 치어리더를 얻으면 AddCheerleader()로 여기 추가된다.</summary>
+        public List<Cheerleader> OwnedCheerleaders { get; private set; } = new List<Cheerleader>();
+
+        /// <summary>신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면 아무 일도
+        /// 하지 않는다.</summary>
+        public void AddCheerleader(Cheerleader newCheerleader)
+        {
+            if (newCheerleader == null) return;
+            if (OwnedCheerleaders == null) OwnedCheerleaders = new List<Cheerleader>();
+
+            OwnedCheerleaders.Add(newCheerleader);
+        }
+
 #if UNITY_EDITOR
         [Tooltip("[에디터 전용] true면 Awake() 시 EquippedCheerleader가 비어 있을 때만 테스트용 치어리더를 " +
                  "자동 장착한다. [TASK-KBO-056] EquipCheerleader()/UnequipCheerleader() 정식 API가 생겨 " +
