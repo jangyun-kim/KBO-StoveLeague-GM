@@ -19,6 +19,9 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private LeagueManager leagueManager;
         [SerializeField] private PlayBallController playBallController;
+        [Tooltip("세트덱 시너지/치어리더/팬심 요약을 담당하는 어댑터(TASK-KBO-053). 비워두면 다른 대시보드 " +
+                 "정보 갱신에는 영향 없이 이 항목만 건너뛴다.")]
+        [SerializeField] private TeamSynergyUIController synergyUIController;
 
         [Header("Season Progress")]
         [SerializeField] private Text seasonProgressText;
@@ -71,6 +74,8 @@ namespace KBOManager.Controllers
             RefreshStandings();
             RefreshNextMatchup();
             RefreshTeamOVR();
+
+            if (synergyUIController != null) synergyUIController.RefreshSynergyUI();
         }
 
         private void RefreshSeasonProgress()
