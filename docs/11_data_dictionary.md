@@ -94,3 +94,11 @@ _※ TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨. 구현 위치: `
 - `GameManager.AddCheerleader(Cheerleader)`가 `OwnedCheerleaders`에 새 치어리더를 추가하는 유일한 정식 진입점이다(null 인자는 무시). **[v0.1 마감/TASK-KBO-062 정정]** 정식 가챠/획득 UI를 통한 호출부는 여전히 없으나, TASK-KBO-059에서 만든 에디터 QA 메뉴(`KBO Manager/Debug/Add Dummy Cheerleader to Inventory`)가 플레이 모드에서 이 메서드를 실제로 호출한다 - 정식 획득 경로는 v0.2 과제로 이관.
 - CSV 스키마(`cheerleaders.csv` 등)는 여전히 존재하지 않는다 - 7절에서 이미 밝힌 대로 카탈로그 데이터/가챠 시스템 자체가 아직 범위 밖이며, 이번 작업은 "유저가 이미 보유한 치어리더 인스턴스"를 세이브에 영속화하는 것만 다룬다.
 - **[v0.1 마감/TASK-KBO-062]** 장착/해제/화면 전환 UI(`CheerleaderInventoryUIController`/`CheerleaderSlotUI`, `LeagueDashboardUIController`의 "치어리더 관리" 버튼, `UIManager.ScreenType.CheerleaderInventory`)까지 TASK-KBO-058~061에서 완료되어, v0.1 기준 치어리더 시스템(획득 경로 제외)의 데이터·백엔드·UI 전 층위가 연결되었다.
+
+# 10. 치어리더 정식 등급/CatalogId/중복 획득 처리 [TASK-KBO-064]
+
+- **`CheerleaderGrade` enum 확정 값 추가**: 기존 `NONE=0`/`TEST=1`은 그대로 두고 `NORMAL=2`/`RARE=3`/`EPIC=4`/`LEGEND=5`를 끝에 추가했다(`docs/16_shop_and_gacha_policy.md` 2절 제안 반영). 7절이 경고한 "세이브 직렬화 대상이라 재배치 금지" 원칙을 그대로 지켰다 - 값을 재배치하지 않고 순차적으로만 이어 붙였다.
+- **`Cheerleader.CatalogId`**(string, 신규): "어떤 종류의 치어리더인가"를 나타내는 원본(카탈로그) 식별자. `InstanceId`(발급된 개체 고유값, 9절의 세이브 null 판별 불변식에 쓰이는 값)와 완전히 별개이며, 이 불변식 자체는 전혀 바뀌지 않았다 - `CatalogId`가 비어 있어도 `InstanceId`는 여전히 모든 생성 경로에서 채워져야 한다. 카탈로그 데이터(`cheerleaders.csv` 등)는 여전히 존재하지 않으므로, `CatalogId`는 당분간 코드/디버그 툴에서 수동으로 채워 넣는 문자열일 뿐이다.
+- **`GameManager.AddCheerleader(Cheerleader)` 중복 처리(`docs/16_shop_and_gacha_policy.md` 4절 A안 구현)**: 인자로 들어온 치어리더의 `CatalogId`가 채워져 있고, 이미 같은 `CatalogId`를 가진 치어리더를 `OwnedCheerleaders`에 보유 중이면 인벤토리에 추가하지 않고 `GameManager.PremiumCurrency`를 등급별로 지급한다(`NORMAL` 10 / `RARE` 50 / `EPIC` 200 / `LEGEND` 1000, `NONE`/`TEST` 등 그 외 등급은 `NORMAL`과 동일하게 10 - 모두 **[Draft]**, v0.2 밸런싱에서 조정 가능). `CatalogId`가 비어 있으면(카탈로그 도입 이전 더미 데이터 등) 기존과 동일하게 중복 검사 없이 그냥 추가한다.
+- **디버그 툴 반영**: `SetupCheerleaderUI.AddDummyCheerleaderToInventory()`(TASK-KBO-059)가 주입하는 더미 치어리더에도 고정된 `CatalogId`(`DEV_TEST_CHEER_CATALOG_001`)를 채웠다 - 이 메뉴를 두 번째 클릭부터는 중복 변환 경로가 실제로 발동해, 신규 추가/중복 변환 두 경로를 QA가 같은 메뉴로 반복 테스트할 수 있다.
+- **[TBD, v0.2로 이관]** 실제 가챠 확률 엔진, 상점 UI, `cheerleaders.csv` 카탈로그 스키마는 이번 작업에서 다루지 않았다(`docs/16_shop_and_gacha_policy.md` 7절이 이미 범위 밖으로 명시).
