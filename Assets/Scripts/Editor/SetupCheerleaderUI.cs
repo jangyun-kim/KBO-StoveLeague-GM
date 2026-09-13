@@ -326,12 +326,13 @@ namespace KBOManager.EditorTools
 
         /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.
         /// 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로, 여기서는
-        /// 실패 시 보충 안내만 한 줄 추가한다.</summary>
+        /// 실패 시 보충 안내만 한 줄 추가한다. [TASK-KBO-066] RollGacha()가 bool 대신
+        /// List&lt;Cheerleader&gt;를 반환하도록 바뀌어(빈 리스트 = 실패), 그에 맞춰 판정 방식을 갱신했다.</summary>
         [MenuItem("KBO Manager/Debug/Roll 1x Gacha")]
         public static void Roll1xGacha()
         {
-            bool success = CheerleaderGachaService.RollGacha(1);
-            if (!success)
+            var results = CheerleaderGachaService.RollGacha(1);
+            if (results.Count == 0)
             {
                 Debug.LogWarning("[SetupCheerleaderUI] 1연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
             }
@@ -341,8 +342,8 @@ namespace KBOManager.EditorTools
         [MenuItem("KBO Manager/Debug/Roll 10x Gacha")]
         public static void Roll10xGacha()
         {
-            bool success = CheerleaderGachaService.RollGacha(10);
-            if (!success)
+            var results = CheerleaderGachaService.RollGacha(10);
+            if (results.Count == 0)
             {
                 Debug.LogWarning("[SetupCheerleaderUI] 10연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
             }

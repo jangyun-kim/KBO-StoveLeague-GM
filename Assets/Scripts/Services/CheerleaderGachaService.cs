@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KBOManager.Managers;
 using KBOManager.Models;
 using UnityEngine;
@@ -6,11 +7,12 @@ using UnityEngine;
 namespace KBOManager.Services
 {
     /// <summary>
-    /// [TASK-KBO-065] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md가 제안한 정책 중
-    /// 이번 프로토타입 단계에서 실제 구현하는 단순화 버전을 따른다: PremiumCurrency 1회당 100
-    /// 소모(할인 없음, count * 100), 등급 확률 NORMAL 70% / RARE 22% / EPIC 7% / LEGEND 1%
-    /// (합계 100%), 보장 슬롯(천장) 없음. 상점 UI/애니메이션은 이 서비스의 책임이 아니다 - 순수
-    /// 데이터 처리(재화 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리 지급)만 담당한다.
+    /// [TASK-KBO-065/066] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md 3절(TASK-KBO-066에서
+    /// 이 코드와 1:1로 일치하도록 갱신됨)의 사양을 그대로 구현한다: PremiumCurrency 1회당 100 소모
+    /// (할인 없음, count * 100), 등급 확률 NORMAL 70% / RARE 22% / EPIC 7% / LEGEND 1%(합계 100%),
+    /// 보장 슬롯(천장) 없음. 상점 UI/애니메이션은 이 서비스의 책임이 아니다 - 순수 데이터 처리(재화
+    /// 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리 지급)만 담당하고, 발급된 목록을 반환해
+    /// CheerleaderShopUIController 등 호출부가 결과를 그릴 수 있게 한다.
     ///
     /// GameManager.AddCheerleader()(TASK-KBO-057/064)는 전혀 수정하지 않았다 - 이 서비스는 그
     /// 공개 API를 호출만 할 뿐이며, 중복 획득 시 재화로 전환하는 로직은 이미 그쪽에 구현되어 있다.
@@ -26,19 +28,25 @@ namespace KBOManager.Services
         // LEGEND는 나머지 전부(1%) - 누적 판정의 마지막 분기로 처리한다.
 
         /// <summary>
-        /// count번 가챠를 실행한다. 재화(PremiumCurrency)가 count*100보다 부족하면 아무것도 차감하지
-        /// 않고 false를 반환한다. 성공하면 재화를 먼저 전부 차감한 뒤, count번 반복해 등급을 판정하고
-        /// GameManager.Instance.AddCheerleader()로 지급한다(신규 추가/중복 변환 여부는 그쪽 로직이
-        /// 알아서 처리). 플레이 모드가 아니면(GameManager.Instance == null) false를 반환한다.
+        /// [TASK-KBO-066] count번 가챠를 실행하고, 실제로 발급된 Cheerleader 목록을 반환한다(UI가
+        /// 결과를 바로 그릴 수 있도록 - CheerleaderShopUIController 참고). 재화(PremiumCurrency)가
+        /// count*100보다 부족하거나 플레이 모드가 아니면(GameManager.Instance == null) 아무것도
+        /// 차감하지 않고 빈 리스트를 반환한다. 성공하면 재화를 먼저 전부 차감한 뒤, count번 반복해
+        /// 등급을 판정하고 GameManager.Instance.AddCheerleader()로 지급한다(신규 추가/중복 변환
+        /// 여부는 그쪽 로직이 알아서 처리) - 개별 회차가 카탈로그 폴백 실패로 발급되지 못하면(예외적
+        /// 상황, 명령서 7항) 그 회차만 건너뛰고 나머지는 계속 진행하며, 반환 리스트에는 실제로 발급에
+        /// 성공한 것만 담긴다.
         /// </summary>
-        public static bool RollGacha(int count)
+        public static List<Cheerleader> RollGacha(int count)
         {
-            if (count <= 0) return false;
+            var results = new List<Cheerleader>();
+
+            if (count <= 0) return results;
 
             if (GameManager.Instance == null)
             {
                 Debug.LogWarning("[CheerleaderGachaService] 플레이 모드에서만 실행 가능합니다(GameManager.Instance == null).");
-                return false;
+                return results;
             }
 
             int totalCost = count * CostPerRoll;
@@ -46,7 +54,7 @@ namespace KBOManager.Services
             {
                 Debug.LogWarning($"[CheerleaderGachaService] 프리미엄 재화가 부족합니다. " +
                     $"(필요 {totalCost} / 보유 {GameManager.Instance.PremiumCurrency})");
-                return false;
+                return results;
             }
 
             GameManager.Instance.PremiumCurrency -= totalCost;
@@ -63,11 +71,12 @@ namespace KBOManager.Services
                 }
 
                 GameManager.Instance.AddCheerleader(issued);
+                results.Add(issued);
                 Debug.Log($"[CheerleaderGachaService] {i}/{count}번째 뽑기 결과: {issued.Grade} 등급 '{issued.Name}' " +
                     $"(CatalogId={issued.CatalogId}, InstanceId={issued.InstanceId})");
             }
 
-            return true;
+            return results;
         }
 
         /// <summary>0~100 사이 난수로 등급을 판정한다(누적 분포, docs 16 3-1절 확률표와 동일).</summary>
