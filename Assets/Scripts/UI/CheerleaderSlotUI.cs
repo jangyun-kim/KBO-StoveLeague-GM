@@ -14,12 +14,14 @@ namespace KBOManager.UI
         [Header("Text")]
         [SerializeField] private Text nameText;
         [SerializeField] private Text gradeText;
-        [Tooltip("A/C안 경기 조건부 버프(ConditionBuff/ClutchMultiplier) 요약.")]
+        [Tooltip("[TASK-KBO-071] A안 경기 조건부 전력 보정(ConditionBuff)만 표시한다 - 이전에는" +
+                 " ClutchMultiplier도 함께 표시해 clutchText와 중복되던 것을 정리했다.")]
         [SerializeField] private Text buffText;
         [Tooltip("B안 상시 경제 효과(EconomicBonusRate).")]
         [SerializeField] private Text economicRateText;
-        [Tooltip("[TASK-KBO-070] C안 득점권 클러치 배율(ClutchMultiplier) 단독 표시. buffText에도 이미" +
-                 " 포함되어 있지만(중복), 유저가 한눈에 보기 쉽도록 별도 항목으로도 노출한다.")]
+        [Tooltip("[TASK-KBO-070] C안 득점권 클러치 배율(ClutchMultiplier) 표시. [TASK-KBO-071] " +
+                 "buffText와의 중복 표시 문제는 buffText 쪽에서 ClutchMultiplier 표기를 제거해 " +
+                 "해소했다 - 이제 클러치 배율은 이 필드에서만 보여준다.")]
         [SerializeField] private Text clutchText;
         [Tooltip("[TASK-KBO-070] B안 팬심 방어(SentimentDefense) 표시.")]
         [SerializeField] private Text sentimentText;
@@ -46,7 +48,7 @@ namespace KBOManager.UI
 
             if (nameText != null) nameText.text = data.Name;
             if (gradeText != null) gradeText.text = data.Grade.ToString();
-            if (buffText != null) buffText.text = $"전력 +{data.ConditionBuff} / 클러치 x{data.ClutchMultiplier:F2}";
+            if (buffText != null) buffText.text = $"전력 보정: +{data.ConditionBuff}";
             if (economicRateText != null) economicRateText.text = $"관중 수익 x{data.EconomicBonusRate:F2}";
             if (clutchText != null) clutchText.text = $"클러치: {data.ClutchMultiplier}x";
             if (sentimentText != null) sentimentText.text = $"팬심 방어: +{data.SentimentDefense}";

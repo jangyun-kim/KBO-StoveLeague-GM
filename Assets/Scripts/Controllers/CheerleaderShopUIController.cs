@@ -76,7 +76,7 @@ namespace KBOManager.Controllers
                 if (i > 0) builder.Append('\n');
 
                 var c = results[i];
-                builder.Append($"획득: [{c.Grade}] {c.Name} (경제: {c.EconomicBonusRate}x / 클러치: {c.ClutchMultiplier}x / 팬심방어: {c.SentimentDefense})");
+                builder.Append($"획득: [{c.Grade}] {c.Name} (경제: {c.EconomicBonusRate:F2}x / 클러치: {c.ClutchMultiplier:F2}x / 팬심방어: {c.SentimentDefense})");
             }
 
             return builder.ToString();

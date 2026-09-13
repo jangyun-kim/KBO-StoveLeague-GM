@@ -42,6 +42,12 @@ namespace KBOManager.Controllers
                  "뿐 에러는 나지 않는다.")]
         [SerializeField] private Text teamOVRText;
 
+        [Header("Currency")]
+        [Tooltip("[TASK-KBO-071] 로비 화면 최상단에 유저의 GameManager.Instance.PremiumCurrency 보유량을 " +
+                 "표시한다(가챠를 돌리기 전 얼마나 있는지 바로 확인하기 위함). 비워두면(null) 아무 것도 " +
+                 "표시되지 않을 뿐 에러는 나지 않는다.")]
+        [SerializeField] private Text premiumCurrencyLobbyText;
+
         [Header("Play Mode Buttons")]
         [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
         [SerializeField] private Button quickPlayButton;
@@ -84,8 +90,18 @@ namespace KBOManager.Controllers
             RefreshStandings();
             RefreshNextMatchup();
             RefreshTeamOVR();
+            RefreshPremiumCurrency();
 
             if (synergyUIController != null) synergyUIController.RefreshSynergyUI();
+        }
+
+        /// <summary>[TASK-KBO-071] 로비 상단의 보유 프리미엄 재화 표시를 갱신한다. teamOVRText와 동일한
+        /// 관례로, 텍스트가 비어 있거나 GameManager.Instance가 아직 없으면 조용히 건너뛴다.</summary>
+        private void RefreshPremiumCurrency()
+        {
+            if (premiumCurrencyLobbyText == null || GameManager.Instance == null) return;
+
+            premiumCurrencyLobbyText.text = $"재화: {GameManager.Instance.PremiumCurrency}";
         }
 
         private void RefreshSeasonProgress()
