@@ -66,13 +66,17 @@ namespace KBOManager.Controllers
             RefreshUI();
         }
 
+        /// <summary>[TASK-KBO-070] 경제/클러치/팬심방어 3개 스탯을 함께 표시해, 유저가 뽑기 결과의
+        /// 가치를 한 줄만 보고도 파악할 수 있게 한다(명령서 6항).</summary>
         private static string BuildResultLog(List<Cheerleader> results)
         {
             var builder = new StringBuilder();
             for (int i = 0; i < results.Count; i++)
             {
                 if (i > 0) builder.Append('\n');
-                builder.Append($"획득: [{results[i].Grade}] {results[i].Name}");
+
+                var c = results[i];
+                builder.Append($"획득: [{c.Grade}] {c.Name} (경제: {c.EconomicBonusRate}x / 클러치: {c.ClutchMultiplier}x / 팬심방어: {c.SentimentDefense})");
             }
 
             return builder.ToString();

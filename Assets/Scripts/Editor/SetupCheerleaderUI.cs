@@ -140,13 +140,23 @@ namespace KBOManager.EditorTools
             return contentObject.transform;
         }
 
+        // [TASK-KBO-070] 140 -> 190으로 소폭 증가 - ClutchText/SentimentText 2줄이 추가되어도 슬롯
+        // 안에서 겹치지 않도록 여유를 둔다(명령서 9항).
+        private const float SlotTemplateHeight = 190f;
+
         /// <summary>
-        /// CheerleaderSlotUI가 부착된 "프리팹 대용" 오브젝트를 만든다. 부모(_Templates)를 비활성화해
-        /// 씬에서는 보이지 않게 숨기지만, 이 템플릿 오브젝트 자신의 activeSelf는 반드시 true로 둔다 -
-        /// CheerleaderInventoryUIController.RefreshInventory()(TASK-KBO-058, 런타임 코드라 이번 작업에서
-        /// 수정 불가)가 Instantiate(slotPrefab, contentContainer)로 복제할 때 원본의 activeSelf를
-        /// 그대로 복사하므로, 여기서 false를 두면 실제 인벤토리 슬롯 전부가 비활성 상태로 태어나
-        /// 화면에 아무것도 표시되지 않게 된다.
+        /// CheerleaderSlotUI가 부착된 "프리팹 대용" 오브젝트를 찾거나 만든다. 부모(_Templates)를
+        /// 비활성화해 씬에서는 보이지 않게 숨기지만, 이 템플릿 오브젝트 자신의 activeSelf는 반드시
+        /// true로 둔다 - CheerleaderInventoryUIController.RefreshInventory()(TASK-KBO-058, 런타임
+        /// 코드라 이번 작업에서 수정 불가)가 Instantiate(slotPrefab, contentContainer)로 복제할 때
+        /// 원본의 activeSelf를 그대로 복사하므로, 여기서 false를 두면 실제 인벤토리 슬롯 전부가
+        /// 비활성 상태로 태어나 화면에 아무것도 표시되지 않게 된다.
+        ///
+        /// [TASK-KBO-070] 이전 버전은 기존 템플릿을 찾으면 그 자리에서 즉시 반환해(early return)
+        /// ClutchText/SentimentText 등 새로 추가된 필드를 기존(TASK-KBO-059 시점) 템플릿에는 채워
+        /// 넣지 못했다 - 명령서 7항 지시대로, 기존 템플릿이 있어도 끝까지 진행해 누락된 텍스트만
+        /// 추가/재바인딩하도록 구조를 바꿨다(이미 있는 4개 텍스트는 FindOrCreateText가 그대로
+        /// 찾아 재사용하므로 중복 생성되지 않는다).
         /// </summary>
         private static GameObject FindOrCreateSlotTemplate(Transform canvasTransform)
         {
@@ -160,34 +170,17 @@ namespace KBOManager.EditorTools
                 holderTransform = holderObject.transform;
             }
 
-            var existingSlot = holderTransform.Find(SlotTemplateName);
-            if (existingSlot != null)
-            {
-                var existingSlotUI = existingSlot.GetComponent<CheerleaderSlotUI>();
-                if (existingSlotUI != null) return existingSlot.gameObject;
-            }
-
-            var slotObject = new GameObject(SlotTemplateName, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
-            Undo.RegisterCreatedObjectUndo(slotObject, $"Create {SlotTemplateName}");
-            slotObject.transform.SetParent(holderTransform, false);
+            var slotObject = FindOrCreateSlotRoot(holderTransform);
 
             var rect = (RectTransform)slotObject.transform;
-            rect.sizeDelta = new Vector2(0f, 140f);
-
-            slotObject.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.08f);
-
-            var layout = slotObject.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(8, 8, 8, 8);
-            layout.spacing = 2f;
-            layout.childControlWidth = true;
-            layout.childForceExpandWidth = true;
-            layout.childControlHeight = false;
-            layout.childForceExpandHeight = false;
+            rect.sizeDelta = new Vector2(rect.sizeDelta.x, SlotTemplateHeight);
 
             var nameText = FindOrCreateText(slotObject.transform, "NameText", 24f);
             var gradeText = FindOrCreateText(slotObject.transform, "GradeText", 24f);
             var buffText = FindOrCreateText(slotObject.transform, "BuffText", 24f);
             var economicRateText = FindOrCreateText(slotObject.transform, "EconomicRateText", 24f);
+            var clutchText = FindOrCreateText(slotObject.transform, "ClutchText", 24f);
+            var sentimentText = FindOrCreateText(slotObject.transform, "SentimentText", 24f);
             var equipButton = FindOrCreateButton(slotObject.transform, "EquipButton", "장착", 36f);
             var equipButtonLabel = equipButton.GetComponentInChildren<Text>();
 
@@ -199,9 +192,36 @@ namespace KBOManager.EditorTools
             serializedSlot.FindProperty("gradeText").objectReferenceValue = gradeText;
             serializedSlot.FindProperty("buffText").objectReferenceValue = buffText;
             serializedSlot.FindProperty("economicRateText").objectReferenceValue = economicRateText;
+            serializedSlot.FindProperty("clutchText").objectReferenceValue = clutchText;
+            serializedSlot.FindProperty("sentimentText").objectReferenceValue = sentimentText;
             serializedSlot.FindProperty("equipButton").objectReferenceValue = equipButton;
             serializedSlot.FindProperty("equipButtonLabel").objectReferenceValue = equipButtonLabel;
             serializedSlot.ApplyModifiedProperties();
+
+            return slotObject;
+        }
+
+        /// <summary>슬롯 루트 GameObject를 이름으로 찾아 재사용하거나, 없으면 RectTransform+Image+
+        /// VerticalLayoutGroup으로 새로 만든다(레이아웃 설정은 최초 생성 시에만 적용 - 기존 템플릿의
+        /// 레이아웃 값을 덮어써 QA가 이미 조정해 둔 값을 되돌리지 않기 위함).</summary>
+        private static GameObject FindOrCreateSlotRoot(Transform holderTransform)
+        {
+            var existingSlot = holderTransform.Find(SlotTemplateName);
+            if (existingSlot != null) return existingSlot.gameObject;
+
+            var slotObject = new GameObject(SlotTemplateName, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+            Undo.RegisterCreatedObjectUndo(slotObject, $"Create {SlotTemplateName}");
+            slotObject.transform.SetParent(holderTransform, false);
+
+            slotObject.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.08f);
+
+            var layout = slotObject.GetComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(8, 8, 8, 8);
+            layout.spacing = 2f;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
 
             return slotObject;
         }
