@@ -28,6 +28,16 @@ namespace KBOManager.Controllers
         [SerializeField] private Text topPullAnnouncementText;
         [SerializeField] private float announcementDisplaySeconds = 2.5f;
 
+        [Header("Navigation")]
+        [Tooltip("[TASK-KBO-083] 스카우트 화면을 닫고 로비로 돌아가는 버튼. CheerleaderInventoryUIController/" +
+                 "CheerleaderShopUIController의 closeButton과 동일한 관례로 UIManager.ShowScreen()만 호출한다.")]
+        [SerializeField] private Button closeButton;
+
+        private void Awake()
+        {
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+        }
+
         // GDD 2절 등급 서열(숫자가 클수록 상위 등급). "최고급"의 기준(SIGNATURE 이상)을 여기서 정한다.
         private static readonly Dictionary<Grade, int> GradeRank = new Dictionary<Grade, int>
         {

@@ -66,6 +66,9 @@ namespace KBOManager.Controllers
                  "CheerleaderShopUIController를 직접 참조하지 않는다. 기존 ScreenType.Shop은 선수 카드 " +
                  "상점(ShopUIController) 전용으로 이미 쓰이고 있어 재사용하지 않았다.")]
         [SerializeField] private Button gachaShopButton;
+        [Tooltip("[TASK-KBO-083] 선수 카드 스카우트 화면(UIManager.ScreenType.Scout)으로 전환하는 버튼. " +
+                 "ScoutUIController를 직접 참조하지 않는다.")]
+        [SerializeField] private Button scoutButton;
 
         private void Awake()
         {
@@ -74,6 +77,7 @@ namespace KBOManager.Controllers
             if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
             if (manageCheerleaderButton != null) manageCheerleaderButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderInventory));
             if (gachaShopButton != null) gachaShopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderShop));
+            if (scoutButton != null) scoutButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Scout));
         }
 
         private void OnEnable()
