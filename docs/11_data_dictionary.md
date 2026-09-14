@@ -2,7 +2,7 @@
 문서명: 데이터 사전 (Data Dictionary)
 버전: v0.1
 상태: Active
-최종 수정일: 2026-09-13
+최종 수정일: 2026-09-14
 담당자: 김장윤
 관련 파일: 모든 data/*.csv 파일, Cheerleader.cs, GameManager.cs, MatchRewardManager.cs
 ---
@@ -21,15 +21,24 @@
 - `CHR_001` : 치어리더(Cheerleader) ID
 - `SKL_001` : 스킬(Skill) ID
 
-# 3. 주요 CSV 스키마 명세
+# 3. 주요 CSV 스키마 명세 - 선수 데이터 SSOT
 
 _※ 각 CSV 문서 내 헤더 및 자료형을 설명함._
+
+**[TASK-KBO-081 PM 확정]** `players.csv`/`cards.csv`는 v0.3 선수 카드 시스템의 공식 Single Source of
+Truth(SSOT)입니다. 게임 실행 시 이 두 CSV를 파싱해 `Assets/Scripts/Data/PlayerTemplate.cs`
+(`ScriptableObject`) 인스턴스를 **런타임에 동적으로 생성**하며, 에디터에서 `.asset` 파일을 수동으로 미리
+구워 두는 방식은 사용하지 않습니다 - `PlayerTemplate`은 더 이상 "에디터가 저장하는 정적 에셋"이 아니라
+"CSV 파싱 결과를 담는 메모리 캐싱용 브릿지 모델"입니다. 치어리더 시스템의 `cheerleaders.csv →
+CheerleaderCatalog.Initialize()` 패턴과 동일한 방향입니다. 세부 필드 설명과 조사 근거는
+`docs/18_player_schema_policy.md`를 참고하십시오.
 
 ### A. players.csv
 
 - `player_id` (String): PLY\_ 접두사 고유 키
-- `team_id` (String): 소속 팀 (TEM_001)
-- `name` (String): 선수명
+- `team_id` (String): 소속 팀 (예: `TEM_001` = 삼성 라이온즈, 2절 참고)
+- `name` (String): 선수명 (KBO 실명 - 본 프로젝트는 비상업적 팬 메이드 포트폴리오로 규정되어 실명 데이터를
+  그대로 사용한다. `docs/18_player_schema_policy.md` 0절 참고)
 - `year` (Int): 시즌 연도
 - `position` (String): SP, RP, CP, C, 1B, 2B, 3B, SS, LF, CF, RF, DH
 - `z_contact, z_power...` (Float): 베이지안 K 보정이 끝난 Z-Score 수치 (소수점 4자리 권장)
@@ -38,9 +47,31 @@ _※ 각 CSV 문서 내 헤더 및 자료형을 설명함._
 
 - `card_id` (String): CRD\_ 접두사
 - `player_id` (String): 외래키 (players.csv 참조)
-- `grade_id` (Int): 0(시즌)~7(왕조) Enum 값
+- `grade_id` (Int): 0(시즌)~7(왕조) Enum 값 - `Assets/Scripts/Models/Types.cs`의 `Grade` enum 정수값과
+  정확히 일치하도록 설계되어, 브릿지 구현 시 별도 매핑표 없이 그대로 캐스팅할 수 있다.
 - `base_ovr` (Int): 공식에 의해 산출된 해당 카드의 명함 초기 OVR (Clamp 40~99)
 - `salary_cost` (Int): 샐러리캡 소모 비용 계산값
+- `max_enhance` / `max_awaken` (Int): 강화/각성 상한 - 현재 코드(`Player.MaxReinforceLevel`/
+  `Player.MaxAwakenLevel`)는 이 값을 상수(둘 다 10)로 고정하고 있으며, CSV 컬럼값을 실제로 읽어오는 로직은
+  아직 없다(**[TBD]**, `docs/18_player_schema_policy.md` 4-2절 참고).
+- `is_droppable` (Bool): 가챠로 뽑힐 수 있는 카드인지 여부.
+
+### C. `PlayerTemplate` 런타임 인스턴스화 아키텍처 (SSOT → 게임 내 카드)
+
+- **데이터 흐름**: `players.csv`(선수 원본 스탯) + `cards.csv`(등급별 카드 변형, `player_id` 외래키로 조인)
+  → 게임 시작 시 파싱 → `PlayerTemplate` 인스턴스를 런타임에 생성 → `PlayerDatabase.allTemplates`에 등록
+  → `ScoutManager`(가챠)가 이 템플릿을 참조해 유저 소유 카드(`Player.cs` 인스턴스, `InstanceId` 발급)를
+  발행한다.
+- **주의(스탯 모델 차이)**: `players.csv`의 세부 스탯은 `z_contact`/`z_eye`/`z_power`/`z_speed`/`z_def`/
+  `z_stamina` 6종(Z-score, 실수)이고, `PlayerTemplate.BatterStats`/`PitcherStats`는 `Power`/`Contact`/
+  `Discipline`(타자 3종) 또는 `Stuff`/`Velocity`/`Movement`/`Control`(투수 4종, 정수)이다. 두 스탯 모델은
+  이름과 개수가 다르므로, CSV → `PlayerTemplate` 변환 시 Z-score를 정수 세부 스탯으로 매핑하는 공식이
+  별도로 필요하다(**[TBD]**, 수치 공식은 본 문서 갱신 범위를 벗어나며 아직 미확정).
+- **주의(포지션/팀 값 차이)**: `players.csv`의 `position`(문자열, 예: `"SP"`/`"3B"`)과 `team_id`(예:
+  `"TEM_001"`)는 `PlayerTemplate`의 `BatterPosition`/`PitcherRole`/`Team` enum과 표기 체계가 달라, 변환
+  시 각각 매핑표가 필요하다(**[TBD]**).
+- **구현 현황**: 이 변환/로딩 코드는 이번 문서 갱신 시점 기준 아직 작성되지 않았다(순수 문서 작업 범위).
+  실제 구현은 후속 태스크의 대상이다.
 
 # 4. 저장 데이터 마이그레이션 규칙 (역호환성)
 

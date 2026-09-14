@@ -9,31 +9,50 @@
 
 # 선수 데이터 스키마 정책
 
-## 0. 시작하며 - 중요 발견: 선수 데이터 시스템이 두 개로 분리되어 있음
+## 0. 시작하며 - PM 확정 결정: CSV 기반(체계 B) SSOT 통합
 
-이번 조사에서 코드베이스를 전수 스캔한 결과, **서로 완전히 단절된 두 개의 "선수" 데이터 체계**가 동시에 존재함을
-확인했습니다. 명령서 7항("CSV 파일이 존재하지 않으면 [결정 필요]로 명시")이 예상한 "CSV 부재" 상황이 아니라,
-**"CSV는 존재하지만 v0.3이 재활용하려는 가챠 시스템과 전혀 연결되어 있지 않은"** 더 복잡한 상황이라 아래에
-[결정 필요]로 명시합니다.
+TASK-KBO-080에서 코드베이스를 전수 스캔한 결과 발견한 **서로 완전히 단절된 두 개의 "선수" 데이터 체계**에 대해,
+기획 PM이 아래와 같이 공식 확정했습니다(TASK-KBO-081 명령서 3항).
 
-> **[결정 필요]** 두 체계 중 어느 쪽을 v0.3 "선수 카드 스카우트 상점"의 실제 데이터 소스로 채택할지 기획 확인이
-> 필요합니다. 아래 1~3절에서 각 체계를 상세히 설명합니다.
+> **[확정]** `players.csv`/`cards.csv` 기반 체계(구 "체계 B")를 v0.3의 공식 Single Source of Truth(SSOT)로
+> 채택합니다. 구 "체계 A"의 `PlayerTemplate`(ScriptableObject)은 에디터에서 `.asset`으로 수동으로 구워 두는
+> 방식을 폐기하고, **런타임에 `players.csv`/`cards.csv`를 파싱해 동적으로 인스턴스화하는 "메모리 캐싱용
+> 브릿지 모델"**로 용도를 변경합니다 - 즉 `PlayerTemplate` C# 클래스 자체(필드 구조)는 계속 쓰이지만, 그
+> 인스턴스는 더 이상 `Assets/`에 `.asset` 파일로 저장되지 않고 게임 시작 시 CSV로부터 메모리에만 생성됩니다.
+> 치어리더 시스템이 이미 구현한 `cheerleaders.csv → CheerleaderCatalog.Initialize()` 패턴과 동일한
+> 아키텍처 방향입니다.
+>
+> **[확정]** 본 프로젝트는 비상업적 팬 메이드 포트폴리오로 규정되므로, `players.csv`의 KBO 실명 데이터는
+> 게임 몰입감을 위해 그대로 유지합니다. 구 "체계 B" 2-1절의 실명/초상권 [결정 필요/리스크] 항목은 이 결정으로
+> 해소되었습니다(아래 2-1절에 확정 사실로 반영).
 
-| | 체계 A - 카드/가챠 시스템 (TASK-KBO-079가 재활용 대상으로 지목) | 체계 B - Broadcast 중계 시스템 |
+아래 표는 TASK-KBO-080이 조사한 두 체계의 원래 모습을 그대로 보존한 참고 자료입니다 - **"소비자"/"데이터 소스"
+열은 위 확정 이전의 상태**이며, 확정 이후에는 `PlayerDatabase.allTemplates`의 수동 `.asset` 등록 방식이
+폐기되고 CSV 파싱 브릿지로 대체될 예정이라는 점에 유의해 읽어 주십시오(구체적인 구현은 이번 문서 작업 범위 밖 -
+아래 F항 참고).
+
+| | 구 체계 A - 카드/가챠 시스템 (`PlayerTemplate`은 브릿지 모델로 존속) | 확정 SSOT: 체계 B - CSV 기반 |
 |---|---|---|
 | 네임스페이스 | `KBOManager.Models` / `KBOManager.Data` / `KBOManager.Managers` | `KBOManager.Broadcast.Data` / `KBOManager.Broadcast.Managers` |
-| 핵심 클래스 | `Player.cs`, `PlayerTemplate.cs`(ScriptableObject), `PlayerDatabase.cs` | `PlayerModel.cs`, `CardModel.cs`, `DataManager.cs` |
-| 데이터 소스 | `PlayerDatabase.allTemplates`(Inspector에 수동으로 `.asset` 드래그) | `Assets/Resources/Data/players.csv`, `cards.csv`(CSV 파서로 자동 로드) |
-| 소비자 | `ScoutManager`(가챠), `RosterManager`(로스터), `UpgradeManager`(강화/각성) | `Broadcast.Managers.DataManager` (그 이상의 소비자는 코드베이스에서 확인되지 않음) |
+| 핵심 클래스 | `Player.cs`, `PlayerTemplate.cs`(ScriptableObject → 브릿지 모델로 용도 변경), `PlayerDatabase.cs` | `PlayerModel.cs`, `CardModel.cs`, `DataManager.cs` |
+| 데이터 소스 | (변경 전) `PlayerDatabase.allTemplates`에 `.asset` 수동 드래그 → (확정 후) CSV 파싱 결과를 런타임에 채워 넣는 방식으로 전환 예정 | `Assets/Resources/Data/players.csv`, `cards.csv`(CSV 파서로 자동 로드) - **SSOT로 확정** |
+| 소비자 | `ScoutManager`(가챠), `RosterManager`(로스터), `UpgradeManager`(강화/각성) - 이 소비자들은 그대로 유지, 데이터 소스만 CSV로 전환 | `Broadcast.Managers.DataManager` (그 이상의 소비자는 코드베이스에서 확인되지 않음) |
 | 스탯 모델 | `BatterStats{Power,Contact,Discipline}` / `PitcherStats{Stuff,Velocity,Movement,Control}` (정수) | `ZContact/ZEye/ZPower/ZSpeed/ZDef/ZStamina` (베이지안 보정 Z-score, 실수) |
-| 선수 이름 | `PlayerTemplate.PlayerName`(자유 문자열, 실제 등록된 `.asset`은 0건) | `players.csv`에 **실제 KBO 선수 실명**(구자욱/원태인/오승환/노시환) 4건 |
+| 선수 이름 | `PlayerTemplate.PlayerName`(자유 문자열, 실제 등록된 `.asset`은 0건) | `players.csv`에 **실제 KBO 선수 실명**(구자욱/원태인/오승환/노시환) 4건 - **팬 프로젝트로 실명 유지 확정** |
 
-**두 체계를 잇는 브릿지 코드는 전수 검색 결과 존재하지 않습니다** - `PlayerModel`/`CardModel`/`DataManager`를
-참조하는 코드는 `Assets/Scripts/Broadcast/` 폴더 밖에 단 한 곳도 없습니다.
+**두 체계를 잇는 브릿지 코드는 TASK-KBO-080 조사 시점 기준 전수 검색 결과 존재하지 않았습니다** -
+`PlayerModel`/`CardModel`/`DataManager`를 참조하는 코드는 `Assets/Scripts/Broadcast/` 폴더 밖에 단 한 곳도
+없었습니다. 위 SSOT 확정에 따라 이 브릿지를 새로 만드는 것이 v0.3의 실제 구현 과제입니다(문서 작업만 하는
+이번 태스크의 범위 밖 - 아래 F항 참고).
 
 ---
 
-## 1. 현재 구현된 선수 데이터 스키마 명세 (체계 A - 카드/가챠 시스템)
+## 1. 현재 구현된 선수 데이터 스키마 명세 (`PlayerTemplate` 브릿지 모델 - 카드/가챠 시스템)
+
+아래 클래스 구조 자체(필드명/타입)는 0절의 SSOT 확정과 무관하게 그대로 유지됩니다 - 바뀌는 것은
+"이 필드들을 누가 채우는가"입니다(기존: 에디터에서 `.asset`을 수동 제작 / 확정 후: CSV 파싱 결과로 런타임에
+자동 채움). 아래 설명 중 `PlayerDatabase`의 `.asset` 수동 등록 방식 서술(1-4절)은 SSOT 확정 이전의 상태를
+그대로 기록한 것이며, 실제 코드 변경(CSV 파싱 로더 추가)은 이번 문서 작업 범위 밖입니다.
 
 ### 1-1. `PlayerTemplate.cs` (`ScriptableObject`, 불변 원본 데이터)
 
@@ -90,11 +109,12 @@
 | `PitcherRole` | enum | 5자리: `StartingPitcher`/`WinningReliever`/`MopUpReliever`/`LongReliever`/`Closer` |
 | `Team` | enum | `None` + KBO 10개 구단(`Doosan`/`LG`/`KT`/`SSG`/`NC`/`Kiwoom`/`KIA`/`Samsung`/`Lotte`/`Hanwha`) |
 
-### 1-4. `PlayerDatabase.cs` (선수 템플릿 DB, 싱글톤)
+### 1-4. `PlayerDatabase.cs` (선수 템플릿 DB, 싱글톤) - **현재 코드 상태(변경 전)**
 
 - `[SerializeField] List<PlayerTemplate> allTemplates` - **에디터 Inspector에 `.asset` 파일을 수동으로 드래그하여 등록**하는 구조. CSV나 다른 자동 로더가 없습니다.
 - `GetTemplateById(string)` / `CreatePlayerInstance(string)` 2개 메서드만 제공.
 - **[확인된 사실]** `find Assets -iname "*.asset" | xargs grep -l "PlayerTemplate"`로 프로젝트 전체를 조사한 결과, 실제로 생성된 `PlayerTemplate` `.asset` 인스턴스가 **0건**입니다. 즉 `PlayerDatabase.allTemplates`는 현재 완전히 빈 리스트로 추정되며, `ScoutManager.Roll1()`/`Roll10()`을 지금 호출하면 뽑을 카드가 없어 실패할 가능성이 높습니다.
+- **[0절 SSOT 확정에 따른 향후 방향, 이번 문서 작업 범위 밖]** `allTemplates`를 Inspector 수동 등록 대신, `Awake()`(또는 별도 `Initialize()`)에서 `players.csv`+`cards.csv`를 파싱해 `PlayerTemplate` 인스턴스를 런타임에 생성해 채우는 방식으로 교체될 예정입니다 - `CheerleaderCatalog.Initialize()`(`cheerleaders.csv` 파싱)와 동일한 패턴입니다. 실제 코드 구현은 이번 태스크(순수 문서 작업)의 범위가 아닙니다.
 
 ### 1-5. `SkillDB.cs` (스킬 정의)
 
@@ -102,10 +122,12 @@
 
 ---
 
-## 2. `players.csv` / `cards.csv` 데이터 현황 (체계 B - Broadcast 중계 시스템)
+## 2. `players.csv` / `cards.csv` 데이터 현황 (확정 SSOT)
 
-명령서 7항의 "CSV가 없으면 [결정 필요]"와 달리, **CSV는 존재합니다.** 다만 위 1절의 가챠 시스템과는
-무관한 별도 스키마입니다.
+TASK-KBO-080 명령서 7항의 "CSV가 없으면 [결정 필요]"와 달리, **CSV는 존재하며, 0절 PM 확정에 따라 이제
+v0.3의 공식 SSOT입니다.** 아래 내용은 TASK-KBO-080이 조사한 원본 현황이며, "1절의 가챠 시스템과 무관한
+별도 스키마"였던 상태는 0절의 확정 결정으로 "1절 `PlayerTemplate`이 이 데이터를 런타임에 읽어 채우는 대상"
+으로 관계가 재정의되었습니다.
 
 ### 2-1. `Assets/Resources/Data/players.csv` (420 bytes, 헤더 포함 4개 데이터 행)
 
@@ -118,13 +140,15 @@ PLY_0004,TEM_002,노시환,2023,3B,500,1.100,0.950,2.100,0.100,0.600,1.200,TRUE
 ```
 
 - **가상 데이터가 아닙니다.** `구자욱`/`원태인`/`오승환`/`노시환`은 실제 KBO 소속 선수의 실명이며, `year=2023` 시즌
-  기록을 베이지안 보정한 Z-score로 추정됩니다. **[결정 필요/리스크]** 실명·실제 기록 기반 데이터를 정식
-  출시(v1.0 등)까지 그대로 사용할지, 라이선스/초상권 문제로 가상 선수명으로 교체해야 하는지는 이번 조사
-  범위를 벗어나는 법무/사업 판단이 필요합니다 - 최소한 v0.3 로드맵 착수 전 확인이 필요한 항목으로 기록합니다.
-- `team_id`는 `TEM_001`/`TEM_002` 형식의 플레이스홀더 코드로, 체계 A의 `Team` enum(`Doosan`/`LG`/...) 값과
-  이름 체계가 다릅니다 - 두 체계를 연결하려면 `team_id ↔ Team enum` 매핑표가 별도로 필요합니다.
+  기록을 베이지안 보정한 Z-score로 추정됩니다. **[확정]** 본 프로젝트는 비상업적 팬 메이드 포트폴리오로
+  규정되어, 게임 몰입감을 위해 이 실명 데이터를 그대로 유지하기로 PM이 확정했습니다(TASK-KBO-081 명령서
+  3항). 별도 법무/사업 검토나 가상 선수명 교체는 진행하지 않습니다.
+- `team_id`는 `TEM_001`/`TEM_002` 형식의 플레이스홀더 코드로, 1절 `PlayerTemplate.Team`의 `Team` enum
+  (`Doosan`/`LG`/...) 값과 이름 체계가 다릅니다 - CSV → `PlayerTemplate` 브릿지를 구현하려면
+  `team_id ↔ Team enum` 매핑표가 별도로 필요합니다(**[TBD]**, 이번 문서 작업 범위 밖).
 - `position`은 문자열(`SP`/`CP`/`RF`/`3B` 등)로 저장되며, `PlayerModel.IsPitcher`는 `"SP"`/`"CP"`/`"RP"` 세
-  값만으로 판정합니다(체계 A의 `BatterPosition`/`PitcherRole` enum과 값 체계가 다름).
+  값만으로 판정합니다(1절 `BatterPosition`/`PitcherRole` enum과 값 체계가 다름 - 이 역시 브릿지 구현 시
+  매핑표가 필요합니다, **[TBD]**).
 - 소비자는 `Assets/Scripts/Broadcast/Managers/DataManager.cs`(`LoadPlayers()`) 단 한 곳이며, 이 데이터를
   실제로 화면에 노출하거나 가챠에 사용하는 코드는 확인되지 않았습니다.
 - `PlayerModel.cs` 클래스 주석이 `StatCalculator.GetOVR()`을 "이 Z-score들의 입력값"으로 언급하지만,
@@ -142,16 +166,19 @@ CRD_0004,PLY_0002,0,SEASON,65,12,10,0,TRUE
 ```
 
 - `player_id`로 `players.csv`를 참조하는 외래키 구조 - "한 선수가 여러 등급의 카드를 가질 수 있다"는 설계는
-  체계 A(`PlayerTemplate` 1개 = 카드 1장, `RealPlayerId`로 동일 선수 판정)와 **개념적으로 동일**하지만 구현이
-  완전히 별개입니다.
-- `grade_id`(0/2/6) 값이 체계 A의 `Grade` enum 정수값(`SEASON=0`/`LIVE_EPIC=2`/`GOLDEN_GLOVE=6`)과 **정확히
-  일치**합니다 - 우연이 아니라 원래 같은 등급 체계를 공유하도록 설계된 것으로 추정됩니다.
-- `max_enhance`/`max_awaken` 컬럼은 체계 A의 `Player.MaxReinforceLevel`(10)/`Player.MaxAwakenLevel`(10)
-  상수와 대응되는 개념이나, 코드에서는 상수로 고정되어 있고 CSV 컬럼값을 읽어오는 코드는 없습니다.
-- `docs/11_data_dictionary.md` 3절이 이미 이 두 CSV의 스키마를 문서화하고 있습니다 - 즉 **기존 GDD는 "CSV
-  기반"을 공식 설계로 문서화했지만, 실제 가챠 코드(`ScoutManager`/`PlayerDatabase`)는 그와 무관한
-  ScriptableObject 수동 등록 방식으로 구현되어 있습니다.** 문서와 코드가 서로 다른 두 설계를 각각 담고
-  있는 상태입니다.
+  1절(`PlayerTemplate` 1개 = 카드 1장, `RealPlayerId`로 동일 선수 판정)과 **개념적으로 동일**합니다 - 0절의
+  SSOT 확정으로 이제 이 구조가 `PlayerTemplate` 브릿지 모델의 실제 생성 로직 설계로 채택됩니다.
+- `grade_id`(0/2/6) 값이 1절 `Grade` enum 정수값(`SEASON=0`/`LIVE_EPIC=2`/`GOLDEN_GLOVE=6`)과 **정확히
+  일치**합니다 - 우연이 아니라 원래 같은 등급 체계를 공유하도록 설계된 것으로 추정되며, 브릿지 구현 시
+  별도 매핑 없이 정수값을 그대로 캐스팅할 수 있을 것으로 보입니다.
+- `max_enhance`/`max_awaken` 컬럼은 1절 `Player.MaxReinforceLevel`(10)/`Player.MaxAwakenLevel`(10) 상수와
+  대응되는 개념이나, 코드에서는 상수로 고정되어 있고 CSV 컬럼값을 읽어오는 코드는 아직 없습니다(**[TBD]**,
+  브릿지 구현 시 상수를 CSV 값으로 대체할지 여부는 별도 결정 필요).
+- **[본 태스크(TASK-KBO-081)로 해소]** `docs/11_data_dictionary.md` 3절이 이 두 CSV의 스키마를 문서화하고
+  있어, TASK-KBO-080 조사 시점에는 "GDD는 CSV 기반을 문서화했지만 실제 가챠 코드는 무관한 ScriptableObject
+  수동 등록 방식으로 구현되어 있다"는 문서-코드 불일치가 있었습니다. 0절의 PM 확정(CSV를 SSOT로 채택)으로
+  이 불일치는 방향이 정해졌고, `docs/11_data_dictionary.md` 3절도 이번 태스크에서 함께 갱신해 두 문서가
+  같은 설계를 가리키도록 정리했습니다.
 
 ---
 
@@ -190,11 +217,24 @@ CRD_0004,PLY_0002,0,SEASON,65,12,10,0,TRUE
 
 ---
 
-## 4. 요약 - 다음 결정이 필요한 지점
+## 4. 요약 - PM 확정 사항 및 남은 결정 지점
 
-1. 체계 A(ScriptableObject `PlayerTemplate`)와 체계 B(CSV `PlayerModel`/`CardModel`) 중 v0.3 스카우트 상점의
-   실제 데이터 소스를 무엇으로 할지.
-2. 실명 기반 `players.csv` 콘텐츠의 라이선스/초상권 처리 방향.
-3. `docs/11_data_dictionary.md`(CSV 스키마 공식 문서화)와 실제 `PlayerTemplate` 코드 구현 중 어느 쪽을
-   기준 문서로 갱신할지.
-4. 3절에 나열한 추가 필드들의 최종 채택 여부.
+### 4-1. TASK-KBO-081에서 확정된 사항
+
+1. ~~체계 A(ScriptableObject `PlayerTemplate`)와 체계 B(CSV `PlayerModel`/`CardModel`) 중 v0.3 스카우트
+   상점의 실제 데이터 소스를 무엇으로 할지~~ → **확정: 체계 B(CSV)를 SSOT로 채택, `PlayerTemplate`은
+   런타임 브릿지 모델로 용도 변경** (0절)
+2. ~~실명 기반 `players.csv` 콘텐츠의 라이선스/초상권 처리 방향~~ → **확정: 비상업적 팬 프로젝트로 규정,
+   실명 데이터 그대로 유지** (0절, 2-1절)
+3. ~~`docs/11_data_dictionary.md`(CSV 스키마 공식 문서화)와 실제 `PlayerTemplate` 코드 구현 중 어느 쪽을
+   기준 문서로 갱신할지~~ → **확정: `docs/11_data_dictionary.md` 3절을 CSV 기반 SSOT 설계로 갱신**
+   (본 태스크에서 실행 완료, `docs/11_data_dictionary.md` 참고)
+
+### 4-2. 아직 남은 결정/구현 지점
+
+4. 3절에 나열한 UI 고도화 추가 필드들의 최종 채택 여부(변경 없음, 본 태스크 범위 밖으로 그대로 보존).
+5. **[TBD]** `team_id ↔ Team enum`, `position 문자열 ↔ BatterPosition/PitcherRole enum` 매핑표 설계
+   (2-1절).
+6. **[TBD]** `max_enhance`/`max_awaken` CSV 컬럼을 실제로 읽어와 상수를 대체할지 여부(2-2절).
+7. **[TBD]** `players.csv`/`cards.csv` → `PlayerTemplate` 런타임 생성 로직(브릿지 코드) 자체의 실제 구현 -
+   이번 태스크는 순수 문서 작업이라 코드는 작성하지 않았습니다. 다음 구현 태스크의 대상입니다.
