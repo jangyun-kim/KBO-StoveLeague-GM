@@ -22,7 +22,10 @@ namespace KBOManager.EditorTools
         [MenuItem("KBO Manager/Setup/Fix Duplicate UIManager")]
         public static void FixDuplicateUIManager()
         {
-            UIManager[] managers = Object.FindObjectsByType<UIManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            // [TASK-KBO-077] FindObjectsSortMode 인자를 받는 오버로드는 Unity 6000.6에서 Obsolete(CS0618)
+            // 처리됐다 - 정렬 순서가 이 스캔에 필요하지 않아 공식 경고 문구가 권장하는 FindObjectsInactive
+            // 단일 인자 오버로드로 교체했다.
+            UIManager[] managers = Object.FindObjectsByType<UIManager>(FindObjectsInactive.Include);
 
             bool removedAny = false;
             foreach (var manager in managers)
