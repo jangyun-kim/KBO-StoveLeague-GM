@@ -31,17 +31,30 @@ namespace KBOManager.Managers
         private const int ExpectedColumnCount = 13;
 
         /// <summary>
-        /// [TASK-KBO-085] CSV의 team_id(예: "TEM_001")를 Team enum으로 매핑하는 표. team_id 값이 Team
-        /// enum 이름(Doosan/LG/... 등)과 형식이 달라 Enum.TryParse로는 매핑할 수 없다는 사실이
-        /// TASK-082/docs/18_player_schema_policy.md 2-1절에서 이미 확인되어, 명령서(TASK-KBO-085) 6항이
-        /// 지시한 대로 하드코딩 매핑 딕셔너리로 대체한다. 키가 없으면 Team.None으로 안전하게 폴백한다
-        /// (TryGetValue 사용 - KeyNotFoundException 없음, 명령서 9항).
+        /// [TASK-KBO-085/086] CSV의 team_id(예: "TEM_001")를 Team enum으로 매핑하는 표. team_id 값이
+        /// Team enum 이름(Doosan/LG/... 등)과 형식이 달라 Enum.TryParse로는 매핑할 수 없다는 사실이
+        /// TASK-082/docs/18_player_schema_policy.md 2-1절에서 이미 확인되어 하드코딩 매핑 딕셔너리로
+        /// 대체했다. 키가 없으면 Team.None으로 안전하게 폴백한다(TryGetValue 사용 -
+        /// KeyNotFoundException 없음, TASK-085 명령서 9항).
+        ///
+        /// [TASK-KBO-086] docs/11_data_dictionary.md 2절에 공식 문서화된 KBO 10개 구단 전체 매핑표로
+        /// 교체했다(TASK-085 당시의 3개 구단 임시 매핑을 대체 - 그 값이 이 문서와 서로 달라 DCL-055가
+        /// [결정 필요]로 남겼던 불일치를 이 공식 매핑표로 해소한다). Team enum(Assets/Scripts/Models/
+        /// Types.cs)에는 10개 구단이 전부 정의되어 있어(TASK-086 정적 확인 완료) Team.None 예외 매핑이
+        /// 필요한 누락 구단은 없었다.
         /// </summary>
         private static readonly Dictionary<string, Team> TeamIdMapping = new Dictionary<string, Team>
         {
-            { "TEM_001", Team.SSG },
-            { "TEM_002", Team.KIA },
+            { "TEM_001", Team.KIA },
+            { "TEM_002", Team.Samsung },
             { "TEM_003", Team.LG },
+            { "TEM_004", Team.Doosan },
+            { "TEM_005", Team.KT },
+            { "TEM_006", Team.SSG },
+            { "TEM_007", Team.Lotte },
+            { "TEM_008", Team.Hanwha },
+            { "TEM_009", Team.NC },
+            { "TEM_010", Team.Kiwoom },
         };
 
         private readonly Dictionary<string, PlayerTemplate> templates = new Dictionary<string, PlayerTemplate>();

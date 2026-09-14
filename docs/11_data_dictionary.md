@@ -17,9 +17,33 @@
 
 - `PLY_0001` : 원본 선수(Player) ID (예: 23년 구자욱)
 - `CRD_0001` : 발행된 카드(Card) 인스턴스 ID
-- `TEM_001` : 구단(Team) ID (예: TEM_001 = 삼성 라이온즈)
+- `TEM_001` : 구단(Team) ID - 정확한 10개 구단 매핑은 아래 "Team ID 매핑표" 참고
 - `CHR_001` : 치어리더(Cheerleader) ID
 - `SKL_001` : 스킬(Skill) ID
+
+### Team ID 매핑표 (KBO 10개 구단, TASK-KBO-086 공식 확정)
+
+**[결정 필요 - 해소됨]** TASK-085 시점에는 `PlayerDatabase.cs`에 3개 구단(`TEM_001`=SSG/`TEM_002`=KIA/
+`TEM_003`=LG)만 임시로 하드코딩되어 있었고, 그 값이 이 문서의 기존 예시("TEM_001 = 삼성 라이온즈")와
+서로 달라 `docs/13_decision_change_log.md`의 DCL-055가 [결정 필요]로 남겼던 불일치입니다. 아래 표가 그
+불일치를 해소하는 **공식 매핑**이며, `Assets/Scripts/Managers/PlayerDatabase.cs`의
+`TeamIdMapping` 딕셔너리가 이 표와 정확히 동기화되어 있습니다(TASK-086).
+
+| team_id | 구단(Team enum) |
+|---|---|
+| `TEM_001` | KIA |
+| `TEM_002` | 삼성 (Samsung) |
+| `TEM_003` | LG |
+| `TEM_004` | 두산 (Doosan) |
+| `TEM_005` | KT |
+| `TEM_006` | SSG |
+| `TEM_007` | 롯데 (Lotte) |
+| `TEM_008` | 한화 (Hanwha) |
+| `TEM_009` | NC |
+| `TEM_010` | 키움 (Kiwoom) |
+
+`Assets/Scripts/Models/Types.cs`의 `Team` enum(`None` + 10개 구단)을 전수 확인한 결과 위 10개 구단이
+모두 존재해, `Team.None`으로 예외 처리해야 하는 누락 구단은 없었다(TASK-086 정적 확인 완료).
 
 # 3. 주요 CSV 스키마 명세 - 선수 데이터 SSOT
 
@@ -36,7 +60,7 @@ CheerleaderCatalog.Initialize()` 패턴과 동일한 방향입니다. 세부 필
 ### A. players.csv
 
 - `player_id` (String): PLY\_ 접두사 고유 키
-- `team_id` (String): 소속 팀 (예: `TEM_001` = 삼성 라이온즈, 2절 참고)
+- `team_id` (String): 소속 팀 (예: `TEM_001` = KIA. 정확한 10개 구단 전체 매핑은 2절 "Team ID 매핑표" 참고)
 - `name` (String): 선수명 (KBO 실명 - 본 프로젝트는 비상업적 팬 메이드 포트폴리오로 규정되어 실명 데이터를
   그대로 사용한다. `docs/18_player_schema_policy.md` 0절 참고)
 - `year` (Int): 시즌 연도
@@ -66,12 +90,46 @@ CheerleaderCatalog.Initialize()` 패턴과 동일한 방향입니다. 세부 필
   `z_stamina` 6종(Z-score, 실수)이고, `PlayerTemplate.BatterStats`/`PitcherStats`는 `Power`/`Contact`/
   `Discipline`(타자 3종) 또는 `Stuff`/`Velocity`/`Movement`/`Control`(투수 4종, 정수)이다. 두 스탯 모델은
   이름과 개수가 다르므로, CSV → `PlayerTemplate` 변환 시 Z-score를 정수 세부 스탯으로 매핑하는 공식이
-  별도로 필요하다(**[TBD]**, 수치 공식은 본 문서 갱신 범위를 벗어나며 아직 미확정).
-- **주의(포지션/팀 값 차이)**: `players.csv`의 `position`(문자열, 예: `"SP"`/`"3B"`)과 `team_id`(예:
-  `"TEM_001"`)는 `PlayerTemplate`의 `BatterPosition`/`PitcherRole`/`Team` enum과 표기 체계가 달라, 변환
-  시 각각 매핑표가 필요하다(**[TBD]**).
-- **구현 현황**: 이 변환/로딩 코드는 이번 문서 갱신 시점 기준 아직 작성되지 않았다(순수 문서 작업 범위).
-  실제 구현은 후속 태스크의 대상이다.
+  별도로 필요하다. 환산 공식 자체는 아래 D절에서 기획 제안했으나(TASK-086), **실제 파싱 코드는 아직
+  작성하지 않았다**(**[TBD]**, 기획-구현 분리 원칙에 따라 코드 반영은 후속 태스크의 대상).
+- **주의(포지션/팀 값 차이, 매핑 완료)**: `players.csv`의 `position`(문자열, 예: `"SP"`/`"3B"`)과
+  `team_id`(예: `"TEM_001"`)는 `PlayerTemplate`의 `BatterPosition`/`PitcherRole`/`Team` enum과 표기
+  체계가 달라 매핑표가 필요했다 - `PlayerDatabase.cs`의 `ParsePitcherRole()`/`ParseBatterPosition()`
+  (TASK-082)과 `TeamIdMapping`(TASK-085/086, 2절의 "Team ID 매핑표"와 동기화)이 이미 구현되어 실제
+  파싱 코드에 반영되어 있다.
+- **구현 현황**: 포지션/팀 매핑 코드는 위처럼 이미 작성되어 있다. 다만 세부 스탯(Z-score → 정수) 변환
+  코드는 아직 작성하지 않았다(D절의 공식은 기획 제안일 뿐, 코드 반영은 후속 태스크의 대상 - 명령서 5항
+  "기획-구현 분리" 지시에 따라 이번 태스크에서도 코딩하지 않았다).
+
+### D. 스탯 Z-score 변환 규칙 (Draft, TASK-KBO-086 기획 제안 - 코드 미반영)
+
+**[TBD/Draft]** `players.csv`의 6종 Z-score(`z_contact`/`z_eye`/`z_power`/`z_speed`/`z_def`/`z_stamina`)를
+`PlayerTemplate.BatterStats`/`PitcherStats`(정수, 1~100 범위 인게임 스탯)로 환산하는 공식 제안이다. 일반적인
+종형 곡선(정규분포) 기반 Z-score 환산 관례를 따라, 평균(Z=0)을 50점에 대응시키고 표준편차 1당 15점씩
+움직이도록 설계했다 - 상한/하한을 1~100으로 clamp해 극단값에서도 스탯 범위를 벗어나지 않는다.
+
+| 항목 | 값 |
+|---|---|
+| 변환 공식 | `스탯 정수 = Max(1, Min(100, Round(z_score * 15 + 50)))` |
+| 기준점(Z=0) | 50점 (평균적인 선수) |
+| 계수(1 표준편차당) | ±15점 |
+| 결과 범위 | 1 ~ 100 (Clamp) |
+
+| CSV 컬럼 | 대응 `PlayerTemplate` 필드 | 비고 |
+|---|---|---|
+| `z_contact` | `BatterStats.Contact` | 타자 전용 |
+| `z_power` | `BatterStats.Power` | 타자 전용 |
+| `z_eye` | `BatterStats.Discipline` | 타자 전용(선구안 → 선구) |
+(대응 컬럼 없음) | `PitcherStats.Stuff` | 투수 구위(Stuff)에 대응하는 Z-score 컬럼이 `players.csv`에 아직 없다 - 컬럼 추가가 필요하다(**[결정 필요]**) |
+| `z_speed` | 투수: `PitcherStats.Velocity`(구속)로 해석 가능. 타자: 대응 필드 없음 | `BatterStats`(Power/Contact/Discipline)에는 "주력" 필드 자체가 없다 - 타자의 z_speed(주루 능력으로 추정)를 어디에 반영할지는 신규 필드 추가 여부를 포함해 별도 결정 필요(**[결정 필요]**) |
+| `z_def` | (현재 대응 필드 없음) | `BatterStats`/`PitcherStats`에는 수비력 필드가 없다(**[TBD]** - 신규 필드 추가 여부는 별도 결정 필요) |
+| `z_stamina` | (현재 대응 필드 없음, `Player.MaxStamina`와는 별개) | `Player.MaxStamina`는 이미 투수 롤(`PitcherRole`) 기준 상수로 계산되고 있어 이 Z-score를 그대로 대입할지는 별도 결정 필요(**[결정 필요]**) |
+
+**[결정 필요]** 위 표에서 보듯, `players.csv`의 6개 Z-score 컬럼과 `PlayerTemplate`의 현재 스탯 필드
+(타자 3종/투수 4종)가 1:1로 깔끔하게 대응하지 않는다 - `z_def`/`z_stamina`는 대응 필드가 아예 없고,
+`z_speed`의 의미(주력 vs 구속)도 타자/투수에 따라 다르게 해석해야 한다. 이 공식과 매핑표는 "Z-score를
+1~100 정수로 환산하는 산술" 자체는 명확히 제안했으나, "어느 필드에 넣을지"는 기획 확정이 더 필요한
+상태로 남겨둔다.
 
 # 4. 저장 데이터 마이그레이션 규칙 (역호환성)
 
