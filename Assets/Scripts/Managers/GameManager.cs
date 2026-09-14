@@ -204,21 +204,12 @@ namespace KBOManager.Managers
             // 등으로 이 Awake()가 다시 호출돼도 안전하다.
             CheerleaderCatalog.Initialize();
 
-            // [TASK-KBO-082] 선수 데이터베이스(players.csv)를 게임 시작 시 1회 로드한다.
-            // PlayerDatabase.Initialize() 자체가 이미 로드됐으면 재실행을 건너뛰므로, 씬 재로드 등으로
-            // 이 Awake()가 다시 호출돼도 안전하다. PlayerDatabase는 CheerleaderCatalog(정적 클래스)와
-            // 달리 MonoBehaviour 싱글톤이라 자신의 Awake()에서만 Instance가 채워진다 - 씬에 PlayerDatabase
-            // 컴포넌트가 아직 배치되어 있지 않거나 Unity의 Awake 실행 순서상 이 시점에 아직 초기화되지
-            // 않았을 수 있어, null이면 크래시 대신 경고만 남기고 넘어간다(명령서 8항 AC-04 가드레일).
-            if (PlayerDatabase.Instance != null)
-            {
-                PlayerDatabase.Instance.Initialize();
-            }
-            else
-            {
-                Debug.LogWarning("[GameManager] PlayerDatabase.Instance가 아직 없어 선수 데이터베이스를 " +
-                    "초기화하지 못했습니다 - 씬에 PlayerDatabase 컴포넌트가 배치되어 있는지 확인하세요.");
-            }
+            // [TASK-KBO-085] 선수 데이터베이스(players.csv) 초기화 호출을 여기서 제거했다 - 같은
+            // GameObject에 붙은 PlayerDatabase와 GameManager 중 어느 Awake()가 먼저 실행되는지 Unity가
+            // 보장하지 않아(TASK-082/083/084에서 이미 제기된 리스크), GameManager가 대신 초기화를
+            // 책임지는 구조 자체가 취약했다. 이제 PlayerDatabase가 자신의 Awake()에서 스스로
+            // Initialize()를 호출하고, AllTemplates/GetTemplateById() 접근 시점에도 지연 초기화하므로
+            // GameManager는 PlayerDatabase의 존재/초기화 여부를 더 이상 알 필요가 없다.
 
 #if UNITY_EDITOR
             InitializeDevOnlyTestCheerleader();
