@@ -932,27 +932,45 @@ namespace KBOManager.Engine
 
         // TASK-KBO-037: 팀 버프(N)를 세부 스탯 전항목에 균등 가산한다. 7항 방어 코드 - 음수 버프(향후
         // 페널티 도입 시)로 스탯이 0 이하로 떨어지지 않도록 MinEffectiveStatValue(1)로 클램핑한다.
-        private static BatterStats AddTeamBuff(BatterStats stats, int buff) => new BatterStats(
-            Mathf.Max(MinEffectiveStatValue, stats.Power + buff),
-            Mathf.Max(MinEffectiveStatValue, stats.Contact + buff),
-            Mathf.Max(MinEffectiveStatValue, stats.Discipline + buff));
+        // [TASK-KBO-089] operator+(Types.cs, TASK-088)로 5개 필드를 한 번에 가산한 뒤 클램핑만 필드별로
+        // 적용한다 - Speed/Defense가 이전에는 여기서 0으로 유실되던 결함을 해소했다.
+        private static BatterStats AddTeamBuff(BatterStats stats, int buff)
+        {
+            var buffed = stats + new BatterStats(buff, buff, buff, buff, buff);
+            return new BatterStats(
+                Mathf.Max(MinEffectiveStatValue, buffed.Power),
+                Mathf.Max(MinEffectiveStatValue, buffed.Contact),
+                Mathf.Max(MinEffectiveStatValue, buffed.Discipline),
+                Mathf.Max(MinEffectiveStatValue, buffed.Speed),
+                Mathf.Max(MinEffectiveStatValue, buffed.Defense));
+        }
 
-        private static PitcherStats AddTeamBuff(PitcherStats stats, int buff) => new PitcherStats(
-            Mathf.Max(MinEffectiveStatValue, stats.Stuff + buff),
-            Mathf.Max(MinEffectiveStatValue, stats.Velocity + buff),
-            Mathf.Max(MinEffectiveStatValue, stats.Movement + buff),
-            Mathf.Max(MinEffectiveStatValue, stats.Control + buff));
+        private static PitcherStats AddTeamBuff(PitcherStats stats, int buff)
+        {
+            var buffed = stats + new PitcherStats(buff, buff, buff, buff, buff);
+            return new PitcherStats(
+                Mathf.Max(MinEffectiveStatValue, buffed.Stuff),
+                Mathf.Max(MinEffectiveStatValue, buffed.Velocity),
+                Mathf.Max(MinEffectiveStatValue, buffed.Movement),
+                Mathf.Max(MinEffectiveStatValue, buffed.Control),
+                Mathf.Max(MinEffectiveStatValue, buffed.Stamina));
+        }
 
+        // [TASK-KBO-089] 배율(곱셈)은 operator+로 표현할 수 없어 기존과 동일하게 필드별로 직접 계산하되,
+        // Speed/Defense/Stamina를 누락 없이 포함하도록 갱신했다.
         private static BatterStats Scale(BatterStats stats, float multiplier) => new BatterStats(
             Mathf.RoundToInt(stats.Power * multiplier),
             Mathf.RoundToInt(stats.Contact * multiplier),
-            Mathf.RoundToInt(stats.Discipline * multiplier));
+            Mathf.RoundToInt(stats.Discipline * multiplier),
+            Mathf.RoundToInt(stats.Speed * multiplier),
+            Mathf.RoundToInt(stats.Defense * multiplier));
 
         private static PitcherStats Scale(PitcherStats stats, float multiplier) => new PitcherStats(
             Mathf.RoundToInt(stats.Stuff * multiplier),
             Mathf.RoundToInt(stats.Velocity * multiplier),
             Mathf.RoundToInt(stats.Movement * multiplier),
-            Mathf.RoundToInt(stats.Control * multiplier));
+            Mathf.RoundToInt(stats.Control * multiplier),
+            Mathf.RoundToInt(stats.Stamina * multiplier));
 
         /// <summary>
         /// skillOwner가 보유한 스킬 중 지정한 wantedTarget(Self/Opponent)에 해당하고 조건을 만족하는 것만
@@ -1008,20 +1026,26 @@ namespace KBOManager.Engine
             return stats;
         }
 
+        // [TASK-KBO-089] 5-인자 생성자로 나머지 필드를 그대로 보존(stats.Speed/stats.Defense 등)하며 지정된
+        // 한 필드만 값을 더한다 - StatType에 없는 케이스는 아래 `_ => stats`가 그대로 흡수해 예외를 던지지
+        // 않는다(AC-03, 명령서 7항).
         private static BatterStats ApplyModifier(BatterStats stats, StatType stat, int value) => stat switch
         {
-            StatType.Power => new BatterStats(stats.Power + value, stats.Contact, stats.Discipline),
-            StatType.Contact => new BatterStats(stats.Power, stats.Contact + value, stats.Discipline),
-            StatType.Discipline => new BatterStats(stats.Power, stats.Contact, stats.Discipline + value),
+            StatType.Power => new BatterStats(stats.Power + value, stats.Contact, stats.Discipline, stats.Speed, stats.Defense),
+            StatType.Contact => new BatterStats(stats.Power, stats.Contact + value, stats.Discipline, stats.Speed, stats.Defense),
+            StatType.Discipline => new BatterStats(stats.Power, stats.Contact, stats.Discipline + value, stats.Speed, stats.Defense),
+            StatType.Speed => new BatterStats(stats.Power, stats.Contact, stats.Discipline, stats.Speed + value, stats.Defense),
+            StatType.Defense => new BatterStats(stats.Power, stats.Contact, stats.Discipline, stats.Speed, stats.Defense + value),
             _ => stats // 투수 전용 StatType이 잘못 설정된 경우 무시
         };
 
         private static PitcherStats ApplyModifier(PitcherStats stats, StatType stat, int value) => stat switch
         {
-            StatType.Stuff => new PitcherStats(stats.Stuff + value, stats.Velocity, stats.Movement, stats.Control),
-            StatType.Velocity => new PitcherStats(stats.Stuff, stats.Velocity + value, stats.Movement, stats.Control),
-            StatType.Movement => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement + value, stats.Control),
-            StatType.Control => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement, stats.Control + value),
+            StatType.Stuff => new PitcherStats(stats.Stuff + value, stats.Velocity, stats.Movement, stats.Control, stats.Stamina),
+            StatType.Velocity => new PitcherStats(stats.Stuff, stats.Velocity + value, stats.Movement, stats.Control, stats.Stamina),
+            StatType.Movement => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement + value, stats.Control, stats.Stamina),
+            StatType.Control => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement, stats.Control + value, stats.Stamina),
+            StatType.Stamina => new PitcherStats(stats.Stuff, stats.Velocity, stats.Movement, stats.Control, stats.Stamina + value),
             _ => stats // 타자 전용 StatType이 잘못 설정된 경우 무시
         };
 

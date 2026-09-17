@@ -27,8 +27,9 @@ namespace KBOManager.Managers
 
         private const string ResourcePath = "Data/players";
 
-        // 헤더: player_id,team_id,name,year,position,pa_ip,z_contact,z_eye,z_power,z_speed,z_def,z_stamina,active
-        private const int ExpectedColumnCount = 13;
+        // 헤더: player_id,team_id,name,year,position,pa_ip,z_contact,z_eye,z_power,z_speed,z_def,z_stamina,active,
+        // z_stuff,z_control,z_movement ([TASK-KBO-088] 기존 13컬럼 뒤에 투수 전용 Z-score 3종을 추가한 16컬럼)
+        private const int ExpectedColumnCount = 16;
 
         /// <summary>
         /// [TASK-KBO-085/086] CSV의 team_id(예: "TEM_001")를 Team enum으로 매핑하는 표. team_id 값이
@@ -108,8 +109,9 @@ namespace KBOManager.Managers
         ///
         /// [TASK-KBO-082 범위 제외, TASK-KBO-085에서도 계속 제외] cards.csv(등급/샐러리/강화 상한 등 카드
         /// 변형 데이터)는 조인하지 않는다 - 여기서 생성되는 템플릿의 Grade는 기본값(Grade.SEASON = 0)으로
-        /// 남는다. z_contact 등 6종 Z-score를 BatterStats/PitcherStats(정수)로 변환하는 공식도 아직
-        /// 확정되지 않아(명령서 5항이 이번 작업에서도 배제를 명시) 세부 스탯은 기본값(0)으로 남는다.
+        /// 남는다. [TASK-KBO-088] z_contact 등 9종 Z-score → BatterStats/PitcherStats(정수) 변환은
+        /// ParseCsv() 내부에서 ConvertZScoreToStat()으로 실제 구현되었다(docs/11_data_dictionary.md D절
+        /// 확정 공식).
         /// </summary>
         private void Initialize()
         {
@@ -176,13 +178,40 @@ namespace KBOManager.Managers
                     template.Team = team;
                     template.IsPitcher = isPitcher;
 
+                    // [TASK-KBO-088] docs/11_data_dictionary.md D절 확정 공식을 적용해 6종 공통 Z-score +
+                    // 투수 전용 3종(z_stuff/z_control/z_movement, columns[13..15])을 1~100 정수 스탯으로
+                    // 환산한다. z_speed는 PM 확정(명령서 3-3항)에 따라 타자는 Speed, 투수는 Velocity로
+                    // 다형성 매핑한다. 개별 컬럼 파싱 실패(빈 값/포맷 오류)는 ParseZScore가 0.0f로 안전하게
+                    // 폴백해 한 컬럼 오류로 행 전체가 스킵되지 않는다(명령서 7항).
+                    float zContact = ParseZScore(columns[6]);
+                    float zEye = ParseZScore(columns[7]);
+                    float zPower = ParseZScore(columns[8]);
+                    float zSpeed = ParseZScore(columns[9]);
+                    float zDef = ParseZScore(columns[10]);
+                    float zStamina = ParseZScore(columns[11]);
+                    float zStuff = ParseZScore(columns[13]);
+                    float zControl = ParseZScore(columns[14]);
+                    float zMovement = ParseZScore(columns[15]);
+
                     if (isPitcher)
                     {
                         template.PitcherRole = ParsePitcherRole(position);
+                        template.PitcherStats = new PitcherStats(
+                            ConvertZScoreToStat(zStuff),
+                            ConvertZScoreToStat(zSpeed), // 투수: z_speed → 구속(Velocity)
+                            ConvertZScoreToStat(zMovement),
+                            ConvertZScoreToStat(zControl),
+                            ConvertZScoreToStat(zStamina));
                     }
                     else
                     {
                         template.BatterPosition = ParseBatterPosition(position);
+                        template.BatterStats = new BatterStats(
+                            ConvertZScoreToStat(zPower),
+                            ConvertZScoreToStat(zContact),
+                            ConvertZScoreToStat(zEye),
+                            ConvertZScoreToStat(zSpeed), // 타자: z_speed → 주력(Speed)
+                            ConvertZScoreToStat(zDef));
                     }
 
                     templates[playerId] = template;
@@ -197,6 +226,16 @@ namespace KBOManager.Managers
 
             Debug.Log($"[PlayerDatabase] players.csv에서 템플릿 {loadedCount}개를 로드했습니다.");
         }
+
+        /// <summary>[TASK-KBO-088] docs/11_data_dictionary.md D절 확정 공식. 평균(Z=0)을 50점에, 표준편차
+        /// 1당 ±15점에 대응시키고 1~100 범위로 clamp한다.</summary>
+        private static int ConvertZScoreToStat(float zScore) =>
+            Mathf.Clamp(Mathf.RoundToInt(zScore * 15f + 50f), 1, 100);
+
+        /// <summary>[TASK-KBO-088] 명령서 7항 - Z-score 컬럼 하나가 비어 있거나 포맷이 잘못돼도 행 전체가
+        /// 스킵되지 않도록 예외 대신 0.0f로 안전하게 폴백한다.</summary>
+        private static float ParseZScore(string raw) =>
+            float.TryParse(raw?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0f;
 
         private static bool IsPitcherPosition(string position) =>
             position == "SP" || position == "RP" || position == "CP";

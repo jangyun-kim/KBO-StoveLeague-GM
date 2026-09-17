@@ -26,8 +26,13 @@ namespace KBOManager.Data
         Opponent
     }
 
-    /// <summary>스탯 증감의 대상. 배터용(Power/Contact/Discipline)과 투수용(Stuff/Velocity/Movement/Control)이 한 enum에 공존하며,
-    /// 대상이 아닌 쪽 StatType이 잘못 설정되면 적용 시 무시된다(예: 타자 스탯에 Stuff를 지정한 경우).</summary>
+    /// <summary>스탯 증감의 대상. 배터용(Power/Contact/Discipline/Speed/Defense)과 투수용(Stuff/Velocity/
+    /// Movement/Control/Stamina)이 한 enum에 공존하며, 대상이 아닌 쪽 StatType이 잘못 설정되면 적용 시
+    /// 무시된다(예: 타자 스탯에 Stuff를 지정한 경우).
+    /// [TASK-KBO-089] Speed/Defense/Stamina를 끝에 추가했다 - 이 enum은 SkillDB(.asset)에 정수값으로
+    /// 직렬화되는 StatModifier.Stat의 타입이라, 기존 값(Power=0~Control=6)의 순서를 바꾸면 이미 저장된
+    /// 에셋의 스탯 지정이 깨진다(docs/11_data_dictionary.md 7절의 CheerleaderGrade 선례와 동일한 주의 -
+    /// 반드시 끝에만 추가).</summary>
     public enum StatType
     {
         Power,
@@ -36,7 +41,10 @@ namespace KBOManager.Data
         Stuff,
         Velocity,
         Movement,
-        Control
+        Control,
+        Speed,
+        Defense,
+        Stamina
     }
 
     /// <summary>스킬 발동 조건. MatchState 연동 이후 모든 값이 MatchEngine에서 실제로 평가된다.</summary>

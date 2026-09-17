@@ -17,11 +17,19 @@ namespace KBOManager.Controllers
         [Header("References")]
         [SerializeField] private ScoutManager scoutManager;
 
+        [Header("Roll Buttons")]
+        [Tooltip("[TASK-KBO-092] 1회 뽑기 버튼. ScoutManager.Roll1()을 호출한다.")]
+        [SerializeField] private Button roll1Button;
+        [Tooltip("[TASK-KBO-092] 10회 뽑기 버튼. ScoutManager.Roll10()을 호출한다.")]
+        [SerializeField] private Button roll10Button;
+
         [Header("Result Popup")]
         [SerializeField] private GameObject resultPopupRoot;
         [Tooltip("카드 10장이 배치될 부모. GridLayoutGroup을 붙여 자동 정렬한다.")]
         [SerializeField] private Transform cardContainer;
         [SerializeField] private PlayerCardUI cardPrefab;
+        [Tooltip("[TASK-KBO-093] 결과 팝업을 닫는 '확인' 버튼. CloseResultPopup()을 호출한다.")]
+        [SerializeField] private Button closeResultPopupButton;
 
         [Header("Top Pull Announcement")]
         [Tooltip("결과에 SIGNATURE 이상 등급 카드가 있을 때만 활성화되는 강조 텍스트.")]
@@ -36,6 +44,9 @@ namespace KBOManager.Controllers
         private void Awake()
         {
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+            if (roll1Button != null) roll1Button.onClick.AddListener(ExecuteRoll1);
+            if (roll10Button != null) roll10Button.onClick.AddListener(ExecuteRoll10);
+            if (closeResultPopupButton != null) closeResultPopupButton.onClick.AddListener(CloseResultPopup);
         }
 
         // GDD 2절 등급 서열(숫자가 클수록 상위 등급). "최고급"의 기준(SIGNATURE 이상)을 여기서 정한다.
@@ -52,6 +63,21 @@ namespace KBOManager.Controllers
         private const Grade TopPullThreshold = Grade.SIGNATURE;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
+
+        /// <summary>[TASK-KBO-092] 1회 뽑기 버튼 OnClick. ScoutManager.Roll1()의 단일 결과를 리스트로
+        /// 감싸 ShowResults()에 그대로 위임한다 - 카드 렌더링 경로를 10연차와 통일해 중복 로직을 만들지
+        /// 않는다.</summary>
+        public void ExecuteRoll1()
+        {
+            if (scoutManager == null)
+            {
+                Debug.LogWarning("[ScoutUIController] ScoutManager가 연결되지 않았습니다.");
+                return;
+            }
+
+            var player = scoutManager.Roll1();
+            ShowResults(player != null ? new List<Player> { player } : new List<Player>());
+        }
 
         /// <summary>10연차 뽑기 버튼 OnClick.</summary>
         public void ExecuteRoll10()

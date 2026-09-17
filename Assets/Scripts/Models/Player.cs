@@ -137,7 +137,7 @@ namespace KBOManager.Models
         private const int AwakenPerStatBonus = 1;
 
         /// <summary>
-        /// 강화/각성 성장치가 반영된 타자 세부 스탯. Template이 없거나 투수 카드면 default(0,0,0)를 반환한다.
+        /// 강화/각성 성장치가 반영된 타자 세부 스탯. Template이 없거나 투수 카드면 default(0,0,0,0,0)를 반환한다.
         /// 스킬/세트덱 보너스는 매치 컨텍스트(상대방 존재)가 필요해 여기 포함하지 않으며, MatchEngine이 계산 시점에 적용한다.
         /// </summary>
         public BatterStats GetEffectiveBatterStats()
@@ -145,12 +145,13 @@ namespace KBOManager.Models
             if (Template == null || Template.IsPitcher) return default;
 
             int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
-            var baseStats = Template.BatterStats;
-            return new BatterStats(baseStats.Power + growth, baseStats.Contact + growth, baseStats.Discipline + growth);
+            // [TASK-KBO-089] operator+(Types.cs, TASK-088)로 5개 필드 전부에 growth를 균등 가산한다 - 이전에는
+            // 3-인자 생성자로 재조립하면서 Speed/Defense가 0으로 유실되었다.
+            return Template.BatterStats + new BatterStats(growth, growth, growth, growth, growth);
         }
 
         /// <summary>
-        /// 강화/각성 성장치가 반영된 투수 세부 스탯. Template이 없거나 타자 카드면 default(0,0,0,0)를 반환한다.
+        /// 강화/각성 성장치가 반영된 투수 세부 스탯. Template이 없거나 타자 카드면 default(0,0,0,0,0)를 반환한다.
         /// 스킬/세트덱 보너스는 매치 컨텍스트(상대방 존재)가 필요해 여기 포함하지 않으며, MatchEngine이 계산 시점에 적용한다.
         /// </summary>
         public PitcherStats GetEffectivePitcherStats()
@@ -158,8 +159,9 @@ namespace KBOManager.Models
             if (Template == null || !Template.IsPitcher) return default;
 
             int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
-            var baseStats = Template.PitcherStats;
-            return new PitcherStats(baseStats.Stuff + growth, baseStats.Velocity + growth, baseStats.Movement + growth, baseStats.Control + growth);
+            // [TASK-KBO-089] operator+(Types.cs, TASK-088)로 5개 필드 전부에 growth를 균등 가산한다 - 이전에는
+            // 4-인자 생성자로 재조립하면서 Stamina가 0으로 유실되었다.
+            return Template.PitcherStats + new PitcherStats(growth, growth, growth, growth, growth);
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using KBOManager.Controllers;
 using KBOManager.Managers;
+using KBOManager.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,10 +15,13 @@ namespace KBOManager.EditorTools
     /// "닫기" 버튼을 만들어 바인딩하고, UIManager.screens에 Scout 화면을 등록한다. SetupShopUI.cs와
     /// 동일한 관례(이름으로 기존 오브젝트를 찾아 재사용, 없으면 생성)로 여러 번 실행해도 안전하다.
     ///
-    /// [범위 제외] ScoutUIController의 resultPopupRoot/cardContainer/cardPrefab/topPullAnnouncementText
-    /// (10연뽑 결과 팝업 내부 UI)는 이번 작업의 포함 범위(4개 항목: 패널/진입 버튼/닫기 버튼/screens
-    /// 등록)에 없고, 명령서 5항이 "화려한 UI 디자인 배치(그리드 레이아웃 조작 등)는 생략"을 명시해
-    /// 바인딩하지 않는다 - PlayerCardUI 프리팹 제작이 필요한 후속 작업이다.
+    /// [TASK-KBO-092] TASK-083 당시 범위 제외됐던 resultPopupRoot/cardContainer/cardPrefab 바인딩을
+    /// 이번에 완성한다 - ResultPopup(+GridLayoutGroup CardContainer)을 ScoutPanel 하위에 조립하고,
+    /// 숨겨진 `_Templates` 노드 하위에 PlayerCardUI가 부착된 PlayerCardTemplate을 만들어 연결한다.
+    /// 1회/10회 뽑기 버튼도 신설해 ScoutUIController.ExecuteRoll1()/ExecuteRoll10()에 연결한다.
+    /// SetupCheerleaderUI.cs의 슬롯 템플릿 조립 패턴(SerializedObject.FindProperty로 필드 바인딩,
+    /// `_Templates` 홀더를 SetActive(false)로 숨기되 템플릿 오브젝트 자신은 activeSelf=true 유지)을
+    /// 그대로 따른다.
     /// </summary>
     public static class SetupScoutUI
     {
@@ -25,6 +29,13 @@ namespace KBOManager.EditorTools
         private const string ScoutPanelName = "ScoutPanel";
         private const string ScoutButtonName = "ScoutButton";
         private const string CloseButtonName = "CloseButton";
+        private const string Roll1ButtonName = "Roll1Button";
+        private const string Roll10ButtonName = "Roll10Button";
+        private const string ResultPopupName = "ResultPopup";
+        private const string ClosePopupButtonName = "ClosePopupBtn";
+        private const string CardContainerName = "CardContainer";
+        private const string TemplatesHolderName = "_Templates";
+        private const string CardTemplateName = "PlayerCardTemplate";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Scout UI")]
         public static void AutoConnectScoutUI()
@@ -32,6 +43,11 @@ namespace KBOManager.EditorTools
             var canvas = EnsureCanvas();
             var scoutController = FindOrCreateScoutPanel(canvas.transform);
             BindScoutController(scoutController);
+            BindRollButtons(scoutController);
+
+            var (resultPopupRoot, cardContainer, closeResultPopupButton) = FindOrCreateResultPopup(scoutController.transform);
+            var cardTemplate = FindOrCreateCardTemplate(canvas.transform);
+            BindScoutResultFields(scoutController, resultPopupRoot, cardContainer, cardTemplate, closeResultPopupButton);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -109,6 +125,373 @@ namespace KBOManager.EditorTools
         {
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기", new Vector2(20f, 20f));
             BindButtonField(controller, "closeButton", closeButton);
+        }
+
+        /// <summary>[TASK-KBO-092] 1회/10회 뽑기 버튼을 만들어 ScoutUIController.roll1Button/roll10Button에
+        /// 바인딩한다. 실제 onClick 연결(ExecuteRoll1/ExecuteRoll10)은 ScoutUIController.Awake()가 담당한다
+        /// (closeButton과 동일한 관례 - 에디터 스크립트는 필드 참조만 채운다).</summary>
+        private static void BindRollButtons(ScoutUIController controller)
+        {
+            var roll1Button = FindOrCreateButton(controller.transform, Roll1ButtonName, "1회 뽑기", new Vector2(200f, 20f));
+            BindButtonField(controller, "roll1Button", roll1Button);
+
+            var roll10Button = FindOrCreateButton(controller.transform, Roll10ButtonName, "10회 뽑기", new Vector2(380f, 20f));
+            BindButtonField(controller, "roll10Button", roll10Button);
+        }
+
+        /// <summary>[TASK-KBO-092/093] ScoutPanel 하위에 결과 팝업(ResultPopup)과 그 안의 카드 컨테이너
+        /// (GridLayoutGroup), 그리고 팝업을 닫는 "확인" 버튼(ClosePopupBtn)을 조립한다. 팝업은 평소 숨겨져
+        /// 있다가 ScoutUIController.ShowResults()가 뽑기 시점에 활성화한다(기존 런타임 로직, 여기서는 최초
+        /// 생성 시 초기 상태만 비활성으로 맞춘다). [TASK-KBO-093] TASK-092가 남긴 "팝업을 닫을 버튼이
+        /// 없다"는 UX 블로커를 여기서 해소한다.</summary>
+        private static (GameObject popupRoot, Transform container, Button closeButton) FindOrCreateResultPopup(Transform scoutPanelTransform)
+        {
+            var existingPopup = scoutPanelTransform.Find(ResultPopupName);
+            GameObject popupObject;
+            if (existingPopup != null)
+            {
+                popupObject = existingPopup.gameObject;
+            }
+            else
+            {
+                popupObject = new GameObject(ResultPopupName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(popupObject, $"Create {ResultPopupName}");
+                popupObject.transform.SetParent(scoutPanelTransform, false);
+
+                var rect = (RectTransform)popupObject.transform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                popupObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
+                popupObject.SetActive(false);
+            }
+
+            var container = FindOrCreateCardContainer(popupObject.transform);
+            var closeButton = FindOrCreateButton(popupObject.transform, ClosePopupButtonName, "확인", new Vector2(300f, 20f));
+
+            return (popupObject, container, closeButton);
+        }
+
+        private static Transform FindOrCreateCardContainer(Transform popupTransform)
+        {
+            var existingContainer = popupTransform.Find(CardContainerName);
+            if (existingContainer != null) return existingContainer;
+
+            var containerObject = new GameObject(CardContainerName, typeof(RectTransform), typeof(GridLayoutGroup));
+            Undo.RegisterCreatedObjectUndo(containerObject, $"Create {CardContainerName}");
+            containerObject.transform.SetParent(popupTransform, false);
+
+            var rect = (RectTransform)containerObject.transform;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(760f, 420f);
+            rect.anchoredPosition = Vector2.zero;
+
+            var grid = containerObject.GetComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(140f, 200f);
+            grid.spacing = new Vector2(10f, 10f);
+            grid.childAlignment = TextAnchor.UpperCenter;
+
+            return containerObject.transform;
+        }
+
+        /// <summary>ScoutUIController의 resultPopupRoot/cardContainer/cardPrefab/closeResultPopupButton
+        /// 4개 필드를 바인딩한다.</summary>
+        private static void BindScoutResultFields(ScoutUIController controller, GameObject resultPopupRoot,
+            Transform cardContainer, PlayerCardUI cardTemplate, Button closeResultPopupButton)
+        {
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("resultPopupRoot").objectReferenceValue = resultPopupRoot;
+            serializedController.FindProperty("cardContainer").objectReferenceValue = cardContainer;
+            serializedController.FindProperty("cardPrefab").objectReferenceValue = cardTemplate;
+            serializedController.FindProperty("closeResultPopupButton").objectReferenceValue = closeResultPopupButton;
+            serializedController.ApplyModifiedProperties();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-092] "프리팹 대용" PlayerCardUI 템플릿을 `_Templates` 노드 하위에 조립한다.
+        /// SetupCheerleaderUI.FindOrCreateSlotTemplate()과 동일한 관례 - 부모(`_Templates`)는
+        /// SetActive(false)로 숨기지만, 템플릿 오브젝트 자신의 activeSelf는 반드시 true로 유지한다
+        /// (ScoutUIController.SpawnCard()가 Instantiate(cardPrefab, cardContainer)로 복제할 때 원본의
+        /// activeSelf를 그대로 복사하므로, 여기서 false를 두면 실제로 뽑은 카드 전부가 비활성 상태로
+        /// 태어나 화면에 표시되지 않는다). PlayerCardUI.cs의 모든 [SerializeField] 필드(Text 4종,
+        /// frameImage, starIcons 6개, selectedOverlay, checkmarkIcon, staminaBarRoot/staminaFillImage,
+        /// conditionIconImage/conditionArrowText)를 누락 없이 생성·바인딩한다.
+        /// </summary>
+        private static PlayerCardUI FindOrCreateCardTemplate(Transform canvasTransform)
+        {
+            var holderTransform = canvasTransform.Find(TemplatesHolderName);
+            if (holderTransform == null)
+            {
+                var holderObject = new GameObject(TemplatesHolderName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(holderObject, $"Create {TemplatesHolderName}");
+                holderObject.transform.SetParent(canvasTransform, false);
+                holderObject.SetActive(false);
+                holderTransform = holderObject.transform;
+            }
+
+            var cardObject = FindOrCreateCardRoot(holderTransform);
+            var cardTransform = cardObject.transform;
+
+            var nameText = FindOrCreateText(cardTransform, "NameText", new Vector2(0.5f, 1f), new Vector2(0f, -6f), new Vector2(132f, 20f));
+            var teamText = FindOrCreateText(cardTransform, "TeamText", new Vector2(0.5f, 1f), new Vector2(0f, -26f), new Vector2(132f, 18f));
+            var positionText = FindOrCreateText(cardTransform, "PositionText", new Vector2(0.5f, 1f), new Vector2(0f, -44f), new Vector2(132f, 18f));
+            var ovrText = FindOrCreateText(cardTransform, "OvrText", new Vector2(0.5f, 1f), new Vector2(0f, -90f), new Vector2(132f, 20f));
+
+            var frameImage = cardObject.GetComponent<Image>();
+            var starIcons = FindOrCreateStarIcons(cardTransform);
+            var selectedOverlay = FindOrCreateSelectedOverlay(cardTransform);
+            var checkmarkIcon = FindOrCreateCheckmark(cardTransform);
+            var (staminaBarRoot, staminaFillImage) = FindOrCreateStaminaBar(cardTransform);
+            var (conditionIconImage, conditionArrowText) = FindOrCreateConditionIndicator(cardTransform);
+
+            var cardUI = cardObject.GetComponent<PlayerCardUI>();
+            if (cardUI == null) cardUI = cardObject.AddComponent<PlayerCardUI>();
+
+            var serializedCard = new SerializedObject(cardUI);
+            serializedCard.FindProperty("nameText").objectReferenceValue = nameText;
+            serializedCard.FindProperty("teamText").objectReferenceValue = teamText;
+            serializedCard.FindProperty("positionText").objectReferenceValue = positionText;
+            serializedCard.FindProperty("ovrText").objectReferenceValue = ovrText;
+            serializedCard.FindProperty("frameImage").objectReferenceValue = frameImage;
+
+            var starIconsProperty = serializedCard.FindProperty("starIcons");
+            starIconsProperty.arraySize = starIcons.Length;
+            for (int i = 0; i < starIcons.Length; i++)
+            {
+                starIconsProperty.GetArrayElementAtIndex(i).objectReferenceValue = starIcons[i];
+            }
+
+            serializedCard.FindProperty("selectedOverlay").objectReferenceValue = selectedOverlay;
+            serializedCard.FindProperty("checkmarkIcon").objectReferenceValue = checkmarkIcon;
+            serializedCard.FindProperty("staminaBarRoot").objectReferenceValue = staminaBarRoot;
+            serializedCard.FindProperty("staminaFillImage").objectReferenceValue = staminaFillImage;
+            serializedCard.FindProperty("conditionIconImage").objectReferenceValue = conditionIconImage;
+            serializedCard.FindProperty("conditionArrowText").objectReferenceValue = conditionArrowText;
+            serializedCard.ApplyModifiedProperties();
+
+            return cardUI;
+        }
+
+        private static GameObject FindOrCreateCardRoot(Transform holderTransform)
+        {
+            var existingCard = holderTransform.Find(CardTemplateName);
+            if (existingCard != null) return existingCard.gameObject;
+
+            var cardObject = new GameObject(CardTemplateName, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(cardObject, $"Create {CardTemplateName}");
+            cardObject.transform.SetParent(holderTransform, false);
+
+            var rect = (RectTransform)cardObject.transform;
+            rect.sizeDelta = new Vector2(140f, 200f);
+
+            cardObject.GetComponent<Image>().color = Color.white;
+
+            return cardObject;
+        }
+
+        private static Text FindOrCreateText(Transform parent, string name, Vector2 anchor, Vector2 anchoredPosition, Vector2 sizeDelta)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null && existingChild.TryGetComponent<Text>(out var existingText)) return existingText;
+
+            var textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
+            textObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)textObject.transform;
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.sizeDelta = sizeDelta;
+            rect.anchoredPosition = anchoredPosition;
+
+            var text = textObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 14;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            return text;
+        }
+
+        private static Image[] FindOrCreateStarIcons(Transform cardTransform)
+        {
+            const int starCount = 6;
+            const float spacing = 20f;
+            float startX = -(spacing * (starCount - 1)) / 2f;
+
+            var icons = new Image[starCount];
+            for (int i = 0; i < starCount; i++)
+            {
+                string name = $"Star{i + 1}";
+                var existingChild = cardTransform.Find(name);
+                if (existingChild != null && existingChild.TryGetComponent<Image>(out var existingImage))
+                {
+                    icons[i] = existingImage;
+                    continue;
+                }
+
+                var starObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(starObject, $"Create {name}");
+                starObject.transform.SetParent(cardTransform, false);
+
+                var rect = (RectTransform)starObject.transform;
+                rect.anchorMin = new Vector2(0.5f, 1f);
+                rect.anchorMax = new Vector2(0.5f, 1f);
+                rect.pivot = new Vector2(0.5f, 1f);
+                rect.sizeDelta = new Vector2(16f, 16f);
+                rect.anchoredPosition = new Vector2(startX + spacing * i, -66f);
+
+                var image = starObject.GetComponent<Image>();
+                image.color = new Color(0.35f, 0.35f, 0.35f, 1f);
+                image.raycastTarget = false;
+
+                icons[i] = image;
+            }
+
+            return icons;
+        }
+
+        /// <summary>카드 전체를 덮는 선택 표시 오버레이. 평소 비활성 상태로 둔다(PlayerCardUI.SetSelected()가 토글).</summary>
+        private static GameObject FindOrCreateSelectedOverlay(Transform cardTransform)
+        {
+            const string name = "SelectedOverlay";
+            var existingChild = cardTransform.Find(name);
+            if (existingChild != null) return existingChild.gameObject;
+
+            var overlayObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(overlayObject, $"Create {name}");
+            overlayObject.transform.SetParent(cardTransform, false);
+
+            var rect = (RectTransform)overlayObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var image = overlayObject.GetComponent<Image>();
+            image.color = new Color(0f, 0f, 0f, 0.5f);
+            image.raycastTarget = false;
+
+            overlayObject.SetActive(false);
+            return overlayObject;
+        }
+
+        /// <summary>좌상단 체크마크 아이콘. 평소 비활성 상태로 둔다.</summary>
+        private static GameObject FindOrCreateCheckmark(Transform cardTransform)
+        {
+            const string name = "CheckmarkIcon";
+            var existingChild = cardTransform.Find(name);
+            if (existingChild != null) return existingChild.gameObject;
+
+            var checkObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(checkObject, $"Create {name}");
+            checkObject.transform.SetParent(cardTransform, false);
+
+            var rect = (RectTransform)checkObject.transform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.sizeDelta = new Vector2(20f, 20f);
+            rect.anchoredPosition = new Vector2(4f, -4f);
+
+            var image = checkObject.GetComponent<Image>();
+            image.color = new Color(0.2f, 0.8f, 0.2f);
+            image.raycastTarget = false;
+
+            checkObject.SetActive(false);
+            return checkObject;
+        }
+
+        /// <summary>하단 체력 게이지(Image.Type=Filled, Horizontal). 투수 카드에서만 PlayerCardUI.SetupStamina()가
+        /// 활성화·fillAmount를 갱신한다.</summary>
+        private static (GameObject root, Image fill) FindOrCreateStaminaBar(Transform cardTransform)
+        {
+            const string rootName = "StaminaBarRoot";
+            var rootTransform = cardTransform.Find(rootName);
+            GameObject rootObject;
+            if (rootTransform != null)
+            {
+                rootObject = rootTransform.gameObject;
+            }
+            else
+            {
+                rootObject = new GameObject(rootName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(rootObject, $"Create {rootName}");
+                rootObject.transform.SetParent(cardTransform, false);
+
+                var rect = (RectTransform)rootObject.transform;
+                rect.anchorMin = new Vector2(0.5f, 0f);
+                rect.anchorMax = new Vector2(0.5f, 0f);
+                rect.pivot = new Vector2(0.5f, 0f);
+                rect.sizeDelta = new Vector2(120f, 8f);
+                rect.anchoredPosition = new Vector2(0f, 6f);
+
+                rootObject.GetComponent<Image>().color = new Color(0.2f, 0.2f, 0.2f);
+            }
+
+            var fillTransform = rootObject.transform.Find("Fill");
+            if (fillTransform != null && fillTransform.TryGetComponent<Image>(out var existingFill))
+            {
+                return (rootObject, existingFill);
+            }
+
+            var fillObject = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(fillObject, "Create Fill");
+            fillObject.transform.SetParent(rootObject.transform, false);
+
+            var fillRect = (RectTransform)fillObject.transform;
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+
+            var fillImage = fillObject.GetComponent<Image>();
+            fillImage.color = Color.green;
+            fillImage.type = Image.Type.Filled;
+            fillImage.fillMethod = Image.FillMethod.Horizontal;
+            fillImage.raycastTarget = false;
+
+            return (rootObject, fillImage);
+        }
+
+        /// <summary>우상단 컨디션 아이콘 + 화살표 텍스트.</summary>
+        private static (Image icon, Text arrow) FindOrCreateConditionIndicator(Transform cardTransform)
+        {
+            const string iconName = "ConditionIcon";
+            Image iconImage;
+            var iconTransform = cardTransform.Find(iconName);
+            if (iconTransform != null && iconTransform.TryGetComponent<Image>(out iconImage))
+            {
+                // 기존 오브젝트 재사용
+            }
+            else
+            {
+                var iconObject = new GameObject(iconName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(iconObject, $"Create {iconName}");
+                iconObject.transform.SetParent(cardTransform, false);
+
+                var rect = (RectTransform)iconObject.transform;
+                rect.anchorMin = new Vector2(1f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(1f, 1f);
+                rect.sizeDelta = new Vector2(16f, 16f);
+                rect.anchoredPosition = new Vector2(-4f, -4f);
+
+                iconImage = iconObject.GetComponent<Image>();
+                iconImage.color = new Color(0.75f, 0.75f, 0.75f);
+                iconImage.raycastTarget = false;
+            }
+
+            var arrowText = FindOrCreateText(cardTransform, "ConditionArrowText",
+                new Vector2(1f, 1f), new Vector2(-4f, -22f), new Vector2(20f, 18f));
+
+            return (iconImage, arrowText);
         }
 
         private static Button FindOrCreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)

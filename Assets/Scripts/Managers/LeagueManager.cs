@@ -286,13 +286,15 @@ namespace KBOManager.Managers
             int variance = UnityEngine.Random.Range(-aiOvrVarianceRange, aiOvrVarianceRange + 1);
             int statLevel = Mathf.Max(10, targetStatLevel + variance);
 
+            // [TASK-KBO-089] Speed/Defense/Stamina도 동일한 statLevel로 채워 5개 필드가 항상 채워진 상태를
+            // 유지한다(다른 필드와 동일하게 균등 난수 생성 - 신규 필드만 0으로 남는 불일치 방지).
             if (isPitcher)
             {
-                template.PitcherStats = new PitcherStats(statLevel, statLevel, statLevel, statLevel);
+                template.PitcherStats = new PitcherStats(statLevel, statLevel, statLevel, statLevel, statLevel);
             }
             else
             {
-                template.BatterStats = new BatterStats(statLevel, statLevel, statLevel);
+                template.BatterStats = new BatterStats(statLevel, statLevel, statLevel, statLevel, statLevel);
             }
 
             return template;

@@ -221,15 +221,16 @@ namespace KBOManager.Managers
             template.IsPitcher = isPitcher;
             template.Cost = FranchiseStarCost;
 
+            // [TASK-KBO-089] Speed/Defense/Stamina도 동일한 FranchiseStarStatLevel로 채운다.
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
+                template.PitcherStats = new PitcherStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
+                template.BatterStats = new BatterStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
             }
 
             return template;
@@ -279,15 +280,16 @@ namespace KBOManager.Managers
             template.IsPitcher = isPitcher;
             template.Cost = 1;
 
+            // [TASK-KBO-089] Speed/Defense/Stamina도 동일한 StarterCardStatLevel로 채운다.
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
+                template.PitcherStats = new PitcherStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
+                template.BatterStats = new BatterStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
             }
 
             return template;

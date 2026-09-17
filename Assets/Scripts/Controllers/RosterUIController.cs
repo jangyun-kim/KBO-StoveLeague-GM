@@ -42,8 +42,19 @@ namespace KBOManager.Controllers
         [SerializeField] private Color setDeckActiveColor = new Color(1f, 0.84f, 0f); // 골드
         [SerializeField] private Color setDeckInactiveColor = Color.white;
 
+        [Header("Navigation")]
+        [Tooltip("[TASK-KBO-093] 로스터 화면을 닫고 로비로 돌아가는 버튼. ScoutUIController/" +
+                 "CheerleaderInventoryUIController의 closeButton과 동일한 관례로 UIManager.ShowScreen()만 " +
+                 "호출한다.")]
+        [SerializeField] private Button closeButton;
+
         private readonly List<PlayerCardUI> spawnedBatterCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedPitcherCards = new List<PlayerCardUI>();
+
+        private void Awake()
+        {
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+        }
 
         private void OnEnable()
         {

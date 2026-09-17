@@ -12,16 +12,30 @@ namespace KBOManager.Models
         public int Power;      // 파워: 장타(2루타/3루타/홈런) 확률에 기여
         public int Contact;    // 정확: 삼진 감소, 안타 확률에 기여
         public int Discipline; // 선구: 볼넷 확률 증가, 삼진 감소에 기여
+        public int Speed;      // [TASK-KBO-088] 주력: players.csv의 z_speed(타자) 대응 필드. 현재 MatchEngine은
+                                // 아직 이 필드를 참조하지 않는다(스코프 밖).
+        public int Defense;    // [TASK-KBO-088] 수비: players.csv의 z_def 대응 필드. 현재 MatchEngine은 아직
+                                // 이 필드를 참조하지 않는다(스코프 밖).
 
-        public BatterStats(int power, int contact, int discipline)
+        // [TASK-KBO-088] 기존 3-인자 호출부(MatchEngine/Player/LeagueManager/OnboardingManager 등)를 깨뜨리지
+        // 않기 위해 유지 - Speed/Defense는 0으로 초기화된다. 두 필드를 실제로 채우려면 아래 5-인자 생성자를
+        // 명시적으로 호출해야 한다.
+        public BatterStats(int power, int contact, int discipline) : this(power, contact, discipline, 0, 0)
+        {
+        }
+
+        public BatterStats(int power, int contact, int discipline, int speed, int defense)
         {
             Power = power;
             Contact = contact;
             Discipline = discipline;
+            Speed = speed;
+            Defense = defense;
         }
 
         public static BatterStats operator +(BatterStats a, BatterStats b) =>
-            new BatterStats(a.Power + b.Power, a.Contact + b.Contact, a.Discipline + b.Discipline);
+            new BatterStats(a.Power + b.Power, a.Contact + b.Contact, a.Discipline + b.Discipline,
+                a.Speed + b.Speed, a.Defense + b.Defense);
     }
 
     /// <summary>
@@ -35,17 +49,28 @@ namespace KBOManager.Models
         public int Velocity;   // 구속: 삼진 확률 증가, 장타 억제에 기여
         public int Movement;   // 변화: 범타(땅볼/뜬공) 유도, 장타 억제에 기여
         public int Control;    // 제구: 볼넷 확률 감소에 기여
+        public int Stamina;    // [TASK-KBO-088] 체력: players.csv의 z_stamina 대응 필드. Player.MaxStamina(롤
+                                // 기준 상수)와는 별개이며, 현재 MatchEngine은 아직 이 필드를 참조하지 않는다(스코프 밖).
 
-        public PitcherStats(int stuff, int velocity, int movement, int control)
+        // [TASK-KBO-088] 기존 4-인자 호출부(MatchEngine/Player/LeagueManager/OnboardingManager 등)를 깨뜨리지
+        // 않기 위해 유지 - Stamina는 0으로 초기화된다. 이 필드를 실제로 채우려면 아래 5-인자 생성자를 명시적으로
+        // 호출해야 한다.
+        public PitcherStats(int stuff, int velocity, int movement, int control) : this(stuff, velocity, movement, control, 0)
+        {
+        }
+
+        public PitcherStats(int stuff, int velocity, int movement, int control, int stamina)
         {
             Stuff = stuff;
             Velocity = velocity;
             Movement = movement;
             Control = control;
+            Stamina = stamina;
         }
 
         public static PitcherStats operator +(PitcherStats a, PitcherStats b) =>
-            new PitcherStats(a.Stuff + b.Stuff, a.Velocity + b.Velocity, a.Movement + b.Movement, a.Control + b.Control);
+            new PitcherStats(a.Stuff + b.Stuff, a.Velocity + b.Velocity, a.Movement + b.Movement, a.Control + b.Control,
+                a.Stamina + b.Stamina);
     }
 
     /// <summary>

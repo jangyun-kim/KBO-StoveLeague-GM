@@ -259,15 +259,16 @@ namespace KBOManager.Tools
             template.IsPitcher = isPitcher;
             template.Cost = 1;
 
+            // [TASK-KBO-089] Speed/Defense/Stamina도 동일한 targetStatLevel로 채운다.
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel);
+                template.PitcherStats = new PitcherStats(targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel);
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(targetStatLevel, targetStatLevel, targetStatLevel);
+                template.BatterStats = new BatterStats(targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel);
             }
 
             return new Player(Guid.NewGuid().ToString(), template);
