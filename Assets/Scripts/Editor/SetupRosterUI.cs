@@ -23,6 +23,13 @@ namespace KBOManager.EditorTools
     /// 동작")에 따라 선택적 필드이므로, dashboard/uiManager와 동일한 관례(찾으면 바인딩, 없으면 경고 후
     /// 스킵)를 따른다 - 더미 GameActionController를 생성하지 않는다(RosterManager 배선이 없는 빈 컴포넌트는
     /// 오히려 오해를 유발할 수 있음, 명령서 5항 가드레일 - RosterManager 백엔드는 건드리지 않음).
+    ///
+    /// [TASK-KBO-096] TASK-094가 보류했던 gameActionController 자동 생성을 PM 지시로 완성한다 -
+    /// `FindAnyObjectByType`로 여전히 씬을 먼저 탐색하되(중복 생성 방지), 못 찾으면 canvas 하위
+    /// `UIControllers`(없으면 새로 생성)에 `Undo.AddComponent&lt;GameActionController&gt;()`로 부착한다.
+    /// `GameActionController.rosterManager`는 여전히 비워둔다 - `RosterManager` 자체가 씬에 없고(명령서
+    /// 5항 가드레일, 백엔드 배선은 범위 밖), `ExecuteAutoRoster()`가 `rosterManager == null`을 이미
+    /// 가드하고 있어(원본 코드, 미수정) 크래시 없이 안전하게 비활성 상태로 존재할 수 있다.
     /// </summary>
     public static class SetupRosterUI
     {
@@ -37,6 +44,7 @@ namespace KBOManager.EditorTools
         private const string SetDeckActiveGlowRootName = "SetDeckActiveGlow";
         private const string TemplatesHolderName = "_Templates";
         private const string CardTemplateName = "PlayerCardTemplate";
+        private const string UIControllersHolderName = "UIControllers";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Roster UI")]
         public static void AutoConnectRosterUI()
@@ -56,7 +64,7 @@ namespace KBOManager.EditorTools
 
             BindRosterContainers(rosterController, cardTemplate);
             BindSetDeckVisualization(rosterController);
-            BindGameActionController(rosterController);
+            BindGameActionController(rosterController, canvas.transform);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -290,26 +298,48 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// RosterUIController.gameActionController는 필드 자체 주석("비워두면 자동 갱신 없이 수동
-        /// RefreshRoster()만 동작한다")에 따라 선택적이다. dashboard/uiManager 탐색과 동일한 관례로 씬에서
-        /// 찾아지면 바인딩하고, 없으면 경고만 남기고 넘어간다(더미 컴포넌트를 만들지 않음 - RosterManager
-        /// 미배선 상태의 빈 GameActionController는 오해를 유발할 수 있어 명령서 5항 가드레일에 저촉될 수
-        /// 있다고 판단).
+        /// [TASK-KBO-096] 씬에서 GameActionController를 먼저 탐색해 중복 생성을 막고(명령서 6항), 없으면
+        /// canvas 하위 `UIControllers`(없으면 새로 생성)에 `Undo.AddComponent()`로 부착한 뒤 바인딩한다.
+        /// `rosterManager` 필드는 의도적으로 비워둔다 - `RosterManager`는 여전히 씬에 존재하지 않고
+        /// (명령서 5항 가드레일, 백엔드 배선은 범위 밖), `GameActionController.ExecuteAutoRoster()`가
+        /// `rosterManager == null`일 때 조기 반환하도록 이미 가드되어 있어(원본 코드 152행, 미수정) 크래시
+        /// 위험이 없다.
         /// </summary>
-        private static void BindGameActionController(RosterUIController controller)
+        private static void BindGameActionController(RosterUIController controller, Transform canvasTransform)
         {
             var gameActionController = Object.FindAnyObjectByType<GameActionController>(FindObjectsInactive.Include);
             if (gameActionController == null)
             {
-                Debug.LogWarning("[SetupRosterUI] 씬에서 GameActionController를 찾지 못해 " +
-                    "gameActionController 바인딩을 건너뜁니다. RosterUIController는 이 참조 없이도 " +
-                    "RefreshRoster()를 수동 호출하는 방식으로 동작합니다.");
-                return;
+                var holderObject = FindOrCreateUIControllersHolder(canvasTransform);
+                gameActionController = Undo.AddComponent<GameActionController>(holderObject);
+                EditorUtility.SetDirty(gameActionController);
+
+                Debug.Log($"[SetupRosterUI] 씬에서 GameActionController를 찾지 못해 '{holderObject.name}'에 " +
+                    "새로 생성했습니다. RosterManager는 여전히 배선되지 않아(명령서 5항 가드레일) " +
+                    "ExecuteAutoRoster()는 비활성 상태입니다(null 가드로 안전).");
             }
 
             var serializedController = new SerializedObject(controller);
             serializedController.FindProperty("gameActionController").objectReferenceValue = gameActionController;
             serializedController.ApplyModifiedProperties();
+        }
+
+        /// <summary>canvas 하위 `UIControllers` 오브젝트를 찾거나 만든다(기존 씬에는 이미 빈 RectTransform
+        /// 홀더로 존재 - GameManagers가 `KBOManager.Managers` 계열을 모아두는 것과 동일하게, UI 액션
+        /// 컨트롤러(`KBOManager.Controllers`)를 모아두는 용도로 씬에 이미 준비되어 있던 홀더를 재사용한다).</summary>
+        private static GameObject FindOrCreateUIControllersHolder(Transform canvasTransform)
+        {
+            var existing = canvasTransform.Find(UIControllersHolderName);
+            if (existing != null) return existing.gameObject;
+
+            var holderObject = new GameObject(UIControllersHolderName, typeof(RectTransform));
+            Undo.RegisterCreatedObjectUndo(holderObject, $"Create {UIControllersHolderName}");
+            holderObject.transform.SetParent(canvasTransform, false);
+
+            Debug.LogWarning($"[SetupRosterUI] 씬에서 '{UIControllersHolderName}' 오브젝트를 찾지 못해 " +
+                "canvas 하위에 새로 생성했습니다.");
+
+            return holderObject;
         }
 
         private static Button FindOrCreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)
