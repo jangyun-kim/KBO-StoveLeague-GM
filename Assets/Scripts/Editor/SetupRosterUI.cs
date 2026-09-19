@@ -27,9 +27,15 @@ namespace KBOManager.EditorTools
     /// [TASK-KBO-096] TASK-094가 보류했던 gameActionController 자동 생성을 PM 지시로 완성한다 -
     /// `FindAnyObjectByType`로 여전히 씬을 먼저 탐색하되(중복 생성 방지), 못 찾으면 canvas 하위
     /// `UIControllers`(없으면 새로 생성)에 `Undo.AddComponent&lt;GameActionController&gt;()`로 부착한다.
-    /// `GameActionController.rosterManager`는 여전히 비워둔다 - `RosterManager` 자체가 씬에 없고(명령서
-    /// 5항 가드레일, 백엔드 배선은 범위 밖), `ExecuteAutoRoster()`가 `rosterManager == null`을 이미
-    /// 가드하고 있어(원본 코드, 미수정) 크래시 없이 안전하게 비활성 상태로 존재할 수 있다.
+    /// (당시 `GameActionController.rosterManager`는 `RosterManager`가 씬에 없어 비워뒀었다 - 아래
+    /// TASK-097에서 해소됨.)
+    ///
+    /// [TASK-KBO-097] TASK-096이 비워뒀던 `GameActionController.rosterManager`를 PM 지시로 마저 채운다 -
+    /// `GameManagers`(씬에 이미 존재하는 매니저 홀더)를 찾아 `RosterManager`가 없으면
+    /// `Undo.AddComponent&lt;RosterManager&gt;()`로 부착한 뒤 바인딩한다. `RosterManager.cs` 원문을
+    /// 재확인한 결과 `[SerializeField]` 필드가 전혀 없는 무상태 매니저라, 추가로 바인딩할 타 매니저
+    /// 종속성 자체가 없다. 이로써 `GameActionController.ExecuteAutoRoster()`의 `rosterManager == null`
+    /// 가드가 더 이상 걸리지 않아 '자동 라인업' 기능이 실제로 동작한다.
     /// </summary>
     public static class SetupRosterUI
     {
@@ -45,6 +51,7 @@ namespace KBOManager.EditorTools
         private const string TemplatesHolderName = "_Templates";
         private const string CardTemplateName = "PlayerCardTemplate";
         private const string UIControllersHolderName = "UIControllers";
+        private const string GameManagersHolderName = "GameManagers";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Roster UI")]
         public static void AutoConnectRosterUI()
@@ -64,7 +71,8 @@ namespace KBOManager.EditorTools
 
             BindRosterContainers(rosterController, cardTemplate);
             BindSetDeckVisualization(rosterController);
-            BindGameActionController(rosterController, canvas.transform);
+            var gameActionController = BindGameActionController(rosterController, canvas.transform);
+            BindRosterManager(gameActionController);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -300,12 +308,9 @@ namespace KBOManager.EditorTools
         /// <summary>
         /// [TASK-KBO-096] 씬에서 GameActionController를 먼저 탐색해 중복 생성을 막고(명령서 6항), 없으면
         /// canvas 하위 `UIControllers`(없으면 새로 생성)에 `Undo.AddComponent()`로 부착한 뒤 바인딩한다.
-        /// `rosterManager` 필드는 의도적으로 비워둔다 - `RosterManager`는 여전히 씬에 존재하지 않고
-        /// (명령서 5항 가드레일, 백엔드 배선은 범위 밖), `GameActionController.ExecuteAutoRoster()`가
-        /// `rosterManager == null`일 때 조기 반환하도록 이미 가드되어 있어(원본 코드 152행, 미수정) 크래시
-        /// 위험이 없다.
+        /// 반환값은 [TASK-KBO-097]의 `BindRosterManager()`가 이어서 `rosterManager` 필드를 채우는 데 쓰인다.
         /// </summary>
-        private static void BindGameActionController(RosterUIController controller, Transform canvasTransform)
+        private static GameActionController BindGameActionController(RosterUIController controller, Transform canvasTransform)
         {
             var gameActionController = Object.FindAnyObjectByType<GameActionController>(FindObjectsInactive.Include);
             if (gameActionController == null)
@@ -315,13 +320,52 @@ namespace KBOManager.EditorTools
                 EditorUtility.SetDirty(gameActionController);
 
                 Debug.Log($"[SetupRosterUI] 씬에서 GameActionController를 찾지 못해 '{holderObject.name}'에 " +
-                    "새로 생성했습니다. RosterManager는 여전히 배선되지 않아(명령서 5항 가드레일) " +
-                    "ExecuteAutoRoster()는 비활성 상태입니다(null 가드로 안전).");
+                    "새로 생성했습니다.");
             }
 
             var serializedController = new SerializedObject(controller);
             serializedController.FindProperty("gameActionController").objectReferenceValue = gameActionController;
             serializedController.ApplyModifiedProperties();
+
+            return gameActionController;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-097] `GameManagers`(씬에 이미 존재하는 매니저 홀더 - `GameManager`/`UIManager`/
+        /// `LeagueManager`/`LeagueCalendar`/`MatchRewardManager`/`CardPoolManager`/`PlayerDatabase`가 이미
+        /// 부착되어 있음)를 탐색해 `RosterManager`가 없으면 `Undo.AddComponent`로 부착하고,
+        /// `GameActionController.rosterManager` 필드에 바인딩한다. `RosterManager.cs` 원문을 전수
+        /// 검토한 결과 `[SerializeField]` 필드가 단 하나도 없는 완전 무상태(stateless) 매니저임을 확인했다
+        /// - `AutoSetRoster(List&lt;Player&gt; inventory, float salaryCap)`가 인벤토리/캡을 전부 메서드
+        /// 인자로만 받으므로(정적 상수 `GameManager.RequiredRosterSize`/`RequiredPitcherCount` 참조만 있고
+        /// 인스펙터 종속성 없음) AC-03(타 매니저 필드 바인딩)에 해당하는 작업 자체가 존재하지 않는다.
+        /// `gameActionController`가 null(직전 단계에서 바인딩 실패)이면 조기 반환한다.
+        /// </summary>
+        private static void BindRosterManager(GameActionController gameActionController)
+        {
+            if (gameActionController == null) return;
+
+            var gameManagersHolder = GameObject.Find(GameManagersHolderName);
+            if (gameManagersHolder == null)
+            {
+                Debug.LogError($"[SetupRosterUI] 씬에서 '{GameManagersHolderName}' 오브젝트를 찾지 못해 " +
+                    "RosterManager 배선을 건너뜁니다. 씬에 매니저 홀더가 없다면 먼저 확인하십시오.");
+                return;
+            }
+
+            var rosterManager = gameManagersHolder.GetComponent<RosterManager>();
+            if (rosterManager == null)
+            {
+                rosterManager = Undo.AddComponent<RosterManager>(gameManagersHolder);
+                Debug.Log($"[SetupRosterUI] 씬에서 RosterManager를 찾지 못해 '{gameManagersHolder.name}'에 " +
+                    "새로 생성했습니다.");
+            }
+            EditorUtility.SetDirty(rosterManager);
+
+            var serializedController = new SerializedObject(gameActionController);
+            serializedController.FindProperty("rosterManager").objectReferenceValue = rosterManager;
+            serializedController.ApplyModifiedProperties();
+            EditorUtility.SetDirty(gameActionController);
         }
 
         /// <summary>canvas 하위 `UIControllers` 오브젝트를 찾거나 만든다(기존 씬에는 이미 빈 RectTransform
