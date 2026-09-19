@@ -10,8 +10,8 @@ namespace KBOManager.EditorTools
 {
     /// <summary>
     /// [TASK-KBO-093] v0.3 Phase 2 - 씬에 배선되지 않고 방치되어 있던 RosterUIController(로스터 관리 화면)를
-    /// QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터 자동화. 로비 패널에 진입 버튼(TASK-098
-    /// 이후 라벨 "구단 관리"), 로스터 패널에 "닫기" 버튼을 만들어 바인딩하고, UIManager.screens에 Roster
+    /// QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터 자동화. 로비 패널에 진입 버튼(TASK-099
+    /// 이후 라벨 "라인업"), 로스터 패널에 "닫기" 버튼을 만들어 바인딩하고, UIManager.screens에 Roster
     /// 화면을 등록한다.
     /// SetupScoutUI.cs/SetupCheerleaderUI.cs와 동일한 관례(이름으로 기존 오브젝트를 찾아 재사용, 없으면
     /// 생성)로 여러 번 실행해도 안전하다.
@@ -43,7 +43,12 @@ namespace KBOManager.EditorTools
     /// 변경이 아니라 사용자에게 보이는 문자열만 바꾸는 작업이라, 내부 이름을 바꾸면 기존 씬에 이미
     /// 생성된 오브젝트를 재사용하지 못하고 중복 생성될 위험만 생긴다). `RosterPanel` 하위에 Empty
     /// State 안내 텍스트(`EmptyStateText`)를 신설해 `RosterUIController.emptyStateText`에 바인딩한다
-    /// (`RosterUIController.cs`의 신규 `RefreshEmptyState()`가 소비).
+    /// (`RosterUIController.cs`의 신규 `RefreshEmptyState()`가 소비). 이 라벨은 원문 GDD의 "구단 관리"
+    /// (도감/라커룸/특별 제작소 등)와 명칭이 충돌한다는 사실을 완료 보고서에 [결정 필요]로 남겼다.
+    ///
+    /// [TASK-KBO-099] TASK-098이 남긴 명칭 충돌([결정 필요])을 PM이 "라인업"으로 확정해, 로비 진입 버튼
+    /// 라벨을 "구단 관리"에서 "라인업"으로 다시 변경한다(내부 오브젝트 이름은 이번에도 그대로 유지 -
+    /// TASK-098과 동일한 이유).
     /// </summary>
     public static class SetupRosterUI
     {
@@ -88,11 +93,11 @@ namespace KBOManager.EditorTools
             if (dashboard == null)
             {
                 Debug.LogWarning("[SetupRosterUI] 씬에서 LeagueDashboardUIController를 찾지 못해 " +
-                    "'구단 관리' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
+                    "'라인업' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
             }
             else
             {
-                var rosterButton = FindOrCreateButton(dashboard.transform, RosterButtonName, "구단 관리", new Vector2(20f, 140f));
+                var rosterButton = FindOrCreateButton(dashboard.transform, RosterButtonName, "라인업", new Vector2(20f, 140f));
                 BindButtonField(dashboard, "rosterButton", rosterButton);
                 EditorUtility.SetDirty(dashboard);
 
