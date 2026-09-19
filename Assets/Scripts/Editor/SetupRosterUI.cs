@@ -1,5 +1,6 @@
 using KBOManager.Controllers;
 using KBOManager.Managers;
+using KBOManager.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,11 +15,14 @@ namespace KBOManager.EditorTools
     /// SetupScoutUI.cs/SetupCheerleaderUI.cs와 동일한 관례(이름으로 기존 오브젝트를 찾아 재사용, 없으면
     /// 생성)로 여러 번 실행해도 안전하다.
     ///
-    /// [범위 제외] RosterUIController의 batterContainer/pitcherContainer/cardPrefab/gameActionController/
-    /// 세트덱 게이지 필드(로스터 카드 렌더링 내부 UI)는 이번 작업의 포함 범위(패널/진입 버튼/닫기 버튼/
-    /// screens 등록 4개 항목)에 없다 - SetupScoutUI.cs가 TASK-083(패널·버튼만)과 TASK-092(카드 템플릿
-    /// 완성)로 두 단계에 나눠 작업했던 것과 동일한 전례를 따라, 카드 렌더링 배선은 후속 작업으로 남긴다.
-    /// RosterManager의 백엔드 로직(자동 라인업 세팅 등)은 명령서 5항 가드레일에 따라 전혀 건드리지 않는다.
+    /// [TASK-KBO-094] TASK-093 당시 범위 제외됐던 batterContainer/pitcherContainer/cardPrefab/
+    /// setDeckStatusText/setDeckGaugeFillImage/setDeckActiveGlowRoot/gameActionController 바인딩을
+    /// 이번에 완성한다. SetupScoutUI.cs(TASK-092)가 `_Templates/PlayerCardTemplate`을 만든 전례를 그대로
+    /// 재활용 - 새 프리팹을 만들지 않고 canvas 하위 `_Templates/PlayerCardTemplate`을 찾아 공유 배선한다.
+    /// gameActionController는 RosterUIController 자체 주석("비워두면 자동 갱신 없이 수동 RefreshRoster()만
+    /// 동작")에 따라 선택적 필드이므로, dashboard/uiManager와 동일한 관례(찾으면 바인딩, 없으면 경고 후
+    /// 스킵)를 따른다 - 더미 GameActionController를 생성하지 않는다(RosterManager 배선이 없는 빈 컴포넌트는
+    /// 오히려 오해를 유발할 수 있음, 명령서 5항 가드레일 - RosterManager 백엔드는 건드리지 않음).
     /// </summary>
     public static class SetupRosterUI
     {
@@ -26,6 +30,13 @@ namespace KBOManager.EditorTools
         private const string RosterPanelName = "RosterPanel";
         private const string RosterButtonName = "RosterButton";
         private const string CloseButtonName = "CloseButton";
+        private const string BatterContainerName = "BatterContainer";
+        private const string PitcherContainerName = "PitcherContainer";
+        private const string SetDeckStatusTextName = "SetDeckStatusText";
+        private const string SetDeckGaugeFillImageName = "SetDeckGaugeFill";
+        private const string SetDeckActiveGlowRootName = "SetDeckActiveGlow";
+        private const string TemplatesHolderName = "_Templates";
+        private const string CardTemplateName = "PlayerCardTemplate";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Roster UI")]
         public static void AutoConnectRosterUI()
@@ -33,6 +44,19 @@ namespace KBOManager.EditorTools
             var canvas = EnsureCanvas();
             var rosterController = FindOrCreateRosterPanel(canvas.transform);
             BindRosterController(rosterController);
+
+            var cardTemplate = FindCardTemplate(canvas.transform);
+            if (cardTemplate == null)
+            {
+                Debug.LogError("[SetupRosterUI] canvas 하위 '_Templates/PlayerCardTemplate'을 찾지 못했습니다. " +
+                    "먼저 'KBO Manager/Setup/Auto-Connect Scout UI'를 실행해 카드 템플릿을 생성한 뒤 다시 " +
+                    "시도하십시오.");
+                return;
+            }
+
+            BindRosterContainers(rosterController, cardTemplate);
+            BindSetDeckVisualization(rosterController);
+            BindGameActionController(rosterController);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -110,6 +134,182 @@ namespace KBOManager.EditorTools
         {
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기", new Vector2(20f, 20f));
             BindButtonField(controller, "closeButton", closeButton);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-094] SetupScoutUI.FindOrCreateCardTemplate()이 만들어 둔 canvas 하위
+        /// `_Templates/PlayerCardTemplate`을 그대로 찾아 재사용한다(명령서 6항 - 새 프리팹을 만들지 않고
+        /// 기존 템플릿을 공유 배선). 존재하지 않으면 null을 반환하고, 호출부(AutoConnectRosterUI)가
+        /// LogError 후 조기 반환한다(명령서 7항 - 널 레퍼런스로 인한 에디터 멈춤 방지).
+        /// </summary>
+        private static PlayerCardUI FindCardTemplate(Transform canvasTransform)
+        {
+            var holderTransform = canvasTransform.Find(TemplatesHolderName);
+            if (holderTransform == null) return null;
+
+            var cardTransform = holderTransform.Find(CardTemplateName);
+            if (cardTransform == null) return null;
+
+            return cardTransform.GetComponent<PlayerCardUI>();
+        }
+
+        /// <summary>
+        /// RosterPanel 하위에 타자(BatterContainer)/투수(PitcherContainer) 카드 목록용 GridLayoutGroup
+        /// 컨테이너를 조립하고, RosterUIController.batterContainer/pitcherContainer/cardPrefab 3개 필드를
+        /// 바인딩한다(포함 범위 1·2번째 항목). SetupScoutUI.FindOrCreateCardContainer()와 동일한 셀 크기
+        /// (140x200)를 사용해 같은 cardPrefab을 그대로 담을 수 있게 한다.
+        /// </summary>
+        private static void BindRosterContainers(RosterUIController controller, PlayerCardUI cardTemplate)
+        {
+            var batterContainer = FindOrCreateCardGridContainer(controller.transform, BatterContainerName,
+                new Vector2(0f, 0f), new Vector2(0.5f, 0.85f));
+            var pitcherContainer = FindOrCreateCardGridContainer(controller.transform, PitcherContainerName,
+                new Vector2(0.5f, 0f), new Vector2(1f, 0.85f));
+
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("batterContainer").objectReferenceValue = batterContainer;
+            serializedController.FindProperty("pitcherContainer").objectReferenceValue = pitcherContainer;
+            serializedController.FindProperty("cardPrefab").objectReferenceValue = cardTemplate;
+            serializedController.ApplyModifiedProperties();
+        }
+
+        private static Transform FindOrCreateCardGridContainer(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var existingContainer = parent.Find(name);
+            if (existingContainer != null) return existingContainer;
+
+            var containerObject = new GameObject(name, typeof(RectTransform), typeof(GridLayoutGroup));
+            Undo.RegisterCreatedObjectUndo(containerObject, $"Create {name}");
+            containerObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)containerObject.transform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var grid = containerObject.GetComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(140f, 200f);
+            grid.spacing = new Vector2(10f, 10f);
+            grid.childAlignment = TextAnchor.UpperCenter;
+
+            return containerObject.transform;
+        }
+
+        /// <summary>
+        /// RosterPanel 상단에 세트덱 게이지/텍스트/글로우 연출용 오브젝트를 조립하고
+        /// RosterUIController.setDeckStatusText/setDeckGaugeFillImage/setDeckActiveGlowRoot 3개 필드를
+        /// 바인딩한다. setDeckGaugeFillImage는 RefreshSetDeckStatus()가 fillAmount를 직접 갱신하므로
+        /// Image.Type.Filled(Horizontal)로 미리 설정해 둔다.
+        /// </summary>
+        private static void BindSetDeckVisualization(RosterUIController controller)
+        {
+            var statusText = FindOrCreateSetDeckStatusText(controller.transform);
+            var gaugeFillImage = FindOrCreateSetDeckGauge(controller.transform);
+            var glowRoot = FindOrCreateSetDeckGlow(controller.transform);
+
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("setDeckStatusText").objectReferenceValue = statusText;
+            serializedController.FindProperty("setDeckGaugeFillImage").objectReferenceValue = gaugeFillImage;
+            serializedController.FindProperty("setDeckActiveGlowRoot").objectReferenceValue = glowRoot;
+            serializedController.ApplyModifiedProperties();
+        }
+
+        private static Text FindOrCreateSetDeckStatusText(Transform parent)
+        {
+            var existingChild = parent.Find(SetDeckStatusTextName);
+            if (existingChild != null && existingChild.TryGetComponent<Text>(out var existingText)) return existingText;
+
+            var textObject = new GameObject(SetDeckStatusTextName, typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {SetDeckStatusTextName}");
+            textObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)textObject.transform;
+            rect.anchorMin = new Vector2(0f, 0.9f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var text = textObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 20;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            return text;
+        }
+
+        private static Image FindOrCreateSetDeckGauge(Transform parent)
+        {
+            var existingChild = parent.Find(SetDeckGaugeFillImageName);
+            if (existingChild != null && existingChild.TryGetComponent<Image>(out var existingImage)) return existingImage;
+
+            var gaugeObject = new GameObject(SetDeckGaugeFillImageName, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(gaugeObject, $"Create {SetDeckGaugeFillImageName}");
+            gaugeObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)gaugeObject.transform;
+            rect.anchorMin = new Vector2(0f, 0.85f);
+            rect.anchorMax = new Vector2(1f, 0.9f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var image = gaugeObject.GetComponent<Image>();
+            image.color = Color.white;
+            image.type = Image.Type.Filled;
+            image.fillMethod = Image.FillMethod.Horizontal;
+            image.raycastTarget = false;
+
+            return image;
+        }
+
+        /// <summary>세트덱 보너스 활성화 시에만 켜지는 장식용 글로우 오브젝트. RosterUIController가
+        /// RefreshSetDeckStatus()에서 SetActive()로 토글하므로 초기 상태는 비활성으로 둔다.</summary>
+        private static GameObject FindOrCreateSetDeckGlow(Transform parent)
+        {
+            var existingChild = parent.Find(SetDeckActiveGlowRootName);
+            if (existingChild != null) return existingChild.gameObject;
+
+            var glowObject = new GameObject(SetDeckActiveGlowRootName, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(glowObject, $"Create {SetDeckActiveGlowRootName}");
+            glowObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)glowObject.transform;
+            rect.anchorMin = new Vector2(0f, 0.85f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var image = glowObject.GetComponent<Image>();
+            image.color = new Color(1f, 0.84f, 0f, 0.25f);
+            image.raycastTarget = false;
+
+            glowObject.SetActive(false);
+            return glowObject;
+        }
+
+        /// <summary>
+        /// RosterUIController.gameActionController는 필드 자체 주석("비워두면 자동 갱신 없이 수동
+        /// RefreshRoster()만 동작한다")에 따라 선택적이다. dashboard/uiManager 탐색과 동일한 관례로 씬에서
+        /// 찾아지면 바인딩하고, 없으면 경고만 남기고 넘어간다(더미 컴포넌트를 만들지 않음 - RosterManager
+        /// 미배선 상태의 빈 GameActionController는 오해를 유발할 수 있어 명령서 5항 가드레일에 저촉될 수
+        /// 있다고 판단).
+        /// </summary>
+        private static void BindGameActionController(RosterUIController controller)
+        {
+            var gameActionController = Object.FindAnyObjectByType<GameActionController>(FindObjectsInactive.Include);
+            if (gameActionController == null)
+            {
+                Debug.LogWarning("[SetupRosterUI] 씬에서 GameActionController를 찾지 못해 " +
+                    "gameActionController 바인딩을 건너뜁니다. RosterUIController는 이 참조 없이도 " +
+                    "RefreshRoster()를 수동 호출하는 방식으로 동작합니다.");
+                return;
+            }
+
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("gameActionController").objectReferenceValue = gameActionController;
+            serializedController.ApplyModifiedProperties();
         }
 
         private static Button FindOrCreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)
