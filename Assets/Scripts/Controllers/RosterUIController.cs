@@ -48,6 +48,12 @@ namespace KBOManager.Controllers
                  "호출한다.")]
         [SerializeField] private Button closeButton;
 
+        [Header("Empty State (TASK-KBO-098)")]
+        [Tooltip("타자/투수 카드가 단 한 장도 없을 때만 켜지는 안내 텍스트('배치된 선수가 없습니다' 등). " +
+                 "비워두면 Debug.LogWarning만 남기고 화면상 안내는 생략한다.")]
+        [SerializeField] private Text emptyStateText;
+        [SerializeField] private string emptyStateMessage = "배치된 선수가 없습니다.";
+
         private readonly List<PlayerCardUI> spawnedBatterCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedPitcherCards = new List<PlayerCardUI>();
 
@@ -98,7 +104,30 @@ namespace KBOManager.Controllers
                 }
             }
 
+            RefreshEmptyState();
             RefreshSetDeckStatus();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-098] 타자/투수 카드가 단 한 장도 생성되지 않았으면(RosterManager 미배선, 인벤토리
+        /// 비어있음 등) 화면이 흰 배경만 남은 채로 멈춰 보이는 문제를 방지한다. Debug.LogWarning은 항상
+        /// 남기고, emptyStateText가 배선되어 있으면 화면에도 안내 문구를 띄운다.
+        /// </summary>
+        private void RefreshEmptyState()
+        {
+            bool isEmpty = spawnedBatterCards.Count == 0 && spawnedPitcherCards.Count == 0;
+
+            if (isEmpty)
+            {
+                Debug.LogWarning("[RosterUIController] 로스터에 표시할 선수가 없습니다 - " +
+                    "GameManager.Instance.Roster가 비어 있거나 아직 편성되지 않았을 수 있습니다.");
+            }
+
+            if (emptyStateText != null)
+            {
+                emptyStateText.text = emptyStateMessage;
+                emptyStateText.gameObject.SetActive(isEmpty);
+            }
         }
 
         // [TASK-KBO-038] 15_team_power_policy.md 확정 기준. GameManager.CalculateSynergy()가 쓰는

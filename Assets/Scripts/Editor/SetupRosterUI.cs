@@ -10,8 +10,9 @@ namespace KBOManager.EditorTools
 {
     /// <summary>
     /// [TASK-KBO-093] v0.3 Phase 2 - 씬에 배선되지 않고 방치되어 있던 RosterUIController(로스터 관리 화면)를
-    /// QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터 자동화. 로비 패널에 "로스터 관리" 진입
-    /// 버튼, 로스터 패널에 "닫기" 버튼을 만들어 바인딩하고, UIManager.screens에 Roster 화면을 등록한다.
+    /// QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터 자동화. 로비 패널에 진입 버튼(TASK-098
+    /// 이후 라벨 "구단 관리"), 로스터 패널에 "닫기" 버튼을 만들어 바인딩하고, UIManager.screens에 Roster
+    /// 화면을 등록한다.
     /// SetupScoutUI.cs/SetupCheerleaderUI.cs와 동일한 관례(이름으로 기존 오브젝트를 찾아 재사용, 없으면
     /// 생성)로 여러 번 실행해도 안전하다.
     ///
@@ -36,6 +37,13 @@ namespace KBOManager.EditorTools
     /// 재확인한 결과 `[SerializeField]` 필드가 전혀 없는 무상태 매니저라, 추가로 바인딩할 타 매니저
     /// 종속성 자체가 없다. 이로써 `GameActionController.ExecuteAutoRoster()`의 `rosterManager == null`
     /// 가드가 더 이상 걸리지 않아 '자동 라인업' 기능이 실제로 동작한다.
+    ///
+    /// [TASK-KBO-098] 기획 PM 지시로 로비 진입 버튼 라벨을 "로스터 관리"에서 "구단 관리"로 변경한다
+    /// (`RosterButtonName`(내부 오브젝트 이름 "RosterButton")과 `RosterPanelName`은 그대로 둔다 - 식별자
+    /// 변경이 아니라 사용자에게 보이는 문자열만 바꾸는 작업이라, 내부 이름을 바꾸면 기존 씬에 이미
+    /// 생성된 오브젝트를 재사용하지 못하고 중복 생성될 위험만 생긴다). `RosterPanel` 하위에 Empty
+    /// State 안내 텍스트(`EmptyStateText`)를 신설해 `RosterUIController.emptyStateText`에 바인딩한다
+    /// (`RosterUIController.cs`의 신규 `RefreshEmptyState()`가 소비).
     /// </summary>
     public static class SetupRosterUI
     {
@@ -52,6 +60,7 @@ namespace KBOManager.EditorTools
         private const string CardTemplateName = "PlayerCardTemplate";
         private const string UIControllersHolderName = "UIControllers";
         private const string GameManagersHolderName = "GameManagers";
+        private const string EmptyStateTextName = "EmptyStateText";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Roster UI")]
         public static void AutoConnectRosterUI()
@@ -71,6 +80,7 @@ namespace KBOManager.EditorTools
 
             BindRosterContainers(rosterController, cardTemplate);
             BindSetDeckVisualization(rosterController);
+            BindEmptyStateText(rosterController);
             var gameActionController = BindGameActionController(rosterController, canvas.transform);
             BindRosterManager(gameActionController);
 
@@ -78,11 +88,11 @@ namespace KBOManager.EditorTools
             if (dashboard == null)
             {
                 Debug.LogWarning("[SetupRosterUI] 씬에서 LeagueDashboardUIController를 찾지 못해 " +
-                    "'로스터 관리' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
+                    "'구단 관리' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
             }
             else
             {
-                var rosterButton = FindOrCreateButton(dashboard.transform, RosterButtonName, "로스터 관리", new Vector2(20f, 140f));
+                var rosterButton = FindOrCreateButton(dashboard.transform, RosterButtonName, "구단 관리", new Vector2(20f, 140f));
                 BindButtonField(dashboard, "rosterButton", rosterButton);
                 EditorUtility.SetDirty(dashboard);
 
@@ -303,6 +313,46 @@ namespace KBOManager.EditorTools
 
             glowObject.SetActive(false);
             return glowObject;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-098] RosterPanel 중앙에 Empty State 안내 텍스트를 조립하고
+        /// RosterUIController.emptyStateText에 바인딩한다. RosterUIController.RefreshEmptyState()가
+        /// 로스터가 비어 있을 때만 SetActive(true)로 켜므로, 초기 상태는 비활성으로 둔다.
+        /// </summary>
+        private static void BindEmptyStateText(RosterUIController controller)
+        {
+            var emptyStateText = FindOrCreateEmptyStateText(controller.transform);
+
+            var serializedController = new SerializedObject(controller);
+            serializedController.FindProperty("emptyStateText").objectReferenceValue = emptyStateText;
+            serializedController.ApplyModifiedProperties();
+        }
+
+        private static Text FindOrCreateEmptyStateText(Transform parent)
+        {
+            var existingChild = parent.Find(EmptyStateTextName);
+            if (existingChild != null && existingChild.TryGetComponent<Text>(out var existingText)) return existingText;
+
+            var textObject = new GameObject(EmptyStateTextName, typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {EmptyStateTextName}");
+            textObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)textObject.transform;
+            rect.anchorMin = new Vector2(0f, 0.4f);
+            rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var text = textObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = new Color(0.4f, 0.4f, 0.4f);
+            text.fontSize = 24;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            textObject.SetActive(false);
+            return text;
         }
 
         /// <summary>
