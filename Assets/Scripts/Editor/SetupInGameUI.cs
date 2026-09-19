@@ -2,6 +2,7 @@ using KBOManager.Controllers;
 using KBOManager.Data;
 using KBOManager.Engine;
 using KBOManager.Managers;
+using KBOManager.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -33,12 +34,19 @@ namespace KBOManager.EditorTools
     /// 이닝 칸 수를 12로 고정했다(연장 포함 최대치 - 이 값들은 private라 직접 참조할 수 없어 상수를
     /// 주석으로 인용만 하고 리터럴 12를 사용했다).
     ///
-    /// [범위 제외, 결정 필요] `matchStatusUI`(다이아몬드 주자 표시 3개 + 볼/스트라이크/아웃 카운트
-    /// 핍 7개, 총 10개의 `Image` 참조를 요구하는 `MatchStatusUI` 컴포넌트 자체를 새로 조립해야 함)는
-    /// 이번 작업 대상에서 제외했다 - 명령서 4항이 명시한 3개 영역(스코어보드/로그/팝업)에 포함되지
-    /// 않고, `InGameUIController` 자신의 주석("비워두면 초기화를 생략한다")이 이 필드를 선택적으로
+    /// [TASK-KBO-101] `matchStatusUI`(다이아몬드 주자 표시 3개 + 볼/스트라이크/아웃 카운트 핍 7개,
+    /// 총 10개의 `Image` 참조를 요구하는 `MatchStatusUI` 컴포넌트 자체를 새로 조립해야 함)는 그
+    /// 태스크의 대상에서 제외됐었다 - 명령서 4항이 명시한 3개 영역(스코어보드/로그/팝업)에 포함되지
+    /// 않았고, `InGameUIController` 자신의 주석("비워두면 초기화를 생략한다")이 이 필드를 선택적으로
     /// 취급하고 있어 AC-02("모든 미바인딩 필드")와 명령서 4항의 범위 나열이 서로 충돌한다고 판단했다.
-    /// 완료 보고서 F항 참고.
+    ///
+    /// [TASK-KBO-102] TASK-101이 보류했던 `matchStatusUI`를 PM 지시로 마저 완성한다 - `InGamePanel`
+    /// 하위에 `MatchStatusArea`(`MatchStatusUI` 부착)를 만들고, 그 하위에 베이스 3개(`FirstBaseImage`/
+    /// `SecondBaseImage`/`ThirdBaseImage`)와 카운트 핍 7개(`BallPip1~3`/`StrikePip1~2`/`OutPip1~2`)
+    /// 총 10개의 `Image`를 조립해 `MatchStatusUI.firstBaseImage`/`secondBaseImage`/`thirdBaseImage`/
+    /// `ballPips`/`strikePips`/`outPips` 6개 필드(배열 3개 포함)에 바인딩한 뒤,
+    /// `InGameUIController.matchStatusUI`에도 연결한다. `MatchStatusUI.cs`(베이스 점등/핍 갱신 로직)는
+    /// 전혀 수정하지 않았다 - 명령서 5항 가드레일.
     /// </summary>
     public static class SetupInGameUI
     {
@@ -66,6 +74,7 @@ namespace KBOManager.EditorTools
             BindScoreboard(inGameController, inGamePanelObject.transform);
             BindLog(inGameController, inGamePanelObject.transform, canvasTransform);
             BindMatchEndPanel(inGameController, inGamePanelObject.transform);
+            BindMatchStatusUI(inGameController, inGamePanelObject.transform);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -398,6 +407,106 @@ namespace KBOManager.EditorTools
 
             panelObject.SetActive(false);
             return panelObject;
+        }
+
+        private const string MatchStatusAreaName = "MatchStatusArea";
+        private const string FirstBaseImageName = "FirstBaseImage";
+        private const string SecondBaseImageName = "SecondBaseImage";
+        private const string ThirdBaseImageName = "ThirdBaseImage";
+        private const string BallPipNamePrefix = "BallPip";
+        private const string StrikePipNamePrefix = "StrikePip";
+        private const string OutPipNamePrefix = "OutPip";
+
+        /// <summary>
+        /// [TASK-KBO-102] `InGamePanel` 하위에 `MatchStatusArea`(`MatchStatusUI` 부착)를 만들고, 그
+        /// 안에 베이스 3개 + 카운트 핍 7개(볼 3/스트라이크 2/아웃 2) 총 10개의 `Image`를 조립해
+        /// `MatchStatusUI`의 6개 필드(`firstBaseImage`/`secondBaseImage`/`thirdBaseImage`/`ballPips`/
+        /// `strikePips`/`outPips`)에 바인딩한 뒤, 완성된 컴포넌트를
+        /// `InGameUIController.matchStatusUI`에도 연결한다. 명령서 5항에 따라 정밀한 다이아몬드 좌표
+        /// 배치 없이 GridLayoutGroup 한 줄에 10칸을 순서대로 나열한다(기능 테스트 목적, 명령서 5항).
+        /// </summary>
+        private static void BindMatchStatusUI(InGameUIController inGameController, Transform inGamePanelTransform)
+        {
+            var matchStatusUI = FindOrCreateMatchStatus(inGamePanelTransform);
+
+            var serialized = new SerializedObject(inGameController);
+            serialized.FindProperty("matchStatusUI").objectReferenceValue = matchStatusUI;
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(inGameController);
+        }
+
+        /// <summary>`MatchStatusArea`를 찾거나 만들고(`MatchStatusUI` 컴포넌트 부착, `TryGetComponent`
+        /// 가드로 중복 방지), 10개의 `Image`를 조립해 `MatchStatusUI`의 6개 필드에 바인딩한다.</summary>
+        private static MatchStatusUI FindOrCreateMatchStatus(Transform inGamePanelTransform)
+        {
+            var areaTransform = FindOrCreateChild(inGamePanelTransform, MatchStatusAreaName,
+                new Vector2(0f, 0.7f), new Vector2(1f, 0.85f));
+
+            var areaObject = areaTransform.gameObject;
+            if (!areaObject.TryGetComponent<GridLayoutGroup>(out _))
+            {
+                var grid = areaObject.AddComponent<GridLayoutGroup>();
+                grid.cellSize = new Vector2(30f, 30f);
+                grid.spacing = new Vector2(4f, 0f);
+                grid.childAlignment = TextAnchor.MiddleLeft;
+            }
+
+            if (!areaObject.TryGetComponent<MatchStatusUI>(out var matchStatusUI))
+            {
+                matchStatusUI = Undo.AddComponent<MatchStatusUI>(areaObject);
+                Debug.Log($"[SetupInGameUI] 씬에서 MatchStatusUI를 찾지 못해 '{areaObject.name}'에 새로 생성했습니다.");
+            }
+
+            var firstBase = FindOrCreateImage(areaTransform, FirstBaseImageName);
+            var secondBase = FindOrCreateImage(areaTransform, SecondBaseImageName);
+            var thirdBase = FindOrCreateImage(areaTransform, ThirdBaseImageName);
+
+            var ballPips = new Image[3];
+            for (int i = 0; i < ballPips.Length; i++) ballPips[i] = FindOrCreateImage(areaTransform, $"{BallPipNamePrefix}{i + 1}");
+
+            var strikePips = new Image[2];
+            for (int i = 0; i < strikePips.Length; i++) strikePips[i] = FindOrCreateImage(areaTransform, $"{StrikePipNamePrefix}{i + 1}");
+
+            var outPips = new Image[2];
+            for (int i = 0; i < outPips.Length; i++) outPips[i] = FindOrCreateImage(areaTransform, $"{OutPipNamePrefix}{i + 1}");
+
+            var serialized = new SerializedObject(matchStatusUI);
+            serialized.FindProperty("firstBaseImage").objectReferenceValue = firstBase;
+            serialized.FindProperty("secondBaseImage").objectReferenceValue = secondBase;
+            serialized.FindProperty("thirdBaseImage").objectReferenceValue = thirdBase;
+
+            var ballProperty = serialized.FindProperty("ballPips");
+            ballProperty.arraySize = ballPips.Length;
+            for (int i = 0; i < ballPips.Length; i++) ballProperty.GetArrayElementAtIndex(i).objectReferenceValue = ballPips[i];
+
+            var strikeProperty = serialized.FindProperty("strikePips");
+            strikeProperty.arraySize = strikePips.Length;
+            for (int i = 0; i < strikePips.Length; i++) strikeProperty.GetArrayElementAtIndex(i).objectReferenceValue = strikePips[i];
+
+            var outProperty = serialized.FindProperty("outPips");
+            outProperty.arraySize = outPips.Length;
+            for (int i = 0; i < outPips.Length; i++) outProperty.GetArrayElementAtIndex(i).objectReferenceValue = outPips[i];
+
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(matchStatusUI);
+
+            return matchStatusUI;
+        }
+
+        private static Image FindOrCreateImage(Transform parent, string name)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null && existingChild.TryGetComponent<Image>(out var existingImage)) return existingImage;
+
+            var imageObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+            Undo.RegisterCreatedObjectUndo(imageObject, $"Create {name}");
+            imageObject.transform.SetParent(parent, false);
+
+            var image = imageObject.GetComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.25f);
+            image.raycastTarget = false;
+
+            return image;
         }
 
         private static Transform FindOrCreateChild(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
