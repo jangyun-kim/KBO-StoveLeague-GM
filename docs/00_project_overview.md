@@ -2,7 +2,7 @@
 문서명: 프로젝트 오버뷰 (Project Overview)
 버전: v0.3
 상태: Active
-최종 수정일: 2026-09-18
+최종 수정일: 2026-09-19
 담당자: 김장윤
 관련 파일: 01_core_loop_and_pillars.md, 02_scope_roadmap.md, 13_decision_change_log.md, 17_v03_roadmap.md
 ---
@@ -212,8 +212,8 @@
 
 🕳️ **[TBD: 기획 확정 필요]** 아래는 최초 기획 당시 구상한 전체 UI 트리이며, 절대다수가 아직 미구현이다.
 실제로 구현되어 씬에 배선된 화면은 로비, 스카우트(선수 가챠), 치어리더 상점/인벤토리, 로스터 정도이며
-(`docs/17_v03_roadmap.md`, `docs/13_decision_change_log.md` DCL-048/053/054 참고), 리그/랭킹 챌린지/홈런
-레이스/친선경기/이벤트/라이브 관련 화면은 전혀 존재하지 않는다.
+(`docs/17_v03_roadmap.md`, `docs/13_decision_change_log.md` DCL-048/053/054/061/062/063 참고), 리그/랭킹
+챌린지/홈런 레이스/친선경기/이벤트/라이브 관련 화면은 전혀 존재하지 않는다.
 
 > **[TASK-KBO-091-REV, 삭제 확정]** 원문에 있던 "협회"(길드) 메뉴 전체(협회 정보/명단/업적/라인업, 9개
 > 구장 공격/수비 배치, 에이스/에이스킬러/오프너 역할, 협회 대전 랭킹/명예의 전당/협회 상점)는 다인 유저가
@@ -246,16 +246,16 @@
 
 카드는 희귀도에 따라 8단계 등급(1~6.5 Grade)을 가진다.
 
-| 등급 | 설명 |
-|---|---|
-| SEASON (시즌 카드) | 라이브와 무관한 연도/시즌별 카드. 초기 1~5성. 고점이 낮으나 대체 카드가 없을 때 임시 최선의 선택지. |
-| LIVE 일반 카드 | 초기 일반 1~4성 무작위. 현재 시즌 현역 선수의 전반기/시즌종료까지/비시즌 구간별 라이브 스탯 부여. 강화만 가능(각성 불가). |
-| LIVE 에픽 카드 | 초기 일반 5성. 라이브 일반과 동일한 스탯 갱신 방식. 강화만 가능(각성 불가). 올스타 등급으로 진급 가능. |
-| ALLSTAR (올스타) | 초기 보라색 4성. 매년 KBO 올스타전 팬투표 선정 선수. |
-| TITLE_HOLDER (타이틀 홀더) | 초기 샴페인색 5성. 시즌 개인 타이틀 수상 기념 카드. 시그니처 한 단계 아래 성능. |
-| SIGNATURE (시그니처) | 초기 루비 마젠타색 6성. 선수의 커리어 하이 시즌 기념, 친필 사인 포함. 팀 핵심 전력. |
-| GOLDEN_GLOVE (골든 글러브) | 초기 백금+금색 5성. 실제 KBO 골든글러브 수상 선수. 성능 매우 강력, 구단/연도 무관 페널티 없는 특수 효과. |
-| DYNASTY (왕조) | 초기 구단 대표색 6성. KBO 역대 왕조(해태 타이거즈 1986~1997, SK 와이번스 2007~2010, 삼성 라이온즈 2011~2014) 소속 선수 전용. |
+| 등급                       | 설명                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| SEASON (시즌 카드)         | 라이브와 무관한 연도/시즌별 카드. 초기 1~5성. 고점이 낮으나 대체 카드가 없을 때 임시 최선의 선택지.                          |
+| LIVE 일반 카드             | 초기 일반 1~4성 무작위. 현재 시즌 현역 선수의 전반기/시즌종료까지/비시즌 구간별 라이브 스탯 부여. 강화만 가능(각성 불가).    |
+| LIVE 에픽 카드             | 초기 일반 5성. 라이브 일반과 동일한 스탯 갱신 방식. 강화만 가능(각성 불가). 올스타 등급으로 진급 가능.                       |
+| ALLSTAR (올스타)           | 초기 보라색 4성. 매년 KBO 올스타전 팬투표 선정 선수.                                                                         |
+| TITLE_HOLDER (타이틀 홀더) | 초기 샴페인색 5성. 시즌 개인 타이틀 수상 기념 카드. 시그니처 한 단계 아래 성능.                                              |
+| SIGNATURE (시그니처)       | 초기 루비 마젠타색 6성. 선수의 커리어 하이 시즌 기념, 친필 사인 포함. 팀 핵심 전력.                                          |
+| GOLDEN_GLOVE (골든 글러브) | 초기 백금+금색 5성. 실제 KBO 골든글러브 수상 선수. 성능 매우 강력, 구단/연도 무관 페널티 없는 특수 효과.                     |
+| DYNASTY (왕조)             | 초기 구단 대표색 6성. KBO 역대 왕조(해태 타이거즈 1986~1997, SK 와이번스 2007~2010, 삼성 라이온즈 2011~2014) 소속 선수 전용. |
 
 > ✅ **[구현 확정]** 위 8개 등급은 `Assets/Scripts/Models/Types.cs`의 `Grade` enum(`SEASON=0`~`DYNASTY=7`)과
 > 이름·순서가 정확히 일치한다(`docs/11_data_dictionary.md` 5~6절). 단, `docs/13_decision_change_log.md`
@@ -363,23 +363,24 @@
 > 전체 이력 기준). 시간이 지나면 다시 낡아질 수 있으므로, 최신 상태는 항상 `docs/13_decision_change_log.md`
 > 최근 항목을 우선 신뢰할 것.
 
-| 시스템 | 상태 | 근거 |
-|---|---|---|
-| 선수 카드 등급(SEASON~DYNASTY 8종) | ✅ 구현 | `Types.cs` `Grade` enum. v0.1 기준 3개 등급만 활성(`DCL-002`) |
-| 선수 데이터 SSOT(CSV 파싱 파이프라인) | ✅ 구현 | `players.csv`(16컬럼) → `PlayerDatabase.ParseCsv()` → `PlayerTemplate` 런타임 인스턴스화(`DCL-051`~`DCL-058`) |
-| Z-score → 인게임 스탯 변환 | ✅ 구현 | `PlayerDatabase.ConvertZScoreToStat()`(`z*15+50`, 1~100 clamp), 타자 5종/투수 5종(`DCL-056`~`DCL-058`) |
-| team_id ↔ Team enum, position ↔ BatterPosition/PitcherRole 매핑 | ✅ 구현 | `PlayerDatabase.TeamIdMapping`(KBO 10개 구단 전체), `ParsePitcherRole()`/`ParseBatterPosition()`(`DCL-055`/`DCL-056`) |
-| 28인 로스터 / 샐러리 캡 / 오토 라인업 | ✅ 구현 | `RosterManager.AutoSetRoster()`, `FullRosterSalaryCap = 1350` |
-| 리그 5단계 페이즈(스토브리그~포스트시즌) | ✅ 구현 | `Types.cs` `LeaguePhase` enum |
-| 매치 시뮬레이션 엔진 | ✅ 구현 | `MatchEngine.SimulateAtBat()`(1타석 단위 확률 기반, 팀버프/체력페널티/스킬 반영) |
-| 스킬 시스템(티어 확률 + 스킬 목록) | ✅ 구현 | `SkillDB.PopulateDefaults()`(원문과 완전 일치) |
-| 성장 시스템(강화 0~10강 / 각성 0~10각, 2단계 체제로 축소 확정) | ✅ 구현 | `UpgradeManager.TryEnhance()`/`TryAwaken()`, `UpgradeProbabilityDB`(원문 확률표와 일치). 세부 스탯 성장치는 레벨당 전항목 +1 균등(TODO 임시값). 원안의 훈련/훈련돌파/특훈 3단계는 폐기 확정(TASK-KBO-091-REV) |
-| 치어리더 가챠/상점 | ✅ 구현 | `CheerleaderGachaService`(등급 확률 70/22/7/1), `CheerleaderShopUIController`, `cheerleaders.csv`(`DCL-048`) |
-| 치어리더 세부 시너지/고유 스킬(원문 D~S급 수십 종) | 🕳️ 미구현 | 현재는 `ConditionBuff`/`ClutchMultiplier`/`EconomicBonusRate`/`SentimentDefense` 4개 범용 수치만 존재 |
-| 팬심(FanSentiment) / 연패(LosingStreak) | ✅ 구현 | `GameManager.FanSentiment`(0~100 clamp), `LosingStreak`, 세이브 연동(`DCL-027`/`DCL-030`) |
-| 스카우트(선수 가챠) UI 배선 | ✅ 구현 | `ScoutUIController`, `SetupScoutUI.cs`(`DCL-053`) |
-| 리그/랭킹 챌린지/홈런 레이스/친선경기 UI | 🕳️ 미구현 | 씬에 배선된 화면 없음(`docs/17_v03_roadmap.md`) |
-| 협회(길드) 대전 시스템 | 삭제 확정 | 다인 유저 동시접속 서버 구조 전제로 1인 개발 스코프 초과 - PM 확정에 따라 문서에서 완전 삭제(TASK-KBO-091-REV) |
-| 비동기식 유저 데이터 대전(Ghost Match) | ✅ 기획 변경 확정 (미구현) | 원안의 라이브 세션형 PvP/서버 아키텍처를 대체하는 PM 신규 확정안(4.4절). BaaS 기반, 코드 구현은 아직 없음 |
-| 재화/가챠 세부 경제(재료 조합, 특별 제작소 등) | 🕳️ 미구현 | 볼/재화 등 최소한의 개념만 `GameManager`에 존재, 원문 세부 경제 체계는 미착수 |
-| 세트덱(구단 통일) 보너스 | ✅ 구현 | `Player.CalculateOVR(isSetDeckBonusActive, setDeckBonusMultiplier)` |
+| 시스템                                                          | 상태                       | 근거                                                                                                                                                                                                          |
+| --------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 선수 카드 등급(SEASON~DYNASTY 8종)                              | ✅ 구현                    | `Types.cs` `Grade` enum. v0.1 기준 3개 등급만 활성(`DCL-002`)                                                                                                                                                 |
+| 선수 데이터 SSOT(CSV 파싱 파이프라인)                           | ✅ 구현                    | `players.csv`(16컬럼) → `PlayerDatabase.ParseCsv()` → `PlayerTemplate` 런타임 인스턴스화(`DCL-051`~`DCL-058`)                                                                                                 |
+| Z-score → 인게임 스탯 변환                                      | ✅ 구현                    | `PlayerDatabase.ConvertZScoreToStat()`(`z*15+50`, 1~100 clamp), 타자 5종/투수 5종(`DCL-056`~`DCL-058`)                                                                                                        |
+| team_id ↔ Team enum, position ↔ BatterPosition/PitcherRole 매핑 | ✅ 구현                    | `PlayerDatabase.TeamIdMapping`(KBO 10개 구단 전체), `ParsePitcherRole()`/`ParseBatterPosition()`(`DCL-055`/`DCL-056`)                                                                                         |
+| 28인 로스터 / 샐러리 캡 / 오토 라인업                           | ✅ 구현                    | `RosterManager.AutoSetRoster()`, `FullRosterSalaryCap = 1350`                                                                                                                                                 |
+| 리그 5단계 페이즈(스토브리그~포스트시즌)                        | ✅ 구현                    | `Types.cs` `LeaguePhase` enum                                                                                                                                                                                 |
+| 매치 시뮬레이션 엔진                                            | ✅ 구현                    | `MatchEngine.SimulateAtBat()`(1타석 단위 확률 기반, 팀버프/체력페널티/스킬 반영)                                                                                                                              |
+| 스킬 시스템(티어 확률 + 스킬 목록)                              | ✅ 구현                    | `SkillDB.PopulateDefaults()`(원문과 완전 일치)                                                                                                                                                                |
+| 성장 시스템(강화 0~10강 / 각성 0~10각, 2단계 체제로 축소 확정)  | ✅ 구현                    | `UpgradeManager.TryEnhance()`/`TryAwaken()`, `UpgradeProbabilityDB`(원문 확률표와 일치). 세부 스탯 성장치는 레벨당 전항목 +1 균등(TODO 임시값). 원안의 훈련/훈련돌파/특훈 3단계는 폐기 확정(TASK-KBO-091-REV) |
+| 치어리더 가챠/상점                                              | ✅ 구현                    | `CheerleaderGachaService`(등급 확률 70/22/7/1), `CheerleaderShopUIController`, `cheerleaders.csv`(`DCL-048`)                                                                                                  |
+| 치어리더 세부 시너지/고유 스킬(원문 D~S급 수십 종)              | 🕳️ 미구현                  | 현재는 `ConditionBuff`/`ClutchMultiplier`/`EconomicBonusRate`/`SentimentDefense` 4개 범용 수치만 존재                                                                                                         |
+| 팬심(FanSentiment) / 연패(LosingStreak)                         | ✅ 구현                    | `GameManager.FanSentiment`(0~100 clamp), `LosingStreak`, 세이브 연동(`DCL-027`/`DCL-030`)                                                                                                                     |
+| 스카우트(선수 가챠) UI 배선                                     | ✅ 구현                    | `ScoutUIController`, `SetupScoutUI.cs`(`DCL-053`/`DCL-061`)                                                                                                                                                   |
+| 로스터 관리 UI(카드 컨테이너/세트덱 게이지 배선)                | 🔁 부분 구현                | `RosterUIController`, `SetupRosterUI.cs`가 패널/버튼/`screens` 등록(`DCL-062`)에 이어 타자·투수 카드 컨테이너/`cardPrefab`/세트덱 게이지/`GameActionController` 바인딩(`DCL-063`)까지 완료. Unity 배치 컴파일로만 검증(E3)했고 에디터 메뉴 실행·Play Mode 렌더링 확인은 아직 미수행(E1) |
+| 리그/랭킹 챌린지/홈런 레이스/친선경기 UI                        | 🕳️ 미구현                  | 씬에 배선된 화면 없음(`docs/17_v03_roadmap.md`)                                                                                                                                                               |
+| 협회(길드) 대전 시스템                                          | 삭제 확정                  | 다인 유저 동시접속 서버 구조 전제로 1인 개발 스코프 초과 - PM 확정에 따라 문서에서 완전 삭제(TASK-KBO-091-REV)                                                                                                |
+| 비동기식 유저 데이터 대전(Ghost Match)                          | ✅ 기획 변경 확정 (미구현) | 원안의 라이브 세션형 PvP/서버 아키텍처를 대체하는 PM 신규 확정안(4.4절). BaaS 기반, 코드 구현은 아직 없음                                                                                                     |
+| 재화/가챠 세부 경제(재료 조합, 특별 제작소 등)                  | 🕳️ 미구현                  | 볼/재화 등 최소한의 개념만 `GameManager`에 존재, 원문 세부 경제 체계는 미착수                                                                                                                                 |
+| 세트덱(구단 통일) 보너스                                        | ✅ 구현                    | `Player.CalculateOVR(isSetDeckBonusActive, setDeckBonusMultiplier)`                                                                                                                                           |
