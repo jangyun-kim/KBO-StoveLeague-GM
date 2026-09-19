@@ -1,0 +1,731 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 75e2db0b8a667304eb0da40eb273fd19, type: 3}
+  m_Name: SkillDB
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Data.SkillDB
+  tierProbabilities:
+  - Tier: 0
+    DropRatePercent: 2
+  - Tier: 1
+    DropRatePercent: 7
+  - Tier: 2
+    DropRatePercent: 10
+  - Tier: 3
+    DropRatePercent: 13
+  - Tier: 4
+    DropRatePercent: 18
+  - Tier: 5
+    DropRatePercent: 25
+  - Tier: 6
+    DropRatePercent: 25
+  batterSkills:
+  - SkillName: "\uC815\uBC00\uD0C0\uACA9"
+    Tier: 0
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD3EC\uC218\uB9AC\uB4DC(\uD3EC\uC218)"
+    Tier: 0
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC800\uB2C8\uB9E8"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBC30\uD305\uBA38\uC2E0"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers:
+      - Stat: 0
+        Value: 9
+      - Stat: 1
+        Value: 9
+      - Stat: 2
+        Value: 9
+  - SkillName: "\uCEE8\uD0DD\uD2B8\uD788\uD130"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC21C\uC704\uACBD\uC7C1"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "5\uD234 \uD50C\uB808\uC774\uC5B4"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uAC00\uC744\uC0AC\uB098\uC774"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 6
+      Modifiers:
+      - Stat: 0
+        Value: 5
+      - Stat: 1
+        Value: 5
+      - Stat: 2
+        Value: 5
+  - SkillName: "\uB3C4\uC804\uC815\uC2E0"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uACF5\uD3EC\uC758 \uD558\uC704\uD0C0\uC120"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBC31\uC804\uB178\uC7A5"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB300\uB3C4"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uB9AC\uC758\uD568\uC131"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB09C\uC138\uC758 \uC601\uC6C5"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC218\uBE44 \uC548\uC815\uC131"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD575\uD0C0\uC120"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD648 \uC5B4\uB4DC\uBC34\uD2F0\uC9C0"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBCA0\uC2A4\uD2B8 \uD3EC\uC9C0\uC158"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5BC\uB9AC\uC2A4\uD0C0\uD130"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uACB0\uC815\uC801 \uD55C\uBC29"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uBD80\uC0AC"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB178\uB9BC\uC218"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 5
+      Modifiers:
+      - Stat: 1
+        Value: 8
+  - SkillName: "\uC9DC\uB9BF\uD55C \uC190\uAE38"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC9D1\uC911\uB825"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD074\uB7EC\uCE58\uD788\uD130"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 4
+      Modifiers:
+      - Stat: 0
+        Value: 5
+      - Stat: 1
+        Value: 5
+  - SkillName: "\uD558\uC774\uBCFC\uD788\uD130"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB9AC\uB4DC\uC624\uD504"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5B4\uD37C\uC2A4\uC719"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB300\uD0C0 \uC2A4\uD398\uC15C"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD328\uAE30"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 1
+      Modifiers:
+      - Stat: 0
+        Value: 10
+      - Stat: 1
+        Value: 10
+      - Stat: 2
+        Value: 10
+  - SkillName: "\uD3EC\uC218\uB9AC\uB4DC"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB9AC\uADF8\uC758\uAC15\uC790"
+    Tier: 6
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBE60\uB978\uBC1C"
+    Tier: 6
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  startingPitcherSkills:
+  - SkillName: "\uCCA0\uC644"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC800\uB2C8\uB9E8"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD544\uC2B9\uCE74\uB4DC"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC804\uCC9C\uD6C4"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD328\uAE30"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 1
+      Modifiers:
+      - Stat: 3
+        Value: 10
+      - Stat: 4
+        Value: 10
+      - Stat: 5
+        Value: 10
+      - Stat: 6
+        Value: 10
+  - SkillName: "\uC21C\uC704\uACBD\uC7C1"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB3C4\uC804\uC815\uC2E0"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5D0\uC774\uC2A4"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD648\uC5B4\uB4DC\uBC34\uD2F0\uC9C0"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uAC00\uC744\uC0AC\uB098\uC774"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC6D0\uD22C\uD380\uCE58"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBCA0\uC2A4\uD2B8 \uD3EC\uC9C0\uC158"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB09C\uC138\uC758 \uC601\uC6C5"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB9C8\uB2F9\uC1E0"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 7
+      Modifiers:
+      - Stat: 3
+        Value: 5
+      - Stat: 6
+        Value: 5
+  - SkillName: "\uCCAB\uB2E8\uCD94"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC9D1\uC911\uB825"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBC31\uC804\uB178\uC7A5"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5B8\uD130\uCCD0\uBE14"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC544\uD2F0\uC2A4\uD2B8"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB77C\uC774\uC9D5\uC2A4\uD0C0"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uBD80\uC0AC"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5BC\uB9AC\uC2A4\uD0C0\uD130"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uB9AC\uC758\uD568\uC131"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC704\uB2DD\uC0F7"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 5
+      Modifiers:
+      - Stat: 5
+        Value: 8
+  - SkillName: "\uD0C0\uC120\uC9C0\uC6D0"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD074\uB7EC\uCE58\uD53C\uCCD0"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD750\uB984\uB04A\uAE30"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC6D0\uD3EC\uC778\uD2B8\uB9B4\uB9AC\uD504"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB9AC\uADF8\uC758\uAC15\uC790"
+    Tier: 6
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC218\uD638\uC2E0"
+    Tier: 6
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  bullpenPitcherSkills:
+  - SkillName: "\uB9C8\uB2F9\uC1E0"
+    Tier: 0
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC800\uB2C8\uB9E8"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD544\uC2B9\uCE74\uB4DC"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uCCA0\uC644"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD328\uAE30"
+    Tier: 1
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 1
+      Modifiers:
+      - Stat: 3
+        Value: 10
+      - Stat: 4
+        Value: 10
+      - Stat: 5
+        Value: 10
+      - Stat: 6
+        Value: 10
+  - SkillName: "\uC804\uCC9C\uD6C4"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC21C\uC704\uACBD\uC7C1"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB3C4\uC804\uC815\uC2E0"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5D0\uC774\uC2A4"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD648\uC5B4\uB4DC\uBC34\uD2F0\uC9C0"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uAC00\uC744\uC0AC\uB098\uC774"
+    Tier: 2
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC218\uD638\uC2E0(\uB9C8\uBB34\uB9ACA)"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBCA0\uC2A4\uD2B8\uD3EC\uC9C0\uC158"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB09C\uC138\uC758 \uC601\uC6C5"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB77C\uC774\uC9D5\uC2A4\uD0C0"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uB9AC\uC758\uD568\uC131(\uB9C8\uBB34\uB9ACA)"
+    Tier: 3
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uBC31\uC804\uB178\uC7A5"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC9D1\uC911\uB825"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5B8\uD130\uCCD0\uBE14"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC2B9\uBD80\uC0AC"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC544\uD2F0\uC2A4\uD2B8"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC6D0\uD3EC\uC778\uD2B8\uB9B4\uB9AC\uD504(\uB9C8\uBB34\uB9ACB)"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC6D0\uD22C\uD380\uCE58"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC5BC\uB9AC\uC2A4\uD0C0\uD130(\uB9C8\uBB34\uB9ACB)"
+    Tier: 4
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uC704\uB2DD\uC0F7"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 5
+      Modifiers:
+      - Stat: 5
+        Value: 8
+  - SkillName: "\uD0C0\uC120\uC9C0\uC6D0"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD074\uB7EC\uCE58\uD53C\uCCD0"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uD750\uB984\uB04A\uAE30(\uB9C8\uBB34\uB9ACC)"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uCCAB\uB2E8\uCD94"
+    Tier: 5
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []
+  - SkillName: "\uB9AC\uADF8\uC758\uAC15\uC790"
+    Tier: 6
+    Description: 
+    Effect:
+      Target: 0
+      Condition: 0
+      Modifiers: []

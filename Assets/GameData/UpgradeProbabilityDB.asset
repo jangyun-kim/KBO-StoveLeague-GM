@@ -1,0 +1,205 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 644920e8254501f44a8346eb0df7b930, type: 3}
+  m_Name: UpgradeProbabilityDB
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Data.UpgradeProbabilityDB
+  stages:
+  - FromLevel: 0
+    ToLevel: 1
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 75
+    - MaterialType: 1
+      SuccessRatePercent: 100
+    - MaterialType: 2
+      SuccessRatePercent: 100
+    - MaterialType: 3
+      SuccessRatePercent: 100
+    - MaterialType: 4
+      SuccessRatePercent: 100
+    - MaterialType: 9
+      SuccessRatePercent: 100
+  - FromLevel: 1
+    ToLevel: 2
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 50
+    - MaterialType: 1
+      SuccessRatePercent: 100
+    - MaterialType: 2
+      SuccessRatePercent: 100
+    - MaterialType: 3
+      SuccessRatePercent: 100
+    - MaterialType: 4
+      SuccessRatePercent: 100
+    - MaterialType: 9
+      SuccessRatePercent: 100
+  - FromLevel: 2
+    ToLevel: 3
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 25
+    - MaterialType: 1
+      SuccessRatePercent: 50
+    - MaterialType: 2
+      SuccessRatePercent: 100
+    - MaterialType: 3
+      SuccessRatePercent: 100
+    - MaterialType: 4
+      SuccessRatePercent: 100
+    - MaterialType: 9
+      SuccessRatePercent: 100
+  - FromLevel: 3
+    ToLevel: 4
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 10
+    - MaterialType: 1
+      SuccessRatePercent: 25
+    - MaterialType: 2
+      SuccessRatePercent: 50
+    - MaterialType: 3
+      SuccessRatePercent: 75
+    - MaterialType: 4
+      SuccessRatePercent: 100
+    - MaterialType: 9
+      SuccessRatePercent: 100
+  - FromLevel: 4
+    ToLevel: 5
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 5
+    - MaterialType: 1
+      SuccessRatePercent: 10
+    - MaterialType: 2
+      SuccessRatePercent: 15
+    - MaterialType: 3
+      SuccessRatePercent: 25
+    - MaterialType: 4
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 100
+  - FromLevel: 5
+    ToLevel: 6
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 0.05
+    - MaterialType: 1
+      SuccessRatePercent: 0.1
+    - MaterialType: 2
+      SuccessRatePercent: 1
+    - MaterialType: 3
+      SuccessRatePercent: 5
+    - MaterialType: 4
+      SuccessRatePercent: 10
+    - MaterialType: 5
+      SuccessRatePercent: 10
+    - MaterialType: 6
+      SuccessRatePercent: 15
+    - MaterialType: 7
+      SuccessRatePercent: 25
+    - MaterialType: 8
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 50
+  - FromLevel: 6
+    ToLevel: 7
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 0.05
+    - MaterialType: 1
+      SuccessRatePercent: 0.1
+    - MaterialType: 2
+      SuccessRatePercent: 1
+    - MaterialType: 3
+      SuccessRatePercent: 5
+    - MaterialType: 4
+      SuccessRatePercent: 10
+    - MaterialType: 5
+      SuccessRatePercent: 10
+    - MaterialType: 6
+      SuccessRatePercent: 15
+    - MaterialType: 7
+      SuccessRatePercent: 25
+    - MaterialType: 8
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 50
+  - FromLevel: 7
+    ToLevel: 8
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 0.05
+    - MaterialType: 1
+      SuccessRatePercent: 0.1
+    - MaterialType: 2
+      SuccessRatePercent: 1
+    - MaterialType: 3
+      SuccessRatePercent: 5
+    - MaterialType: 4
+      SuccessRatePercent: 10
+    - MaterialType: 5
+      SuccessRatePercent: 10
+    - MaterialType: 6
+      SuccessRatePercent: 15
+    - MaterialType: 7
+      SuccessRatePercent: 25
+    - MaterialType: 8
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 50
+  - FromLevel: 8
+    ToLevel: 9
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 0.05
+    - MaterialType: 1
+      SuccessRatePercent: 0.1
+    - MaterialType: 2
+      SuccessRatePercent: 1
+    - MaterialType: 3
+      SuccessRatePercent: 5
+    - MaterialType: 4
+      SuccessRatePercent: 10
+    - MaterialType: 5
+      SuccessRatePercent: 10
+    - MaterialType: 6
+      SuccessRatePercent: 15
+    - MaterialType: 7
+      SuccessRatePercent: 25
+    - MaterialType: 8
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 50
+  - FromLevel: 9
+    ToLevel: 10
+    MaterialProbabilities:
+    - MaterialType: 0
+      SuccessRatePercent: 0.05
+    - MaterialType: 1
+      SuccessRatePercent: 0.1
+    - MaterialType: 2
+      SuccessRatePercent: 1
+    - MaterialType: 3
+      SuccessRatePercent: 5
+    - MaterialType: 4
+      SuccessRatePercent: 10
+    - MaterialType: 5
+      SuccessRatePercent: 10
+    - MaterialType: 6
+      SuccessRatePercent: 15
+    - MaterialType: 7
+      SuccessRatePercent: 25
+    - MaterialType: 8
+      SuccessRatePercent: 50
+    - MaterialType: 9
+      SuccessRatePercent: 50
