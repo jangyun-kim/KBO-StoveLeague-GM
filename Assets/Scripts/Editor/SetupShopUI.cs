@@ -42,6 +42,22 @@ namespace KBOManager.EditorTools
             else
             {
                 var gachaShopButton = FindOrCreateButton(dashboard.transform, GachaShopButtonName, "치어리더 뽑기");
+                // [TASK-KBO-128] 이 3-인자 FindOrCreateButton()은 CheerleaderShopPanel처럼
+                // VerticalLayoutGroup이 위치를 대신 계산해주는 부모 전용으로 만들어져 RectTransform
+                // 앵커/좌표를 전혀 설정하지 않는다 - 그런데 여기서는 레이아웃 그룹이 없는 로비
+                // (dashboard.transform)에 그대로 썼다. 그 결과 GachaShopButton이 Unity 기본값
+                // (anchorMin=anchorMax=(0.5,0.5), sizeDelta=100x100, 로비 정중앙)으로 렌더링되어
+                // SetupLeagueUI.cs/SetupRosterUI.cs/SetupRoutingUI.cs/SetupScoutUI.cs/
+                // SetupInventoryUI.cs가 확립한 좌측 버튼 열(x=20, y=20/80/140/200/260/320/380)과
+                // 전혀 다른 위치에서 다른 화면 요소와 겹쳐 있었다 - 그 열의 다음 빈 자리(440)에
+                // 명시적으로 배치해 겹침을 해소한다.
+                var gachaShopRect = (RectTransform)gachaShopButton.transform;
+                gachaShopRect.anchorMin = Vector2.zero;
+                gachaShopRect.anchorMax = Vector2.zero;
+                gachaShopRect.pivot = Vector2.zero;
+                gachaShopRect.sizeDelta = new Vector2(160f, 50f);
+                gachaShopRect.anchoredPosition = new Vector2(20f, 440f);
+
                 BindButtonField(dashboard, "gachaShopButton", gachaShopButton);
                 EditorUtility.SetDirty(dashboard);
 

@@ -121,17 +121,21 @@ namespace KBOManager.Managers
             OwnedCheerleaders.Add(newCheerleader);
         }
 
-        /// <summary>[TASK-KBO-064/127] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
+        /// <summary>[TASK-KBO-064/127/128] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
         /// 환급량([Draft], v0.2 밸런싱에서 조정 가능) - PM 확정 5단계(TASK-KBO-127)에 맞춰 갱신했다.
-        /// 정식 등급(LIVE_NORMAL~SEASON_LIMITED) 외의 값(NONE/TEST 등 구버전 더미 등급)은 최저 등급
-        /// (LIVE_NORMAL)과 동일하게 취급한다.</summary>
+        /// [TASK-KBO-128 하향 조정] TASK-KBO-127이 매겼던 값(10/50/200/1000/3000)은 최상위 2개 등급
+        /// (LEGEND=1000, SEASON_LIMITED=3000)이 10연뽑 비용(CheerleaderGachaService.CostPerRoll=100 x
+        /// 10=1000)과 같거나 초과해, 중복 1장만 나와도 10연뽑 비용 전액(또는 그 이상)이 CheerStick으로
+        /// 환급되는 재화 무한 증식 밸런스 붕괴가 있었다 - 5단계 전부 10연뽑 비용(1000)보다 확실히 낮은
+        /// 값으로 하향했다. 정식 등급(LIVE_NORMAL~SEASON_LIMITED) 외의 값(NONE/TEST 등 구버전 더미
+        /// 등급)은 최저 등급(LIVE_NORMAL)과 동일하게 취급한다.</summary>
         private static int ResolveCheerleaderDuplicateConversionValue(CheerleaderGrade grade) => grade switch
         {
             CheerleaderGrade.LIVE_NORMAL => 10,
-            CheerleaderGrade.LIVE_EPIC => 50,
-            CheerleaderGrade.ICON => 200,
-            CheerleaderGrade.LEGEND => 1000,
-            CheerleaderGrade.SEASON_LIMITED => 3000,
+            CheerleaderGrade.LIVE_EPIC => 30,
+            CheerleaderGrade.ICON => 50,
+            CheerleaderGrade.LEGEND => 100,
+            CheerleaderGrade.SEASON_LIMITED => 300,
             _ => 10,
         };
 

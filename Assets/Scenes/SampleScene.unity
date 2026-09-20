@@ -352,6 +352,85 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 25273406}
   m_CullTransparentMesh: 1
+--- !u!1 &26368579
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 26368580}
+  - component: {fileID: 26368582}
+  - component: {fileID: 26368581}
+  m_Layer: 0
+  m_Name: ScoutTicketLobbyText
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &26368580
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 26368579}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 314837433}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 1, y: 1}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: -20, y: -20}
+  m_SizeDelta: {x: 360, y: 70}
+  m_Pivot: {x: 1, y: 1}
+--- !u!114 &26368581
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 26368579}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f7201a12d95ffc409449d95f23cf332, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FontData:
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_FontSize: 40
+    m_FontStyle: 0
+    m_BestFit: 0
+    m_MinSize: 10
+    m_MaxSize: 40
+    m_Alignment: 5
+    m_AlignByGeometry: 0
+    m_RichText: 1
+    m_HorizontalOverflow: 0
+    m_VerticalOverflow: 0
+    m_LineSpacing: 1
+  m_Text: "\uC601\uC785\uAD8C: 0"
+--- !u!222 &26368582
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 26368579}
+  m_CullTransparentMesh: 1
 --- !u!1 &33080898
 GameObject:
   m_ObjectHideFlags: 0
@@ -1777,6 +1856,85 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 172816871}
   m_CullTransparentMesh: 1
+--- !u!1 &172848385
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 172848386}
+  - component: {fileID: 172848388}
+  - component: {fileID: 172848387}
+  m_Layer: 0
+  m_Name: CheerStickLobbyText
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &172848386
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 172848385}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 314837433}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 1, y: 1}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: -400, y: -20}
+  m_SizeDelta: {x: 360, y: 70}
+  m_Pivot: {x: 1, y: 1}
+--- !u!114 &172848387
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 172848385}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f7201a12d95ffc409449d95f23cf332, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_FontData:
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_FontSize: 40
+    m_FontStyle: 0
+    m_BestFit: 0
+    m_MinSize: 10
+    m_MaxSize: 40
+    m_Alignment: 5
+    m_AlignByGeometry: 0
+    m_RichText: 1
+    m_HorizontalOverflow: 0
+    m_VerticalOverflow: 0
+    m_LineSpacing: 1
+  m_Text: "\uC751\uC6D0\uBD09: 0"
+--- !u!222 &172848388
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 172848385}
+  m_CullTransparentMesh: 1
 --- !u!1 &174328820
 GameObject:
   m_ObjectHideFlags: 0
@@ -3121,8 +3279,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Managers.MatchRewardManager
   playBallController: {fileID: 0}
   itemDatabase: {fileID: 0}
-  winScoutReportReward: 100
-  loseOrDrawScoutReportReward: 30
+  winScoutTicketReward: 100
+  loseOrDrawScoutTicketReward: 30
   winMinItemDrop: 1
   winMaxItemDrop: 3
   loseOrDrawItemDrop: 1
@@ -3218,8 +3376,8 @@ MonoBehaviour:
     EconomicBonusRate: 1
     SentimentDefense: 0
   devAutoEquipTestCheerleader: 1
-  scoutReport: 0
-  premiumCurrency: 0
+  scoutTicket: 0
+  cheerStick: 0
   gameGold: 0
   fanSentiment: 100
   losingStreak: 0
@@ -4194,6 +4352,8 @@ RectTransform:
   - {fileID: 484739088}
   - {fileID: 48093797}
   - {fileID: 494519216}
+  - {fileID: 26368580}
+  - {fileID: 172848386}
   m_Father: {fileID: 965553925}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -4269,7 +4429,8 @@ MonoBehaviour:
   favoriteTeamHighlightColor: '#FFEB3B'
   nextMatchupText: {fileID: 1324218716}
   teamOVRText: {fileID: 420707749}
-  premiumCurrencyLobbyText: {fileID: 647205666}
+  scoutTicketLobbyText: {fileID: 26368581}
+  cheerStickLobbyText: {fileID: 172848387}
   quickPlayButton: {fileID: 108375209}
   shopButton: {fileID: 484739089}
   leagueStatsButton: {fileID: 48093798}
@@ -13075,7 +13236,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: db533ded3bcf9ad4a99390a956ba181b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Controllers.CheerleaderShopUIController
-  premiumCurrencyText: {fileID: 1324864118}
+  cheerStickText: {fileID: 0}
   roll1xButton: {fileID: 130842317}
   roll10xButton: {fileID: 1098322439}
   closeButton: {fileID: 247617867}
@@ -14219,7 +14380,7 @@ MonoBehaviour:
   buyPremiumTenPullButton: {fileID: 1962204342}
   skillTicketPrice: 150
   buySkillTicketButton: {fileID: 674419342}
-  premiumCurrencyText: {fileID: 1945937458}
+  scoutTicketText: {fileID: 0}
   gameGoldText: {fileID: 579668808}
   purchaseResultText: {fileID: 1748231281}
   closeButton: {fileID: 1992839060}

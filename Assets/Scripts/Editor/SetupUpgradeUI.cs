@@ -41,6 +41,7 @@ namespace KBOManager.EditorTools
     public static class SetupUpgradeUI
     {
         private const string PopupName = "MaterialSelectPopup";
+        private const string ContentPanelName = "ContentPanel";
         private const string TitleTextName = "TitleText";
         private const string SelectionCountTextName = "SelectionCountText";
         private const string ConfirmButtonName = "ConfirmButton";
@@ -66,23 +67,27 @@ namespace KBOManager.EditorTools
             }
 
             var controller = FindOrCreatePopup(canvas.transform);
+            // [TASK-KBO-128] 콘텐츠(제목/목록/버튼)를 받쳐주는 불투명 패널이 없어 반투명 딤 배경
+            // 위에 그대로 떠 있던 구조를 보완한다 - 기존 5개 콘텐츠 자식은 새 ContentPanel 하위로
+            // 이동(재생성 아님, 명령서 6항)한다.
+            var contentPanel = FindOrCreateContentPanel(controller.transform);
 
-            var titleText = FindOrCreateText(controller.transform, TitleTextName, "",
+            var titleText = FindOrCreateText(contentPanel, TitleTextName, "",
                 new Vector2(0f, 0.85f), new Vector2(1f, 1f));
-            var selectionCountText = FindOrCreateText(controller.transform, SelectionCountTextName, "",
+            var selectionCountText = FindOrCreateText(contentPanel, SelectionCountTextName, "",
                 new Vector2(0f, 0.1f), new Vector2(1f, 0.15f));
             // [TASK-KBO-123] 확인/취소 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다. 과거
             // 버전에서 팝업 직속 자식으로 고정 픽셀 앵커에 만들어져 있던 두 버튼은 이 컨테이너 하위로
             // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지).
-            var actionContainer = FindOrCreateActionContainer(controller.transform);
+            var actionContainer = FindOrCreateActionContainer(contentPanel);
             var confirmButton = FindOrCreateButton(actionContainer, ConfirmButtonName, "강화/각성 실행",
                 Vector2.zero, Vector2.zero);
             var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
                 Vector2.zero, Vector2.zero);
 
-            var (playerListPanel, playerListContainer) = FindOrCreateListPanel(controller.transform,
+            var (playerListPanel, playerListContainer) = FindOrCreateListPanel(contentPanel,
                 PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f));
-            var (itemListPanel, itemListContainer) = FindOrCreateListPanel(controller.transform,
+            var (itemListPanel, itemListContainer) = FindOrCreateListPanel(contentPanel,
                 ItemListPanelName, ItemListContainerName, new Vector2(160f, 60f), new Vector2(10f, 10f));
 
             var playerCardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
@@ -128,9 +133,63 @@ namespace KBOManager.EditorTools
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            popupObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
+            // [TASK-KBO-128] 딤 배경 알파를 0.6->0.8로 진하게 해 뒤의 로비/인벤토리 화면과 팝업의
+            // 경계를 더 뚜렷하게 만든다(명령서 4항 DimBackground 스펙).
+            popupObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.8f);
 
             return popupObject.AddComponent<MaterialSelectUIController>();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-128] `MaterialSelectPopup`(딤 배경 전용) 하위에 콘텐츠(제목/목록/버튼)를 받쳐주는
+        /// 불투명 흰색 패널을 신설한다. [사실 정정] 명령서 4항은 "PopupPanel"이 이미 존재하며 그
+        /// `Image.color`가 투명하게 설정된 결함이라 전제했으나, `FindOrCreatePopup()`을 재확인한 결과
+        /// 그런 별도 패널 오브젝트 자체가 애초에 없었고(콘텐츠가 전부 팝업 딤 배경의 직속 자식이었다),
+        /// 딤 배경 자신의 색상도 `(0,0,0,0.6)`으로 이미 정상적으로 반투명 검정이었다(투명/버그 아님,
+        /// 씬 재조회로 확인). 다만 콘텐츠를 받쳐주는 불투명 패널이 없어 텍스트/버튼이 딤 배경 위에
+        /// 그대로 떠 있던 것은 사실이라, 명령서 취지(불투명 콘텐츠 배경)를 살려 이 패널을 새로 만든다.
+        /// 과거 버전에서 팝업 직속 자식이었던 5개 콘텐츠 오브젝트(TitleText/SelectionCountText/
+        /// ActionContainer/PlayerListPanel/ItemListPanel)는 이 패널 하위로 이동(재생성 아님)한다.
+        /// </summary>
+        private static Transform FindOrCreateContentPanel(Transform popupTransform)
+        {
+            var existing = popupTransform.Find(ContentPanelName);
+            Transform contentTransform;
+            if (existing != null)
+            {
+                contentTransform = existing;
+            }
+            else
+            {
+                var contentObject = new GameObject(ContentPanelName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(contentObject, $"Create {ContentPanelName}");
+                contentObject.transform.SetParent(popupTransform, false);
+
+                var rect = (RectTransform)contentObject.transform;
+                // 화면 가장자리에 딤 배경 테두리가 보이도록 살짝 안쪽으로 앵커한다.
+                rect.anchorMin = new Vector2(0.1f, 0.1f);
+                rect.anchorMax = new Vector2(0.9f, 0.9f);
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                contentObject.GetComponent<Image>().color = Color.white;
+
+                contentTransform = contentObject.transform;
+            }
+
+            foreach (var legacyName in new[]
+            {
+                TitleTextName, SelectionCountTextName, ActionContainerName, PlayerListPanelName, ItemListPanelName,
+            })
+            {
+                var legacyChild = popupTransform.Find(legacyName);
+                if (legacyChild != null && legacyChild.parent == popupTransform)
+                {
+                    legacyChild.SetParent(contentTransform, false);
+                }
+            }
+
+            return contentTransform;
         }
 
         /// <summary>
@@ -437,7 +496,9 @@ namespace KBOManager.EditorTools
             var text = textObject.GetComponent<Text>();
             text.text = defaultText;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white; // 팝업 배경(반투명 검정)이 어두우므로 흰색으로 대비시킨다.
+            // [TASK-KBO-128] ContentPanel 신설로 이 텍스트의 실제 배경이 불투명 흰색이 되어(딤 배경
+            // 위가 아님), 검은색으로 대비시킨다 - 흰색으로 두면 흰 배경 위에서 안 보인다.
+            text.color = Color.black;
             text.fontSize = 16;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
