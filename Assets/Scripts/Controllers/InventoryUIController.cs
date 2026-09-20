@@ -88,6 +88,12 @@ namespace KBOManager.Controllers
 
         private void OnDisable()
         {
+            // [TASK-KBO-124] 상세 패널을 연 채로 화면을 나가면(다른 화면 버튼 클릭 등으로 이 패널이
+            // SetActive(false)됨) detailPanelRoot가 활성 상태로 남아 있다가, 다음 재진입 시 이전에
+            // 선택했던 선수의 상세 패널이 그대로 다시 보이는 상태 누수가 있었다 - CloseDetail()로
+            // 선택 상태(selectedPlayer/pendingRerollTarget)까지 함께 초기화한다.
+            CloseDetail();
+
             if (materialSelectUIController != null)
             {
                 materialSelectUIController.OnActionCompleted -= HandleMaterialActionCompleted;

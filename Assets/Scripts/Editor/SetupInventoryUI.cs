@@ -29,6 +29,17 @@ namespace KBOManager.EditorTools
     /// public이지만 이를 호출하는 UI 트리거가 설계돼 있지 않다. 명령서 5항이 "비즈니스 로직 수정 금지"를
     /// 명시해 새 필드를 추가로 발명하지 않고 이 상태 그대로 두었다 - 한 번 인벤토리 화면에 진입하면
     /// (다른 화면의 진입 버튼을 다시 누르기 전까지는) 상세 패널이나 화면 자체를 닫을 UI 수단이 없다.
+    /// (위 문단은 TASK-111에서 해소됨 - closeButton/closeDetailButton 필드 및 리스너 추가.)
+    ///
+    /// [TASK-KBO-124, 사실 정정] `InventoryUIController.cs` 원문(60~69/281~293행)을 재확인한 결과
+    /// `enhanceButton`/`awakenButton`/`skillChangeButton`은 `Awake()`에 이미 리스너가 연결돼 있고
+    /// (`OnClickEnhance()`/`OnClickAwaken()`이 캐싱된 `selectedPlayer`로 `materialSelectUIController.
+    /// OpenForEnhance()`/`OpenForAwaken()`을 이미 호출), 라벨("강화하기"/"각성하기"/"스킬 변경")과 검은색
+    /// 폰트도 이 파일의 `FindOrCreateButton()`이 생성 시점부터 이미 채우고 있었다 - "하얀 백지에 클릭도
+    /// 안 됨"이라는 명령서 3항 전제와 달리 `InventoryUIController.cs`는 이 부분을 수정할 필요가 없었다.
+    /// 실제 확인된 문제는 `closeButton`/`closeDetailButton`이 같은 화면 좌표(0.85,0.92~1,1)를 공유해
+    /// `CloseButton`(더 나중에 생성돼 sibling index가 높음)이 `CloseDetailButton`을 항상 가리고 클릭을
+    /// 가로채던 것과, `OnDisable()`에 `CloseDetail()` 호출이 없어 상세 패널 상태가 누수되던 것 2가지였다.
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -90,10 +101,16 @@ namespace KBOManager.EditorTools
 
             // [TASK-KBO-111] 인벤토리 화면 자체를 닫는 버튼(InventoryPanel 우측 상단)과 상세 패널만
             // 닫는 버튼(DetailPanel 우측 상단)을 각각 배치한다(명령서 5항 - 대략적인 우측 상단 앵커만).
+            //
+            // [TASK-KBO-124] 두 버튼이 원래 같은 앵커(0.85,0.92~1,1)를 썼는데, DetailPanel이 CloseButton
+            // 보다 먼저 생성돼(70행 FindOrCreateDetailPanel, 93행보다 앞) InventoryPanel 하위 형제 순서상
+            // CloseButton이 더 나중(=위쪽 sibling index)이라 항상 CloseDetailButton 위에 그려져 클릭을
+            // 가로채고 있었다 - 상세 패널만 닫으려 눌러도 매번 로비로 이동해 버리는 원인이었다.
+            // CloseDetailButton을 CloseButton과 겹치지 않는 바로 왼쪽 칸으로 옮겨 해소한다.
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
                 new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
             var closeDetailButton = FindOrCreateButton(detailPanelRoot.transform, CloseDetailButtonName, "닫기",
-                new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
+                new Vector2(0.65f, 0.92f), new Vector2(0.83f, 1f));
 
             var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
             if (materialSelectUIController == null)
@@ -426,7 +443,16 @@ namespace KBOManager.EditorTools
             if (existingChild != null)
             {
                 var existingButton = existingChild.GetComponent<Button>();
-                if (existingButton != null) return existingButton;
+                if (existingButton != null)
+                {
+                    // [TASK-KBO-124] 이미 존재하는 버튼이어도 앵커/라벨을 최신 값으로 강제 갱신한다 -
+                    // CloseDetailButton은 앵커가 바뀌었으므로 재실행 시 반드시 새 위치로 옮겨져야 한다.
+                    var existingRect = (RectTransform)existingButton.transform;
+                    existingRect.anchorMin = anchorMin;
+                    existingRect.anchorMax = anchorMax;
+                    ApplyButtonLabel(existingButton, label);
+                    return existingButton;
+                }
             }
 
             var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -456,14 +482,25 @@ namespace KBOManager.EditorTools
             labelRect.offsetMax = Vector2.zero;
 
             var text = labelObject.GetComponent<Text>();
-            text.text = label;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.black;
             text.fontSize = 16;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyButtonLabel(button, label);
 
             return button;
+        }
+
+        /// <summary>[TASK-KBO-124] 이미 존재하는 버튼을 재사용할 때도 라벨 텍스트/색상/가독성 옵션을
+        /// 최신 값으로 강제 갱신한다(TASK-117/118/123이 확립한 관례 재사용).</summary>
+        private static void ApplyButtonLabel(Button button, string label)
+        {
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text == null) return;
+
+            text.text = label;
+            text.color = Color.black;
+            text.resizeTextForBestFit = true;
         }
 
         private static Text FindOrCreateText(Transform parent, string name, string defaultText, Vector2 anchorMin, Vector2 anchorMax)
