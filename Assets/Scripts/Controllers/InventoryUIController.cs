@@ -70,6 +70,11 @@ namespace KBOManager.Controllers
 
         private void OnEnable()
         {
+            // [TASK-KBO-121] UIManager.ShowScreen()이 이 패널을 SetActive(true)할 때마다 최신
+            // GameManager.Instance.Inventory로 카드 목록을 다시 그린다 - 기존에는 이 호출이 없어
+            // 화면에 처음 진입하면(또는 재진입해도) 카드가 갱신되지 않고 비어 보였다.
+            RefreshInventory();
+
             if (materialSelectUIController != null)
             {
                 materialSelectUIController.OnActionCompleted += HandleMaterialActionCompleted;
@@ -136,6 +141,11 @@ namespace KBOManager.Controllers
             var card = CardPoolManager.Instance != null
                 ? CardPoolManager.Instance.Get(cardPrefab, cardContainer)
                 : Instantiate(cardPrefab, cardContainer);
+
+            // [TASK-KBO-121] 방어 코드 - 풀링/템플릿 유래로 스케일이 흐트러진 카드가 눈에 안 보이는
+            // 크기로 렌더링되는 사고를 막는다(cardContainer의 GridLayoutGroup이 위치/크기는 통제하지만
+            // localScale까지는 건드리지 않는다).
+            card.transform.localScale = Vector3.one;
 
             card.Setup(player);
 

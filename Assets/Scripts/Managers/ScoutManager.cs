@@ -68,7 +68,11 @@ namespace KBOManager.Managers
             GameManager.Instance.ScoutReport -= roll1Cost;
 
             var player = RollOnce();
-            if (player != null) GameManager.Instance.AddPlayerToInventory(player);
+            if (player != null)
+            {
+                GameManager.Instance.AddPlayerToInventory(player);
+                LogAcquired(player);
+            }
             return player;
         }
 
@@ -92,10 +96,22 @@ namespace KBOManager.Managers
                 if (player == null) continue;
 
                 GameManager.Instance.AddPlayerToInventory(player);
+                LogAcquired(player);
                 results.Add(player);
             }
 
             return results;
+        }
+
+        /// <summary>[TASK-KBO-121] Roll1()/Roll10()으로 획득한 선수 1명을 콘솔에 기록한다. 치어리더
+        /// 가챠(CheerleaderGachaService)와 달리 선수 뽑기는 결과 로그가 전혀 없어 사용자가 결과를
+        /// 인지하기 어려웠다는 QA 보고를 반영했다.</summary>
+        private static void LogAcquired(Player player)
+        {
+            if (player?.Template == null) return;
+
+            Debug.Log($"[ScoutManager] 선수 획득: {player.Template.PlayerName} " +
+                $"(등급 {player.Template.Grade}, OVR {player.CalculateOVR(false)})");
         }
 
         /// <summary>
