@@ -29,6 +29,14 @@ namespace KBOManager.EditorTools
     /// 등록돼 있지 않다. 이 팝업을 실제로 여는 `InventoryUIController`(`[강화하기]`/`[각성하기]` 버튼의
     /// 호스트) 자체도 씬에 아직 전혀 조립돼 있지 않음을 확인했다(`FindAnyObjectByType` 0건) - 이는 이번
     /// 명령서의 포함 범위(`SetupUpgradeUI.cs` 신설) 밖의 별도 대형 작업이라 이번에는 건드리지 않았다.
+    ///
+    /// [TASK-KBO-123, 사실 정정] `MaterialSelectUIController.cs` 원문(68~74/303~312행)을 재확인한 결과
+    /// `Awake()`가 `cancelButton.onClick.AddListener(ClosePopup)`를 이미 등록하고 있고, `ClosePopup()`도
+    /// 선택 상태 초기화 + `popupRoot.SetActive(false)`까지 전부 이미 구현돼 있었다 - "취소 로직 부재"라는
+    /// 명령서 전제와 달리 C# 로직 자체는 손댈 필요가 없었다(무수정). 대신 확인/취소 버튼이 팝업 직속
+    /// 자식으로 고정 픽셀 좌표에 떨어져 있던 레이아웃 문제(명령서 4항)만 `ActionContainer`
+    /// (`HorizontalLayoutGroup`)로 해소했다 - 좌표가 부정확해 클릭 판정 영역이 어긋났을 가능성까지
+    /// 함께 정리한다.
     /// </summary>
     public static class SetupUpgradeUI
     {
@@ -37,6 +45,7 @@ namespace KBOManager.EditorTools
         private const string SelectionCountTextName = "SelectionCountText";
         private const string ConfirmButtonName = "ConfirmButton";
         private const string CancelButtonName = "CancelButton";
+        private const string ActionContainerName = "ActionContainer";
         private const string PlayerListPanelName = "PlayerListPanel";
         private const string PlayerListContainerName = "PlayerListContainer";
         private const string ItemListPanelName = "ItemListPanel";
@@ -62,10 +71,14 @@ namespace KBOManager.EditorTools
                 new Vector2(0f, 0.85f), new Vector2(1f, 1f));
             var selectionCountText = FindOrCreateText(controller.transform, SelectionCountTextName, "",
                 new Vector2(0f, 0.1f), new Vector2(1f, 0.15f));
-            var confirmButton = FindOrCreateButton(controller.transform, ConfirmButtonName, "확인",
-                new Vector2(0.3f, 0f), new Vector2(0.5f, 0.1f));
-            var cancelButton = FindOrCreateButton(controller.transform, CancelButtonName, "취소",
-                new Vector2(0.5f, 0f), new Vector2(0.7f, 0.1f));
+            // [TASK-KBO-123] 확인/취소 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다. 과거
+            // 버전에서 팝업 직속 자식으로 고정 픽셀 앵커에 만들어져 있던 두 버튼은 이 컨테이너 하위로
+            // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지).
+            var actionContainer = FindOrCreateActionContainer(controller.transform);
+            var confirmButton = FindOrCreateButton(actionContainer, ConfirmButtonName, "강화/각성 실행",
+                Vector2.zero, Vector2.zero);
+            var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
+                Vector2.zero, Vector2.zero);
 
             var (playerListPanel, playerListContainer) = FindOrCreateListPanel(controller.transform,
                 PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f));
@@ -118,6 +131,59 @@ namespace KBOManager.EditorTools
             popupObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
 
             return popupObject.AddComponent<MaterialSelectUIController>();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-123] 확인/취소 버튼을 담을 하단 컨테이너. 명령서 4항이 지정한 좌표(anchorMin 0,0 ~
+        /// anchorMax 1,0.15)에 `HorizontalLayoutGroup`(spacing 20, `MiddleCenter`)을 부착한다. 과거
+        /// 버전에서 팝업(`MaterialSelectPopup`)의 직속 자식으로 고정 픽셀 좌표에 만들어져 있던
+        /// `ConfirmButton`/`CancelButton`은 이 컨테이너 하위로 이동시켜 중복 생성을 막는다(명령서 6항).
+        /// </summary>
+        private static Transform FindOrCreateActionContainer(Transform popupTransform)
+        {
+            var existingContainer = popupTransform.Find(ActionContainerName);
+            Transform containerTransform;
+            if (existingContainer != null)
+            {
+                containerTransform = existingContainer;
+            }
+            else
+            {
+                var containerObject = new GameObject(ActionContainerName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(containerObject, $"Create {ActionContainerName}");
+                containerObject.transform.SetParent(popupTransform, false);
+
+                var rect = (RectTransform)containerObject.transform;
+                rect.anchorMin = new Vector2(0f, 0f);
+                rect.anchorMax = new Vector2(1f, 0.15f);
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                containerTransform = containerObject.transform;
+            }
+
+            if (!containerTransform.TryGetComponent<HorizontalLayoutGroup>(out var layout))
+            {
+                layout = containerTransform.gameObject.AddComponent<HorizontalLayoutGroup>();
+                layout.spacing = 20f;
+                layout.childAlignment = TextAnchor.MiddleCenter;
+                layout.childForceExpandWidth = false;
+                layout.childForceExpandHeight = false;
+            }
+
+            MoveLegacyButtonIfNeeded(popupTransform, containerTransform, ConfirmButtonName);
+            MoveLegacyButtonIfNeeded(popupTransform, containerTransform, CancelButtonName);
+
+            return containerTransform;
+        }
+
+        private static void MoveLegacyButtonIfNeeded(Transform popupTransform, Transform containerTransform, string buttonName)
+        {
+            var legacyButton = popupTransform.Find(buttonName);
+            if (legacyButton != null && legacyButton.parent == popupTransform)
+            {
+                legacyButton.SetParent(containerTransform, false);
+            }
         }
 
         private static (GameObject panel, Transform container) FindOrCreateListPanel(Transform parent,
@@ -298,7 +364,11 @@ namespace KBOManager.EditorTools
             if (existingChild != null)
             {
                 var existingButton = existingChild.GetComponent<Button>();
-                if (existingButton != null) return existingButton;
+                if (existingButton != null)
+                {
+                    ApplyButtonLabel(existingButton, label);
+                    return existingButton;
+                }
             }
 
             var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -328,14 +398,25 @@ namespace KBOManager.EditorTools
             labelRect.offsetMax = Vector2.zero;
 
             var text = labelObject.GetComponent<Text>();
-            text.text = label;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.black;
             text.fontSize = 18;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyButtonLabel(button, label);
 
             return button;
+        }
+
+        /// <summary>[TASK-KBO-123] 이미 존재하는 버튼을 재사용할 때도 라벨 텍스트/색상/가독성 옵션을
+        /// 최신 값으로 강제 갱신한다(TASK-117이 확립한 관례 재사용).</summary>
+        private static void ApplyButtonLabel(Button button, string label)
+        {
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text == null) return;
+
+            text.text = label;
+            text.color = Color.black;
+            text.resizeTextForBestFit = true;
         }
 
         private static Text FindOrCreateText(Transform parent, string name, string defaultText, Vector2 anchorMin, Vector2 anchorMax)
