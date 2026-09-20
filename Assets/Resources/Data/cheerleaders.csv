@@ -1,11 +1,13 @@
 CatalogId,Name,Grade,ConditionBuff,EconomicBonusRate,ClutchMultiplier,SentimentDefense
-CHR_001,가상 치어리더 A,NORMAL,1,1.05,1.0,0
-CHR_002,가상 치어리더 B,NORMAL,1,1.05,1.0,0
-CHR_003,가상 치어리더 C,NORMAL,1,1.05,1.0,0
-CHR_004,스타 치어리더 A,RARE,2,1.10,1.05,1
-CHR_005,스타 치어리더 B,RARE,2,1.10,1.05,1
-CHR_006,스타 치어리더 C,RARE,2,1.10,1.05,1
-CHR_007,그랜드 치어리더 A,EPIC,3,1.15,1.10,2
-CHR_008,그랜드 치어리더 B,EPIC,3,1.15,1.10,2
+CHR_001,가상 치어리더 A,LIVE_NORMAL,1,1.05,1.00,0
+CHR_002,가상 치어리더 B,LIVE_NORMAL,1,1.05,1.00,0
+CHR_003,가상 치어리더 C,LIVE_NORMAL,1,1.05,1.00,0
+CHR_004,스타 치어리더 A,LIVE_EPIC,2,1.10,1.05,1
+CHR_005,스타 치어리더 B,LIVE_EPIC,2,1.10,1.05,1
+CHR_006,스타 치어리더 C,LIVE_EPIC,2,1.10,1.05,1
+CHR_007,그랜드 치어리더 A,ICON,3,1.15,1.10,2
+CHR_008,그랜드 치어리더 B,ICON,3,1.15,1.10,2
 CHR_009,레전드 치어리더 A,LEGEND,4,1.20,1.15,3
 CHR_010,레전드 치어리더 B,LEGEND,4,1.20,1.15,3
+CHR_011,시즌한정 치어리더 A,SEASON_LIMITED,5,1.25,1.20,4
+CHR_012,시즌한정 치어리더 B,SEASON_LIMITED,5,1.25,1.20,4

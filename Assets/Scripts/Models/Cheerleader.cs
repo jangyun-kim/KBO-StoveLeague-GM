@@ -6,20 +6,24 @@ namespace KBOManager.Models
     /// 치어리더 등급. 선수 카드 등급(Types.cs의 Grade enum - GDD 문서/코드 주석에서는 종종
     /// "PlayerGrade"로도 불린다)과는 완전히 분리된 별도 체계이며, 서로 혼용하지 않는다.
     ///
-    /// [TASK-KBO-064] docs/16_shop_and_gacha_policy.md 2절의 v0.2 가챠 정식 등급 제안(NORMAL/RARE/
-    /// EPIC/LEGEND)을 실제로 반영했다. 기존 NONE=0/TEST=1은 절대 바꾸지 않고 값을 이어 붙였다 -
-    /// TASK-KBO-057부터 Cheerleader가 GameSaveData로 직렬화되는 대상이라(11_data_dictionary.md 7절),
-    /// Grade enum이 JsonUtility 정수 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)와 동일한
-    /// 주의가 필요하다 - 앞으로 등급을 더 추가할 때도 반드시 끝에만 이어 붙일 것.
+    /// [TASK-KBO-127] PM(단장)이 확정한 5단계 정식 등급(성능 순서 낮음-&gt;높음: LIVE_NORMAL &lt;
+    /// LIVE_EPIC &lt; ICON &lt; LEGEND &lt; SEASON_LIMITED)으로 갱신했다 - TASK-KBO-064가 반영했던
+    /// docs/16_shop_and_gacha_policy.md 2절의 임시 제안(NORMAL/RARE/EPIC/LEGEND, 4단계)을 폐기한다.
+    /// 기존 NONE=0/TEST=1은 절대 바꾸지 않고 값을 이어 붙였다 - TASK-KBO-057부터 Cheerleader가
+    /// GameSaveData로 직렬화되는 대상이라(11_data_dictionary.md 7절), Grade enum이 JsonUtility 정수
+    /// 직렬화 문제로 명시적 정수값을 고정했던 선례(DCL-006)와 동일한 주의가 필요하다 - 앞으로 등급을
+    /// 더 추가할 때도 반드시 끝에만 이어 붙일 것. 개발 빌드이므로 구버전 등급(NORMAL=2 등)으로 저장된
+    /// 세이브 데이터의 값 재해석(2=LIVE_NORMAL 등)에 따른 데이터 유실은 허용된다(명령서 7항).
     /// </summary>
     public enum CheerleaderGrade
     {
         NONE = 0,
         TEST = 1,
-        NORMAL = 2,
-        RARE = 3,
-        EPIC = 4,
+        LIVE_NORMAL = 2,
+        LIVE_EPIC = 3,
+        ICON = 4,
         LEGEND = 5,
+        SEASON_LIMITED = 6,
     }
 
     /// <summary>

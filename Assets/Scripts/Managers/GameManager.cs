@@ -121,15 +121,17 @@ namespace KBOManager.Managers
             OwnedCheerleaders.Add(newCheerleader);
         }
 
-        /// <summary>[TASK-KBO-064] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
-        /// 환급량([Draft], v0.2 밸런싱에서 조정 가능) - 정식 등급(NORMAL~LEGEND) 외의 값(NONE/TEST 등
-        /// 구버전 더미 등급)은 최저 등급(NORMAL)과 동일하게 취급한다.</summary>
+        /// <summary>[TASK-KBO-064/127] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
+        /// 환급량([Draft], v0.2 밸런싱에서 조정 가능) - PM 확정 5단계(TASK-KBO-127)에 맞춰 갱신했다.
+        /// 정식 등급(LIVE_NORMAL~SEASON_LIMITED) 외의 값(NONE/TEST 등 구버전 더미 등급)은 최저 등급
+        /// (LIVE_NORMAL)과 동일하게 취급한다.</summary>
         private static int ResolveCheerleaderDuplicateConversionValue(CheerleaderGrade grade) => grade switch
         {
-            CheerleaderGrade.NORMAL => 10,
-            CheerleaderGrade.RARE => 50,
-            CheerleaderGrade.EPIC => 200,
+            CheerleaderGrade.LIVE_NORMAL => 10,
+            CheerleaderGrade.LIVE_EPIC => 50,
+            CheerleaderGrade.ICON => 200,
             CheerleaderGrade.LEGEND => 1000,
+            CheerleaderGrade.SEASON_LIMITED => 3000,
             _ => 10,
         };
 

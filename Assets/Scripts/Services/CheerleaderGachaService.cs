@@ -7,12 +7,13 @@ using UnityEngine;
 namespace KBOManager.Services
 {
     /// <summary>
-    /// [TASK-KBO-065/066] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md 3절(TASK-KBO-066에서
+    /// [TASK-KBO-065/066/127] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md 3절(TASK-KBO-066에서
     /// 이 코드와 1:1로 일치하도록 갱신됨)의 사양을 그대로 구현한다: CheerStick(응원봉) 1회당 100 소모
-    /// (할인 없음, count * 100), 등급 확률 NORMAL 70% / RARE 22% / EPIC 7% / LEGEND 1%(합계 100%),
-    /// 보장 슬롯(천장) 없음. 상점 UI/애니메이션은 이 서비스의 책임이 아니다 - 순수 데이터 처리(재화
-    /// 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리 지급)만 담당하고, 발급된 목록을 반환해
-    /// CheerleaderShopUIController 등 호출부가 결과를 그릴 수 있게 한다.
+    /// (할인 없음, count * 100), 등급 확률(TASK-KBO-127, PM 확정 5단계) LIVE_NORMAL 50% / LIVE_EPIC 30% /
+    /// ICON 12% / LEGEND 5% / SEASON_LIMITED 3%(합계 100%), 보장 슬롯(천장) 없음. 상점 UI/애니메이션은
+    /// 이 서비스의 책임이 아니다 - 순수 데이터 처리(재화 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리
+    /// 지급)만 담당하고, 발급된 목록을 반환해 CheerleaderShopUIController 등 호출부가 결과를 그릴 수
+    /// 있게 한다.
     ///
     /// GameManager.AddCheerleader()(TASK-KBO-057/064)는 전혀 수정하지 않았다 - 이 서비스는 그
     /// 공개 API를 호출만 할 뿐이며, 중복 획득 시 재화로 전환하는 로직은 이미 그쪽에 구현되어 있다.
@@ -21,11 +22,13 @@ namespace KBOManager.Services
     {
         private const int CostPerRoll = 100;
 
-        // 등급 확률(%), docs/16_shop_and_gacha_policy.md 3-1절의 단일 뽑기 확률표. 누적 판정에 쓰인다.
-        private const float NormalRatePercent = 70f;
-        private const float RareRatePercent = 22f;
-        private const float EpicRatePercent = 7f;
-        // LEGEND는 나머지 전부(1%) - 누적 판정의 마지막 분기로 처리한다.
+        // 등급 확률(%), docs/16_shop_and_gacha_policy.md 3절의 단일 뽑기 확률표(TASK-KBO-127 갱신).
+        // 누적 판정에 쓰인다.
+        private const float LiveNormalRatePercent = 50f;
+        private const float LiveEpicRatePercent = 30f;
+        private const float IconRatePercent = 12f;
+        private const float LegendRatePercent = 5f;
+        // SEASON_LIMITED는 나머지 전부(3%) - 누적 판정의 마지막 분기로 처리한다.
 
         /// <summary>
         /// [TASK-KBO-066] count번 가챠를 실행하고, 실제로 발급된 Cheerleader 목록을 반환한다(UI가
@@ -79,21 +82,24 @@ namespace KBOManager.Services
             return results;
         }
 
-        /// <summary>0~100 사이 난수로 등급을 판정한다(누적 분포, docs 16 3-1절 확률표와 동일).</summary>
+        /// <summary>0~100 사이 난수로 등급을 판정한다(누적 분포, docs 16 3절 확률표와 동일).</summary>
         private static CheerleaderGrade RollGrade()
         {
             float roll = UnityEngine.Random.Range(0f, 100f);
 
-            float cumulative = NormalRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.NORMAL;
+            float cumulative = LiveNormalRatePercent;
+            if (roll < cumulative) return CheerleaderGrade.LIVE_NORMAL;
 
-            cumulative += RareRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.RARE;
+            cumulative += LiveEpicRatePercent;
+            if (roll < cumulative) return CheerleaderGrade.LIVE_EPIC;
 
-            cumulative += EpicRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.EPIC;
+            cumulative += IconRatePercent;
+            if (roll < cumulative) return CheerleaderGrade.ICON;
 
-            return CheerleaderGrade.LEGEND;
+            cumulative += LegendRatePercent;
+            if (roll < cumulative) return CheerleaderGrade.LEGEND;
+
+            return CheerleaderGrade.SEASON_LIMITED;
         }
 
         /// <summary>
@@ -132,12 +138,13 @@ namespace KBOManager.Services
                 catalogId: template.CatalogId);
         }
 
-        /// <summary>등급을 한 단계 낮춘다. NORMAL보다 더 내려갈 곳이 없으면 null.</summary>
+        /// <summary>등급을 한 단계 낮춘다. LIVE_NORMAL보다 더 내려갈 곳이 없으면 null.</summary>
         private static CheerleaderGrade? ResolveFallbackGrade(CheerleaderGrade grade) => grade switch
         {
-            CheerleaderGrade.LEGEND => CheerleaderGrade.EPIC,
-            CheerleaderGrade.EPIC => CheerleaderGrade.RARE,
-            CheerleaderGrade.RARE => CheerleaderGrade.NORMAL,
+            CheerleaderGrade.SEASON_LIMITED => CheerleaderGrade.LEGEND,
+            CheerleaderGrade.LEGEND => CheerleaderGrade.ICON,
+            CheerleaderGrade.ICON => CheerleaderGrade.LIVE_EPIC,
+            CheerleaderGrade.LIVE_EPIC => CheerleaderGrade.LIVE_NORMAL,
             _ => null,
         };
     }
