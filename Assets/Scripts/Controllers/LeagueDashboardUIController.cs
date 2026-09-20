@@ -43,10 +43,16 @@ namespace KBOManager.Controllers
         [SerializeField] private Text teamOVRText;
 
         // [TASK-KBO-129, 삭제] 구 scoutTicketLobbyText/cheerStickLobbyText(TASK-KBO-071/126)를
-        // 제거했다 - GDD 원문 어디에도 로비 최상단에 영입권/응원봉을 표시하라는 지시가 없고(AI가
-        // 임의로 덧붙인 UX 편의 기능이었다), 재화가 10종으로 세분화(TASK-KBO-129)된 뒤에는 둘만
-        // 남겨 대표로 보여주는 것도 근거가 없다. 각 재화는 실제로 그 재화를 쓰는 화면
+        // 제거했다 - GDD 원문 어디에도 로비 최상단에 영입권/응원봉(가챠 전용 재화)을 표시하라는
+        // 지시가 없었다(AI가 임의로 덧붙인 UX 편의 기능이었다). 그 재화들은 실제로 쓰는 화면
         // (ScoutHubPanel의 선수 영입/치어리더 영입 섹션)에서 이미 표시된다.
+        [Header("Currency (GDD 원문 '기타 소모 재화' 절 - 가챠 전용이 아닌 게임 전반 공용 재화 3종만 상단 상시 노출, TASK-KBO-130)")]
+        [Tooltip("GameManager.Instance.GameGold(볼) 보유량. 비워두면(null) 표시를 생략한다.")]
+        [SerializeField] private Text ballText;
+        [Tooltip("GameManager.Instance.Uniform(유니폼) 보유량.")]
+        [SerializeField] private Text uniformText;
+        [Tooltip("GameManager.Instance.Ticket(플레이 티켓) 보유량.")]
+        [SerializeField] private Text ticketText;
 
         [Header("Play Mode Buttons")]
         [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
@@ -100,6 +106,7 @@ namespace KBOManager.Controllers
             RefreshStandings();
             RefreshNextMatchup();
             RefreshTeamOVR();
+            RefreshCurrencyDisplay();
 
             if (synergyUIController != null) synergyUIController.RefreshSynergyUI();
         }
@@ -170,6 +177,17 @@ namespace KBOManager.Controllers
             if (teamOVRText == null || GameManager.Instance == null) return;
 
             teamOVRText.text = $"OVR {GameManager.Instance.CalculateTeamOVR()}";
+        }
+
+        /// <summary>[TASK-KBO-130] 로비 상단의 볼/유니폼/티켓 보유량을 갱신한다. teamOVRText와 동일한
+        /// 관례로, 텍스트가 비어 있거나 GameManager.Instance가 아직 없으면 조용히 건너뛴다.</summary>
+        private void RefreshCurrencyDisplay()
+        {
+            if (GameManager.Instance == null) return;
+
+            if (ballText != null) ballText.text = $"{GameManager.Instance.GameGold}";
+            if (uniformText != null) uniformText.text = $"{GameManager.Instance.Uniform}";
+            if (ticketText != null) ticketText.text = $"{GameManager.Instance.Ticket}";
         }
 
         /// <summary>

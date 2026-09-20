@@ -42,6 +42,20 @@ namespace KBOManager.EditorTools
             Debug.Log("[SetupMiscUI] 상점/리그 기록실 UI 자동 배선 완료.");
         }
 
+        /// <summary>[TASK-KBO-130] `ShopPanel` 하위에 남아있을 수 있는 구형 "PremiumCurrencyText"
+        /// (TASK-KBO-072 최초 오브젝트, 이후 어떤 정리 로직도 이 이름을 지목한 적이 없어 계속
+        /// 잔존해 왔다)를 제거한다. `SetupLobbyCurrencyUI.AutoConnectLobbyCurrencyUI()`가 로비/상점/
+        /// 치어리더 영입 3곳을 한 번에 정리할 때 이 메서드를 재사용한다 - `internal`이 아니라
+        /// `public`인 이유는 `SetupLobbyCurrencyUI.cs`(다른 파일)가 호출해야 하기 때문이다.</summary>
+        public static void DestroyLegacyPremiumCurrencyText()
+        {
+            var controller = Object.FindAnyObjectByType<ShopUIController>(FindObjectsInactive.Include);
+            if (controller == null) return;
+
+            var legacy = controller.transform.Find("PremiumCurrencyText");
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        }
+
         // ================= 상점 =================
 
         private static void BindShopPanel(Transform canvasTransform)

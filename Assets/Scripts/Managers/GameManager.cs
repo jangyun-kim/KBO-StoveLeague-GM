@@ -204,8 +204,16 @@ namespace KBOManager.Managers
         [SerializeField] private int legendCheerStick;  // 레전드 응원봉 (프리미엄/픽업 영입 > 레전드)
         [SerializeField] private int limitedCheerStick; // 한정 응원봉 (일반 영입 > 한정, 시즌 한정 기간)
 
+        // [TASK-KBO-130] GDD 원문 "재화 > 기타 소모 재화" 절이 명시한 3종을 로비 상단에 상시 표시한다
+        // (사용자 제공 레퍼런스: 컴투스프로야구V26류 상단 재화 바). 볼(GameGold, 이미 존재)/유니폼/
+        // 플레이 티켓 - 전부 특정 가챠 카테고리 전용이 아니라 게임 전반에서 쓰이는 "기본 소모 재화"라는
+        // 공통점이 있어 이 셋만 상단 상시 노출 대상으로 선정했다(GDD 원문: "유니폼 - 수급처 랭킹 챌린지
+        // 일일/주간 보상, 홈런 레이스 주간 보상 / 사용처 선수·치어리더 영입, 랭킹 챌린지 새로고침 구매",
+        // "티켓 - 리그/홈런 레이스/랭킹 챌린지 등 모든 플레이에 필요한 재화").
         [Header("Currency - 기타")]
         [SerializeField] private int gameGold;         // 게임 머니 (볼)
+        [SerializeField] private int uniform;          // 유니폼
+        [SerializeField] private int ticket;           // 플레이 티켓
 
         public int LiveNormalTicket { get => liveNormalTicket; set => liveNormalTicket = Mathf.Max(0, value); }
         public int LiveEpicTicket { get => liveEpicTicket; set => liveEpicTicket = Mathf.Max(0, value); }
@@ -224,6 +232,9 @@ namespace KBOManager.Managers
             get => gameGold;
             set => gameGold = Mathf.Max(0, value);
         }
+
+        public int Uniform { get => uniform; set => uniform = Mathf.Max(0, value); }
+        public int Ticket { get => ticket; set => ticket = Mathf.Max(0, value); }
 
         // ----- 팬심 / 연패 (TASK-KBO-049, 치어리더 B안 결산 연동용) -----
         [Header("Fan Sentiment / Losing Streak")]

@@ -36,6 +36,19 @@ namespace KBOManager.EditorTools
                 "등록은 'KBO Manager/Setup/Auto-Connect Scout Hub'로 실행하십시오.");
         }
 
+        /// <summary>[TASK-KBO-130] `CheerleaderShopPanel` 하위에 남아있을 수 있는 구형
+        /// "PremiumCurrencyText"(TASK-KBO-072 최초 오브젝트, 이후 어떤 정리 로직도 이 이름을 지목한
+        /// 적이 없어 계속 잔존해 왔다)를 제거한다. `SetupLobbyCurrencyUI.AutoConnectLobbyCurrencyUI()`가
+        /// 재사용한다.</summary>
+        public static void DestroyLegacyPremiumCurrencyText()
+        {
+            var controller = Object.FindAnyObjectByType<CheerleaderShopUIController>(FindObjectsInactive.Include);
+            if (controller == null) return;
+
+            var legacy = controller.transform.Find("PremiumCurrencyText");
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        }
+
         /// <summary>[TASK-KBO-129] CheerleaderShopPanel(치어리더 영입 섹션) 내부를 조립·배선하고
         /// 컨트롤러를 반환한다. SetupScoutHubUI가 ScoutPanel과 합치기 전에 먼저 이 메서드로 내용을
         /// 완성시킨다.</summary>
