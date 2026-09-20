@@ -44,6 +44,12 @@ namespace KBOManager.Controllers
         [Tooltip("강화 성공/실패 시 VFXController가 반짝이는 색으로 재생할 카드 배경/테두리 Image. 비워두면 색 연출만 생략된다.")]
         [SerializeField] private Image detailCardFlashImage;
 
+        [Header("Close Buttons")]
+        [Tooltip("[TASK-KBO-111] 인벤토리 화면을 닫고 로비로 돌아가는 버튼. UIManager.ShowScreen()만 호출한다.")]
+        [SerializeField] private Button closeButton;
+        [Tooltip("[TASK-KBO-111] 상세 정보 패널만 닫는 버튼. CloseDetail()을 호출한다.")]
+        [SerializeField] private Button closeDetailButton;
+
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
         private Player selectedPlayer;
 
@@ -56,6 +62,8 @@ namespace KBOManager.Controllers
             if (enhanceButton != null) enhanceButton.onClick.AddListener(OnClickEnhance);
             if (awakenButton != null) awakenButton.onClick.AddListener(OnClickAwaken);
             if (skillChangeButton != null) skillChangeButton.onClick.AddListener(OnClickSkillChange);
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+            if (closeDetailButton != null) closeDetailButton.onClick.AddListener(CloseDetail);
 
             CloseDetail();
         }

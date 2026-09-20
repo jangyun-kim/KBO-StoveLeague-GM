@@ -45,6 +45,8 @@ namespace KBOManager.EditorTools
         private const string SkillRerollResultTextName = "SkillRerollResultText";
         private const string DetailCardFlashImageName = "DetailCardFlashImage";
         private const string InventoryButtonName = "InventoryButton";
+        private const string CloseButtonName = "CloseButton";
+        private const string CloseDetailButtonName = "CloseDetailButton";
         private const string TemplatesHolderName = "_Templates";
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
 
@@ -86,6 +88,13 @@ namespace KBOManager.EditorTools
             var detailCardFlashImage = FindOrCreateImage(detailPanelRoot.transform, DetailCardFlashImageName,
                 new Vector2(0.05f, 0.4f), new Vector2(0.3f, 0.9f));
 
+            // [TASK-KBO-111] 인벤토리 화면 자체를 닫는 버튼(InventoryPanel 우측 상단)과 상세 패널만
+            // 닫는 버튼(DetailPanel 우측 상단)을 각각 배치한다(명령서 5항 - 대략적인 우측 상단 앵커만).
+            var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
+                new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
+            var closeDetailButton = FindOrCreateButton(detailPanelRoot.transform, CloseDetailButtonName, "닫기",
+                new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
+
             var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
             if (materialSelectUIController == null)
             {
@@ -103,7 +112,8 @@ namespace KBOManager.EditorTools
 
             BindController(controller, materialSelectUIController, gameActionController, cardContainer, cardPrefab,
                 detailPanelRoot, detailPreviewCard, detailReinforceText, detailAwakenText, detailSkillsText,
-                enhanceButton, awakenButton, skillChangeButton, skillRerollResultText, detailCardFlashImage);
+                enhanceButton, awakenButton, skillChangeButton, skillRerollResultText, detailCardFlashImage,
+                closeButton, closeDetailButton);
 
             EditorUtility.SetDirty(controller);
 
@@ -328,7 +338,8 @@ namespace KBOManager.EditorTools
             Transform cardContainer, PlayerCardUI cardPrefab, GameObject detailPanelRoot, PlayerCardUI detailPreviewCard,
             Text detailReinforceText, Text detailAwakenText, Text detailSkillsText,
             Button enhanceButton, Button awakenButton, Button skillChangeButton,
-            Text skillRerollResultText, Image detailCardFlashImage)
+            Text skillRerollResultText, Image detailCardFlashImage,
+            Button closeButton, Button closeDetailButton)
         {
             var serialized = new SerializedObject(controller);
 
@@ -348,6 +359,9 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("skillChangeButton").objectReferenceValue = skillChangeButton;
             serialized.FindProperty("skillRerollResultText").objectReferenceValue = skillRerollResultText;
             serialized.FindProperty("detailCardFlashImage").objectReferenceValue = detailCardFlashImage;
+
+            serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
+            serialized.FindProperty("closeDetailButton").objectReferenceValue = closeDetailButton;
 
             serialized.ApplyModifiedProperties();
         }
