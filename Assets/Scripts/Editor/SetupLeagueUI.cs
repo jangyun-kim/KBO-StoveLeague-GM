@@ -20,10 +20,14 @@ namespace KBOManager.EditorTools
     /// [TASK-KBO-107] `synergyUIController`(`TeamSynergyUIController`)도 이번에 함께 조립한다 -
     /// `TeamSynergyArea` 하위에 `SetDeckText`/`CheerleaderText`/`FanSentimentText` 3개 텍스트를 만들어
     /// `TeamSynergyUIController`에 바인딩하고, 그 컨트롤러 자체를 `LeagueDashboardUIController.
-    /// synergyUIController`에 연결한다. `shopButton`/`leagueStatsButton`은 명령서 4항이 열거한 UI
-    /// 영역(시즌 진행도/순위표/매치업/시너지)에 포함되지 않고 "리그" 데이터가 아닌 별개 화면
-    /// 내비게이션이라 여전히 건드리지 않는다. `premiumCurrencyLobbyText`는 이미 씬에 바인딩되어 있어
+    /// synergyUIController`에 연결한다. `premiumCurrencyLobbyText`는 이미 씬에 바인딩되어 있어
     /// (TASK-KBO-071 등) 손대지 않았다.
+    ///
+    /// [TASK-KBO-108] `shopButton`/`leagueStatsButton`(TASK-103/`DCL-074`가 "리그 데이터 영역이 아님"을
+    /// 이유로 범위 제외했던 잔여 내비게이션 버튼)도 이번에 조립·바인딩한다. `UIManager.screens`에
+    /// `ScreenType.Shop`(5)/`ScreenType.LeagueStats`(7)가 이미 등록돼 있고, `LeagueDashboardUIController.
+    /// Awake()`(원문 79~80행, 무수정)도 이미 두 버튼의 `onClick`을 `UIManager.Instance.ShowScreen()`에
+    /// 연결해 둔 상태라 - 이번 작업은 버튼 오브젝트를 만들어 필드에 연결하는 것만으로 완결된다.
     /// </summary>
     public static class SetupLeagueUI
     {
@@ -36,6 +40,8 @@ namespace KBOManager.EditorTools
         private const string SetDeckTextName = "SetDeckText";
         private const string CheerleaderTextName = "CheerleaderText";
         private const string FanSentimentTextName = "FanSentimentText";
+        private const string ShopButtonName = "ShopButton";
+        private const string LeagueStatsButtonName = "LeagueStatsButton";
 
         // LeagueDashboardUIController.standingsRowTexts 배열은 10개 구단 고정(원문 29~31행 - "10개 구단
         // 고정이므로 동적 생성 없이 텍스트 10줄을 그대로 인스펙터에서 연결한다")이므로 그대로 10을 쓴다.
@@ -69,6 +75,14 @@ namespace KBOManager.EditorTools
             }
 
             var synergyController = FindOrCreateSynergyUI(dashboard.transform);
+
+            // 기존 좌측 하단 버튼 열(manageCheerleaderButton 20/scoutButton 80/rosterButton 140/
+            // quickPlayButton 200, 각 60px 간격 - SetupRoutingUI.cs/SetupScoutUI.cs/SetupRosterUI.cs/
+            // SetupInGameUI.cs 참고)에 이어 260/320에 배치해 겹치지 않게 한다(명령서 6항).
+            var shopButton = FindOrCreateButton(dashboard.transform, ShopButtonName, "상점", new Vector2(20f, 260f));
+            var leagueStatsButton = FindOrCreateButton(dashboard.transform, LeagueStatsButtonName, "리그 기록실", new Vector2(20f, 320f));
+            BindButtonField(dashboard, "shopButton", shopButton);
+            BindButtonField(dashboard, "leagueStatsButton", leagueStatsButton);
 
             BindDashboard(dashboard, leagueManager, seasonProgressText, standingsRows, nextMatchupText,
                 teamOVRText, synergyController);
@@ -187,6 +201,62 @@ namespace KBOManager.EditorTools
             EditorUtility.SetDirty(synergyController);
 
             return synergyController;
+        }
+
+        /// <summary>[TASK-KBO-108] SetupScoutUI.cs/SetupRoutingUI.cs와 동일한 관례(픽셀 기준
+        /// anchoredPosition, 좌하단 anchor/pivot) - 이름이 같으면 기존 버튼을 그대로 재사용한다.</summary>
+        private static Button FindOrCreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null)
+            {
+                var existingButton = existingChild.GetComponent<Button>();
+                if (existingButton != null) return existingButton;
+            }
+
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.sizeDelta = new Vector2(160f, 50f);
+            rect.anchoredPosition = anchoredPosition;
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 18;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            return button;
+        }
+
+        private static void BindButtonField(LeagueDashboardUIController dashboard, string fieldName, Button button)
+        {
+            var serialized = new SerializedObject(dashboard);
+            serialized.FindProperty(fieldName).objectReferenceValue = button;
+            serialized.ApplyModifiedProperties();
         }
 
         private static Transform FindOrCreateChild(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
