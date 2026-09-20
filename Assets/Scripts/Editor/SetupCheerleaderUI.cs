@@ -401,25 +401,32 @@ namespace KBOManager.EditorTools
             Debug.Log("테스트용 전체 재화(GDD 10종 + GameGold) 각 +100000 지급 완료.");
         }
 
-        /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.
-        /// 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로, 여기서는
-        /// 실패 시 보충 안내만 한 줄 추가한다. [TASK-KBO-066] RollGacha()가 bool 대신
-        /// List&lt;Cheerleader&gt;를 반환하도록 바뀌어(빈 리스트 = 실패), 그에 맞춰 판정 방식을 갱신했다.</summary>
+        /// <summary>
+        /// [TASK-KBO-065, TASK-KBO-132 핫픽스] 구 `CheerleaderGachaService.RollGacha(1)`(TASK-KBO-129에서
+        /// 4개 카테고리 전용 메서드로 교체되며 완전히 삭제됨, CS0117 컴파일 에러 유발)을 `RollLive(1)`로
+        /// 교체했다. [매핑 근거] 4개 카테고리(`RollLive`/`RollLimited`/`RollIcon`/`RollLegend`) 중
+        /// `RollLive()`만 등급이 확률적으로 갈리고(LIVE_NORMAL 62.5%/LIVE_EPIC 37.5%) 나머지 3개는 전부
+        /// 단일 등급 100% 확정이라, "가챠 확률 분포가 실제로 작동하는지"를 검증하는 이 QA 메뉴 본연의
+        /// 목적(구 RollGacha()의 5단계 혼합 확률 검증과 동일한 취지)에는 `RollLive()`가 유일하게
+        /// 대응된다. 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로,
+        /// 여기서는 실패 시 보충 안내만 한 줄 추가한다.
+        /// </summary>
         [MenuItem("KBO Manager/Debug/Roll 1x Gacha")]
         public static void Roll1xGacha()
         {
-            var results = CheerleaderGachaService.RollGacha(1);
+            var results = CheerleaderGachaService.RollLive(1);
             if (results.Count == 0)
             {
                 Debug.LogWarning("[SetupCheerleaderUI] 1연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
             }
         }
 
-        /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(10)을 호출하는 QA 실기 테스트 메뉴.</summary>
+        /// <summary>[TASK-KBO-065, TASK-KBO-132 핫픽스] 구 `RollGacha(10)`을 `RollLive(10)`으로 교체했다
+        /// (매핑 근거는 `Roll1xGacha()` 참고).</summary>
         [MenuItem("KBO Manager/Debug/Roll 10x Gacha")]
         public static void Roll10xGacha()
         {
-            var results = CheerleaderGachaService.RollGacha(10);
+            var results = CheerleaderGachaService.RollLive(10);
             if (results.Count == 0)
             {
                 Debug.LogWarning("[SetupCheerleaderUI] 10연뽑 실행 실패 - 위 CheerleaderGachaService 로그를 확인하세요.");
