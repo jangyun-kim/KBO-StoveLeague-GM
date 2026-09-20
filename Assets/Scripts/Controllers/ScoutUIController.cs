@@ -54,12 +54,20 @@ namespace KBOManager.Controllers
         private void Awake()
         {
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
-            if (liveNormalButton != null) liveNormalButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollLiveNormal));
-            if (liveEpicButton != null) liveEpicButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollLiveEpic));
-            if (premiumSignatureButton != null) premiumSignatureButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollPremiumSignature));
-            if (premiumTitleHolderButton != null) premiumTitleHolderButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollPremiumTitleHolder));
-            if (pickupSignatureButton != null) pickupSignatureButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollPickupSignature));
-            if (pickupTitleHolderButton != null) pickupTitleHolderButton.onClick.AddListener(() => ExecuteRoll(scoutManager?.RollPickupTitleHolder));
+            // [TASK-KBO-131] CS8978 핫픽스: `scoutManager?.RollX`(메서드 그룹에 직접 null 조건부 연산자를
+            // 적용해 Func&lt;Player&gt;로 변환하려는 시도)는 C# 컴파일러가 이 조합의 결과 타입을 확정할 수
+            // 없어 "'method group' cannot be made nullable"로 거부한다(?.는 멤버 접근/호출 결과에는
+            // 쓸 수 있어도, 호출하지 않은 메서드 그룹 자체에는 델리게이트 변환 문맥에서 쓸 수 없다).
+            // `() => scoutManager.RollX()`처럼 새 람다로 감싸면 이 조합 자체가 사라진다 - scoutManager가
+            // 실제로 null인 경우의 안전장치는 이 람다가 아니라 ExecuteRoll() 본문의 `scoutManager == null`
+            // 체크가 이미 담당하고 있어(그 체크가 rollMethod()를 호출하기 전에 항상 먼저 실행됨) 동작은
+            // 기존과 완전히 동일하다.
+            if (liveNormalButton != null) liveNormalButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollLiveNormal()));
+            if (liveEpicButton != null) liveEpicButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollLiveEpic()));
+            if (premiumSignatureButton != null) premiumSignatureButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPremiumSignature()));
+            if (premiumTitleHolderButton != null) premiumTitleHolderButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPremiumTitleHolder()));
+            if (pickupSignatureButton != null) pickupSignatureButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPickupSignature()));
+            if (pickupTitleHolderButton != null) pickupTitleHolderButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPickupTitleHolder()));
             if (closeResultPopupButton != null) closeResultPopupButton.onClick.AddListener(CloseResultPopup);
         }
 
