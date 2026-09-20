@@ -33,6 +33,7 @@ namespace KBOManager.EditorTools
         private const string Roll10ButtonName = "Roll10Button";
         private const string ResultPopupName = "ResultPopup";
         private const string ClosePopupButtonName = "ClosePopupBtn";
+        private const string ResultButtonContainerName = "ResultButtonContainer";
         private const string CardContainerName = "CardContainer";
         private const string TemplatesHolderName = "_Templates";
         private const string CardTemplateName = "PlayerCardTemplate";
@@ -171,9 +172,69 @@ namespace KBOManager.EditorTools
             }
 
             var container = FindOrCreateCardContainer(popupObject.transform);
-            var closeButton = FindOrCreateButton(popupObject.transform, ClosePopupButtonName, "확인", new Vector2(300f, 20f));
+            var buttonContainer = FindOrCreateResultButtonContainer(popupObject.transform);
+            var closeButton = FindOrCreateButton(buttonContainer, ClosePopupButtonName, "확인", Vector2.zero);
 
             return (popupObject, container, closeButton);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-118] 결과 팝업 하단에 액션 버튼을 담을 전용 컨테이너. `ResultPopup`은 `ScoutPanel`과
+        /// 동일한 전체화면 앵커(0,0)~(1,1)를 쓰므로, 팝업 안의 "확인" 버튼(구 픽셀 좌표 300,20)이
+        /// `ScoutPanel` 직속의 `roll1Button`(200~360)/`roll10Button`(380~540)과 같은 좌표계를 공유해
+        /// 실제로 겹쳐 있었다 - 스크린샷으로 보고된 클릭 먹통 현상의 원인이다. `HorizontalLayoutGroup`으로
+        /// 가운데 정렬해 좌측의 두 뽑기 버튼과 겹치지 않게 한다. 과거 버전에서 팝업의 직속 자식으로
+        /// 만들어져 있던 "확인" 버튼은 이 컨테이너 하위로 이동시켜 중복 생성을 막는다(명령서 6항).
+        ///
+        /// [결정 필요 아님, 명령서 4항 전제 오류] 명령서는 `roll10Button`("다시 뽑기/10연차 연동 버튼")도
+        /// 이 컨테이너로 옮기라고 지시했으나, `ScoutUIController.cs` 원문을 재확인한 결과 `roll10Button`은
+        /// "결과 팝업 안의 재뽑기 버튼"이 아니라 애초에 가챠를 실행하는 유일한 트리거(`ExecuteRoll10()`)다.
+        /// `ResultButtonContainer`는 `ResultPopup`의 자식이고 `ResultPopup`은 평소 `SetActive(false)`로
+        /// 숨겨져 있다가 뽑기 "이후"에만 열리므로, `roll10Button`을 이 안으로 옮기면 애초에 뽑기를 시작할
+        /// 방법이 사라지는 순환 잠금(뽑아야 버튼이 보이는데 버튼이 없어 뽑을 수 없음)이 생긴다 - 그래서
+        /// `roll10Button`은 옮기지 않고 `ScoutPanel` 직속에 그대로 뒀다.
+        /// </summary>
+        private static Transform FindOrCreateResultButtonContainer(Transform popupTransform)
+        {
+            var existingContainer = popupTransform.Find(ResultButtonContainerName);
+            Transform containerTransform;
+            if (existingContainer != null)
+            {
+                containerTransform = existingContainer;
+            }
+            else
+            {
+                var containerObject = new GameObject(ResultButtonContainerName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(containerObject, $"Create {ResultButtonContainerName}");
+                containerObject.transform.SetParent(popupTransform, false);
+
+                var rect = (RectTransform)containerObject.transform;
+                rect.anchorMin = new Vector2(0f, 0f);
+                rect.anchorMax = new Vector2(1f, 0.2f);
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                containerTransform = containerObject.transform;
+            }
+
+            if (!containerTransform.TryGetComponent<HorizontalLayoutGroup>(out var layout))
+            {
+                layout = containerTransform.gameObject.AddComponent<HorizontalLayoutGroup>();
+                layout.spacing = 20f;
+                layout.childAlignment = TextAnchor.MiddleCenter;
+                layout.childForceExpandWidth = false;
+                layout.childForceExpandHeight = false;
+            }
+
+            // 과거 버전에서 팝업의 직속 자식으로 만들어져 있던 "확인" 버튼을 이 컨테이너 하위로 이동한다
+            // (명령서 6항 - 중복 생성 방지, SetParent(..., false)로 로컬 좌표계만 재계산).
+            var legacyButton = popupTransform.Find(ClosePopupButtonName);
+            if (legacyButton != null && legacyButton.parent == popupTransform)
+            {
+                legacyButton.SetParent(containerTransform, false);
+            }
+
+            return containerTransform;
         }
 
         private static Transform FindOrCreateCardContainer(Transform popupTransform)
