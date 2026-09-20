@@ -1,3 +1,4 @@
+using KBOManager.Controllers;
 using KBOManager.Data;
 using KBOManager.Engine;
 using KBOManager.Managers;
@@ -60,12 +61,35 @@ namespace KBOManager.EditorTools
             BindUpgradeManager(upgradeManager, upgradeProbabilityDB);
             BindLeagueManager(leagueManager, skillDB, engineConfig, playerDatabase);
 
+            // [TASK-KBO-114] TASK-113(DCL-085)이 발견한 잔여 매니저 3종.
+            EnsureComponent<ItemDatabase>(managerObject); // AllTemplates는 별도 도구(ItemDataSeeder.cs)가 채운다 - 여기서는 부착만 한다(명령서 5항, 내용 불가침).
+
+            var seasonStatManager = EnsureComponent<SeasonStatManager>(managerObject);
+            var playBallController = Object.FindAnyObjectByType<PlayBallController>(FindObjectsInactive.Include);
+            if (playBallController == null)
+            {
+                Debug.LogWarning("[SetupManagers] 씬에서 PlayBallController를 찾지 못해 " +
+                    "SeasonStatManager.playBallController 바인딩을 건너뜁니다.");
+            }
+            BindSeasonStatManager(seasonStatManager, playBallController);
+
+            // SeasonRollover.postSeasonManager 종속성을 채우기 위해 PostSeasonManager도 함께 부착한다 -
+            // 명령서 4항이 요구한 "종속성 파악 후 함께 바인딩"에 해당하며, PostSeasonManager 자신의
+            // 종속성(leagueManager/skillDB/engineConfig)도 전부 위에서 이미 구했으므로 추가 조사 없이
+            // 바로 채울 수 있다.
+            var postSeasonManager = EnsureComponent<PostSeasonManager>(managerObject);
+            BindPostSeasonManager(postSeasonManager, leagueManager, skillDB, engineConfig);
+
+            var seasonRollover = EnsureComponent<SeasonRollover>(managerObject);
+            BindSeasonRollover(seasonRollover, leagueManager, seasonStatManager, postSeasonManager);
+
             EditorUtility.SetDirty(managerObject);
             EditorSceneManager.MarkSceneDirty(managerObject.scene);
             AssetDatabase.SaveAssets();
 
             Debug.Log("[SetupManagers] 필수 매니저(PlayerDatabase/ScoutManager/RosterManager/UpgradeManager/" +
-                "LeagueManager) 부착 및 SkillDB/UpgradeProbabilityDB/EngineConfig 종속성 바인딩 완료.");
+                "LeagueManager/ItemDatabase/SeasonStatManager/PostSeasonManager/SeasonRollover) 부착 및 " +
+                "SkillDB/UpgradeProbabilityDB/EngineConfig 종속성 바인딩 완료.");
         }
 
         /// <summary>TryGetComponent로 이미 붙어 있는지 먼저 확인해(명령서 7항 - 여러 번 실행해도 컴포넌트가
@@ -135,6 +159,42 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("playerDatabase").objectReferenceValue = playerDatabase;
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(leagueManager);
+        }
+
+        /// <summary>[TASK-KBO-114] SeasonStatManager.cs 원문(58행)의 유일한 [SerializeField] 종속성.</summary>
+        private static void BindSeasonStatManager(SeasonStatManager seasonStatManager, PlayBallController playBallController)
+        {
+            if (playBallController == null) return;
+
+            var serialized = new SerializedObject(seasonStatManager);
+            serialized.FindProperty("playBallController").objectReferenceValue = playBallController;
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(seasonStatManager);
+        }
+
+        /// <summary>[TASK-KBO-114] PostSeasonManager.cs 원문(59~61행) 종속성 3종 - 전부 이 파일이 이미
+        /// 보유한 값(leagueManager/skillDB/engineConfig)이라 추가 탐색 없이 바로 채운다.</summary>
+        private static void BindPostSeasonManager(PostSeasonManager postSeasonManager, LeagueManager leagueManager,
+            SkillDB skillDB, EngineConfig engineConfig)
+        {
+            var serialized = new SerializedObject(postSeasonManager);
+            serialized.FindProperty("leagueManager").objectReferenceValue = leagueManager;
+            serialized.FindProperty("skillDB").objectReferenceValue = skillDB;
+            serialized.FindProperty("engineConfig").objectReferenceValue = engineConfig;
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(postSeasonManager);
+        }
+
+        /// <summary>[TASK-KBO-114] SeasonRollover.cs 원문(35~37행) 종속성 3종.</summary>
+        private static void BindSeasonRollover(SeasonRollover seasonRollover, LeagueManager leagueManager,
+            SeasonStatManager seasonStatManager, PostSeasonManager postSeasonManager)
+        {
+            var serialized = new SerializedObject(seasonRollover);
+            serialized.FindProperty("leagueManager").objectReferenceValue = leagueManager;
+            serialized.FindProperty("seasonStatManager").objectReferenceValue = seasonStatManager;
+            serialized.FindProperty("postSeasonManager").objectReferenceValue = postSeasonManager;
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(seasonRollover);
         }
     }
 }
