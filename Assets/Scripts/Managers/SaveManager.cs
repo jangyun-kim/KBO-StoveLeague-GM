@@ -131,8 +131,8 @@ namespace KBOManager.Managers
         public List<ItemSaveData> ItemInventory = new List<ItemSaveData>(); // v1 이하 세이브 하위 호환 전용 - 새 저장은 항상 빈 리스트
         public List<ItemStackSaveData> ItemStacks = new List<ItemStackSaveData>();
         public Team FavoriteTeam;
-        public int ScoutReport;
-        public int PremiumCurrency;
+        public int ScoutTicket;
+        public int CheerStick;
         public int GameGold;
         public bool IsFirstLogin = true;
         public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
@@ -243,8 +243,8 @@ namespace KBOManager.Managers
                     .Select(g => new ItemStackSaveData { TemplateId = g.Key, Count = g.Count() })
                     .ToList();
                 data.FavoriteTeam = gm.FavoriteTeam;
-                data.ScoutReport = gm.ScoutReport;
-                data.PremiumCurrency = gm.PremiumCurrency;
+                data.ScoutTicket = gm.ScoutTicket;
+                data.CheerStick = gm.CheerStick;
                 data.GameGold = gm.GameGold;
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.FanSentiment = gm.FanSentiment;
@@ -348,8 +348,8 @@ namespace KBOManager.Managers
                 gm.ReplaceItemInventory(RestoreItemInventory(data));
 
                 gm.FavoriteTeam = data.FavoriteTeam;
-                gm.ScoutReport = data.ScoutReport;
-                gm.PremiumCurrency = data.PremiumCurrency;
+                gm.ScoutTicket = data.ScoutTicket;
+                gm.CheerStick = data.CheerStick;
                 gm.GameGold = data.GameGold;
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.FanSentiment = data.FanSentiment;

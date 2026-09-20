@@ -59,7 +59,7 @@ namespace KBOManager.EditorTools
             var buySkillTicketButton = FindOrCreateButton(controller.transform, "BuySkillTicketButton",
                 "스킬 변경권 구매", new Vector2(0.05f, 0.2f), new Vector2(0.45f, 0.35f));
 
-            var premiumCurrencyText = FindOrCreateText(controller.transform, "PremiumCurrencyText", "",
+            var scoutTicketText = FindOrCreateText(controller.transform, "ScoutTicketText", "",
                 new Vector2(0.5f, 0.82f), new Vector2(1f, 0.92f));
             var gameGoldText = FindOrCreateText(controller.transform, "GameGoldText", "",
                 new Vector2(0.5f, 0.68f), new Vector2(1f, 0.78f));
@@ -84,7 +84,7 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("buyGuaranteedPackageButton").objectReferenceValue = buyGuaranteedPackageButton;
             serialized.FindProperty("buyPremiumTenPullButton").objectReferenceValue = buyPremiumTenPullButton;
             serialized.FindProperty("buySkillTicketButton").objectReferenceValue = buySkillTicketButton;
-            serialized.FindProperty("premiumCurrencyText").objectReferenceValue = premiumCurrencyText;
+            serialized.FindProperty("scoutTicketText").objectReferenceValue = scoutTicketText;
             serialized.FindProperty("gameGoldText").objectReferenceValue = gameGoldText;
             serialized.FindProperty("purchaseResultText").objectReferenceValue = purchaseResultText;
             serialized.FindProperty("closeButton").objectReferenceValue = closeButton;

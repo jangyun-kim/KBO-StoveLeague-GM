@@ -301,7 +301,7 @@ namespace KBOManager.EditorTools
 
         // [TASK-KBO-064] 모든 클릭이 같은 CatalogId를 쓴다 - 최초 1회는 인벤토리에 실제로 추가되고,
         // 그 이후 클릭은 GameManager.AddCheerleader()의 중복 판별 로직(CatalogId 일치)에 걸려
-        // PremiumCurrency로 변환된다. 신규 추가 경로와 중복 변환 경로를 이 메뉴 하나로 반복 테스트할
+        // CheerStick(응원봉)으로 변환된다. 신규 추가 경로와 중복 변환 경로를 이 메뉴 하나로 반복 테스트할
         // 수 있게 하기 위한 의도적 설계다.
         private const string DummyCatalogId = "DEV_TEST_CHEER_CATALOG_001";
 
@@ -345,7 +345,7 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// [TASK-KBO-074] 가챠 테스트 시 재화(PremiumCurrency) 부족으로 1회/10회 뽑기가 막히는 QA
+        /// [TASK-KBO-074] 가챠 테스트 시 재화(CheerStick/응원봉) 부족으로 치어리더 뽑기가 막히는 QA
         /// 불편을 해소하는 재화 충전 메뉴. GachaSimulationMenu.cs가 아니라 이 파일에 둔 이유는,
         /// GachaSimulationMenu는 "GameManager를 전혀 건드리지 않는 완전 독립 Mocking 시뮬레이션
         /// 전용" 도구로 스스로 문서화하고 있어(TASK-KBO-073) 실제 GameManager 상태를 바꾸는 이
@@ -354,8 +354,8 @@ namespace KBOManager.EditorTools
         /// 담아 왔으므로 관례상 더 적합하다. 플레이 모드가 아니면(GameManager.Instance == null)
         /// 경고만 남기고 안전하게 종료한다.
         /// </summary>
-        [MenuItem("KBO Manager/Debug/Add 10,000 Premium Currency")]
-        public static void AddPremiumCurrency()
+        [MenuItem("KBO Manager/Debug/Add 10,000 CheerStick")]
+        public static void AddCheerStick()
         {
             if (GameManager.Instance == null)
             {
@@ -363,16 +363,16 @@ namespace KBOManager.EditorTools
                 return;
             }
 
-            GameManager.Instance.PremiumCurrency += 10000;
-            Debug.Log($"테스트용 재화 지급 완료. 현재 잔액: {GameManager.Instance.PremiumCurrency}");
+            GameManager.Instance.CheerStick += 10000;
+            Debug.Log($"테스트용 응원봉 지급 완료. 현재 잔액: {GameManager.Instance.CheerStick}");
         }
 
         /// <summary>
-        /// [TASK-KBO-115] 선수 스카우트(`ScoutManager.Roll1()`/`Roll10()`)는 `PremiumCurrency`가 아니라
-        /// `ScoutReport`를 소모한다(원문 `Assets/Scripts/Managers/ScoutManager.cs` 61/75행) - 위
-        /// `AddPremiumCurrency()`만 실행하면 `ScoutReport`가 기본값 0(`GameManager.cs` 147행, 초기화
-        /// 로직 없음)에 그대로 머물러 있어 뽑기 버튼을 눌러도 조용히 빈 결과만 돌아온다. 세 재화
-        /// (`ScoutReport`/`PremiumCurrency`/`GameGold`) 전부를 한 번에 채워 이 QA 함정을 없앤다.
+        /// [TASK-KBO-115/126] 선수 스카우트(`ScoutManager.Roll1()`/`Roll10()`)는 `CheerStick`이 아니라
+        /// `ScoutTicket`(영입권)을 소모한다(원문 `Assets/Scripts/Managers/ScoutManager.cs` 61/84행) - 위
+        /// `AddCheerStick()`만 실행하면 `ScoutTicket`이 기본값 0에 그대로 머물러 있어 선수 뽑기 버튼을
+        /// 눌러도 조용히 빈 결과만 돌아온다. 세 재화(`ScoutTicket`/`CheerStick`/`GameGold`) 전부를
+        /// 한 번에 채워 이 QA 함정을 없앤다.
         /// </summary>
         [MenuItem("KBO Manager/Debug/Add All Currencies (100,000)")]
         public static void AddAllCurrencies()
@@ -383,13 +383,13 @@ namespace KBOManager.EditorTools
                 return;
             }
 
-            GameManager.Instance.ScoutReport += 100000;
-            GameManager.Instance.PremiumCurrency += 100000;
+            GameManager.Instance.ScoutTicket += 100000;
+            GameManager.Instance.CheerStick += 100000;
             GameManager.Instance.GameGold += 100000;
 
             Debug.Log("테스트용 전체 재화 지급 완료. " +
-                $"ScoutReport={GameManager.Instance.ScoutReport}, " +
-                $"PremiumCurrency={GameManager.Instance.PremiumCurrency}, " +
+                $"ScoutTicket={GameManager.Instance.ScoutTicket}, " +
+                $"CheerStick={GameManager.Instance.CheerStick}, " +
                 $"GameGold={GameManager.Instance.GameGold}");
         }
 

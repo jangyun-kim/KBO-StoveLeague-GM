@@ -43,10 +43,15 @@ namespace KBOManager.Controllers
         [SerializeField] private Text teamOVRText;
 
         [Header("Currency")]
-        [Tooltip("[TASK-KBO-071] 로비 화면 최상단에 유저의 GameManager.Instance.PremiumCurrency 보유량을 " +
-                 "표시한다(가챠를 돌리기 전 얼마나 있는지 바로 확인하기 위함). 비워두면(null) 아무 것도 " +
+        [Tooltip("[TASK-KBO-071/126] 로비 화면 최상단에 유저의 GameManager.Instance.ScoutTicket(영입권,  " +
+                 "선수 뽑기 재화) 보유량을 표시한다. 응원봉과는 완전히 독립된 별개 재화라 별도 텍스트로 " +
+                 "표시한다(GDD 원문 - 영입권/응원봉은 서로 다른 뽑기 전용). 비워두면(null) 아무 것도 " +
                  "표시되지 않을 뿐 에러는 나지 않는다.")]
-        [SerializeField] private Text premiumCurrencyLobbyText;
+        [SerializeField] private Text scoutTicketLobbyText;
+        [Tooltip("[TASK-KBO-126] 로비 화면 최상단에 유저의 GameManager.Instance.CheerStick(응원봉, " +
+                 "치어리더 뽑기 재화) 보유량을 표시한다. 비워두면(null) 아무 것도 표시되지 않을 뿐 " +
+                 "에러는 나지 않는다.")]
+        [SerializeField] private Text cheerStickLobbyText;
 
         [Header("Play Mode Buttons")]
         [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
@@ -102,18 +107,20 @@ namespace KBOManager.Controllers
             RefreshStandings();
             RefreshNextMatchup();
             RefreshTeamOVR();
-            RefreshPremiumCurrency();
+            RefreshCurrencyDisplays();
 
             if (synergyUIController != null) synergyUIController.RefreshSynergyUI();
         }
 
-        /// <summary>[TASK-KBO-071] 로비 상단의 보유 프리미엄 재화 표시를 갱신한다. teamOVRText와 동일한
-        /// 관례로, 텍스트가 비어 있거나 GameManager.Instance가 아직 없으면 조용히 건너뛴다.</summary>
-        private void RefreshPremiumCurrency()
+        /// <summary>[TASK-KBO-071/126] 로비 상단의 영입권/응원봉 보유량을 각각 독립된 텍스트로 갱신한다
+        /// (GDD 원문 - 두 재화는 서로 다른 뽑기 전용이라 하나로 합쳐 표시하지 않는다). teamOVRText와
+        /// 동일한 관례로, 텍스트가 비어 있거나 GameManager.Instance가 아직 없으면 조용히 건너뛴다.</summary>
+        private void RefreshCurrencyDisplays()
         {
-            if (premiumCurrencyLobbyText == null || GameManager.Instance == null) return;
+            if (GameManager.Instance == null) return;
 
-            premiumCurrencyLobbyText.text = $"재화: {GameManager.Instance.PremiumCurrency}";
+            if (scoutTicketLobbyText != null) scoutTicketLobbyText.text = $"영입권: {GameManager.Instance.ScoutTicket}";
+            if (cheerStickLobbyText != null) cheerStickLobbyText.text = $"응원봉: {GameManager.Instance.CheerStick}";
         }
 
         private void RefreshSeasonProgress()

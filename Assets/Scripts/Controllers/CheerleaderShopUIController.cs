@@ -16,7 +16,7 @@ namespace KBOManager.Controllers
     public class CheerleaderShopUIController : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private Text premiumCurrencyText;
+        [SerializeField] private Text cheerStickText;
         [SerializeField] private Button roll1xButton;
         [SerializeField] private Button roll10xButton;
         [SerializeField] private Button closeButton;
@@ -40,9 +40,9 @@ namespace KBOManager.Controllers
 
         private void RefreshUI()
         {
-            if (premiumCurrencyText != null && GameManager.Instance != null)
+            if (cheerStickText != null && GameManager.Instance != null)
             {
-                premiumCurrencyText.text = $"보유 프리미엄 재화: {GameManager.Instance.PremiumCurrency}";
+                cheerStickText.text = $"보유 응원봉: {GameManager.Instance.CheerStick}";
             }
         }
 

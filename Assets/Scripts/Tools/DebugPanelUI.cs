@@ -30,8 +30,8 @@ namespace KBOManager.Tools
         [SerializeField] private Text resultText;
 
         [Header("Debug Actions")]
-        [SerializeField] private Button grantPremiumCurrencyButton;
-        [SerializeField] private int premiumCurrencyGrantAmount = 10000;
+        [SerializeField] private Button grantCheerStickButton;
+        [SerializeField] private int cheerStickGrantAmount = 10000;
         [SerializeField] private Button forceWinCurrentMatchButton;
         [SerializeField] private PlayBallController playBallController;
         [SerializeField] private Button skipRegularSeasonButton;
@@ -55,7 +55,7 @@ namespace KBOManager.Tools
             if (hiddenCornerTapButton != null) hiddenCornerTapButton.onClick.AddListener(HandleCornerTap);
             if (closeButton != null) closeButton.onClick.AddListener(ClosePanel);
 
-            if (grantPremiumCurrencyButton != null) grantPremiumCurrencyButton.onClick.AddListener(GrantPremiumCurrency);
+            if (grantCheerStickButton != null) grantCheerStickButton.onClick.AddListener(GrantCheerStick);
             if (forceWinCurrentMatchButton != null) forceWinCurrentMatchButton.onClick.AddListener(ForceWinCurrentMatch);
             if (skipRegularSeasonButton != null) skipRegularSeasonButton.onClick.AddListener(SkipToEndOfRegularSeason);
             if (recoverAllPlayersButton != null) recoverAllPlayersButton.onClick.AddListener(RecoverAllPlayers);
@@ -99,12 +99,12 @@ namespace KBOManager.Tools
 
         // ----- 디버그 액션 -----
 
-        private void GrantPremiumCurrency()
+        private void GrantCheerStick()
         {
             if (GameManager.Instance == null) return;
 
-            GameManager.Instance.PremiumCurrency += premiumCurrencyGrantAmount;
-            ShowResult($"프리미엄 재화 +{premiumCurrencyGrantAmount} 지급 완료. (현재 {GameManager.Instance.PremiumCurrency})");
+            GameManager.Instance.CheerStick += cheerStickGrantAmount;
+            ShowResult($"응원봉 +{cheerStickGrantAmount} 지급 완료. (현재 {GameManager.Instance.CheerStick})");
         }
 
         private void ForceWinCurrentMatch()

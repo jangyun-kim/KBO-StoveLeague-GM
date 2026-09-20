@@ -15,7 +15,7 @@ namespace KBOManager.Managers
     }
 
     /// <summary>
-    /// 스카우트(가챠) 매니저. ScoutReport 재화를 소모해 PlayerTemplate을 추첨하고,
+    /// 스카우트(가챠) 매니저. ScoutTicket(영입권) 재화를 소모해 PlayerTemplate을 추첨하고,
     /// GDD 2절의 등급별 초기 성급/색상 규칙을 강제 적용한 뒤 SkillDB로 초기 스킬을 부여한
     /// Player 인스턴스를 발급한다.
     /// </summary>
@@ -27,7 +27,7 @@ namespace KBOManager.Managers
         [SerializeField] private PlayerDatabase playerDatabase;
         [SerializeField] private SkillDB skillDB;
 
-        [Header("Cost (ScoutReport 재화 기준)")]
+        [Header("Cost (ScoutTicket/영입권 재화 기준)")]
         [SerializeField] private int roll1Cost = 1;
         [SerializeField] private int roll10Cost = 10;
 
@@ -58,14 +58,14 @@ namespace KBOManager.Managers
         public Player Roll1()
         {
             if (GameManager.Instance == null || playerDatabase == null) return null;
-            if (GameManager.Instance.ScoutReport < roll1Cost)
+            if (GameManager.Instance.ScoutTicket < roll1Cost)
             {
-                Debug.LogWarning($"[ScoutManager] ScoutReport 부족으로 1회 뽑기를 실행하지 않았습니다. " +
-                    $"(필요 {roll1Cost} / 보유 {GameManager.Instance.ScoutReport})");
+                Debug.LogWarning($"[ScoutManager] 영입권(ScoutTicket) 부족으로 1회 뽑기를 실행하지 않았습니다. " +
+                    $"(필요 {roll1Cost} / 보유 {GameManager.Instance.ScoutTicket})");
                 return null;
             }
 
-            GameManager.Instance.ScoutReport -= roll1Cost;
+            GameManager.Instance.ScoutTicket -= roll1Cost;
 
             var player = RollOnce();
             if (player != null)
@@ -81,14 +81,14 @@ namespace KBOManager.Managers
         {
             var results = new List<Player>();
             if (GameManager.Instance == null || playerDatabase == null) return results;
-            if (GameManager.Instance.ScoutReport < roll10Cost)
+            if (GameManager.Instance.ScoutTicket < roll10Cost)
             {
-                Debug.LogWarning($"[ScoutManager] ScoutReport 부족으로 10연차 뽑기를 실행하지 않았습니다. " +
-                    $"(필요 {roll10Cost} / 보유 {GameManager.Instance.ScoutReport})");
+                Debug.LogWarning($"[ScoutManager] 영입권(ScoutTicket) 부족으로 10연차 뽑기를 실행하지 않았습니다. " +
+                    $"(필요 {roll10Cost} / 보유 {GameManager.Instance.ScoutTicket})");
                 return results;
             }
 
-            GameManager.Instance.ScoutReport -= roll10Cost;
+            GameManager.Instance.ScoutTicket -= roll10Cost;
 
             for (int i = 0; i < 10; i++)
             {
@@ -146,8 +146,9 @@ namespace KBOManager.Managers
 
         /// <summary>
         /// 등급이 minimumGrade 이상으로 "확정"된 카드 1장을 발급한다. 재화 소모는 이 메서드의 책임이
-        /// 아니다 - 호출자(ShopUIController 등)가 자신의 재화(프리미엄 재화 등)를 먼저 확인/차감한
-        /// 뒤에만 호출해야 한다. gradeDropRates 중 minimumGrade 이상인 항목들만 남겨 그 상대 확률로
+        /// 아니다 - 호출자(ShopUIController 등)가 자신의 재화(ScoutTicket/영입권 - 선수 카드이므로
+        /// CheerStick/응원봉이 아니다)를 먼저 확인/차감한 뒤에만 호출해야 한다. gradeDropRates 중
+        /// minimumGrade 이상인 항목들만 남겨 그 상대 확률로
         /// 다시 추첨하므로, 같은 "확정" 안에서도 상위 등급(SIGNATURE/DYNASTY 등)일수록 여전히 더 희귀하다.
         /// </summary>
         public Player RollGuaranteed(Grade minimumGrade)

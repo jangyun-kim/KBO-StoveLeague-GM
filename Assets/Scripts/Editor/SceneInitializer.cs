@@ -399,7 +399,7 @@ namespace KBOManager.EditorTools
             var closeButton = FindOrCreateDebugButton(panelContent.transform, "CloseButton", "닫기 (X)", 40f);
             var resultText = FindOrCreateDebugText(panelContent.transform, "ResultText", 100f);
             var skipButton = FindOrCreateDebugButton(panelContent.transform, "SkipRegularSeasonButton", "정규 시즌 즉시 스킵", 60f);
-            var grantCurrencyButton = FindOrCreateDebugButton(panelContent.transform, "GrantPremiumCurrencyButton", "프리미엄 재화 +10,000 획득", 60f);
+            var grantCurrencyButton = FindOrCreateDebugButton(panelContent.transform, "GrantCheerStickButton", "응원봉 +10,000 획득", 60f);
 
             ConfigureDebugPanel(debugPanelUI, cornerTapButton, panelContent, closeButton, resultText,
                 skipButton, grantCurrencyButton, lobbyController);
@@ -541,7 +541,7 @@ namespace KBOManager.EditorTools
             serializedPanel.FindProperty("panelRoot").objectReferenceValue = panelContent;
             serializedPanel.FindProperty("closeButton").objectReferenceValue = closeButton;
             serializedPanel.FindProperty("resultText").objectReferenceValue = resultText;
-            serializedPanel.FindProperty("grantPremiumCurrencyButton").objectReferenceValue = grantCurrencyButton;
+            serializedPanel.FindProperty("grantCheerStickButton").objectReferenceValue = grantCurrencyButton;
             serializedPanel.FindProperty("skipRegularSeasonButton").objectReferenceValue = skipButton;
             serializedPanel.FindProperty("leagueDashboard").objectReferenceValue = leagueDashboard;
 

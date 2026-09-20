@@ -97,7 +97,7 @@ namespace KBOManager.Managers
         /// [TASK-KBO-064] 신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면
         /// 아무 일도 하지 않는다. CatalogId(원본 식별자)가 채워져 있고 이미 같은 CatalogId를 가진
         /// 치어리더를 보유 중이면(docs/16_shop_and_gacha_policy.md 4절 A안) 인벤토리에 중복 추가하지
-        /// 않고 등급에 비례한 PremiumCurrency로 변환 지급한다. CatalogId가 비어 있으면(카탈로그가
+        /// 않고 등급에 비례한 CheerStick(응원봉)으로 변환 지급한다. CatalogId가 비어 있으면(카탈로그가
         /// 아직 없던 구버전 더미 데이터 등) 중복 검사 없이 그냥 추가한다.
         /// </summary>
         public void AddCheerleader(Cheerleader newCheerleader)
@@ -112,9 +112,9 @@ namespace KBOManager.Managers
             if (isDuplicate)
             {
                 int convertedAmount = ResolveCheerleaderDuplicateConversionValue(newCheerleader.Grade);
-                PremiumCurrency += convertedAmount;
+                CheerStick += convertedAmount;
                 Debug.Log($"[GameManager] 중복 획득으로 재화 변환됨: {newCheerleader.Name} " +
-                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> PremiumCurrency +{convertedAmount}");
+                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> CheerStick +{convertedAmount}");
                 return;
             }
 
@@ -143,21 +143,24 @@ namespace KBOManager.Managers
 #endif
 
         // ----- 재화 -----
+        // [TASK-KBO-126] GDD "스토브리그: 단장의 시간" 원문(뽑기(가챠) 절, 재화 절)의 명칭을 그대로
+        // 따른다 - 영입권(선수 뽑기 재화)/응원봉(치어리더 뽑기 재화)은 원문에서 완전히 분리된 별개
+        // 재화 계열이며, 서로의 뽑기에 대신 쓰일 수 없다.
         [Header("Currency")]
-        [SerializeField] private int scoutReport;     // 스카우트 리포트 (뽑기 재화)
-        [SerializeField] private int premiumCurrency;  // 프리미엄 재화
-        [SerializeField] private int gameGold;         // 게임 머니
+        [SerializeField] private int scoutTicket;      // 영입권 (선수 뽑기 재화)
+        [SerializeField] private int cheerStick;       // 응원봉 (치어리더 뽑기 재화)
+        [SerializeField] private int gameGold;         // 게임 머니 (볼)
 
-        public int ScoutReport
+        public int ScoutTicket
         {
-            get => scoutReport;
-            set => scoutReport = Mathf.Max(0, value);
+            get => scoutTicket;
+            set => scoutTicket = Mathf.Max(0, value);
         }
 
-        public int PremiumCurrency
+        public int CheerStick
         {
-            get => premiumCurrency;
-            set => premiumCurrency = Mathf.Max(0, value);
+            get => cheerStick;
+            set => cheerStick = Mathf.Max(0, value);
         }
 
         public int GameGold

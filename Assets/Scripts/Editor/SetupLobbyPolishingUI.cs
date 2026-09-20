@@ -7,14 +7,17 @@ using UnityEngine.UI;
 namespace KBOManager.EditorTools
 {
     /// <summary>
-    /// [TASK-KBO-072] TASK-KBO-071에서 코드로만 신설된 LeagueDashboardUIController.
-    /// premiumCurrencyLobbyText 필드를 QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터
-    /// 자동화. SetupRoutingUI/SetupShopUI와 동일한 관례로 여러 번 실행해도 안전하다(이미 있으면 찾아
+    /// [TASK-KBO-072/126] TASK-KBO-071에서 코드로만 신설된 LeagueDashboardUIController의
+    /// scoutTicketLobbyText/cheerStickLobbyText 필드를 QA가 메뉴 클릭 한 번으로 씬에 조립·배선할 수
+    /// 있게 하는 에디터 자동화. [TASK-KBO-126] 영입권/응원봉은 GDD 원문상 서로 다른 뽑기 전용의
+    /// 완전히 독립된 재화라, 기존 하나였던 PremiumCurrencyText를 폐기하고 두 텍스트를 나란히 배치한다.
+    /// SetupRoutingUI/SetupShopUI와 동일한 관례로 여러 번 실행해도 안전하다(이미 있으면 찾아
     /// 재사용/재바인딩).
     /// </summary>
     public static class SetupLobbyPolishingUI
     {
-        private const string PremiumCurrencyTextName = "PremiumCurrencyText";
+        private const string ScoutTicketTextName = "ScoutTicketLobbyText";
+        private const string CheerStickTextName = "CheerStickLobbyText";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Lobby Currency UI")]
         public static void AutoConnectLobbyCurrencyUI()
@@ -27,29 +30,34 @@ namespace KBOManager.EditorTools
                 return;
             }
 
-            var currencyText = FindOrCreateCurrencyText(dashboard.transform);
-            BindCurrencyTextField(dashboard, currencyText);
+            // 응원봉을 영입권 왼쪽에 나란히 배치한다(독립 표시 - 명령서 요구사항).
+            var scoutTicketText = FindOrCreateCurrencyText(dashboard.transform, ScoutTicketTextName,
+                new Vector2(-20f, -20f), "영입권: 0");
+            var cheerStickText = FindOrCreateCurrencyText(dashboard.transform, CheerStickTextName,
+                new Vector2(-400f, -20f), "응원봉: 0");
+            BindCurrencyTextFields(dashboard, scoutTicketText, cheerStickText);
 
             EditorUtility.SetDirty(dashboard);
-            EditorUtility.SetDirty(currencyText);
+            EditorUtility.SetDirty(scoutTicketText);
+            EditorUtility.SetDirty(cheerStickText);
             EditorSceneManager.MarkSceneDirty(dashboard.gameObject.scene);
 
-            Debug.Log("[SetupLobbyPolishingUI] 로비 재화 텍스트 자동 생성/바인딩 완료.");
+            Debug.Log("[SetupLobbyPolishingUI] 로비 영입권/응원봉 텍스트 자동 생성/바인딩 완료.");
         }
 
         /// <summary>이름으로 기존 텍스트를 재사용하거나, 없으면 로비 패널 우측 상단에 새로 만든다.
         /// 앵커/크기는 명령서 6항 지시대로 대략적인 눈에 띄는 배치만 적용한다(정밀 디자인 아님).</summary>
-        private static Text FindOrCreateCurrencyText(Transform parent)
+        private static Text FindOrCreateCurrencyText(Transform parent, string name, Vector2 anchoredPosition, string defaultText)
         {
-            var existingChild = parent.Find(PremiumCurrencyTextName);
+            var existingChild = parent.Find(name);
             if (existingChild != null)
             {
                 var existingText = existingChild.GetComponent<Text>();
                 if (existingText != null) return existingText;
             }
 
-            var textObject = new GameObject(PremiumCurrencyTextName, typeof(RectTransform), typeof(Text));
-            Undo.RegisterCreatedObjectUndo(textObject, $"Create {PremiumCurrencyTextName}");
+            var textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
             textObject.transform.SetParent(parent, false);
 
             var rect = (RectTransform)textObject.transform;
@@ -57,10 +65,10 @@ namespace KBOManager.EditorTools
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(1f, 1f);
             rect.sizeDelta = new Vector2(360f, 70f);
-            rect.anchoredPosition = new Vector2(-20f, -20f);
+            rect.anchoredPosition = anchoredPosition;
 
             var text = textObject.GetComponent<Text>();
-            text.text = "재화: 0";
+            text.text = defaultText;
             text.alignment = TextAnchor.MiddleRight;
             text.color = Color.white;
             text.fontSize = 40;
@@ -69,10 +77,11 @@ namespace KBOManager.EditorTools
             return text;
         }
 
-        private static void BindCurrencyTextField(LeagueDashboardUIController dashboard, Text currencyText)
+        private static void BindCurrencyTextFields(LeagueDashboardUIController dashboard, Text scoutTicketText, Text cheerStickText)
         {
             var serializedDashboard = new SerializedObject(dashboard);
-            serializedDashboard.FindProperty("premiumCurrencyLobbyText").objectReferenceValue = currencyText;
+            serializedDashboard.FindProperty("scoutTicketLobbyText").objectReferenceValue = scoutTicketText;
+            serializedDashboard.FindProperty("cheerStickLobbyText").objectReferenceValue = cheerStickText;
             serializedDashboard.ApplyModifiedProperties();
         }
     }

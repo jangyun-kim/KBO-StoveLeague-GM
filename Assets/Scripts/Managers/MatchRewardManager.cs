@@ -13,13 +13,13 @@ namespace KBOManager.Managers
     {
         public bool Won;
         public bool Draw;
-        public int ScoutReportGained;
+        public int ScoutTicketGained;
         public List<Item> ItemsGained = new List<Item>();
     }
 
     /// <summary>
     /// 경기 종료(PlayBallController.OnMatchCompleted) 시 승/무/패에 따라 차등 보상을 즉시
-    /// GameManager(ScoutReport, ItemInventory)에 지급하는 싱글톤. [경기 -> 재화/아이템 획득] 구간을
+    /// GameManager(ScoutTicket, ItemInventory)에 지급하는 싱글톤. [경기 -> 재화/아이템 획득] 구간을
     /// 담당하는 코어 루프의 한 축이다.
     /// </summary>
     public class MatchRewardManager : MonoBehaviour
@@ -33,8 +33,8 @@ namespace KBOManager.Managers
         [SerializeField] private ItemDatabase itemDatabase;
 
         [Header("Reward Amounts")]
-        [SerializeField] private int winScoutReportReward = 100;
-        [SerializeField] private int loseOrDrawScoutReportReward = 30;
+        [SerializeField] private int winScoutTicketReward = 100;
+        [SerializeField] private int loseOrDrawScoutTicketReward = 30;
         [SerializeField] private int winMinItemDrop = 1;
         [SerializeField] private int winMaxItemDrop = 3;
         [SerializeField] private int loseOrDrawItemDrop = 1;
@@ -88,7 +88,7 @@ namespace KBOManager.Managers
 
         /// <summary>
         /// LeagueManager.Instance.UserTeam 기준으로 승/무/패를 판별해 즉시 보상을 지급한다.
-        /// 승리: 스카우트 리포트 100 + 강화 재료 1~3장. 무승부/패배: 30 + 1장(치어리더/팬심 배율 적용 전 기준값).
+        /// 승리: 영입권 100 + 강화 재료 1~3장. 무승부/패배: 30 + 1장(치어리더/팬심 배율 적용 전 기준값).
         /// [TASK-KBO-049] 치어리더 B안(상시 경제/멘탈 효과, "스토브리그 로비 연산")을 이 결산 지점에
         /// 연동한다 - 유저 팀이 홈 경기에서 승리했다면 EconomicBonusRate를 재화 보상에 곱하고(경제),
         /// 유저 팀이 패배했다면 연패 카운트를 갱신하고 임계치 이상이면 SentimentDefense로 방어된
@@ -108,9 +108,9 @@ namespace KBOManager.Managers
             bool isUserTeamHome = LeagueManager.Instance != null
                 && result.HomeTeamName == LeagueManager.Instance.UserTeam.ToString();
 
-            int scoutReward = won ? winScoutReportReward : loseOrDrawScoutReportReward;
+            int scoutReward = won ? winScoutTicketReward : loseOrDrawScoutTicketReward;
             scoutReward = ApplyCheerleaderEconomicBonus(scoutReward, won, isUserTeamHome);
-            GameManager.Instance.ScoutReport += scoutReward;
+            GameManager.Instance.ScoutTicket += scoutReward;
 
             UpdateLosingStreakAndFanSentiment(won, isDraw);
 
@@ -130,7 +130,7 @@ namespace KBOManager.Managers
             {
                 Won = won,
                 Draw = isDraw,
-                ScoutReportGained = scoutReward,
+                ScoutTicketGained = scoutReward,
                 ItemsGained = grantedItems,
             };
 

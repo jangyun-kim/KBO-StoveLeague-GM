@@ -19,7 +19,7 @@ namespace KBOManager.EditorTools
     {
         private const string CanvasName = "Canvas";
         private const string ShopPanelName = "CheerleaderShopPanel";
-        private const string PremiumCurrencyTextName = "PremiumCurrencyText";
+        private const string CheerStickTextName = "CheerStickText";
         private const string Roll1xButtonName = "Roll1xButton";
         private const string Roll10xButtonName = "Roll10xButton";
         private const string CloseButtonName = "CloseButton";
@@ -119,7 +119,7 @@ namespace KBOManager.EditorTools
         {
             var parent = controller.transform;
 
-            var premiumCurrencyText = FindOrCreateText(parent, PremiumCurrencyTextName, 40f, isDisplayOnly: true);
+            var cheerStickText = FindOrCreateText(parent, CheerStickTextName, 40f, isDisplayOnly: true);
             var roll1xButton = FindOrCreateButton(parent, Roll1xButtonName, "치어리더 1회 뽑기 (100)");
             // [TASK-KBO-117] 선수 뽑기(SetupScoutUI.cs)의 "10회 뽑기"와 라벨이 거의 동일해 혼동을
             // 유발했다 - "치어리더"를 명시해 구분한다.
@@ -129,7 +129,7 @@ namespace KBOManager.EditorTools
             var resultLogText = FindOrCreateText(parent, ResultLogTextName, 320f, isDisplayOnly: true);
 
             var serializedController = new SerializedObject(controller);
-            serializedController.FindProperty("premiumCurrencyText").objectReferenceValue = premiumCurrencyText;
+            serializedController.FindProperty("cheerStickText").objectReferenceValue = cheerStickText;
             serializedController.FindProperty("roll1xButton").objectReferenceValue = roll1xButton;
             serializedController.FindProperty("roll10xButton").objectReferenceValue = roll10xButton;
             serializedController.FindProperty("closeButton").objectReferenceValue = closeButton;
@@ -139,7 +139,7 @@ namespace KBOManager.EditorTools
 
         /// <summary>
         /// 이름으로 기존 Text를 재사용하거나 새로 만든다. isDisplayOnly가 true면(순수 표시용 텍스트 -
-        /// PremiumCurrencyText/ResultLogText처럼 클릭을 받을 필요가 없는 텍스트) raycastTarget을 꺼
+        /// CheerStickText/ResultLogText처럼 클릭을 받을 필요가 없는 텍스트) raycastTarget을 꺼
         /// 불필요한 레이캐스트 대상에서 제외한다(명령서 9항 - 퍼포먼스 디테일).
         /// </summary>
         private static Text FindOrCreateText(Transform parent, string name, float preferredHeight, bool isDisplayOnly)

@@ -9,7 +9,7 @@ namespace KBOManager.EditorTools
     /// 검증하는 순수 시뮬레이션 툴이다.
     ///
     /// 명령서 5항 지시대로 CheerleaderGachaService/GameManager를 전혀 호출하지 않는 완전히 독립된
-    /// Mocking 방식이다 - 확률 판정 로직만 그대로 복사해 돌리므로, 유저의 실제 PremiumCurrency나
+    /// Mocking 방식이다 - 확률 판정 로직만 그대로 복사해 돌리므로, 유저의 실제 CheerStick(응원봉)이나
     /// OwnedCheerleaders는 이 시뮬레이션으로 단 1도 변하지 않는다.
     ///
     /// [중요, 동기화 주의] 아래 임계값(NormalThreshold/RareThreshold/EpicThreshold)은

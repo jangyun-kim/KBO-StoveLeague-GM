@@ -8,7 +8,7 @@ namespace KBOManager.Services
 {
     /// <summary>
     /// [TASK-KBO-065/066] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md 3절(TASK-KBO-066에서
-    /// 이 코드와 1:1로 일치하도록 갱신됨)의 사양을 그대로 구현한다: PremiumCurrency 1회당 100 소모
+    /// 이 코드와 1:1로 일치하도록 갱신됨)의 사양을 그대로 구현한다: CheerStick(응원봉) 1회당 100 소모
     /// (할인 없음, count * 100), 등급 확률 NORMAL 70% / RARE 22% / EPIC 7% / LEGEND 1%(합계 100%),
     /// 보장 슬롯(천장) 없음. 상점 UI/애니메이션은 이 서비스의 책임이 아니다 - 순수 데이터 처리(재화
     /// 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리 지급)만 담당하고, 발급된 목록을 반환해
@@ -29,7 +29,7 @@ namespace KBOManager.Services
 
         /// <summary>
         /// [TASK-KBO-066] count번 가챠를 실행하고, 실제로 발급된 Cheerleader 목록을 반환한다(UI가
-        /// 결과를 바로 그릴 수 있도록 - CheerleaderShopUIController 참고). 재화(PremiumCurrency)가
+        /// 결과를 바로 그릴 수 있도록 - CheerleaderShopUIController 참고). 재화(CheerStick/응원봉)가
         /// count*100보다 부족하거나 플레이 모드가 아니면(GameManager.Instance == null) 아무것도
         /// 차감하지 않고 빈 리스트를 반환한다. 성공하면 재화를 먼저 전부 차감한 뒤, count번 반복해
         /// 등급을 판정하고 GameManager.Instance.AddCheerleader()로 지급한다(신규 추가/중복 변환
@@ -50,14 +50,14 @@ namespace KBOManager.Services
             }
 
             int totalCost = count * CostPerRoll;
-            if (GameManager.Instance.PremiumCurrency < totalCost)
+            if (GameManager.Instance.CheerStick < totalCost)
             {
-                Debug.LogWarning($"[CheerleaderGachaService] 프리미엄 재화가 부족합니다. " +
-                    $"(필요 {totalCost} / 보유 {GameManager.Instance.PremiumCurrency})");
+                Debug.LogWarning($"[CheerleaderGachaService] 응원봉이 부족합니다. " +
+                    $"(필요 {totalCost} / 보유 {GameManager.Instance.CheerStick})");
                 return results;
             }
 
-            GameManager.Instance.PremiumCurrency -= totalCost;
+            GameManager.Instance.CheerStick -= totalCost;
 
             for (int i = 1; i <= count; i++)
             {

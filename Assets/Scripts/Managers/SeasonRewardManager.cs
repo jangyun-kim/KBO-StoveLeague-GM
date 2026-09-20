@@ -9,7 +9,7 @@ namespace KBOManager.Managers
     public class SeasonEndReport
     {
         public int FinalRank;
-        public int PremiumCurrencyGained;
+        public int ScoutTicketGained;
         public int GameGoldGained;
         /// <summary>확정팩을 받았다면 그 최소 등급 이름(예: "SIGNATURE"), 없으면 null.</summary>
         public string GuaranteedPackGrade;
@@ -36,10 +36,10 @@ namespace KBOManager.Managers
 
         [Header("Reward Table (GDD 미확정 - 임시값)")]
         [Tooltip("1위(우승) 보상.")]
-        [SerializeField] private int championPremiumCurrency = 5000;
+        [SerializeField] private int championScoutTicket = 5000;
         [SerializeField] private Grade championGuaranteedGrade = Grade.SIGNATURE;
         [Tooltip("2~9위 보상은 1위 값에서 이 값까지 순위에 비례해 선형으로 줄어든다(확정팩 없음).")]
-        [SerializeField] private int midTierMinimumPremiumCurrency = 500;
+        [SerializeField] private int midTierMinimumScoutTicket = 500;
         [Tooltip("10위(꼴찌) 위로금 - 프리미엄이 아닌 일반 재화(GameGold)로 지급한다.")]
         [SerializeField] private int lastPlaceConsolationGameGold = 3000;
         [Tooltip("꼴찌에게 지급하는 '슈퍼 루키 확정팩'의 최소 등급 - 우승팩보다는 낮게 잡는다.")]
@@ -102,9 +102,9 @@ namespace KBOManager.Managers
 
             if (finalRank <= 1)
             {
-                report.PremiumCurrencyGained = championPremiumCurrency;
+                report.ScoutTicketGained = championScoutTicket;
                 report.GuaranteedPackGrade = championGuaranteedGrade.ToString();
-                GameManager.Instance.PremiumCurrency += championPremiumCurrency;
+                GameManager.Instance.ScoutTicket += championScoutTicket;
                 GrantGuaranteedPack(championGuaranteedGrade);
             }
             else if (finalRank >= TotalTeamCount)
@@ -116,10 +116,10 @@ namespace KBOManager.Managers
             }
             else
             {
-                // 2위~9위: 순위가 낮아질수록 championPremiumCurrency에서 midTierMinimumPremiumCurrency까지 선형으로 줄어든다.
+                // 2위~9위: 순위가 낮아질수록 championScoutTicket에서 midTierMinimumScoutTicket까지 선형으로 줄어든다.
                 float t = (finalRank - 1) / (float)(TotalTeamCount - 2);
-                report.PremiumCurrencyGained = Mathf.RoundToInt(Mathf.Lerp(championPremiumCurrency, midTierMinimumPremiumCurrency, t));
-                GameManager.Instance.PremiumCurrency += report.PremiumCurrencyGained;
+                report.ScoutTicketGained = Mathf.RoundToInt(Mathf.Lerp(championScoutTicket, midTierMinimumScoutTicket, t));
+                GameManager.Instance.ScoutTicket += report.ScoutTicketGained;
             }
 
             PopulateTitleHolders(report);
