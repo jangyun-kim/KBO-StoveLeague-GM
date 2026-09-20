@@ -44,11 +44,15 @@ namespace KBOManager.Controllers
         [Tooltip("구매 결과(성공/실패 사유)를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
         [SerializeField] private Text purchaseResultText;
 
+        [Tooltip("[TASK-KBO-113] 상점 화면을 닫고 로비로 돌아가는 버튼. UIManager.ShowScreen()만 호출한다.")]
+        [SerializeField] private Button closeButton;
+
         private void Awake()
         {
             if (buyGuaranteedPackageButton != null) buyGuaranteedPackageButton.onClick.AddListener(BuyGuaranteedPackage);
             if (buyPremiumTenPullButton != null) buyPremiumTenPullButton.onClick.AddListener(BuyPremiumTenPull);
             if (buySkillTicketButton != null) buySkillTicketButton.onClick.AddListener(BuySkillChangeTicket);
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
         }
 
         private void OnEnable()

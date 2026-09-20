@@ -68,6 +68,10 @@ namespace KBOManager.Controllers
         [SerializeField] private Color userTeamHighlightColor = new Color(1f, 0.84f, 0f); // 골드
         [SerializeField] private Color normalTextColor = Color.white;
 
+        [Header("Close Button")]
+        [Tooltip("[TASK-KBO-113] 리그 기록실 화면을 닫고 로비로 돌아가는 버튼. UIManager.ShowScreen()만 호출한다.")]
+        [SerializeField] private Button closeButton;
+
         private readonly List<Text> spawnedHallOfFameEntries = new List<Text>();
 
         private void Awake()
@@ -75,6 +79,7 @@ namespace KBOManager.Controllers
             if (batterTabButton != null) batterTabButton.onClick.AddListener(ShowBatterTab);
             if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(ShowPitcherTab);
             if (hallOfFameTabButton != null) hallOfFameTabButton.onClick.AddListener(ShowHallOfFameTab);
+            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
         }
 
         private void OnEnable()
