@@ -24,11 +24,21 @@ namespace KBOManager.EditorTools
     /// 색상 강제 변경 대상에서 제외했다(가독성 보조 옵션(`bestFit`/`overflow`)만 적용) - 실제
     /// 스코어보드 대비 문제를 고치려면 `SetupInGameUI.cs`의 해당 텍스트 색상 자체를 흰색으로 바꾸는
     /// 별도 판단이 필요해 이번 "일괄 검은색" 도구의 범위를 벗어난다고 보고 손대지 않았다.
+    ///
+    /// [TASK-KBO-116] `InventoryPanel`을 탐색 대상에 추가했다. 이 패널 자체는 `SetupInventoryUI.cs`가
+    /// 불투명 흰색 `Image`로 만들어 둬(원문 `FindOrCreateInventoryPanel`) 검은색이 정답이지만, 그
+    /// 자식 `DetailPanel`은 반투명 검정 오버레이(`Color(0,0,0,0.75)`, 씬에서 실측 확인)라 그 안의
+    /// 텍스트(`detailReinforceText`/`detailAwakenText`/`detailSkillsText`/`skillRerollResultText`,
+    /// TASK-110이 이미 흰색으로 정확히 만들어 둠)는 `InGamePanel`의 로그 텍스트와 동일한 이유로 예외
+    /// 처리해야 한다 - `DetailPanel` 하위는 건너뛰고 `InventoryPanel`의 나머지 부분(카드 목록/닫기
+    /// 버튼 라벨 등, 전부 이미 검은색)만 검은색 대상으로 삼는다.
     /// </summary>
     public static class SetupUIColors
     {
         private static readonly string[] LightBackgroundPanels = { "LobbyPanel", "ScoutPanel", "RosterPanel" };
         private const string InGamePanelName = "InGamePanel";
+        private const string InventoryPanelName = "InventoryPanel";
+        private const string DetailPanelName = "DetailPanel";
 
         [MenuItem("KBO Manager/Setup/Fix All Text Colors (Black)")]
         public static void FixAllTextColors()
@@ -47,6 +57,9 @@ namespace KBOManager.EditorTools
 
             // InGamePanel은 배경이 어두워(카메라 배경색 기준) 색상은 그대로 두고 가독성 옵션만 적용한다.
             ApplyReadabilityOnly(canvas.transform, InGamePanelName);
+
+            // InventoryPanel은 밝은 배경이지만, 그 자식 DetailPanel만은 어두운 오버레이라 예외 처리한다.
+            FixInventoryPanelTextColor(canvas.transform);
 
             var scene = canvas.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
@@ -72,6 +85,42 @@ namespace KBOManager.EditorTools
             }
 
             Debug.Log($"[SetupUIColors] '{panelName}' 하위 Text {texts.Length}개를 검은색으로 변경했습니다.");
+        }
+
+        /// <summary>`InventoryPanel`은 검은색으로 바꾸되, 어두운 오버레이인 자식 `DetailPanel`
+        /// 하위 텍스트만은 흰색을 그대로 유지한다(클래스 주석 참고 - 안 그러면 다시 안 보이게 된다).</summary>
+        private static void FixInventoryPanelTextColor(Transform canvasTransform)
+        {
+            var panelTransform = canvasTransform.Find(InventoryPanelName);
+            if (panelTransform == null)
+            {
+                Debug.LogWarning($"[SetupUIColors] '{InventoryPanelName}'를 찾지 못해 건너뜁니다.");
+                return;
+            }
+
+            var detailPanelTransform = panelTransform.Find(DetailPanelName);
+
+            var texts = panelTransform.GetComponentsInChildren<Text>(true);
+            int changedCount = 0;
+            int skippedCount = 0;
+            foreach (var text in texts)
+            {
+                if (detailPanelTransform != null && text.transform.IsChildOf(detailPanelTransform))
+                {
+                    ApplyReadabilityOptions(text); // 색상은 그대로, 가독성 옵션만 적용
+                    EditorUtility.SetDirty(text);
+                    skippedCount++;
+                    continue;
+                }
+
+                text.color = Color.black;
+                ApplyReadabilityOptions(text);
+                EditorUtility.SetDirty(text);
+                changedCount++;
+            }
+
+            Debug.Log($"[SetupUIColors] '{InventoryPanelName}' 하위 Text {changedCount}개를 검은색으로 변경했습니다 " +
+                $"('{DetailPanelName}' 하위 {skippedCount}개는 어두운 배경이라 흰색을 유지했습니다).");
         }
 
         private static void ApplyReadabilityOnly(Transform canvasTransform, string panelName)

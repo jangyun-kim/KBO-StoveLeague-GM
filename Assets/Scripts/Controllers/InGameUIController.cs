@@ -61,11 +61,18 @@ namespace KBOManager.Controllers
         [SerializeField] private Text rewardSummaryText;
         [SerializeField] private Button returnToLobbyButton;
 
+        [Header("Close Button")]
+        [Tooltip("[TASK-KBO-116] 경기 중에도 언제든 로비로 돌아가는 버튼(경기 종료 패널의 " +
+                 "returnToLobbyButton과 달리 상시 노출). 동일하게 ReturnToLobby()를 호출해 " +
+                 "매치 상태(ClearAll())까지 함께 정리한다.")]
+        [SerializeField] private Button closeButton;
+
         private readonly List<Text> spawnedLogEntries = new List<Text>();
 
         private void Awake()
         {
             if (returnToLobbyButton != null) returnToLobbyButton.onClick.AddListener(ReturnToLobby);
+            if (closeButton != null) closeButton.onClick.AddListener(ReturnToLobby);
         }
 
         private void OnEnable()

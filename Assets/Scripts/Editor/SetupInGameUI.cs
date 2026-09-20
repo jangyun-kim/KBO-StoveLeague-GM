@@ -51,6 +51,7 @@ namespace KBOManager.EditorTools
     public static class SetupInGameUI
     {
         private const string QuickPlayButtonName = "QuickPlayButton";
+        private const string CloseButtonName = "CloseButton";
         private const string SkillDBAssetPath = "Assets/GameData/SkillDB.asset";
         private const string EngineConfigAssetPath = "Assets/GameData/EngineConfig.asset";
 
@@ -75,6 +76,7 @@ namespace KBOManager.EditorTools
             BindLog(inGameController, inGamePanelObject.transform, canvasTransform);
             BindMatchEndPanel(inGameController, inGamePanelObject.transform);
             BindMatchStatusUI(inGameController, inGamePanelObject.transform);
+            BindCloseButton(inGameController, inGamePanelObject.transform);
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -372,6 +374,66 @@ namespace KBOManager.EditorTools
         /// matchEndPanelRoot/matchResultSummaryText/rewardSummaryText/returnToLobbyButton 4개 필드를
         /// 바인딩한다. returnToLobbyButton의 onClick(ReturnToLobby) 연결은 InGameUIController.Awake()
         /// (기존 코드, 미수정)가 담당한다.</summary>
+        /// <summary>[TASK-KBO-116] 경기 종료를 기다리지 않고도 언제든 로비로 돌아갈 수 있는 닫기 버튼.
+        /// 명령서 6항이 지정한 좌표(anchorMin 0.8,0.9 ~ anchorMax 1,1 - 우측 상단)에 배치해 스코어보드/
+        /// 로그/매치상태 등 기존 요소와 겹치지 않게 한다.</summary>
+        private static void BindCloseButton(InGameUIController controller, Transform inGamePanelTransform)
+        {
+            var closeButton = FindOrCreateAnchoredButton(inGamePanelTransform, CloseButtonName, "닫기",
+                new Vector2(0.8f, 0.9f), new Vector2(1f, 1f));
+
+            var serialized = new SerializedObject(controller);
+            serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
+            serialized.ApplyModifiedProperties();
+            EditorUtility.SetDirty(controller);
+        }
+
+        private static Button FindOrCreateAnchoredButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null)
+            {
+                var existingButton = existingChild.GetComponent<Button>();
+                if (existingButton != null) return existingButton;
+            }
+
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            return button;
+        }
+
         private static void BindMatchEndPanel(InGameUIController controller, Transform inGamePanelTransform)
         {
             var panelObject = FindOrCreateMatchEndPanel(inGamePanelTransform);
