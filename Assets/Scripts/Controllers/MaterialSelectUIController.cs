@@ -89,6 +89,12 @@ namespace KBOManager.Controllers
 
             PopulateItemList();
             UpdateSelectionCountText();
+
+            // [TASK-KBO-125] 이 팝업(popupRoot == 이 컴포넌트의 GameObject 자신)은 Canvas 하위에서
+            // InventoryPanel보다 sibling index가 낮아(TASK-109가 먼저 생성) 인벤토리 화면이 활성
+            // 상태일 때 SetActive(true)해도 화면 뒤로 가려 안 보였다 - 열릴 때마다 무조건 가장 마지막
+            // sibling(=최상단 렌더링)으로 끌어올린다.
+            transform.SetAsLastSibling();
             if (popupRoot != null) popupRoot.SetActive(true);
         }
 
@@ -108,6 +114,9 @@ namespace KBOManager.Controllers
 
             PopulatePlayerList();
             UpdateSelectionCountText();
+
+            // [TASK-KBO-125] OpenForEnhance()와 동일한 이유로 최상단으로 끌어올린다.
+            transform.SetAsLastSibling();
             if (popupRoot != null) popupRoot.SetActive(true);
         }
 

@@ -109,7 +109,8 @@ namespace KBOManager.EditorTools
             // CloseDetailButton을 CloseButton과 겹치지 않는 바로 왼쪽 칸으로 옮겨 해소한다.
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
                 new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
-            var closeDetailButton = FindOrCreateButton(detailPanelRoot.transform, CloseDetailButtonName, "닫기",
+            // [TASK-KBO-125] 두 버튼이 나란히 배치돼도 라벨만으로 구분되도록 "상세 닫기"로 변경한다.
+            var closeDetailButton = FindOrCreateButton(detailPanelRoot.transform, CloseDetailButtonName, "상세 닫기",
                 new Vector2(0.65f, 0.92f), new Vector2(0.83f, 1f));
 
             var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
