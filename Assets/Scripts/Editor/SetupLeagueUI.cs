@@ -17,13 +17,13 @@ namespace KBOManager.EditorTools
     /// `LeagueManager`(`GameManagers`에 부착, `TASK-KBO-096`~`097` 조사에서 이미 확인된 컴포넌트)를 찾아
     /// 함께 바인딩한다(기존 컴포넌트 참조 연결일 뿐 새 UI가 필요 없다).
     ///
-    /// [범위 제외, 결정 필요] `synergyUIController`(`TeamSynergyUIController`)는 씬에 컴포넌트 자체가
-    /// 아직 존재하지 않고(`FindAnyObjectByType` 결과 0건), 세트덱 시너지 요약을 위한 자체 UI를 새로
-    /// 설계·조립해야 하는 별도 작업이라 이번 범위에서 제외했다 - 필드 자신의 주석("비워두면 이 항목만
-    /// 건너뜀")이 null을 안전하게 허용하므로 크래시 위험은 없다. `shopButton`/`leagueStatsButton`도
-    /// 명령서 4항이 열거한 3개 UI 영역(시즌 진행도/순위표/매치업)에 포함되지 않고 "리그" 데이터가 아닌
-    /// 별개 화면 내비게이션이라 이번에는 건드리지 않았다. `premiumCurrencyLobbyText`는 이미 씬에
-    /// 바인딩되어 있어(TASK-KBO-071 등) 손대지 않았다.
+    /// [TASK-KBO-107] `synergyUIController`(`TeamSynergyUIController`)도 이번에 함께 조립한다 -
+    /// `TeamSynergyArea` 하위에 `SetDeckText`/`CheerleaderText`/`FanSentimentText` 3개 텍스트를 만들어
+    /// `TeamSynergyUIController`에 바인딩하고, 그 컨트롤러 자체를 `LeagueDashboardUIController.
+    /// synergyUIController`에 연결한다. `shopButton`/`leagueStatsButton`은 명령서 4항이 열거한 UI
+    /// 영역(시즌 진행도/순위표/매치업/시너지)에 포함되지 않고 "리그" 데이터가 아닌 별개 화면
+    /// 내비게이션이라 여전히 건드리지 않는다. `premiumCurrencyLobbyText`는 이미 씬에 바인딩되어 있어
+    /// (TASK-KBO-071 등) 손대지 않았다.
     /// </summary>
     public static class SetupLeagueUI
     {
@@ -32,6 +32,10 @@ namespace KBOManager.EditorTools
         private const string StandingsRowNamePrefix = "StandingsRow";
         private const string NextMatchupTextName = "NextMatchupText";
         private const string TeamOVRTextName = "TeamOVRText";
+        private const string TeamSynergyAreaName = "TeamSynergyArea";
+        private const string SetDeckTextName = "SetDeckText";
+        private const string CheerleaderTextName = "CheerleaderText";
+        private const string FanSentimentTextName = "FanSentimentText";
 
         // LeagueDashboardUIController.standingsRowTexts 배열은 10개 구단 고정(원문 29~31행 - "10개 구단
         // 고정이므로 동적 생성 없이 텍스트 10줄을 그대로 인스펙터에서 연결한다")이므로 그대로 10을 쓴다.
@@ -64,7 +68,10 @@ namespace KBOManager.EditorTools
                     "갱신하지 않으니(원문 95행 가드) 참고하십시오.");
             }
 
-            BindDashboard(dashboard, leagueManager, seasonProgressText, standingsRows, nextMatchupText, teamOVRText);
+            var synergyController = FindOrCreateSynergyUI(dashboard.transform);
+
+            BindDashboard(dashboard, leagueManager, seasonProgressText, standingsRows, nextMatchupText,
+                teamOVRText, synergyController);
 
             EditorUtility.SetDirty(dashboard);
 
@@ -122,7 +129,8 @@ namespace KBOManager.EditorTools
         }
 
         private static void BindDashboard(LeagueDashboardUIController dashboard, LeagueManager leagueManager,
-            Text seasonProgressText, Text[] standingsRows, Text nextMatchupText, Text teamOVRText)
+            Text seasonProgressText, Text[] standingsRows, Text nextMatchupText, Text teamOVRText,
+            TeamSynergyUIController synergyController)
         {
             var serialized = new SerializedObject(dashboard);
 
@@ -131,6 +139,7 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("seasonProgressText").objectReferenceValue = seasonProgressText;
             serialized.FindProperty("nextMatchupText").objectReferenceValue = nextMatchupText;
             serialized.FindProperty("teamOVRText").objectReferenceValue = teamOVRText;
+            serialized.FindProperty("synergyUIController").objectReferenceValue = synergyController;
 
             var standingsProperty = serialized.FindProperty("standingsRowTexts");
             standingsProperty.arraySize = standingsRows.Length;
@@ -140,6 +149,44 @@ namespace KBOManager.EditorTools
             }
 
             serialized.ApplyModifiedProperties();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-107] `TeamSynergyArea`(없으면 신규 생성, 있으면 재사용 - 중복 생성 방지) 하위에
+        /// `TeamSynergyUIController.cs` 원문(23~25행)이 요구하는 3개 Text(`setDeckText`/
+        /// `cheerleaderText`/`fanSentimentText`)를 조립해 바인딩한다. 컨트롤러 컴포넌트 자체도
+        /// `TryGetComponent`로 이미 붙어 있으면 재사용하고, 없을 때만 새로 붙인다(명령서 7항).
+        /// </summary>
+        private static TeamSynergyUIController FindOrCreateSynergyUI(Transform dashboardTransform)
+        {
+            var areaTransform = FindOrCreateChild(dashboardTransform, TeamSynergyAreaName,
+                new Vector2(0.5f, 0.05f), new Vector2(1f, 0.4f));
+
+            if (!areaTransform.TryGetComponent<VerticalLayoutGroup>(out _))
+            {
+                var layout = areaTransform.gameObject.AddComponent<VerticalLayoutGroup>();
+                layout.childForceExpandHeight = false;
+                layout.childControlHeight = false;
+            }
+
+            if (!areaTransform.TryGetComponent<TeamSynergyUIController>(out var synergyController))
+            {
+                synergyController = Undo.AddComponent<TeamSynergyUIController>(areaTransform.gameObject);
+            }
+
+            var setDeckText = FindOrCreateStandingsRowText(areaTransform, SetDeckTextName);
+            var cheerleaderText = FindOrCreateStandingsRowText(areaTransform, CheerleaderTextName);
+            var fanSentimentText = FindOrCreateStandingsRowText(areaTransform, FanSentimentTextName);
+
+            var serializedController = new SerializedObject(synergyController);
+            serializedController.FindProperty("setDeckText").objectReferenceValue = setDeckText;
+            serializedController.FindProperty("cheerleaderText").objectReferenceValue = cheerleaderText;
+            serializedController.FindProperty("fanSentimentText").objectReferenceValue = fanSentimentText;
+            serializedController.ApplyModifiedProperties();
+
+            EditorUtility.SetDirty(synergyController);
+
+            return synergyController;
         }
 
         private static Transform FindOrCreateChild(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
