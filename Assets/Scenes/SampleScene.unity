@@ -6975,7 +6975,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d3ed35dcefe21fe4d814156acb9ab1ec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Controllers.ScoutUIController
-  scoutManager: {fileID: 0}
+  scoutManager: {fileID: 259487283}
   roll1Button: {fileID: 282070749}
   roll10Button: {fileID: 2093651760}
   resultPopupRoot: {fileID: 322863253}
