@@ -367,6 +367,32 @@ namespace KBOManager.EditorTools
             Debug.Log($"테스트용 재화 지급 완료. 현재 잔액: {GameManager.Instance.PremiumCurrency}");
         }
 
+        /// <summary>
+        /// [TASK-KBO-115] 선수 스카우트(`ScoutManager.Roll1()`/`Roll10()`)는 `PremiumCurrency`가 아니라
+        /// `ScoutReport`를 소모한다(원문 `Assets/Scripts/Managers/ScoutManager.cs` 61/75행) - 위
+        /// `AddPremiumCurrency()`만 실행하면 `ScoutReport`가 기본값 0(`GameManager.cs` 147행, 초기화
+        /// 로직 없음)에 그대로 머물러 있어 뽑기 버튼을 눌러도 조용히 빈 결과만 돌아온다. 세 재화
+        /// (`ScoutReport`/`PremiumCurrency`/`GameGold`) 전부를 한 번에 채워 이 QA 함정을 없앤다.
+        /// </summary>
+        [MenuItem("KBO Manager/Debug/Add All Currencies (100,000)")]
+        public static void AddAllCurrencies()
+        {
+            if (GameManager.Instance == null)
+            {
+                Debug.LogWarning("플레이 모드에서만 실행 가능합니다.");
+                return;
+            }
+
+            GameManager.Instance.ScoutReport += 100000;
+            GameManager.Instance.PremiumCurrency += 100000;
+            GameManager.Instance.GameGold += 100000;
+
+            Debug.Log("테스트용 전체 재화 지급 완료. " +
+                $"ScoutReport={GameManager.Instance.ScoutReport}, " +
+                $"PremiumCurrency={GameManager.Instance.PremiumCurrency}, " +
+                $"GameGold={GameManager.Instance.GameGold}");
+        }
+
         /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.
         /// 플레이 모드가 아니거나 재화가 부족하면 서비스 쪽에서 이미 경고 로그를 남기므로, 여기서는
         /// 실패 시 보충 안내만 한 줄 추가한다. [TASK-KBO-066] RollGacha()가 bool 대신

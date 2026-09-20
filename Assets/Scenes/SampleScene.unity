@@ -3096,6 +3096,10 @@ GameObject:
   - component: {fileID: 259487283}
   - component: {fileID: 259487282}
   - component: {fileID: 259487281}
+  - component: {fileID: 259487287}
+  - component: {fileID: 259487286}
+  - component: {fileID: 259487285}
+  - component: {fileID: 259487284}
   m_Layer: 0
   m_Name: GameManagers
   m_TagString: Untagged
@@ -3308,6 +3312,73 @@ MonoBehaviour:
     RatePercent: 25
   - Grade: 2
     RatePercent: 5
+--- !u!114 &259487284
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 259487272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab94e4fbde8c41e4b82aaf682d1a1339, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Managers.SeasonRollover
+  leagueManager: {fileID: 259487275}
+  seasonStatManager: {fileID: 259487286}
+  postSeasonManager: {fileID: 259487285}
+--- !u!114 &259487285
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 259487272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5fb64e4b013ef3245901ee9a363880e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Managers.PostSeasonManager
+  leagueManager: {fileID: 259487275}
+  skillDB: {fileID: 11400000, guid: 1078515116a63694ab94eaec460ead36, type: 2}
+  engineConfig: {fileID: 11400000, guid: 9e9cf5b592d8fc1479395495e44ec4f2, type: 2}
+--- !u!114 &259487286
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 259487272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1eec27f865f71d54aa3c4cf8329ba6b3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Managers.SeasonStatManager
+  playBallController: {fileID: 1096483434}
+--- !u!114 &259487287
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 259487272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4ede49e97b411842b4d8e867d02d775, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Managers.ItemDatabase
+  allTemplates:
+  - {fileID: 11400000, guid: 9d728f2e489c36940955b79474b52df0, type: 2}
+  - {fileID: 11400000, guid: 5ef93c254bd722f45af840ce6459e164, type: 2}
+  - {fileID: 11400000, guid: 57a739e345f502042a1e8d16624e2ce3, type: 2}
+  - {fileID: 11400000, guid: 6eb4df83b43e4c945ac87ceb310932b6, type: 2}
+  - {fileID: 11400000, guid: 00e8dacbb54271047bef2a8b8ca24641, type: 2}
+  - {fileID: 11400000, guid: 7583495179576334aa87b8619c454043, type: 2}
+  - {fileID: 11400000, guid: 4267f67393f8ff44a8741e643215fd9b, type: 2}
+  - {fileID: 11400000, guid: d38b4146724c1c04eabb6017f49b4bde, type: 2}
+  - {fileID: 11400000, guid: 78473b3c3d4b89b4cae9e777c1290422, type: 2}
+  - {fileID: 11400000, guid: e724d7495cbbadc4d8b379ddafb942d4, type: 2}
+  - {fileID: 11400000, guid: 9720bce6f08ff4445935cb78132e465a, type: 2}
 --- !u!1 &261019035
 GameObject:
   m_ObjectHideFlags: 0
@@ -14061,7 +14132,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Controllers.ShopUIController
   scoutManager: {fileID: 259487283}
-  itemDatabase: {fileID: 0}
+  itemDatabase: {fileID: 259487287}
   guaranteedMinimumGrade: 4
   guaranteedPackagePrice: 300
   buyGuaranteedPackageButton: {fileID: 1071698501}
@@ -19488,7 +19559,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81ce8f0a9c9c0394c9abad98bfd4196a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KBOManager.Controllers.LeagueStatsUIController
-  seasonStatManager: {fileID: 0}
+  seasonStatManager: {fileID: 259487286}
   leagueManager: {fileID: 259487275}
   batterTabButton: {fileID: 837023577}
   pitcherTabButton: {fileID: 466188829}
@@ -19496,7 +19567,7 @@ MonoBehaviour:
   batterPanelRoot: {fileID: 811922798}
   pitcherPanelRoot: {fileID: 2116604493}
   hallOfFamePanelRoot: {fileID: 135197550}
-  seasonRollover: {fileID: 0}
+  seasonRollover: {fileID: 259487284}
   hallOfFameListContainer: {fileID: 835014112}
   hallOfFameEntryPrefab: {fileID: 801138852}
   battingAveragePanel:

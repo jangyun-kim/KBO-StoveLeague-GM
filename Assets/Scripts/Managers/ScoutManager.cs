@@ -58,7 +58,12 @@ namespace KBOManager.Managers
         public Player Roll1()
         {
             if (GameManager.Instance == null || playerDatabase == null) return null;
-            if (GameManager.Instance.ScoutReport < roll1Cost) return null;
+            if (GameManager.Instance.ScoutReport < roll1Cost)
+            {
+                Debug.LogWarning($"[ScoutManager] ScoutReport 부족으로 1회 뽑기를 실행하지 않았습니다. " +
+                    $"(필요 {roll1Cost} / 보유 {GameManager.Instance.ScoutReport})");
+                return null;
+            }
 
             GameManager.Instance.ScoutReport -= roll1Cost;
 
@@ -72,7 +77,12 @@ namespace KBOManager.Managers
         {
             var results = new List<Player>();
             if (GameManager.Instance == null || playerDatabase == null) return results;
-            if (GameManager.Instance.ScoutReport < roll10Cost) return results;
+            if (GameManager.Instance.ScoutReport < roll10Cost)
+            {
+                Debug.LogWarning($"[ScoutManager] ScoutReport 부족으로 10연차 뽑기를 실행하지 않았습니다. " +
+                    $"(필요 {roll10Cost} / 보유 {GameManager.Instance.ScoutReport})");
+                return results;
+            }
 
             GameManager.Instance.ScoutReport -= roll10Cost;
 
