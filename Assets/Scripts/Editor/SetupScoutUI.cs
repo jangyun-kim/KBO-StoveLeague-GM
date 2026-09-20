@@ -132,10 +132,12 @@ namespace KBOManager.EditorTools
         /// (closeButton과 동일한 관례 - 에디터 스크립트는 필드 참조만 채운다).</summary>
         private static void BindRollButtons(ScoutUIController controller)
         {
-            var roll1Button = FindOrCreateButton(controller.transform, Roll1ButtonName, "1회 뽑기", new Vector2(200f, 20f));
+            var roll1Button = FindOrCreateButton(controller.transform, Roll1ButtonName, "선수 1회 뽑기", new Vector2(200f, 20f));
             BindButtonField(controller, "roll1Button", roll1Button);
 
-            var roll10Button = FindOrCreateButton(controller.transform, Roll10ButtonName, "10회 뽑기", new Vector2(380f, 20f));
+            // [TASK-KBO-117] 치어리더 뽑기(SetupShopUI.cs)의 "10회 뽑기"와 라벨이 거의 동일해 혼동을
+            // 유발했다 - "선수"를 명시해 구분한다.
+            var roll10Button = FindOrCreateButton(controller.transform, Roll10ButtonName, "선수 10연차 뽑기", new Vector2(380f, 20f));
             BindButtonField(controller, "roll10Button", roll10Button);
         }
 
@@ -500,7 +502,11 @@ namespace KBOManager.EditorTools
             if (existingChild != null)
             {
                 var existingButton = existingChild.GetComponent<Button>();
-                if (existingButton != null) return existingButton;
+                if (existingButton != null)
+                {
+                    ApplyButtonLabel(existingButton, label);
+                    return existingButton;
+                }
             }
 
             var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -531,14 +537,26 @@ namespace KBOManager.EditorTools
             labelRect.offsetMax = Vector2.zero;
 
             var text = labelObject.GetComponent<Text>();
-            text.text = label;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.black;
             text.fontSize = 18;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyButtonLabel(button, label);
 
             return button;
+        }
+
+        /// <summary>[TASK-KBO-117] 이미 존재하는 버튼을 재사용할 때도 라벨 텍스트/색상/가독성 옵션을
+        /// 최신 값으로 강제 갱신한다 - 기존에는 재사용 시 라벨을 건드리지 않아 예전 텍스트가 그대로
+        /// 남아 있었다(명령서 6항 - FindOrCreateButton 헬퍼 보완).</summary>
+        private static void ApplyButtonLabel(Button button, string label)
+        {
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text == null) return;
+
+            text.text = label;
+            text.color = Color.black;
+            text.resizeTextForBestFit = true;
         }
 
         private static void BindButtonField(Object controller, string fieldName, Button button)
