@@ -72,6 +72,9 @@ namespace KBOManager.Controllers
         [Tooltip("[TASK-KBO-093] 로스터 관리 화면(UIManager.ScreenType.Roster)으로 전환하는 버튼. " +
                  "RosterUIController를 직접 참조하지 않는다.")]
         [SerializeField] private Button rosterButton;
+        [Tooltip("[TASK-KBO-110] 선수 카드 인벤토리 화면(UIManager.ScreenType.Inventory)으로 전환하는 버튼. " +
+                 "InventoryUIController를 직접 참조하지 않는다.")]
+        [SerializeField] private Button inventoryButton;
 
         private void Awake()
         {
@@ -82,6 +85,7 @@ namespace KBOManager.Controllers
             if (gachaShopButton != null) gachaShopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderShop));
             if (scoutButton != null) scoutButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Scout));
             if (rosterButton != null) rosterButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Roster));
+            if (inventoryButton != null) inventoryButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Inventory));
         }
 
         private void OnEnable()
