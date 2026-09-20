@@ -99,12 +99,18 @@ namespace KBOManager.Tools
 
         // ----- 디버그 액션 -----
 
+        /// <summary>[TASK-KBO-129] 구 단일 CheerStick 필드가 폐기되고 GDD 재화 4종(라이브/스타/레전드/
+        /// 한정 응원봉)으로 나뉘어, QA가 4개 치어리더 영입 카테고리를 모두 테스트할 수 있도록 전부
+        /// 동시에 지급한다.</summary>
         private void GrantCheerStick()
         {
             if (GameManager.Instance == null) return;
 
-            GameManager.Instance.CheerStick += cheerStickGrantAmount;
-            ShowResult($"응원봉 +{cheerStickGrantAmount} 지급 완료. (현재 {GameManager.Instance.CheerStick})");
+            GameManager.Instance.LiveCheerStick += cheerStickGrantAmount;
+            GameManager.Instance.StarCheerStick += cheerStickGrantAmount;
+            GameManager.Instance.LegendCheerStick += cheerStickGrantAmount;
+            GameManager.Instance.LimitedCheerStick += cheerStickGrantAmount;
+            ShowResult($"응원봉(라이브/스타/레전드/한정) 각 +{cheerStickGrantAmount} 지급 완료.");
         }
 
         private void ForceWinCurrentMatch()

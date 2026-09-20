@@ -9,7 +9,7 @@ namespace KBOManager.Managers
     public class SeasonEndReport
     {
         public int FinalRank;
-        public int ScoutTicketGained;
+        public int LiveNormalTicketGained;
         public int GameGoldGained;
         /// <summary>확정팩을 받았다면 그 최소 등급 이름(예: "SIGNATURE"), 없으면 null.</summary>
         public string GuaranteedPackGrade;
@@ -35,11 +35,13 @@ namespace KBOManager.Managers
         [SerializeField] private ScoutManager scoutManager;
 
         [Header("Reward Table (GDD 미확정 - 임시값)")]
-        [Tooltip("1위(우승) 보상.")]
-        [SerializeField] private int championScoutTicket = 5000;
+        [Tooltip("1위(우승) 보상. [TASK-KBO-129] GDD 재화 절이 \"라이브 일반 영입권\"의 정식 수급처로 " +
+                 "\"리그 모드 반복과제 보상\"을 명시하고 있어(수급 난이도 하) 시즌 순위 보상도 이 재화로 " +
+                 "맞췄다(구 ScoutTicket 폐기에 따른 최소 연쇄 수정).")]
+        [SerializeField] private int championLiveNormalTicket = 5000;
         [SerializeField] private Grade championGuaranteedGrade = Grade.SIGNATURE;
         [Tooltip("2~9위 보상은 1위 값에서 이 값까지 순위에 비례해 선형으로 줄어든다(확정팩 없음).")]
-        [SerializeField] private int midTierMinimumScoutTicket = 500;
+        [SerializeField] private int midTierMinimumLiveNormalTicket = 500;
         [Tooltip("10위(꼴찌) 위로금 - 프리미엄이 아닌 일반 재화(GameGold)로 지급한다.")]
         [SerializeField] private int lastPlaceConsolationGameGold = 3000;
         [Tooltip("꼴찌에게 지급하는 '슈퍼 루키 확정팩'의 최소 등급 - 우승팩보다는 낮게 잡는다.")]
@@ -102,9 +104,9 @@ namespace KBOManager.Managers
 
             if (finalRank <= 1)
             {
-                report.ScoutTicketGained = championScoutTicket;
+                report.LiveNormalTicketGained = championLiveNormalTicket;
                 report.GuaranteedPackGrade = championGuaranteedGrade.ToString();
-                GameManager.Instance.ScoutTicket += championScoutTicket;
+                GameManager.Instance.LiveNormalTicket += championLiveNormalTicket;
                 GrantGuaranteedPack(championGuaranteedGrade);
             }
             else if (finalRank >= TotalTeamCount)
@@ -116,10 +118,10 @@ namespace KBOManager.Managers
             }
             else
             {
-                // 2위~9위: 순위가 낮아질수록 championScoutTicket에서 midTierMinimumScoutTicket까지 선형으로 줄어든다.
+                // 2위~9위: 순위가 낮아질수록 championLiveNormalTicket에서 midTierMinimumLiveNormalTicket까지 선형으로 줄어든다.
                 float t = (finalRank - 1) / (float)(TotalTeamCount - 2);
-                report.ScoutTicketGained = Mathf.RoundToInt(Mathf.Lerp(championScoutTicket, midTierMinimumScoutTicket, t));
-                GameManager.Instance.ScoutTicket += report.ScoutTicketGained;
+                report.LiveNormalTicketGained = Mathf.RoundToInt(Mathf.Lerp(championLiveNormalTicket, midTierMinimumLiveNormalTicket, t));
+                GameManager.Instance.LiveNormalTicket += report.LiveNormalTicketGained;
             }
 
             PopulateTitleHolders(report);

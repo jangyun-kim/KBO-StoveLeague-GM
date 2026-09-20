@@ -131,8 +131,17 @@ namespace KBOManager.Managers
         public List<ItemSaveData> ItemInventory = new List<ItemSaveData>(); // v1 이하 세이브 하위 호환 전용 - 새 저장은 항상 빈 리스트
         public List<ItemStackSaveData> ItemStacks = new List<ItemStackSaveData>();
         public Team FavoriteTeam;
-        public int ScoutTicket;
-        public int CheerStick;
+        // [TASK-KBO-129] GDD 원문 재화 10종으로 세분화(구 ScoutTicket/CheerStick 2종 폐기).
+        public int LiveNormalTicket;
+        public int LiveEpicTicket;
+        public int PickupTicket;
+        public int AdvancedTicket;
+        public int Trophy;
+        public int SignatureBall;
+        public int LiveCheerStick;
+        public int StarCheerStick;
+        public int LegendCheerStick;
+        public int LimitedCheerStick;
         public int GameGold;
         public bool IsFirstLogin = true;
         public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
@@ -243,8 +252,16 @@ namespace KBOManager.Managers
                     .Select(g => new ItemStackSaveData { TemplateId = g.Key, Count = g.Count() })
                     .ToList();
                 data.FavoriteTeam = gm.FavoriteTeam;
-                data.ScoutTicket = gm.ScoutTicket;
-                data.CheerStick = gm.CheerStick;
+                data.LiveNormalTicket = gm.LiveNormalTicket;
+                data.LiveEpicTicket = gm.LiveEpicTicket;
+                data.PickupTicket = gm.PickupTicket;
+                data.AdvancedTicket = gm.AdvancedTicket;
+                data.Trophy = gm.Trophy;
+                data.SignatureBall = gm.SignatureBall;
+                data.LiveCheerStick = gm.LiveCheerStick;
+                data.StarCheerStick = gm.StarCheerStick;
+                data.LegendCheerStick = gm.LegendCheerStick;
+                data.LimitedCheerStick = gm.LimitedCheerStick;
                 data.GameGold = gm.GameGold;
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.FanSentiment = gm.FanSentiment;
@@ -348,8 +365,16 @@ namespace KBOManager.Managers
                 gm.ReplaceItemInventory(RestoreItemInventory(data));
 
                 gm.FavoriteTeam = data.FavoriteTeam;
-                gm.ScoutTicket = data.ScoutTicket;
-                gm.CheerStick = data.CheerStick;
+                gm.LiveNormalTicket = data.LiveNormalTicket;
+                gm.LiveEpicTicket = data.LiveEpicTicket;
+                gm.PickupTicket = data.PickupTicket;
+                gm.AdvancedTicket = data.AdvancedTicket;
+                gm.Trophy = data.Trophy;
+                gm.SignatureBall = data.SignatureBall;
+                gm.LiveCheerStick = data.LiveCheerStick;
+                gm.StarCheerStick = data.StarCheerStick;
+                gm.LegendCheerStick = data.LegendCheerStick;
+                gm.LimitedCheerStick = data.LimitedCheerStick;
                 gm.GameGold = data.GameGold;
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.FanSentiment = data.FanSentiment;

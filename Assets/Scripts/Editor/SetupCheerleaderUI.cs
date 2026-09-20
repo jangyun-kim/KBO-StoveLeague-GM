@@ -345,12 +345,13 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// [TASK-KBO-074] 가챠 테스트 시 재화(CheerStick/응원봉) 부족으로 치어리더 뽑기가 막히는 QA
-        /// 불편을 해소하는 재화 충전 메뉴. GachaSimulationMenu.cs가 아니라 이 파일에 둔 이유는,
-        /// GachaSimulationMenu는 "GameManager를 전혀 건드리지 않는 완전 독립 Mocking 시뮬레이션
-        /// 전용" 도구로 스스로 문서화하고 있어(TASK-KBO-073) 실제 GameManager 상태를 바꾸는 이
-        /// 메서드를 넣으면 그 문서화된 계약과 모순되기 때문이다 - 반면 이 파일은 이미
-        /// AddDummyCheerleaderToInventory() 등으로 GameManager 상태를 직접 조작하는 QA 메뉴들을
+        /// [TASK-KBO-074/129] 가챠 테스트 시 응원봉 부족으로 치어리더 뽑기가 막히는 QA 불편을
+        /// 해소하는 재화 충전 메뉴. [TASK-KBO-129] 구 단일 CheerStick 필드가 GDD 재화 4종(라이브/스타/
+        /// 레전드/한정 응원봉)으로 나뉘어 4개 전부를 채운다. GachaSimulationMenu.cs가 아니라 이
+        /// 파일에 둔 이유는, GachaSimulationMenu는 "GameManager를 전혀 건드리지 않는 완전 독립
+        /// Mocking 시뮬레이션 전용" 도구로 스스로 문서화하고 있어(TASK-KBO-073) 실제 GameManager
+        /// 상태를 바꾸는 이 메서드를 넣으면 그 문서화된 계약과 모순되기 때문이다 - 반면 이 파일은
+        /// 이미 AddDummyCheerleaderToInventory() 등으로 GameManager 상태를 직접 조작하는 QA 메뉴들을
         /// 담아 왔으므로 관례상 더 적합하다. 플레이 모드가 아니면(GameManager.Instance == null)
         /// 경고만 남기고 안전하게 종료한다.
         /// </summary>
@@ -363,16 +364,18 @@ namespace KBOManager.EditorTools
                 return;
             }
 
-            GameManager.Instance.CheerStick += 10000;
-            Debug.Log($"테스트용 응원봉 지급 완료. 현재 잔액: {GameManager.Instance.CheerStick}");
+            GameManager.Instance.LiveCheerStick += 10000;
+            GameManager.Instance.StarCheerStick += 10000;
+            GameManager.Instance.LegendCheerStick += 10000;
+            GameManager.Instance.LimitedCheerStick += 10000;
+            Debug.Log("테스트용 응원봉(라이브/스타/레전드/한정) 각 +10000 지급 완료.");
         }
 
         /// <summary>
-        /// [TASK-KBO-115/126] 선수 스카우트(`ScoutManager.Roll1()`/`Roll10()`)는 `CheerStick`이 아니라
-        /// `ScoutTicket`(영입권)을 소모한다(원문 `Assets/Scripts/Managers/ScoutManager.cs` 61/84행) - 위
-        /// `AddCheerStick()`만 실행하면 `ScoutTicket`이 기본값 0에 그대로 머물러 있어 선수 뽑기 버튼을
-        /// 눌러도 조용히 빈 결과만 돌아온다. 세 재화(`ScoutTicket`/`CheerStick`/`GameGold`) 전부를
-        /// 한 번에 채워 이 QA 함정을 없앤다.
+        /// [TASK-KBO-115/126/129] 선수 스카우트는 `CheerStick`이 아니라 GDD 선수 영입 재화 6종
+        /// (라이브 일반/에픽 영입권, 픽업 영입권, 고급 영입권, 트로피, 싸인볼)을 소모한다 - 위
+        /// `AddCheerStick()`만 실행하면 선수 뽑기 버튼을 눌러도 조용히 빈 결과만 돌아온다. GDD 재화
+        /// 10종 + GameGold 전부를 한 번에 채워 이 QA 함정을 없앤다.
         /// </summary>
         [MenuItem("KBO Manager/Debug/Add All Currencies (100,000)")]
         public static void AddAllCurrencies()
@@ -383,14 +386,19 @@ namespace KBOManager.EditorTools
                 return;
             }
 
-            GameManager.Instance.ScoutTicket += 100000;
-            GameManager.Instance.CheerStick += 100000;
+            GameManager.Instance.LiveNormalTicket += 100000;
+            GameManager.Instance.LiveEpicTicket += 100000;
+            GameManager.Instance.PickupTicket += 100000;
+            GameManager.Instance.AdvancedTicket += 100000;
+            GameManager.Instance.Trophy += 100000;
+            GameManager.Instance.SignatureBall += 100000;
+            GameManager.Instance.LiveCheerStick += 100000;
+            GameManager.Instance.StarCheerStick += 100000;
+            GameManager.Instance.LegendCheerStick += 100000;
+            GameManager.Instance.LimitedCheerStick += 100000;
             GameManager.Instance.GameGold += 100000;
 
-            Debug.Log("테스트용 전체 재화 지급 완료. " +
-                $"ScoutTicket={GameManager.Instance.ScoutTicket}, " +
-                $"CheerStick={GameManager.Instance.CheerStick}, " +
-                $"GameGold={GameManager.Instance.GameGold}");
+            Debug.Log("테스트용 전체 재화(GDD 10종 + GameGold) 각 +100000 지급 완료.");
         }
 
         /// <summary>[TASK-KBO-065] CheerleaderGachaService.RollGacha(1)을 호출하는 QA 실기 테스트 메뉴.

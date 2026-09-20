@@ -15,9 +15,16 @@ namespace KBOManager.Managers
     }
 
     /// <summary>
-    /// 스카우트(가챠) 매니저. ScoutTicket(영입권) 재화를 소모해 PlayerTemplate을 추첨하고,
-    /// GDD 2절의 등급별 초기 성급/색상 규칙을 강제 적용한 뒤 SkillDB로 초기 스킬을 부여한
-    /// Player 인스턴스를 발급한다.
+    /// 스카우트(가챠) 매니저. GDD "뽑기(가챠) > 선수 영입" 절이 정의한 카테고리별 전용 재화를
+    /// 소모해 PlayerTemplate을 추첨하고, GDD 2절의 등급별 초기 성급/색상 규칙을 강제 적용한 뒤
+    /// SkillDB로 초기 스킬을 부여한 Player 인스턴스를 발급한다.
+    ///
+    /// [TASK-KBO-129] 구 Roll1()/Roll10()(단일 ScoutTicket 소모, 전체 등급 확률 혼합)을 폐기하고
+    /// GDD가 실제로 나열한 6개 카테고리 전용 메서드로 교체했다 - 일반 영입(라이브 일반/라이브 에픽),
+    /// 프리미엄 영입(싸인볼/트로피), 픽업 영입(픽업 영입권). 10/40/80회 등 픽업의 누적 확정(천장)
+    /// 카운터는 GDD 원문에 구체적 판정 로직이 없고 별도의 영구 상태(세이브 필드) 설계가 필요한
+    /// 규모라 이번 작업에서는 구현하지 않았다(각 픽업 호출은 독립적인 확정 1회 뽑기) - [결정 필요]
+    /// 후속 과제로 남긴다.
     /// </summary>
     public class ScoutManager : MonoBehaviour
     {
@@ -27,9 +34,11 @@ namespace KBOManager.Managers
         [SerializeField] private PlayerDatabase playerDatabase;
         [SerializeField] private SkillDB skillDB;
 
-        [Header("Cost (ScoutTicket/영입권 재화 기준)")]
-        [SerializeField] private int roll1Cost = 1;
-        [SerializeField] private int roll10Cost = 10;
+        [Header("Cost (카테고리별 전용 재화 1개씩 소모)")]
+        [SerializeField] private int liveNormalCost = 1;
+        [SerializeField] private int liveEpicCost = 1;
+        [SerializeField] private int pickupCost = 1;
+        [SerializeField] private int premiumCost = 1;
 
         [Header("Grade Drop Rates (총합 100%)")]
         [Tooltip("v0.1 확정 스펙(04_card_grade_policy.md): 활성 등급 3종(SEASON/LIVE_NORMAL/LIVE_EPIC)만 뽑힌다. " +
@@ -54,53 +63,112 @@ namespace KBOManager.Managers
             DontDestroyOnLoad(gameObject);
         }
 
-        /// <summary>1회 뽑기. 재화가 부족하면 아무 것도 소모하지 않고 null을 반환한다.</summary>
-        public Player Roll1()
+        /// <summary>[일반 영입 &gt; 라이브 일반(1~3성)] LiveNormalTicket을 소모해 {SEASON, LIVE_NORMAL}
+        /// 풀에서만 추첨한다(LIVE_EPIC은 나오지 않음 - GDD가 "라이브 일반"/"라이브 에픽"을 완전히
+        /// 별개 상품으로 분리했다).</summary>
+        public Player RollLiveNormal()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.LiveNormalTicket,
+                amount => GameManager.Instance.LiveNormalTicket = amount,
+                liveNormalCost,
+                "라이브 일반 영입권",
+                () => RollGradeAtMost(Grade.LIVE_NORMAL));
+        }
+
+        /// <summary>[일반 영입 &gt; 라이브 에픽(4~5성)] LiveEpicTicket을 소모해 LIVE_EPIC 등급만
+        /// 확정으로 추첨한다.</summary>
+        public Player RollLiveEpic()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.LiveEpicTicket,
+                amount => GameManager.Instance.LiveEpicTicket = amount,
+                liveEpicCost,
+                "라이브 에픽 영입권",
+                () => RollGradeAtLeast(Grade.LIVE_EPIC));
+        }
+
+        /// <summary>[프리미엄 영입 &gt; 시그니처] SignatureBall(싸인볼)을 소모해 SIGNATURE 등급을 확정
+        /// 발급한다.</summary>
+        public Player RollPremiumSignature()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.SignatureBall,
+                amount => GameManager.Instance.SignatureBall = amount,
+                premiumCost,
+                "싸인볼",
+                () => RollGradeAtLeast(Grade.SIGNATURE));
+        }
+
+        /// <summary>[프리미엄 영입 &gt; 타이틀 홀더] Trophy(트로피)를 소모해 TITLE_HOLDER 등급을 확정
+        /// 발급한다.</summary>
+        public Player RollPremiumTitleHolder()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.Trophy,
+                amount => GameManager.Instance.Trophy = amount,
+                premiumCost,
+                "트로피",
+                () => RollGradeAtLeast(Grade.TITLE_HOLDER));
+        }
+
+        /// <summary>[픽업 영입 &gt; 시그니처] PickupTicket(픽업 영입권)을 소모해 SIGNATURE 등급을 확정
+        /// 발급한다. [결정 필요, 클래스 요약 참고] 10/40/80회 누적 확정(천장) 카운터는 미구현 - 매회
+        /// 독립적인 확정 1회 뽑기다.</summary>
+        public Player RollPickupSignature()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.PickupTicket,
+                amount => GameManager.Instance.PickupTicket = amount,
+                pickupCost,
+                "픽업 영입권",
+                () => RollGradeAtLeast(Grade.SIGNATURE));
+        }
+
+        /// <summary>[픽업 영입 &gt; 타이틀 홀더] PickupTicket(픽업 영입권)을 소모해 TITLE_HOLDER 등급을
+        /// 확정 발급한다. [결정 필요] RollPickupSignature()와 동일한 천장 미구현 사유.</summary>
+        public Player RollPickupTitleHolder()
+        {
+            return RollWithCurrency(
+                () => GameManager.Instance.PickupTicket,
+                amount => GameManager.Instance.PickupTicket = amount,
+                pickupCost,
+                "픽업 영입권",
+                () => RollGradeAtLeast(Grade.TITLE_HOLDER));
+        }
+
+        /// <summary>
+        /// 카테고리 공통 소모/발급 파이프라인 - 재화 확인, 차감, 등급 판정(gradeSelector), 카드 발급,
+        /// 인벤토리 추가, 로그까지 6개 메서드가 반복하던 흐름을 하나로 묶는다. 재화가 부족하면 아무
+        /// 것도 차감하지 않고 null을 반환한다.
+        /// </summary>
+        private Player RollWithCurrency(Func<int> getCurrency, Action<int> setCurrency, int cost,
+            string currencyLabel, Func<Grade> gradeSelector)
         {
             if (GameManager.Instance == null || playerDatabase == null) return null;
-            if (GameManager.Instance.ScoutTicket < roll1Cost)
+
+            int current = getCurrency();
+            if (current < cost)
             {
-                Debug.LogWarning($"[ScoutManager] 영입권(ScoutTicket) 부족으로 1회 뽑기를 실행하지 않았습니다. " +
-                    $"(필요 {roll1Cost} / 보유 {GameManager.Instance.ScoutTicket})");
+                Debug.LogWarning($"[ScoutManager] {currencyLabel} 부족으로 뽑기를 실행하지 않았습니다. " +
+                    $"(필요 {cost} / 보유 {current})");
                 return null;
             }
 
-            GameManager.Instance.ScoutTicket -= roll1Cost;
+            setCurrency(current - cost);
 
-            var player = RollOnce();
-            if (player != null)
-            {
-                GameManager.Instance.AddPlayerToInventory(player);
-                LogAcquired(player);
-            }
+            var grade = gradeSelector();
+            var template = PickTemplate(grade);
+            if (template == null) return null;
+
+            var player = new Player(Guid.NewGuid().ToString(), template);
+            ApplyInitialGradeRule(player, grade);
+            AttachInitialSkill(player, template);
+
+            GameManager.Instance.AddPlayerToInventory(player);
+            LogAcquired(player);
+
             return player;
-        }
-
-        /// <summary>10연차 뽑기. 재화가 부족하면 아무 것도 소모하지 않고 빈 리스트를 반환한다.</summary>
-        public List<Player> Roll10()
-        {
-            var results = new List<Player>();
-            if (GameManager.Instance == null || playerDatabase == null) return results;
-            if (GameManager.Instance.ScoutTicket < roll10Cost)
-            {
-                Debug.LogWarning($"[ScoutManager] 영입권(ScoutTicket) 부족으로 10연차 뽑기를 실행하지 않았습니다. " +
-                    $"(필요 {roll10Cost} / 보유 {GameManager.Instance.ScoutTicket})");
-                return results;
-            }
-
-            GameManager.Instance.ScoutTicket -= roll10Cost;
-
-            for (int i = 0; i < 10; i++)
-            {
-                var player = RollOnce();
-                if (player == null) continue;
-
-                GameManager.Instance.AddPlayerToInventory(player);
-                LogAcquired(player);
-                results.Add(player);
-            }
-
-            return results;
         }
 
         /// <summary>[TASK-KBO-121] Roll1()/Roll10()으로 획득한 선수 1명을 콘솔에 기록한다. 치어리더
@@ -115,41 +183,13 @@ namespace KBOManager.Managers
         }
 
         /// <summary>
-        /// 프리미엄 팩(10연뽑): 10장 중 정확히 1장(마지막 슬롯)만 RollGuaranteed(minimumGuaranteedGrade)로
-        /// "확정" 처리하고, 나머지 9장은 완전히 평범한 RollOnce()로 뽑는다. 재화 소모는 이 메서드의
-        /// 책임이 아니다(호출자가 먼저 확인/차감).
-        ///
-        /// 확률 풀(gradeDropRates)에 전혀 간섭하지 않는 이유: RollGuaranteed() 내부의
-        /// RollGradeAtLeast()가 하는 재정규화는 그 메서드 호출 스코프 안의 지역 변수(eligible/total)
-        /// 에서만 일어날 뿐, gradeDropRates 필드 자체는 어떤 슬롯을 뽑을 때도 절대 대입/수정되지
-        /// 않는다. 즉 이 10연뽑의 나머지 9장은 평소 Roll1()을 9번 부른 것과 확률적으로 완전히
-        /// 동일하다 - "확정 슬롯이 있다"는 사실이 다른 9장의 등급 분포에 아무 영향도 주지 않는다.
-        /// 나머지 9장 중에서도 자연 확률로 minimumGuaranteedGrade 이상이 추가로 나올 수 있다(중복
-        /// 허용) - 이를 배제/필터링하지 않는 것이 의도된 동작이다(확정 슬롯을 별도로 빼내 다시
-        /// 채우려 들면 그 자체가 확률 풀에 개입하는 것이 되어 버린다).
-        /// </summary>
-        public List<Player> RollPremiumTen(Grade minimumGuaranteedGrade)
-        {
-            var results = new List<Player>(10);
-
-            for (int i = 0; i < 9; i++)
-            {
-                var player = RollOnce();
-                if (player != null) results.Add(player);
-            }
-
-            var guaranteed = RollGuaranteed(minimumGuaranteedGrade);
-            if (guaranteed != null) results.Add(guaranteed);
-
-            return results;
-        }
-
-        /// <summary>
         /// 등급이 minimumGrade 이상으로 "확정"된 카드 1장을 발급한다. 재화 소모는 이 메서드의 책임이
-        /// 아니다 - 호출자(ShopUIController 등)가 자신의 재화(ScoutTicket/영입권 - 선수 카드이므로
-        /// CheerStick/응원봉이 아니다)를 먼저 확인/차감한 뒤에만 호출해야 한다. gradeDropRates 중
-        /// minimumGrade 이상인 항목들만 남겨 그 상대 확률로
-        /// 다시 추첨하므로, 같은 "확정" 안에서도 상위 등급(SIGNATURE/DYNASTY 등)일수록 여전히 더 희귀하다.
+        /// 아니다 - 호출자(SeasonRewardManager의 시즌 종료 확정팩 등)가 먼저 조건을 확인한 뒤에만
+        /// 호출해야 한다. gradeDropRates 중 minimumGrade 이상인 항목들만 남겨 그 상대 확률로 다시
+        /// 추첨하므로, 같은 "확정" 안에서도 상위 등급(SIGNATURE/DYNASTY 등)일수록 여전히 더 희귀하다.
+        /// [TASK-KBO-129] RollWithCurrency()의 gradeSelector로도 동일 로직(RollGradeAtLeast)을 직접
+        /// 재사용한다 - 이 공개 메서드는 SeasonRewardManager처럼 재화 소모 없이 등급만 확정해야 하는
+        /// 외부 호출부를 위해 그대로 유지한다.
         /// </summary>
         public Player RollGuaranteed(Grade minimumGrade)
         {
@@ -188,33 +228,27 @@ namespace KBOManager.Managers
             return eligible[eligible.Count - 1].Grade;
         }
 
-        private Player RollOnce()
+        /// <summary>[TASK-KBO-129] RollLiveNormal() 전용 - gradeDropRates 중 maximumGrade "이하"인
+        /// 항목들만 남겨 그 상대 확률로 재추첨한다(RollGradeAtLeast()의 반대 방향 필터). "라이브 일반
+        /// 영입"이 LIVE_EPIC을 절대 뽑지 않도록(GDD가 "라이브 일반"/"라이브 에픽"을 별개 상품으로
+        /// 분리) 상한선을 둔다.</summary>
+        private Grade RollGradeAtMost(Grade maximumGrade)
         {
-            var grade = RollGrade();
-            var template = PickTemplate(grade);
-            if (template == null) return null;
+            var eligible = gradeDropRates.Where(g => g.Grade <= maximumGrade).ToList();
+            if (eligible.Count == 0) return maximumGrade;
 
-            var player = new Player(Guid.NewGuid().ToString(), template);
-            ApplyInitialGradeRule(player, grade);
-            AttachInitialSkill(player, template);
-
-            return player;
-        }
-
-        private Grade RollGrade()
-        {
-            float total = gradeDropRates.Sum(g => g.RatePercent);
-            if (total <= 0f) return Grade.SEASON; // TASK-KBO-033: 시스템의 가장 기본/흔한 등급은 SEASON
+            float total = eligible.Sum(g => g.RatePercent);
+            if (total <= 0f) return eligible[0].Grade;
 
             float roll = UnityEngine.Random.Range(0f, total);
             float cumulative = 0f;
-            foreach (var entry in gradeDropRates)
+            foreach (var entry in eligible)
             {
                 cumulative += entry.RatePercent;
                 if (roll <= cumulative) return entry.Grade;
             }
 
-            return gradeDropRates[gradeDropRates.Count - 1].Grade;
+            return eligible[eligible.Count - 1].Grade;
         }
 
         private PlayerTemplate PickTemplate(Grade grade)

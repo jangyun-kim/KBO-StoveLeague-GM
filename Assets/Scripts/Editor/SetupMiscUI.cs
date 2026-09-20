@@ -1,5 +1,4 @@
 using KBOManager.Controllers;
-using KBOManager.Managers;
 using KBOManager.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -49,28 +48,24 @@ namespace KBOManager.EditorTools
         {
             var controller = FindOrCreatePanelController<ShopUIController>(canvasTransform, ShopPanelName);
 
+            // [TASK-KBO-129] ShopUIController.cs에서 "특수 확정 패키지"/"프리미엄 팩(10연뽑)"을 완전히
+            // 삭제했다(GDD에 없는 양산형 가챠 관습) - 씬에 남아있던 대응 오브젝트도 여기서 함께
+            // 제거한다(명령서 4항 "엉뚱한 캔버스 패널이나 버튼들을... 완전히 삭제"). ScoutTicketText도
+            // 구 ScoutTicket 필드 폐기(TASK-129)로 더 이상 쓰이지 않아 함께 제거한다.
+            DestroyLegacyChild(controller.transform, "BuyGuaranteedPackageButton");
+            DestroyLegacyChild(controller.transform, "BuyPremiumTenPullButton");
+            DestroyLegacyChild(controller.transform, "ScoutTicketText");
+
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
                 new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
 
-            var buyGuaranteedPackageButton = FindOrCreateButton(controller.transform, "BuyGuaranteedPackageButton",
-                "확정 패키지 구매", new Vector2(0.05f, 0.6f), new Vector2(0.45f, 0.75f));
-            var buyPremiumTenPullButton = FindOrCreateButton(controller.transform, "BuyPremiumTenPullButton",
-                "프리미엄 팩(10연뽑) 구매", new Vector2(0.05f, 0.4f), new Vector2(0.45f, 0.55f));
             var buySkillTicketButton = FindOrCreateButton(controller.transform, "BuySkillTicketButton",
                 "스킬 변경권 구매", new Vector2(0.05f, 0.2f), new Vector2(0.45f, 0.35f));
 
-            var scoutTicketText = FindOrCreateText(controller.transform, "ScoutTicketText", "",
-                new Vector2(0.5f, 0.82f), new Vector2(1f, 0.92f));
             var gameGoldText = FindOrCreateText(controller.transform, "GameGoldText", "",
                 new Vector2(0.5f, 0.68f), new Vector2(1f, 0.78f));
             var purchaseResultText = FindOrCreateText(controller.transform, "PurchaseResultText", "",
                 new Vector2(0.05f, 0.03f), new Vector2(0.95f, 0.15f));
-
-            var scoutManager = Object.FindAnyObjectByType<ScoutManager>(FindObjectsInactive.Include);
-            if (scoutManager == null)
-            {
-                Debug.LogWarning("[SetupMiscUI] 씬에서 ScoutManager를 찾지 못해 scoutManager 바인딩을 건너뜁니다.");
-            }
 
             var itemDatabase = Object.FindAnyObjectByType<ItemDatabase>(FindObjectsInactive.Include);
             if (itemDatabase == null)
@@ -79,12 +74,8 @@ namespace KBOManager.EditorTools
             }
 
             var serialized = new SerializedObject(controller);
-            if (scoutManager != null) serialized.FindProperty("scoutManager").objectReferenceValue = scoutManager;
             if (itemDatabase != null) serialized.FindProperty("itemDatabase").objectReferenceValue = itemDatabase;
-            serialized.FindProperty("buyGuaranteedPackageButton").objectReferenceValue = buyGuaranteedPackageButton;
-            serialized.FindProperty("buyPremiumTenPullButton").objectReferenceValue = buyPremiumTenPullButton;
             serialized.FindProperty("buySkillTicketButton").objectReferenceValue = buySkillTicketButton;
-            serialized.FindProperty("scoutTicketText").objectReferenceValue = scoutTicketText;
             serialized.FindProperty("gameGoldText").objectReferenceValue = gameGoldText;
             serialized.FindProperty("purchaseResultText").objectReferenceValue = purchaseResultText;
             serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
@@ -92,6 +83,15 @@ namespace KBOManager.EditorTools
 
             EditorUtility.SetDirty(controller);
             MarkSceneDirty(controller);
+        }
+
+        /// <summary>[TASK-KBO-129] 이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다.
+        /// GDD에 없는 구 UI 요소를 정리할 때만 쓴다 - 일반적인 Find-or-Create 재사용 경로에는 쓰지
+        /// 않는다.</summary>
+        private static void DestroyLegacyChild(Transform parent, string name)
+        {
+            var legacy = parent.Find(name);
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
         }
 
         // ================= 리그 기록실 =================

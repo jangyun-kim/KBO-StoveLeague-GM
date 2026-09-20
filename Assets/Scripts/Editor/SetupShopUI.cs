@@ -1,5 +1,4 @@
 using KBOManager.Controllers;
-using KBOManager.Managers;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -9,76 +8,43 @@ using UnityEngine.UI;
 namespace KBOManager.EditorTools
 {
     /// <summary>
-    /// [TASK-KBO-067] TASK-KBO-066에서 스크립트로만 만든 CheerleaderShopUIController를 QA가 메뉴
-    /// 클릭 한 번으로 씬에 조립·배선할 수 있게 하는 에디터 자동화. 로비 패널에 "치어리더 뽑기" 진입
-    /// 버튼, 상점 패널에 5개 UI 컴포넌트를 만들어 바인딩하고, UIManager.screens에 CheerleaderShop
-    /// 화면을 등록한다. SetupLobbyUI/SetupCheerleaderUI/SetupRoutingUI와 동일한 관례로 여러 번
-    /// 실행해도 안전하다(이미 있으면 찾아 재사용/덮어쓰기).
+    /// [TASK-KBO-067/129] CheerleaderShopUIController(치어리더 영입 섹션)를 QA가 메뉴 클릭 한 번으로
+    /// 씬에 조립·배선할 수 있게 하는 에디터 자동화. SetupLobbyUI/SetupCheerleaderUI/SetupRoutingUI와
+    /// 동일한 관례로 여러 번 실행해도 안전하다(이미 있으면 찾아 재사용/덮어쓰기).
+    ///
+    /// [TASK-KBO-129] 이 메뉴는 이제 "치어리더 영입" 섹션(CheerleaderShopPanel) 내부 조립만 담당한다 -
+    /// 로비 진입 버튼 생성/UIManager 화면 등록은 SetupScoutHubUI.AutoConnectScoutHub()로 이관했다
+    /// (GDD가 "스카우트" 하나의 화면 안에 선수 영입/치어리더 영입 두 섹션을 두므로, 별도의
+    /// ScreenType.CheerleaderShop 화면과 "치어리더 뽑기" 전용 로비 버튼은 더 이상 만들지 않는다).
     /// </summary>
     public static class SetupShopUI
     {
         private const string CanvasName = "Canvas";
         private const string ShopPanelName = "CheerleaderShopPanel";
-        private const string CheerStickTextName = "CheerStickText";
-        private const string Roll1xButtonName = "Roll1xButton";
-        private const string Roll10xButtonName = "Roll10xButton";
         private const string CloseButtonName = "CloseButton";
-        private const string ResultLogTextName = "ResultLogText";
-        private const string GachaShopButtonName = "GachaShopButton";
 
         [MenuItem("KBO Manager/Setup/Auto-Create Gacha Shop UI")]
         public static void AutoCreateShopUI()
         {
             var canvas = EnsureCanvas();
-            var shopController = FindOrCreateShopPanel(canvas.transform);
-            BindShopController(shopController);
+            var shopController = EnsureShopPanelAssembled(canvas.transform);
 
-            var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
-            if (dashboard == null)
-            {
-                Debug.LogWarning("[SetupShopUI] 씬에서 LeagueDashboardUIController를 찾지 못해 " +
-                    "'치어리더 뽑기' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
-            }
-            else
-            {
-                var gachaShopButton = FindOrCreateButton(dashboard.transform, GachaShopButtonName, "치어리더 뽑기");
-                // [TASK-KBO-128] 이 3-인자 FindOrCreateButton()은 CheerleaderShopPanel처럼
-                // VerticalLayoutGroup이 위치를 대신 계산해주는 부모 전용으로 만들어져 RectTransform
-                // 앵커/좌표를 전혀 설정하지 않는다 - 그런데 여기서는 레이아웃 그룹이 없는 로비
-                // (dashboard.transform)에 그대로 썼다. 그 결과 GachaShopButton이 Unity 기본값
-                // (anchorMin=anchorMax=(0.5,0.5), sizeDelta=100x100, 로비 정중앙)으로 렌더링되어
-                // SetupLeagueUI.cs/SetupRosterUI.cs/SetupRoutingUI.cs/SetupScoutUI.cs/
-                // SetupInventoryUI.cs가 확립한 좌측 버튼 열(x=20, y=20/80/140/200/260/320/380)과
-                // 전혀 다른 위치에서 다른 화면 요소와 겹쳐 있었다 - 그 열의 다음 빈 자리(440)에
-                // 명시적으로 배치해 겹침을 해소한다.
-                var gachaShopRect = (RectTransform)gachaShopButton.transform;
-                gachaShopRect.anchorMin = Vector2.zero;
-                gachaShopRect.anchorMax = Vector2.zero;
-                gachaShopRect.pivot = Vector2.zero;
-                gachaShopRect.sizeDelta = new Vector2(160f, 50f);
-                gachaShopRect.anchoredPosition = new Vector2(20f, 440f);
-
-                BindButtonField(dashboard, "gachaShopButton", gachaShopButton);
-                EditorUtility.SetDirty(dashboard);
-
-                var uiManager = Object.FindAnyObjectByType<UIManager>(FindObjectsInactive.Include);
-                if (uiManager == null)
-                {
-                    Debug.LogWarning("[SetupShopUI] 씬에서 UIManager를 찾지 못해 screens 등록을 건너뜁니다.");
-                }
-                else
-                {
-                    RegisterShopScreen(uiManager, shopController.gameObject);
-                    EditorUtility.SetDirty(uiManager);
-                }
-            }
-
-            EditorUtility.SetDirty(shopController);
-
-            var scene = dashboard != null ? dashboard.gameObject.scene : shopController.gameObject.scene;
+            var scene = shopController.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
-            Debug.Log("[SetupShopUI] 치어리더 가챠 상점 UI 자동 생성/바인딩 완료.");
+            Debug.Log("[SetupShopUI] 치어리더 영입 섹션(CheerleaderShopPanel) 조립 완료. 로비 진입/화면 " +
+                "등록은 'KBO Manager/Setup/Auto-Connect Scout Hub'로 실행하십시오.");
+        }
+
+        /// <summary>[TASK-KBO-129] CheerleaderShopPanel(치어리더 영입 섹션) 내부를 조립·배선하고
+        /// 컨트롤러를 반환한다. SetupScoutHubUI가 ScoutPanel과 합치기 전에 먼저 이 메서드로 내용을
+        /// 완성시킨다.</summary>
+        internal static CheerleaderShopUIController EnsureShopPanelAssembled(Transform canvasTransform)
+        {
+            var shopController = FindOrCreateShopPanel(canvasTransform);
+            BindShopController(shopController);
+            EditorUtility.SetDirty(shopController);
+            return shopController;
         }
 
         private static Canvas EnsureCanvas()
@@ -95,7 +61,7 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>패널을 찾거나 만든다. 화려한 그래픽 없이 넓은 흰색 배경 + VerticalLayoutGroup으로
-        /// 5개 자식(텍스트/버튼)을 위에서 아래로 단순 나열한다(명령서 5항 - 아트 에셋 적용 금지).</summary>
+        /// 자식(텍스트/버튼)을 위에서 아래로 단순 나열한다(명령서 5항 - 아트 에셋 적용 금지).</summary>
         private static CheerleaderShopUIController FindOrCreateShopPanel(Transform canvasTransform)
         {
             var existingChild = canvasTransform.Find(ShopPanelName);
@@ -131,32 +97,60 @@ namespace KBOManager.EditorTools
             return panelObject.AddComponent<CheerleaderShopUIController>();
         }
 
+        /// <summary>
+        /// [TASK-KBO-129] GDD "뽑기(가챠) > 치어리더 영입" 절의 4개 카테고리(일반 > 라이브/한정,
+        /// 픽업·프리미엄 > 아이콘/레전드) 버튼 + 4개 재화 표시 텍스트를 조립·바인딩한다. 구
+        /// roll1xButton/roll10xButton/cheerStickText(단일 CheerStick 소모, 5단계 혼합 확률)는 더 이상
+        /// 존재하지 않는 필드라 - GDD에 없는 레이아웃/버튼 잔재를 씬에서 완전히 삭제한다(명령서 4항
+        /// DestroyImmediate 지시).
+        /// </summary>
         private static void BindShopController(CheerleaderShopUIController controller)
         {
             var parent = controller.transform;
 
-            var cheerStickText = FindOrCreateText(parent, CheerStickTextName, 40f, isDisplayOnly: true);
-            var roll1xButton = FindOrCreateButton(parent, Roll1xButtonName, "치어리더 1회 뽑기 (100)");
-            // [TASK-KBO-117] 선수 뽑기(SetupScoutUI.cs)의 "10회 뽑기"와 라벨이 거의 동일해 혼동을
-            // 유발했다 - "치어리더"를 명시해 구분한다.
-            var roll10xButton = FindOrCreateButton(parent, Roll10xButtonName, "치어리더 10연차 뽑기 (1000)");
+            DestroyLegacyChild(parent, "CheerStickText");
+            DestroyLegacyChild(parent, "Roll1xButton");
+            DestroyLegacyChild(parent, "Roll10xButton");
+
+            var liveCheerStickText = FindOrCreateText(parent, "LiveCheerStickText", 32f, isDisplayOnly: true);
+            var limitedCheerStickText = FindOrCreateText(parent, "LimitedCheerStickText", 32f, isDisplayOnly: true);
+            var starCheerStickText = FindOrCreateText(parent, "StarCheerStickText", 32f, isDisplayOnly: true);
+            var legendCheerStickText = FindOrCreateText(parent, "LegendCheerStickText", 32f, isDisplayOnly: true);
+
+            var liveButton = FindOrCreateButton(parent, "LiveButton", "일반 영입 - 라이브 (라이브 응원봉)");
+            var limitedButton = FindOrCreateButton(parent, "LimitedButton", "일반 영입 - 한정 (한정 응원봉)");
+            var iconButton = FindOrCreateButton(parent, "IconButton", "픽업/프리미엄 영입 - 아이콘 (스타 응원봉)");
+            var legendButton = FindOrCreateButton(parent, "LegendButton", "픽업/프리미엄 영입 - 레전드 (레전드 응원봉)");
+
             var closeButton = FindOrCreateButton(parent, CloseButtonName, "닫기");
-            // 10연뽑 결과 10줄이 스크롤 없이도 충분히 보이도록 높이를 크게 준다(명령서 6항 3번).
-            var resultLogText = FindOrCreateText(parent, ResultLogTextName, 320f, isDisplayOnly: true);
+            var resultLogText = FindOrCreateText(parent, "ResultLogText", 160f, isDisplayOnly: true);
 
             var serializedController = new SerializedObject(controller);
-            serializedController.FindProperty("cheerStickText").objectReferenceValue = cheerStickText;
-            serializedController.FindProperty("roll1xButton").objectReferenceValue = roll1xButton;
-            serializedController.FindProperty("roll10xButton").objectReferenceValue = roll10xButton;
+            serializedController.FindProperty("liveCheerStickText").objectReferenceValue = liveCheerStickText;
+            serializedController.FindProperty("limitedCheerStickText").objectReferenceValue = limitedCheerStickText;
+            serializedController.FindProperty("starCheerStickText").objectReferenceValue = starCheerStickText;
+            serializedController.FindProperty("legendCheerStickText").objectReferenceValue = legendCheerStickText;
+            serializedController.FindProperty("liveButton").objectReferenceValue = liveButton;
+            serializedController.FindProperty("limitedButton").objectReferenceValue = limitedButton;
+            serializedController.FindProperty("iconButton").objectReferenceValue = iconButton;
+            serializedController.FindProperty("legendButton").objectReferenceValue = legendButton;
             serializedController.FindProperty("closeButton").objectReferenceValue = closeButton;
             serializedController.FindProperty("resultLogText").objectReferenceValue = resultLogText;
             serializedController.ApplyModifiedProperties();
         }
 
+        /// <summary>이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다. GDD에 없는 구
+        /// UI 요소를 정리할 때만 쓴다.</summary>
+        private static void DestroyLegacyChild(Transform parent, string name)
+        {
+            var legacy = parent.Find(name);
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        }
+
         /// <summary>
         /// 이름으로 기존 Text를 재사용하거나 새로 만든다. isDisplayOnly가 true면(순수 표시용 텍스트 -
-        /// CheerStickText/ResultLogText처럼 클릭을 받을 필요가 없는 텍스트) raycastTarget을 꺼
-        /// 불필요한 레이캐스트 대상에서 제외한다(명령서 9항 - 퍼포먼스 디테일).
+        /// 재화 표시/ResultLogText처럼 클릭을 받을 필요가 없는 텍스트) raycastTarget을 꺼 불필요한
+        /// 레이캐스트 대상에서 제외한다(명령서 9항 - 퍼포먼스 디테일).
         /// </summary>
         private static Text FindOrCreateText(Transform parent, string name, float preferredHeight, bool isDisplayOnly)
         {
@@ -220,7 +214,7 @@ namespace KBOManager.EditorTools
 
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
-            text.fontSize = 18;
+            text.fontSize = 16;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             // 버튼 라벨은 어차피 부모 Button의 Image가 클릭을 받으므로 라벨 자체는 레이캐스트 대상일
             // 필요가 없다(명령서 9항과 동일한 취지의 최적화 - 클릭 처리에는 영향 없음).
@@ -240,45 +234,6 @@ namespace KBOManager.EditorTools
             text.text = label;
             text.color = Color.black;
             text.resizeTextForBestFit = true;
-        }
-
-        private static void BindButtonField(Object controller, string fieldName, Button button)
-        {
-            var serializedController = new SerializedObject(controller);
-            serializedController.FindProperty(fieldName).objectReferenceValue = button;
-            serializedController.ApplyModifiedProperties();
-        }
-
-        /// <summary>
-        /// UIManager.screens(List&lt;ScreenEntry&gt;, 필드는 Type/Root - SceneInitializer/SetupRoutingUI
-        /// 에서 이미 검증된 실제 필드명)에 CheerleaderShop 항목을 등록한다. 이미 등록되어 있으면
-        /// Root 참조만 최신 오브젝트로 덮어써 중복 추가를 막는다(명령서 7항).
-        /// </summary>
-        private static void RegisterShopScreen(UIManager uiManager, GameObject shopRoot)
-        {
-            var serializedManager = new SerializedObject(uiManager);
-            var screensProperty = serializedManager.FindProperty("screens");
-
-            for (int i = 0; i < screensProperty.arraySize; i++)
-            {
-                var element = screensProperty.GetArrayElementAtIndex(i);
-                var typeProperty = element.FindPropertyRelative("Type");
-                if (typeProperty.intValue == (int)ScreenType.CheerleaderShop)
-                {
-                    element.FindPropertyRelative("Root").objectReferenceValue = shopRoot;
-                    serializedManager.ApplyModifiedProperties();
-                    return;
-                }
-            }
-
-            int newIndex = screensProperty.arraySize;
-            screensProperty.arraySize++;
-
-            var newElement = screensProperty.GetArrayElementAtIndex(newIndex);
-            newElement.FindPropertyRelative("Type").intValue = (int)ScreenType.CheerleaderShop;
-            newElement.FindPropertyRelative("Root").objectReferenceValue = shopRoot;
-
-            serializedManager.ApplyModifiedProperties();
         }
     }
 }

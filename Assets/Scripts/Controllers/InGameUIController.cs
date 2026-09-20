@@ -233,7 +233,7 @@ namespace KBOManager.Controllers
                 ? string.Join(", ", reward.ItemsGained.Select(i => i.Template != null ? i.Template.DisplayName : "알 수 없는 재료"))
                 : "없음";
 
-            rewardSummaryText.text = $"보상: 영입권 +{reward.ScoutTicketGained}\n획득 아이템: {itemsLine}";
+            rewardSummaryText.text = $"보상: 라이브 일반 영입권 +{reward.LiveNormalTicketGained}\n획득 아이템: {itemsLine}";
         }
 
         /// <summary>

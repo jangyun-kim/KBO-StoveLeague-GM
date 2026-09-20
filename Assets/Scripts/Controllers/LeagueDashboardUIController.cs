@@ -42,16 +42,11 @@ namespace KBOManager.Controllers
                  "뿐 에러는 나지 않는다.")]
         [SerializeField] private Text teamOVRText;
 
-        [Header("Currency")]
-        [Tooltip("[TASK-KBO-071/126] 로비 화면 최상단에 유저의 GameManager.Instance.ScoutTicket(영입권,  " +
-                 "선수 뽑기 재화) 보유량을 표시한다. 응원봉과는 완전히 독립된 별개 재화라 별도 텍스트로 " +
-                 "표시한다(GDD 원문 - 영입권/응원봉은 서로 다른 뽑기 전용). 비워두면(null) 아무 것도 " +
-                 "표시되지 않을 뿐 에러는 나지 않는다.")]
-        [SerializeField] private Text scoutTicketLobbyText;
-        [Tooltip("[TASK-KBO-126] 로비 화면 최상단에 유저의 GameManager.Instance.CheerStick(응원봉, " +
-                 "치어리더 뽑기 재화) 보유량을 표시한다. 비워두면(null) 아무 것도 표시되지 않을 뿐 " +
-                 "에러는 나지 않는다.")]
-        [SerializeField] private Text cheerStickLobbyText;
+        // [TASK-KBO-129, 삭제] 구 scoutTicketLobbyText/cheerStickLobbyText(TASK-KBO-071/126)를
+        // 제거했다 - GDD 원문 어디에도 로비 최상단에 영입권/응원봉을 표시하라는 지시가 없고(AI가
+        // 임의로 덧붙인 UX 편의 기능이었다), 재화가 10종으로 세분화(TASK-KBO-129)된 뒤에는 둘만
+        // 남겨 대표로 보여주는 것도 근거가 없다. 각 재화는 실제로 그 재화를 쓰는 화면
+        // (ScoutHubPanel의 선수 영입/치어리더 영입 섹션)에서 이미 표시된다.
 
         [Header("Play Mode Buttons")]
         [Tooltip("GDD v4.0: 수동 개입 방식(하이라이트 개입/풀 플레이)은 폐지되어 관전 모드 진입 버튼만 남았다.")]
@@ -67,12 +62,11 @@ namespace KBOManager.Controllers
                  "CheerleaderInventoryUIController를 직접 참조하지 않는다. 기존 ScreenType.Inventory는 " +
                  "선수 카드 인벤토리(InventoryUIController) 전용으로 이미 예약돼 있어 재사용하지 않았다.")]
         [SerializeField] private Button manageCheerleaderButton;
-        [Tooltip("치어리더 가챠 상점 화면(UIManager.ScreenType.CheerleaderShop)으로 전환하는 버튼. " +
-                 "CheerleaderShopUIController를 직접 참조하지 않는다. 기존 ScreenType.Shop은 선수 카드 " +
-                 "상점(ShopUIController) 전용으로 이미 쓰이고 있어 재사용하지 않았다.")]
-        [SerializeField] private Button gachaShopButton;
-        [Tooltip("[TASK-KBO-083] 선수 카드 스카우트 화면(UIManager.ScreenType.Scout)으로 전환하는 버튼. " +
-                 "ScoutUIController를 직접 참조하지 않는다.")]
+        [Tooltip("[TASK-KBO-083/129] 스카우트 화면(UIManager.ScreenType.Scout)으로 전환하는 버튼. " +
+                 "ScoutHubUIController를 직접 참조하지 않는다. [TASK-KBO-129] 구 gachaShopButton(치어리더 " +
+                 "전용 진입점, ScreenType.CheerleaderShop)은 삭제되었다 - GDD가 '스카우트' 화면 하나 " +
+                 "아래에 선수 영입/치어리더 영입을 두 섹션으로 두고 있어, 이 버튼 하나가 두 섹션 모두의 " +
+                 "진입점(ScoutHubPanel)이 된다.")]
         [SerializeField] private Button scoutButton;
         [Tooltip("[TASK-KBO-093] 로스터 관리 화면(UIManager.ScreenType.Roster)으로 전환하는 버튼. " +
                  "RosterUIController를 직접 참조하지 않는다.")]
@@ -87,7 +81,6 @@ namespace KBOManager.Controllers
             if (shopButton != null) shopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Shop));
             if (leagueStatsButton != null) leagueStatsButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.LeagueStats));
             if (manageCheerleaderButton != null) manageCheerleaderButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderInventory));
-            if (gachaShopButton != null) gachaShopButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderShop));
             if (scoutButton != null) scoutButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Scout));
             if (rosterButton != null) rosterButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Roster));
             if (inventoryButton != null) inventoryButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Inventory));
@@ -107,20 +100,8 @@ namespace KBOManager.Controllers
             RefreshStandings();
             RefreshNextMatchup();
             RefreshTeamOVR();
-            RefreshCurrencyDisplays();
 
             if (synergyUIController != null) synergyUIController.RefreshSynergyUI();
-        }
-
-        /// <summary>[TASK-KBO-071/126] 로비 상단의 영입권/응원봉 보유량을 각각 독립된 텍스트로 갱신한다
-        /// (GDD 원문 - 두 재화는 서로 다른 뽑기 전용이라 하나로 합쳐 표시하지 않는다). teamOVRText와
-        /// 동일한 관례로, 텍스트가 비어 있거나 GameManager.Instance가 아직 없으면 조용히 건너뛴다.</summary>
-        private void RefreshCurrencyDisplays()
-        {
-            if (GameManager.Instance == null) return;
-
-            if (scoutTicketLobbyText != null) scoutTicketLobbyText.text = $"영입권: {GameManager.Instance.ScoutTicket}";
-            if (cheerStickLobbyText != null) cheerStickLobbyText.text = $"응원봉: {GameManager.Instance.CheerStick}";
         }
 
         private void RefreshSeasonProgress()

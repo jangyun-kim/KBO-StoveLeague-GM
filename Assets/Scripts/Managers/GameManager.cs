@@ -94,11 +94,19 @@ namespace KBOManager.Managers
         public List<Cheerleader> OwnedCheerleaders { get; private set; } = new List<Cheerleader>();
 
         /// <summary>
-        /// [TASK-KBO-064] 신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면
+        /// [TASK-KBO-064/129] 신규 획득한 치어리더를 보유 목록에 추가한다. newCheerleader가 null이면
         /// 아무 일도 하지 않는다. CatalogId(원본 식별자)가 채워져 있고 이미 같은 CatalogId를 가진
         /// 치어리더를 보유 중이면(docs/16_shop_and_gacha_policy.md 4절 A안) 인벤토리에 중복 추가하지
-        /// 않고 등급에 비례한 CheerStick(응원봉)으로 변환 지급한다. CatalogId가 비어 있으면(카탈로그가
-        /// 아직 없던 구버전 더미 데이터 등) 중복 검사 없이 그냥 추가한다.
+        /// 않고 등급에 대응하는 응원봉 재화로 변환 지급한다. CatalogId가 비어 있으면(카탈로그가 아직
+        /// 없던 구버전 더미 데이터 등) 중복 검사 없이 그냥 추가한다.
+        /// [결정 필요, TASK-KBO-129] GDD 원문 어디에도 "치어리더 중복 획득 시 재화로 자동 변환"되는
+        /// 규칙이 없다 - 이 메커니즘은 docs/16_shop_and_gacha_policy.md 4절(TASK-KBO-064, [Draft])이
+        /// 제안한, 기획서에 근거가 없는 AI 고안 장치다. 다만 이 로직을 완전히 제거하면 중복 치어리더가
+        /// 무제한으로 인벤토리에 쌓이는 대체 문제가 새로 생기고, GDD도 이 경우의 대안(예: 치어리더
+        /// 승급/한계돌파)을 명시하지 않아 무엇으로 대체해야 할지 알 수 없다 - 그래서 삭제하지 않고
+        /// 유지하되, 소모처가 이제 등급별 응원봉 4종으로 나뉘었으므로 환급 대상도 그 등급이 실제로
+        /// 소모하는 응원봉으로 맞췄다(단일 CheerStick 폐기에 따른 최소 연쇄 수정). 이 메커니즘 자체의
+        /// 존치/폐기는 사용자 확인이 필요하다.
         /// </summary>
         public void AddCheerleader(Cheerleader newCheerleader)
         {
@@ -112,20 +120,42 @@ namespace KBOManager.Managers
             if (isDuplicate)
             {
                 int convertedAmount = ResolveCheerleaderDuplicateConversionValue(newCheerleader.Grade);
-                CheerStick += convertedAmount;
+                string currencyName = ApplyCheerleaderDuplicateConversion(newCheerleader.Grade, convertedAmount);
                 Debug.Log($"[GameManager] 중복 획득으로 재화 변환됨: {newCheerleader.Name} " +
-                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> CheerStick +{convertedAmount}");
+                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> {currencyName} +{convertedAmount}");
                 return;
             }
 
             OwnedCheerleaders.Add(newCheerleader);
         }
 
-        /// <summary>[TASK-KBO-064/127/128] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별 마일리지
-        /// 환급량([Draft], v0.2 밸런싱에서 조정 가능) - PM 확정 5단계(TASK-KBO-127)에 맞춰 갱신했다.
-        /// [TASK-KBO-128 하향 조정] TASK-KBO-127이 매겼던 값(10/50/200/1000/3000)은 최상위 2개 등급
-        /// (LEGEND=1000, SEASON_LIMITED=3000)이 10연뽑 비용(CheerleaderGachaService.CostPerRoll=100 x
-        /// 10=1000)과 같거나 초과해, 중복 1장만 나와도 10연뽑 비용 전액(또는 그 이상)이 CheerStick으로
+        /// <summary>등급에 대응하는 응원봉 재화에 변환량을 더하고, 지급된 재화명을 로그용으로 반환한다.</summary>
+        private string ApplyCheerleaderDuplicateConversion(CheerleaderGrade grade, int amount)
+        {
+            switch (grade)
+            {
+                case CheerleaderGrade.ICON:
+                    StarCheerStick += amount;
+                    return nameof(StarCheerStick);
+                case CheerleaderGrade.LEGEND:
+                    LegendCheerStick += amount;
+                    return nameof(LegendCheerStick);
+                case CheerleaderGrade.SEASON_LIMITED:
+                    LimitedCheerStick += amount;
+                    return nameof(LimitedCheerStick);
+                case CheerleaderGrade.LIVE_NORMAL:
+                case CheerleaderGrade.LIVE_EPIC:
+                default:
+                    LiveCheerStick += amount;
+                    return nameof(LiveCheerStick);
+            }
+        }
+
+        /// <summary>[TASK-KBO-064/127/128/129] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별
+        /// 마일리지 환급량([Draft], v0.2 밸런싱에서 조정 가능) - PM 확정 5단계(TASK-KBO-127)에 맞춰
+        /// 갱신했다. [TASK-KBO-128 하향 조정] TASK-KBO-127이 매겼던 값(10/50/200/1000/3000)은 최상위
+        /// 2개 등급(LEGEND=1000, SEASON_LIMITED=3000)이 10연뽑 비용(구 CheerleaderGachaService.
+        /// CostPerRoll=100 x 10=1000)과 같거나 초과해, 중복 1장만 나와도 10연뽑 비용 전액(또는 그 이상)이
         /// 환급되는 재화 무한 증식 밸런스 붕괴가 있었다 - 5단계 전부 10연뽑 비용(1000)보다 확실히 낮은
         /// 값으로 하향했다. 정식 등급(LIVE_NORMAL~SEASON_LIMITED) 외의 값(NONE/TEST 등 구버전 더미
         /// 등급)은 최저 등급(LIVE_NORMAL)과 동일하게 취급한다.</summary>
@@ -149,25 +179,45 @@ namespace KBOManager.Managers
 #endif
 
         // ----- 재화 -----
-        // [TASK-KBO-126] GDD "스토브리그: 단장의 시간" 원문(뽑기(가챠) 절, 재화 절)의 명칭을 그대로
-        // 따른다 - 영입권(선수 뽑기 재화)/응원봉(치어리더 뽑기 재화)은 원문에서 완전히 분리된 별개
-        // 재화 계열이며, 서로의 뽑기에 대신 쓰일 수 없다.
-        [Header("Currency")]
-        [SerializeField] private int scoutTicket;      // 영입권 (선수 뽑기 재화)
-        [SerializeField] private int cheerStick;       // 응원봉 (치어리더 뽑기 재화)
+        // [TASK-KBO-129] GDD "스토브리그: 단장의 시간" 원문 "재화 > 뽑기(가챠) 재화" 절의 명칭을 그대로
+        // 따른다. TASK-126이 도입한 단순화된 2종(영입권/응원봉)을 폐기하고, 원문이 실제로 나열한
+        // 선수 영입 재화 6종 + 치어리더 영입 재화 4종으로 세분화한다 - 각 재화는 원문의 "뽑기(가챠)"절이
+        // 명시한 서로 다른 영입 카테고리(픽업/프리미엄/일반) 전용이며 서로 대체 불가능하다.
+        // [사실 확인] 원문 "재화" 절은 "라이브 고급 영입권"이라 적었으나, "뽑기(가챠)" 절의 실제 상품
+        // 표는 같은 대상을 "라이브 에픽 영입권"으로 적어(라이브 에픽 영입(4~5성) 항목) 원문 자체에
+        // 내부 표기 불일치가 있다 - 이미 확정된 Grade.LIVE_EPIC 명칭과 일치시키기 위해 "라이브 에픽
+        // 영입권"을 채택했다. "고급 영입권"(내 구단 시즌/라이브 카드 선수 영입 전용, 원문 재화 절에
+        // 별도 항목으로 존재)은 원문 "뽑기(가챠)" 절 어디에도 이를 소모하는 명시적 상품/화면이
+        // 없어 [결정 필요] - 필드는 만들되 아직 어떤 버튼도 소모하지 않는다(기획서에 없는 화면을
+        // 임의로 만들지 말라는 명령서 5항 준수).
+        [Header("Currency - 선수 영입")]
+        [SerializeField] private int liveNormalTicket;  // 라이브 일반 영입권 (일반 영입 > 라이브 일반)
+        [SerializeField] private int liveEpicTicket;    // 라이브 에픽 영입권 (일반 영입 > 라이브 에픽, 원문 "라이브 고급 영입권"과 동일 대상)
+        [SerializeField] private int pickupTicket;      // 픽업 영입권 (픽업 영입 > 시그니처/타이틀 홀더)
+        [SerializeField] private int advancedTicket;    // 고급 영입권 - [결정 필요] 소모처 미확정, 필드만 유지
+        [SerializeField] private int trophy;            // 트로피 (프리미엄 영입 > 타이틀 홀더)
+        [SerializeField] private int signatureBall;     // 싸인볼 (프리미엄 영입 > 시그니처)
+
+        [Header("Currency - 치어리더 영입")]
+        [SerializeField] private int liveCheerStick;    // 라이브 응원봉 (일반 영입 > 라이브)
+        [SerializeField] private int starCheerStick;    // 스타 응원봉 (프리미엄/픽업 영입 > 아이콘)
+        [SerializeField] private int legendCheerStick;  // 레전드 응원봉 (프리미엄/픽업 영입 > 레전드)
+        [SerializeField] private int limitedCheerStick; // 한정 응원봉 (일반 영입 > 한정, 시즌 한정 기간)
+
+        [Header("Currency - 기타")]
         [SerializeField] private int gameGold;         // 게임 머니 (볼)
 
-        public int ScoutTicket
-        {
-            get => scoutTicket;
-            set => scoutTicket = Mathf.Max(0, value);
-        }
+        public int LiveNormalTicket { get => liveNormalTicket; set => liveNormalTicket = Mathf.Max(0, value); }
+        public int LiveEpicTicket { get => liveEpicTicket; set => liveEpicTicket = Mathf.Max(0, value); }
+        public int PickupTicket { get => pickupTicket; set => pickupTicket = Mathf.Max(0, value); }
+        public int AdvancedTicket { get => advancedTicket; set => advancedTicket = Mathf.Max(0, value); }
+        public int Trophy { get => trophy; set => trophy = Mathf.Max(0, value); }
+        public int SignatureBall { get => signatureBall; set => signatureBall = Mathf.Max(0, value); }
 
-        public int CheerStick
-        {
-            get => cheerStick;
-            set => cheerStick = Mathf.Max(0, value);
-        }
+        public int LiveCheerStick { get => liveCheerStick; set => liveCheerStick = Mathf.Max(0, value); }
+        public int StarCheerStick { get => starCheerStick; set => starCheerStick = Mathf.Max(0, value); }
+        public int LegendCheerStick { get => legendCheerStick; set => legendCheerStick = Mathf.Max(0, value); }
+        public int LimitedCheerStick { get => limitedCheerStick; set => limitedCheerStick = Mathf.Max(0, value); }
 
         public int GameGold
         {

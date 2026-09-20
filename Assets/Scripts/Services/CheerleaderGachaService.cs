@@ -7,13 +7,16 @@ using UnityEngine;
 namespace KBOManager.Services
 {
     /// <summary>
-    /// [TASK-KBO-065/066/127] 치어리더 가챠 백엔드. docs/16_shop_and_gacha_policy.md 3절(TASK-KBO-066에서
-    /// 이 코드와 1:1로 일치하도록 갱신됨)의 사양을 그대로 구현한다: CheerStick(응원봉) 1회당 100 소모
-    /// (할인 없음, count * 100), 등급 확률(TASK-KBO-127, PM 확정 5단계) LIVE_NORMAL 50% / LIVE_EPIC 30% /
-    /// ICON 12% / LEGEND 5% / SEASON_LIMITED 3%(합계 100%), 보장 슬롯(천장) 없음. 상점 UI/애니메이션은
-    /// 이 서비스의 책임이 아니다 - 순수 데이터 처리(재화 차감 -> 등급 판정 -> 카탈로그 조회 -> 인벤토리
-    /// 지급)만 담당하고, 발급된 목록을 반환해 CheerleaderShopUIController 등 호출부가 결과를 그릴 수
-    /// 있게 한다.
+    /// [TASK-KBO-065/066/127/129] 치어리더 가챠 백엔드. GDD "뽑기(가챠) > 치어리더 영입" 절이 실제로
+    /// 나열한 4개 카테고리 전용 메서드로 구성된다 - 일반 영입(라이브/한정), 프리미엄·픽업 영입(아이콘/
+    /// 레전드). GDD "재화" 절의 매핑(라이브 응원봉=라이브 치어리더, 스타 응원봉=아이콘 치어리더,
+    /// 레전드 응원봉=레전드 치어리더, 한정 응원봉=시즌 한정 치어리더)을 그대로 따른다.
+    /// [결정 필요, TASK-KBO-129] GDD UI 흐름 절은 치어리더에도 "픽업 영입"/"프리미엄 영입"을 별도
+    /// 하위 항목으로 나열하지만(둘 다 자식이 "아이콘 영입"/"레전드 영입"로 동일), 재화 절에는 이 둘을
+    /// 구분할 전용 재화(선수의 "픽업 영입권" 같은)가 없다 - 그래서 두 탭을 억지로 만들지 않고
+    /// RollIcon()/RollLegend() 하나씩으로 통합했다(기획서에 없는 화면을 임의로 만들지 말라는 명령서
+    /// 5항 준수). 픽업/프리미엄을 실제로 구분해야 한다면 그 차이(예: 확정 카운터 유무)를 먼저
+    /// 확정해야 한다.
     ///
     /// GameManager.AddCheerleader()(TASK-KBO-057/064)는 전혀 수정하지 않았다 - 이 서비스는 그
     /// 공개 API를 호출만 할 뿐이며, 중복 획득 시 재화로 전환하는 로직은 이미 그쪽에 구현되어 있다.
@@ -22,25 +25,54 @@ namespace KBOManager.Services
     {
         private const int CostPerRoll = 100;
 
-        // 등급 확률(%), docs/16_shop_and_gacha_policy.md 3절의 단일 뽑기 확률표(TASK-KBO-127 갱신).
-        // 누적 판정에 쓰인다.
-        private const float LiveNormalRatePercent = 50f;
-        private const float LiveEpicRatePercent = 30f;
-        private const float IconRatePercent = 12f;
-        private const float LegendRatePercent = 5f;
-        // SEASON_LIMITED는 나머지 전부(3%) - 누적 판정의 마지막 분기로 처리한다.
+        // [TASK-KBO-129] "라이브 영입" 전용 2단계 확률(%) - TASK-KBO-127의 5단계 표(50/30/12/5/3)에서
+        // LIVE_NORMAL/LIVE_EPIC 두 항목만 남겨 그 비율(50:30)대로 재정규화했다(62.5%/37.5%).
+        private const float LiveNormalRatePercent = 62.5f;
+        // LIVE_EPIC은 나머지 전부(37.5%) - 누적 판정의 마지막 분기로 처리한다.
+
+        /// <summary>[일반 영입 &gt; 라이브] LiveCheerStick(라이브 응원봉)을 소모해 {LIVE_NORMAL, LIVE_EPIC}
+        /// 풀에서만 추첨한다.</summary>
+        public static List<Cheerleader> RollLive(int count) => RollWithCurrency(count,
+            () => GameManager.Instance.LiveCheerStick,
+            amount => GameManager.Instance.LiveCheerStick = amount,
+            "라이브 응원봉",
+            RollLiveGrade);
+
+        /// <summary>[일반 영입 &gt; 한정(시즌 한정 기간)] LimitedCheerStick(한정 응원봉)을 소모해
+        /// SEASON_LIMITED 등급을 확정 발급한다.</summary>
+        public static List<Cheerleader> RollLimited(int count) => RollWithCurrency(count,
+            () => GameManager.Instance.LimitedCheerStick,
+            amount => GameManager.Instance.LimitedCheerStick = amount,
+            "한정 응원봉",
+            () => CheerleaderGrade.SEASON_LIMITED);
+
+        /// <summary>[픽업/프리미엄 영입 &gt; 아이콘] StarCheerStick(스타 응원봉)을 소모해 ICON 등급을
+        /// 확정 발급한다.</summary>
+        public static List<Cheerleader> RollIcon(int count) => RollWithCurrency(count,
+            () => GameManager.Instance.StarCheerStick,
+            amount => GameManager.Instance.StarCheerStick = amount,
+            "스타 응원봉",
+            () => CheerleaderGrade.ICON);
+
+        /// <summary>[픽업/프리미엄 영입 &gt; 레전드] LegendCheerStick(레전드 응원봉)을 소모해 LEGEND
+        /// 등급을 확정 발급한다.</summary>
+        public static List<Cheerleader> RollLegend(int count) => RollWithCurrency(count,
+            () => GameManager.Instance.LegendCheerStick,
+            amount => GameManager.Instance.LegendCheerStick = amount,
+            "레전드 응원봉",
+            () => CheerleaderGrade.LEGEND);
 
         /// <summary>
-        /// [TASK-KBO-066] count번 가챠를 실행하고, 실제로 발급된 Cheerleader 목록을 반환한다(UI가
-        /// 결과를 바로 그릴 수 있도록 - CheerleaderShopUIController 참고). 재화(CheerStick/응원봉)가
+        /// 카테고리 공통 소모/발급 파이프라인. count번 가챠를 실행하고, 실제로 발급된 Cheerleader
+        /// 목록을 반환한다(UI가 결과를 바로 그릴 수 있도록 - CheerleaderShopUIController 참고). 재화가
         /// count*100보다 부족하거나 플레이 모드가 아니면(GameManager.Instance == null) 아무것도
         /// 차감하지 않고 빈 리스트를 반환한다. 성공하면 재화를 먼저 전부 차감한 뒤, count번 반복해
-        /// 등급을 판정하고 GameManager.Instance.AddCheerleader()로 지급한다(신규 추가/중복 변환
-        /// 여부는 그쪽 로직이 알아서 처리) - 개별 회차가 카탈로그 폴백 실패로 발급되지 못하면(예외적
-        /// 상황, 명령서 7항) 그 회차만 건너뛰고 나머지는 계속 진행하며, 반환 리스트에는 실제로 발급에
-        /// 성공한 것만 담긴다.
+        /// gradeSelector로 등급을 정하고 GameManager.Instance.AddCheerleader()로 지급한다(신규 추가/
+        /// 중복 변환 여부는 그쪽 로직이 알아서 처리) - 개별 회차가 카탈로그 폴백 실패로 발급되지 못하면
+        /// 그 회차만 건너뛰고 나머지는 계속 진행하며, 반환 리스트에는 실제로 발급에 성공한 것만 담긴다.
         /// </summary>
-        public static List<Cheerleader> RollGacha(int count)
+        private static List<Cheerleader> RollWithCurrency(int count, Func<int> getCurrency,
+            Action<int> setCurrency, string currencyLabel, Func<CheerleaderGrade> gradeSelector)
         {
             var results = new List<Cheerleader>();
 
@@ -53,18 +85,19 @@ namespace KBOManager.Services
             }
 
             int totalCost = count * CostPerRoll;
-            if (GameManager.Instance.CheerStick < totalCost)
+            int current = getCurrency();
+            if (current < totalCost)
             {
-                Debug.LogWarning($"[CheerleaderGachaService] 응원봉이 부족합니다. " +
-                    $"(필요 {totalCost} / 보유 {GameManager.Instance.CheerStick})");
+                Debug.LogWarning($"[CheerleaderGachaService] {currencyLabel}이(가) 부족합니다. " +
+                    $"(필요 {totalCost} / 보유 {current})");
                 return results;
             }
 
-            GameManager.Instance.CheerStick -= totalCost;
+            setCurrency(current - totalCost);
 
             for (int i = 1; i <= count; i++)
             {
-                var grade = RollGrade();
+                var grade = gradeSelector();
                 var issued = IssueCheerleader(grade);
 
                 if (issued == null)
@@ -82,24 +115,11 @@ namespace KBOManager.Services
             return results;
         }
 
-        /// <summary>0~100 사이 난수로 등급을 판정한다(누적 분포, docs 16 3절 확률표와 동일).</summary>
-        private static CheerleaderGrade RollGrade()
+        /// <summary>0~100 사이 난수로 {LIVE_NORMAL, LIVE_EPIC} 중 하나를 판정한다(RollLive() 전용).</summary>
+        private static CheerleaderGrade RollLiveGrade()
         {
             float roll = UnityEngine.Random.Range(0f, 100f);
-
-            float cumulative = LiveNormalRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.LIVE_NORMAL;
-
-            cumulative += LiveEpicRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.LIVE_EPIC;
-
-            cumulative += IconRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.ICON;
-
-            cumulative += LegendRatePercent;
-            if (roll < cumulative) return CheerleaderGrade.LEGEND;
-
-            return CheerleaderGrade.SEASON_LIMITED;
+            return roll < LiveNormalRatePercent ? CheerleaderGrade.LIVE_NORMAL : CheerleaderGrade.LIVE_EPIC;
         }
 
         /// <summary>

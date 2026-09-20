@@ -291,9 +291,12 @@
 - 라이브(N/R/SR, 성능 50~80%), 아이콘(SSR, 100%), 시즌 한정(SR~SSR+(L), 110~130%), 레전드(SSR+, 120%)
 - 치어리더 시너지(보유 효과)/응원(고유 스킬) 상세 목록(D~S급, 체력 소모 감소/컨디션 관리/병살 유도/득점권 버프 등 다수)
 
-> 🔁 **[변경됨]** 실제 구현된 등급 체계는 `CheerleaderGrade`(`NONE`/`TEST`/`NORMAL`/`RARE`/`EPIC`/`LEGEND`
-> 6단계, `Assets/Scripts/Models/Cheerleader.cs`)로 원안의 N/R/SR/SSR/SSR+ 명명과 다르다. 가챠 확률은
-> 70/22/7/1(`DCL-048`, `CheerleaderGachaService`)로 별도 확정되었다.
+> ✅ **[TASK-KBO-127/129 갱신]** 등급 체계는 `CheerleaderGrade`(`NONE`/`TEST`/`LIVE_NORMAL`/`LIVE_EPIC`/
+> `ICON`/`LEGEND`/`SEASON_LIMITED` 7단계, `Assets/Scripts/Models/Cheerleader.cs`)로 PM 확정 5단계(TEST/
+> NONE 제외)를 반영한다(`DCL-099`). 가챠는 더 이상 단일 확률표(70/22/7/1)가 아니라, GDD "뽑기(가챠) >
+> 치어리더 영입" 절의 4개 카테고리(일반 &gt; 라이브[62.5/37.5% 2단계]·한정, 픽업·프리미엄 &gt; 아이콘·
+> 레전드)마다 전용 재화(라이브/한정/스타/레전드 응원봉)로 나뉘어 소모된다(`CheerleaderGachaService.cs`,
+> `DCL-101`).
 > 🕳️ **[TBD: 기획 확정 필요]** 원문의 세부 시너지/고유 스킬(체력 소모 -X%, 병살 유도 확률 +10% 등 수십 종)은
 > 아직 구현되어 있지 않다. 현재 `Cheerleader.cs`에는 범용 수치 4종(`ConditionBuff`, `ClutchMultiplier`,
 > `EconomicBonusRate`, `SentimentDefense`)만 존재한다(`docs/11_data_dictionary.md` 8절, `docs/15_team_power_policy.md`).
@@ -321,9 +324,19 @@
 
 ## 4.7 재화 시스템
 
-🕳️ **[TBD: 기획 확정 필요]** 아래 재화/가챠/상점 체계는 원문을 그대로 보존한 참고 자료이며, 대부분
-미구현이다. 실제 구현된 재화/가챠는 5절 요약을 참고하십시오(치어리더 가챠만 `CheerleaderGachaService`로
-구현 완료, 선수 가챠는 `ScoutManager` 백엔드는 존재하나 상세 재화/조합 체계는 원문과 다르게 단순화됨).
+✅ **[TASK-KBO-129 구현 완료]** 뽑기(가챠) 재화(선수 6종/치어리더 4종)와 그 소모 화면(스카우트 - 선수
+영입/치어리더 영입 두 섹션)을 원문 그대로 구현했다 - `GameManager.cs`의 `LiveNormalTicket`/
+`LiveEpicTicket`/`PickupTicket`/`AdvancedTicket`/`Trophy`/`SignatureBall`(선수), `LiveCheerStick`/
+`StarCheerStick`/`LegendCheerStick`/`LimitedCheerStick`(치어리더). `ScoutManager.cs`/
+`CheerleaderGachaService.cs`가 카테고리별 전용 메서드(`RollLiveNormal()`/`RollPremiumSignature()`/
+`RollPickupSignature()` 등)로 재화를 각각 소모하며, `ScoutHubUIController`(`ScoutHubPanel`)가 "선수
+영입"/"치어리더 영입" 두 섹션을 하나의 "스카우트" 화면으로 통합한다(원문 UI 흐름 절과 일치).
+**[TBD, 결정 필요로 남은 부분]**: ① "고급 영입권"(선수)은 원문 재화 절에 존재하나 뽑기(가챠) 절
+어디에도 이를 소모하는 명시적 상품이 없어 필드만 만들고 소모처는 미확정. ② 픽업 영입의 10/40/80회
+누적 확정(천장) 카운터는 미구현 - 매회 독립적인 확정 1회 뽑기다. ③ 치어리더의 "픽업 영입"/"프리미엄
+영입" 구분(원문은 둘 다 "아이콘 영입"/"레전드 영입"으로 자식이 동일해 실제 차이가 무엇인지 불명확)은
+전용 재화가 없어 하나로 통합했다. 아래는 원문을 그대로 보존한 참고 자료(구단 관리 영입/라커룸/
+포지션 특훈/조합/제작소 등)이며, 여전히 대부분 미구현이다.
 
 - 뽑기(가챠) : 선수 영입(픽업/타이틀홀더/프리미엄/일반 영입), 치어리더 영입(픽업/프리미엄/일반/한정 영입)
 - 구단 관리 영입 : 라이브 올스타/타이틀 홀더/시그니처/골든 글러브/왕조 영입(각각 고정재료/변경재료/재화 상세 요구사항)
@@ -383,10 +396,10 @@
 | 스킬 시스템(티어 확률 + 스킬 목록)                              | ✅ 구현                    | `SkillDB.PopulateDefaults()`(원문과 완전 일치)                                                                                                                                                                |
 | 성장 시스템(강화 0~10강 / 각성 0~10각, 2단계 체제로 축소 확정)  | ✅ 구현                    | `UpgradeManager.TryEnhance()`/`TryAwaken()`, `UpgradeProbabilityDB`(원문 확률표와 일치). 세부 스탯 성장치는 레벨당 전항목 +1 균등(TODO 임시값). 원안의 훈련/훈련돌파/특훈 3단계는 폐기 확정(TASK-KBO-091-REV) |
 | 성장 시스템 UI(강화/각성 재료 선택 팝업 배선 킥오프)            | 🔁 부분 구현                | 실제 담당 컨트롤러는 `UpgradeUIController`가 아니라 `MaterialSelectUIController`(`GameActionController.ExecuteEnhance()`/`ExecuteAwaken()`까지 연결 완료). `SetupUpgradeUI.cs`가 팝업 껍데기(대상 재료 목록/확인·취소 버튼)를 조립·바인딩(`DCL-081`). 이 팝업을 여는 유일한 호스트인 `InventoryUIController`(`[강화하기]`/`[각성하기]` 버튼)가 씬에 아직 조립되지 않아(`DCL-060` 이래 미착수 상태 유지) 현재는 게임 내에서 열 수 있는 진입점이 없음 - 후속 태스크 필요 |
-| 치어리더 가챠/상점                                              | ✅ 구현                    | `CheerleaderGachaService`(등급 확률 70/22/7/1), `CheerleaderShopUIController`, `cheerleaders.csv`(`DCL-048`)                                                                                                  |
+| 치어리더 영입(스카우트 화면 하위 섹션)                          | ✅ 구현                    | `CheerleaderGachaService`(4개 카테고리별 전용 재화 소모, `DCL-101`), `CheerleaderShopUIController`, `cheerleaders.csv`(`DCL-048`). 독립 화면이 아니라 `ScoutHubPanel`(선수 영입과 통합)의 한 탭(`DCL-101`)     |
 | 치어리더 세부 시너지/고유 스킬(원문 D~S급 수십 종)              | 🕳️ 미구현                  | 현재는 `ConditionBuff`/`ClutchMultiplier`/`EconomicBonusRate`/`SentimentDefense` 4개 범용 수치만 존재                                                                                                         |
 | 팬심(FanSentiment) / 연패(LosingStreak)                         | ✅ 구현                    | `GameManager.FanSentiment`(0~100 clamp), `LosingStreak`, 세이브 연동(`DCL-027`/`DCL-030`)                                                                                                                     |
-| 스카우트(선수 가챠) UI 배선                                     | ✅ 구현                    | `ScoutUIController`, `SetupScoutUI.cs`(`DCL-053`/`DCL-061`)                                                                                                                                                   |
+| 스카우트(선수 영입, 스카우트 화면 하위 섹션)                    | ✅ 구현                    | `ScoutUIController`(GDD 3개 카테고리 6개 버튼 - 일반/프리미엄/픽업), `SetupScoutUI.cs`(`DCL-053`/`DCL-061`/`DCL-101`). `ScoutHubUIController`/`SetupScoutHubUI.cs`가 치어리더 영입 섹션과 함께 하나의 "스카우트" 화면으로 통합(`DCL-101`) |
 | 라인업 UI(舊 로스터 관리 → 구단 관리, 카드 컨테이너/세트덱 게이지 배선) | 🔁 부분 구현 | `RosterUIController`, `SetupRosterUI.cs`가 패널/버튼/`screens` 등록(`DCL-062`)에 이어 타자·투수 카드 컨테이너/`cardPrefab`/세트덱 게이지/`GameActionController`/`RosterManager` 바인딩(`DCL-063`/`DCL-067`)까지 완료. Unity 배치 컴파일로만 검증(E3)했고 에디터 메뉴 실행·Play Mode 렌더링 확인은 아직 미수행(E1). 28인 자동 편성 알고리즘(`RosterManager.AutoSetRoster()`)은 이미 완성되어 있음(`DCL-070` 참고) |
 | 인게임 매치 UI(스코어보드/로그/베이스·카운트 전광판 배선)       | ✅ 구현 확정                | `InGameUIController`, `SetupInGameUI.cs`가 이닝별 스코어보드(`awayInningTexts`/`homeInningTexts`)·중계 로그(`ScrollRect`+`logContainer`)·경기 결과 팝업·`MatchStatusUI`(다이아몬드 3루+카운트 핍 7개) 13개 필드 전부 바인딩(`DCL-071`~`DCL-073`). 라이브 에디터 세션에서 실제 실행된 흔적(`AwayScoreRow`/`LogScrollView`/`MatchEndPanel` 등)을 씬 파일에서 확인(E2에 준함), Unity 배치 컴파일 자체는 라이브 세션 보호를 위해 생략(E1)                          |
 | 리그/랭킹 챌린지/홈런 레이스/친선경기 UI                        | 🕳️ 미구현                  | 씬에 배선된 화면 없음(`docs/17_v03_roadmap.md`)                                                                                                                                                               |

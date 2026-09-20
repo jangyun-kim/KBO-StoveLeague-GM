@@ -27,10 +27,10 @@ namespace KBOManager.EditorTools
     {
         private const string CanvasName = "Canvas";
         private const string ScoutPanelName = "ScoutPanel";
-        private const string ScoutButtonName = "ScoutButton";
         private const string CloseButtonName = "CloseButton";
         private const string Roll1ButtonName = "Roll1Button";
         private const string Roll10ButtonName = "Roll10Button";
+        private const string PlayerRollButtonsContainerName = "PlayerRollButtonsContainer";
         private const string ResultPopupName = "ResultPopup";
         private const string ClosePopupButtonName = "ClosePopupBtn";
         private const string ResultButtonContainerName = "ResultButtonContainer";
@@ -38,48 +38,40 @@ namespace KBOManager.EditorTools
         private const string TemplatesHolderName = "_Templates";
         private const string CardTemplateName = "PlayerCardTemplate";
 
+        /// <summary>
+        /// [TASK-KBO-129] 이 메뉴는 이제 "선수 영입" 섹션(ScoutPanel) 내부 조립만 담당한다 - 로비 진입
+        /// 버튼 생성/UIManager 화면 등록은 SetupScoutHubUI.AutoConnectScoutHub()로 이관했다(치어리더
+        /// 영입 섹션과 하나의 "스카우트" 화면으로 합쳐야 해서, 두 섹션을 모두 아는 상위 스크립트가
+        /// 그 책임을 가져야 한다). 단독 실행해도 ScoutPanel 내부는 정상 조립되지만, 로비에서 진입하려면
+        /// Auto-Connect Scout Hub까지 함께 실행해야 한다.
+        /// </summary>
         [MenuItem("KBO Manager/Setup/Auto-Connect Scout UI")]
         public static void AutoConnectScoutUI()
         {
             var canvas = EnsureCanvas();
-            var scoutController = FindOrCreateScoutPanel(canvas.transform);
-            BindScoutController(scoutController);
-            BindRollButtons(scoutController);
+            var scoutController = EnsureScoutPanelAssembled(canvas.transform);
 
-            var (resultPopupRoot, cardContainer, closeResultPopupButton) = FindOrCreateResultPopup(scoutController.transform);
-            var cardTemplate = FindOrCreateCardTemplate(canvas.transform);
-            BindScoutResultFields(scoutController, resultPopupRoot, cardContainer, cardTemplate, closeResultPopupButton);
-
-            var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
-            if (dashboard == null)
-            {
-                Debug.LogWarning("[SetupScoutUI] 씬에서 LeagueDashboardUIController를 찾지 못해 " +
-                    "'스카우트' 진입 버튼 생성 및 UIManager 등록을 건너뜁니다.");
-            }
-            else
-            {
-                var scoutButton = FindOrCreateButton(dashboard.transform, ScoutButtonName, "스카우트", new Vector2(20f, 80f));
-                BindButtonField(dashboard, "scoutButton", scoutButton);
-                EditorUtility.SetDirty(dashboard);
-
-                var uiManager = Object.FindAnyObjectByType<UIManager>(FindObjectsInactive.Include);
-                if (uiManager == null)
-                {
-                    Debug.LogWarning("[SetupScoutUI] 씬에서 UIManager를 찾지 못해 screens 등록을 건너뜁니다.");
-                }
-                else
-                {
-                    RegisterScoutScreen(uiManager, scoutController.gameObject);
-                    EditorUtility.SetDirty(uiManager);
-                }
-            }
-
-            EditorUtility.SetDirty(scoutController);
-
-            var scene = dashboard != null ? dashboard.gameObject.scene : scoutController.gameObject.scene;
+            var scene = scoutController.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
-            Debug.Log("[SetupScoutUI] 스카우트 UI 자동 배선 완료.");
+            Debug.Log("[SetupScoutUI] 선수 영입 섹션(ScoutPanel) 조립 완료. 로비 진입/화면 등록은 " +
+                "'KBO Manager/Setup/Auto-Connect Scout Hub'로 실행하십시오.");
+        }
+
+        /// <summary>[TASK-KBO-129] ScoutPanel(선수 영입 섹션) 내부를 조립·배선하고 컨트롤러를 반환한다.
+        /// SetupScoutHubUI가 CheerleaderShopPanel과 합치기 전에 먼저 이 메서드로 내용을 완성시킨다.</summary>
+        internal static ScoutUIController EnsureScoutPanelAssembled(Transform canvasTransform)
+        {
+            var scoutController = FindOrCreateScoutPanel(canvasTransform);
+            BindScoutController(scoutController);
+            BindCategoryButtons(scoutController);
+
+            var (resultPopupRoot, cardContainer, closeResultPopupButton) = FindOrCreateResultPopup(scoutController.transform);
+            var cardTemplate = FindOrCreateCardTemplate(canvasTransform);
+            BindScoutResultFields(scoutController, resultPopupRoot, cardContainer, cardTemplate, closeResultPopupButton);
+
+            EditorUtility.SetDirty(scoutController);
+            return scoutController;
         }
 
         private static Canvas EnsureCanvas()
@@ -128,18 +120,124 @@ namespace KBOManager.EditorTools
             BindButtonField(controller, "closeButton", closeButton);
         }
 
-        /// <summary>[TASK-KBO-092] 1회/10회 뽑기 버튼을 만들어 ScoutUIController.roll1Button/roll10Button에
-        /// 바인딩한다. 실제 onClick 연결(ExecuteRoll1/ExecuteRoll10)은 ScoutUIController.Awake()가 담당한다
-        /// (closeButton과 동일한 관례 - 에디터 스크립트는 필드 참조만 채운다).</summary>
-        private static void BindRollButtons(ScoutUIController controller)
+        /// <summary>
+        /// [TASK-KBO-129] GDD "뽑기(가챠) > 선수 영입" 절의 3개 카테고리(일반/프리미엄/픽업) 6개 버튼을
+        /// 만들어 ScoutUIController의 대응 필드에 바인딩한다. 구 roll1Button/roll10Button(단일 재화
+        /// 혼합 확률)은 더 이상 존재하지 않는 필드라 - GDD에 없는 레이아웃/버튼 잔재를 씬에서 완전히
+        /// 삭제한다(명령서 4항 DestroyImmediate 지시). 실제 onClick 연결은 ScoutUIController.Awake()가
+        /// 담당한다(closeButton과 동일한 관례 - 에디터 스크립트는 필드 참조만 채운다).
+        /// </summary>
+        private static void BindCategoryButtons(ScoutUIController controller)
         {
-            var roll1Button = FindOrCreateButton(controller.transform, Roll1ButtonName, "선수 1회 뽑기", new Vector2(200f, 20f));
-            BindButtonField(controller, "roll1Button", roll1Button);
+            DestroyLegacyChild(controller.transform, Roll1ButtonName);
+            DestroyLegacyChild(controller.transform, Roll10ButtonName);
 
-            // [TASK-KBO-117] 치어리더 뽑기(SetupShopUI.cs)의 "10회 뽑기"와 라벨이 거의 동일해 혼동을
-            // 유발했다 - "선수"를 명시해 구분한다.
-            var roll10Button = FindOrCreateButton(controller.transform, Roll10ButtonName, "선수 10연차 뽑기", new Vector2(380f, 20f));
-            BindButtonField(controller, "roll10Button", roll10Button);
+            var grid = FindOrCreateGridContainer(controller.transform, PlayerRollButtonsContainerName,
+                new Vector2(0f, 0.15f), new Vector2(0.6f, 0.85f));
+
+            var liveNormalButton = FindOrCreateGridButton(grid, "LiveNormalButton", "일반 영입\n라이브 일반");
+            BindButtonField(controller, "liveNormalButton", liveNormalButton);
+
+            var liveEpicButton = FindOrCreateGridButton(grid, "LiveEpicButton", "일반 영입\n라이브 에픽");
+            BindButtonField(controller, "liveEpicButton", liveEpicButton);
+
+            var premiumSignatureButton = FindOrCreateGridButton(grid, "PremiumSignatureButton", "프리미엄 영입\n시그니처 (싸인볼)");
+            BindButtonField(controller, "premiumSignatureButton", premiumSignatureButton);
+
+            var premiumTitleHolderButton = FindOrCreateGridButton(grid, "PremiumTitleHolderButton", "프리미엄 영입\n타이틀 홀더 (트로피)");
+            BindButtonField(controller, "premiumTitleHolderButton", premiumTitleHolderButton);
+
+            var pickupSignatureButton = FindOrCreateGridButton(grid, "PickupSignatureButton", "픽업 영입\n시그니처 (픽업권)");
+            BindButtonField(controller, "pickupSignatureButton", pickupSignatureButton);
+
+            var pickupTitleHolderButton = FindOrCreateGridButton(grid, "PickupTitleHolderButton", "픽업 영입\n타이틀 홀더 (픽업권)");
+            BindButtonField(controller, "pickupTitleHolderButton", pickupTitleHolderButton);
+        }
+
+        /// <summary>이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다. GDD에 없는 구
+        /// UI 요소를 정리할 때만 쓴다.</summary>
+        private static void DestroyLegacyChild(Transform parent, string name)
+        {
+            var legacy = parent.Find(name);
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        }
+
+        /// <summary>2x3 그리드로 카테고리 버튼을 배치할 컨테이너를 찾거나 만든다.</summary>
+        private static Transform FindOrCreateGridContainer(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var existing = parent.Find(name);
+            GameObject containerObject;
+            if (existing != null)
+            {
+                containerObject = existing.gameObject;
+            }
+            else
+            {
+                containerObject = new GameObject(name, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(containerObject, $"Create {name}");
+                containerObject.transform.SetParent(parent, false);
+
+                var rect = (RectTransform)containerObject.transform;
+                rect.anchorMin = anchorMin;
+                rect.anchorMax = anchorMax;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+            }
+
+            if (!containerObject.TryGetComponent<GridLayoutGroup>(out var grid))
+            {
+                grid = containerObject.AddComponent<GridLayoutGroup>();
+                grid.cellSize = new Vector2(260f, 80f);
+                grid.spacing = new Vector2(16f, 16f);
+                grid.childAlignment = TextAnchor.UpperCenter;
+                grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+                grid.constraintCount = 2;
+            }
+
+            return containerObject.transform;
+        }
+
+        private static Button FindOrCreateGridButton(Transform parent, string name, string label)
+        {
+            var existingChild = parent.Find(name);
+            if (existingChild != null)
+            {
+                var existingButton = existingChild.GetComponent<Button>();
+                if (existingButton != null)
+                {
+                    ApplyButtonLabel(existingButton, label);
+                    return existingButton;
+                }
+            }
+
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+            ApplyButtonLabel(button, label);
+
+            return button;
         }
 
         /// <summary>[TASK-KBO-092/093] ScoutPanel 하위에 결과 팝업(ResultPopup)과 그 안의 카드 컨테이너
@@ -630,9 +728,11 @@ namespace KBOManager.EditorTools
         /// <summary>
         /// UIManager.screens(List&lt;ScreenEntry&gt;, 필드는 Type/Root - SceneInitializer/SetupShopUI에서
         /// 이미 검증된 실제 필드명)에 Scout 항목을 등록한다. 이미 등록되어 있으면 Root 참조만 최신
-        /// 오브젝트로 덮어써 중복 추가를 막는다(명령서 7항).
+        /// 오브젝트로 덮어써 중복 추가를 막는다(명령서 7항). [TASK-KBO-129] internal로 열어
+        /// SetupScoutHubUI.cs(선수/치어리더 영입을 하나의 Scout 화면으로 등록하는 상위 스크립트)가
+        /// 재사용한다.
         /// </summary>
-        private static void RegisterScoutScreen(UIManager uiManager, GameObject scoutRoot)
+        internal static void RegisterScoutScreen(UIManager uiManager, GameObject scoutRoot)
         {
             var serializedManager = new SerializedObject(uiManager);
             var screensProperty = serializedManager.FindProperty("screens");

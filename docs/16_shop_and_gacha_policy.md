@@ -2,15 +2,15 @@
 문서명: 치어리더 상점/가챠(뽑기) 정책 [Draft]
 버전: v0.2 (Draft)
 상태: Draft
-최종 수정일: 2026-09-20 (TASK-KBO-127, 2절/3절 치어리더 등급 PM 확정 반영)
+최종 수정일: 2026-09-21 (TASK-KBO-129, 3절 GDD 원문 4-카테고리 재화 구조로 전면 갱신)
 담당자: 김장윤
-관련 파일: Cheerleader.cs, GameManager.cs, ShopUIController.cs, ScoutManager.cs, docs/11_data_dictionary.md, docs/13_decision_change_log.md, docs/15_team_power_policy.md
+관련 파일: Cheerleader.cs, GameManager.cs, CheerleaderShopUIController.cs, CheerleaderGachaService.cs, ScoutManager.cs, docs/11_data_dictionary.md, docs/13_decision_change_log.md, docs/15_team_power_policy.md
 ---
 
 # 0. 문서 성격
 
 - 이 문서는 **[Draft]** 상태의 기획안이다. 여기 적힌 수치(등급별 버프량, 중복 처리 마일리지 등)는 대부분 확정이 아니며, 실제 밸런싱은 v0.2 구현 단계에서 시뮬레이션/플레이테스트를 거쳐 조정될 예정이다.
-- **[TASK-KBO-066 갱신, 예외]** 3절(가챠 확률 및 재화)만은 예외다 - TASK-KBO-065/066에서 실제 `CheerleaderGachaService`/`CheerleaderShopUIController` 코드로 구현되어, 이제는 "제안"이 아니라 "코드와 1:1로 일치하는 현재 사양"이다. 이 문서 최초 작성(TASK-KBO-063) 시점에 제안했던 GameGold 이원화/할인/확정 슬롯 구조는 실제로 채택되지 않았고, 대신 더 단순한 단일 재화 규칙이 구현되었다 - 자세한 내용은 3절 참고.
+- **[TASK-KBO-129 갱신, 예외]** 3절(가챠 확률 및 재화)만은 예외다 - GDD "스토브리그: 단장의 시간" 원문 "뽑기(가챠) &gt; 치어리더 영입"/"재화" 절을 그대로 반영해 전면 재구현했다(`CheerleaderGachaService.cs`, `DCL-101`). TASK-KBO-065/066이 구현했던 단일 재화(`PremiumCurrency`→`CheerStick`) 1회/10회 뽑기 구조는 **완전히 폐기**되었다 - GDD에 없는 양산형 모바일 가챠 관습이었다는 것이 TASK-KBO-129에서 확인되었다. 실제 사양은 3절 참고.
 - v0.1에서 이미 확정된 치어리더 B+C 하이브리드 엔진 정책(`docs/15_team_power_policy.md` 6~8절)과 세이브 아키텍처(`docs/11_data_dictionary.md` 7·9절)를 절대 깨지 않는 범위 안에서만 설계했다 - 자세한 정합성 확인은 6절 참고.
 
 # 1. 목적
@@ -33,18 +33,31 @@
 
 - 수치 설계 근거: 기존 4단계 제안의 선형 스케일(`ConditionBuff`/`SentimentDefense` +1씩, `ClutchMultiplier`/`EconomicBonusRate` +0.05씩)을 5번째 등급까지 그대로 연장했다 - 급격한 파워 인플레이션 없이 자연스럽게 이어지도록 하기 위함이며, 밸런싱 확정 전까지는 여전히 조정 가능하다.
 
-# 3. 가챠 확률 및 재화 (v0.2 프로토타입 구현체 기준 - `[Draft]` 아님)
+# 3. 가챠 확률 및 재화 (v0.2 → TASK-KBO-129로 GDD 원문 구조로 전면 교체 - `[Draft]` 아님)
 
-- **[TASK-KBO-066 갱신, SSOT 통일]** 이 절은 최초 작성(TASK-KBO-063) 당시 `GameGold`(일반)/`PremiumCurrency`(프리미엄) 이원화 + 10연뽑 할인 + 확정 슬롯 구조를 제안했으나, 실제 v0.2 프로토타입(`CheerleaderGachaService.RollGacha()`, TASK-KBO-065/066)은 훨씬 단순한 **단일 재화** 규칙으로 구현되었다. 아래 표는 그 실제 구현체와 1:1로 일치하도록 갱신한 것이며, 더 이상 "제안"이 아니라 "코드가 곧 사양"이다.
+- **[TASK-KBO-129 갱신, SSOT 통일, 재폐기]** TASK-KBO-065/066이 구현했던 단일 재화(`CheerStick`) 1회/10회
+  뽑기 구조는 GDD 원문에 없는 양산형 모바일 가챠 관습으로 확인되어 **완전히 폐기**되었다. GDD "뽑기(가챠) &gt;
+  치어리더 영입"/"재화" 절이 실제로 정의한 4개 카테고리 전용 재화로 교체했다(`CheerleaderGachaService.cs`).
+  아래 표는 그 실제 구현체와 1:1로 일치하며, "제안"이 아니라 "코드가 곧 사양"이다.
 
-| 상품 | 소모 재화 | 비용 | 등급별 확률 | 비고 |
-| :--- | :--- | :-- | :--- | :--- |
-| 1회 뽑기 | `CheerStick`(응원봉) | 100 | `LIVE_NORMAL` 50% / `LIVE_EPIC` 30% / `ICON` 12% / `LEGEND` 5% / `SEASON_LIMITED` 3% | 확률 합계 100%. `CheerleaderGachaService.RollGacha(1)` |
-| 10회 뽑기 | `CheerStick`(응원봉) | 1000 (할인 없음, `count * 100`과 동일 - `CheerleaderShopUIController`의 `roll10xButton`) | 위 확률표를 10회 독립 적용 | 확정(보장) 슬롯 없음. `CheerleaderGachaService.RollGacha(10)` |
+| 카테고리(GDD 분류) | 메서드 | 소모 재화 | 비용(1회) | 등급 판정 | 비고 |
+| :--- | :--- | :--- | :-- | :--- | :--- |
+| 일반 영입 &gt; 라이브 | `RollLive(count)` | `LiveCheerStick`(라이브 응원봉) | 100 | `LIVE_NORMAL` 62.5% / `LIVE_EPIC` 37.5% (2단계 재정규화) | `CheerleaderShopUIController.liveButton` |
+| 일반 영입 &gt; 한정(시즌 한정 기간) | `RollLimited(count)` | `LimitedCheerStick`(한정 응원봉) | 100 | `SEASON_LIMITED` 확정(100%) | `limitedButton` |
+| 픽업·프리미엄 영입 &gt; 아이콘 | `RollIcon(count)` | `StarCheerStick`(스타 응원봉) | 100 | `ICON` 확정(100%) | `iconButton`. 픽업/프리미엄 구분 전용 재화가 GDD에 없어 통합(4절 참고) |
+| 픽업·프리미엄 영입 &gt; 레전드 | `RollLegend(count)` | `LegendCheerStick`(레전드 응원봉) | 100 | `LEGEND` 확정(100%) | `legendButton`. 위와 동일 사유로 통합 |
 
-- **확률 총합 검증**: 50 + 30 + 12 + 5 + 3 = 정확히 100%. **[TASK-KBO-127 갱신]** 기존 4단계 확률표(70/22/7/1)는 PM 확정 5단계로 교체되었으며, 실제 코드(`CheerleaderGachaService.RollGrade()`)와 동일하다. 소모 재화명은 TASK-KBO-126에서 `PremiumCurrency`→`CheerStick`(응원봉)으로 개명되었다(비용/할인 구조 자체는 무변경).
-- **[폐기됨] GameGold 이원화 및 확정 슬롯 구조**: 최초 초안이 제안했던 "일반 뽑기(`GameGold`)/프리미엄 뽑기(`PremiumCurrency`, 확정 슬롯 포함)" 2단계 구조와 10연뽑 10% 할인은 채택되지 않았다. `GameGold`는 치어리더 가챠에 전혀 관여하지 않는다(기존 스킬 변경권 구매 등 다른 용도는 그대로 유지). `ShopUIController.guaranteedPackagePrice`(300)/`premiumTenPullPrice`(1000)와의 가격 스케일 통일이라는 최초 의도도, 실제로는 10회 뽑기 비용이 우연히 `premiumTenPullPrice`(1000)와 같아지는 정도로만 남았다.
-- **[TBD, v0.2 확정 필요]** 천장(하드 피티), 할인, 보장 슬롯 등은 여전히 미도입 상태다 - `09_probability_policy.md` 3절이 전사 공통 정책으로 이런 장치의 필요성을 열어 두고 있으나, 이번 프로토타입에는 포함되지 않았다. 도입 여부와 구체적 규칙은 후속 밸런싱 단계에서 재검토한다.
+- **[UI 변경]** `CheerleaderShopUIController`는 이제 "1회/10회 뽑기" 2버튼이 아니라 위 4개 카테고리 버튼을
+  각각 count=1로 호출한다(TASK-KBO-129 - 10연뽑 개념 자체를 폐지, GDD가 픽업의 10/40/80회를 "1회 클릭 10연출"이
+  아니라 "누적 뽑기 횟수"로 쓰는 것과의 혼동을 없앴다). `RollLive()`/`RollLimited()`/`RollIcon()`/`RollLegend()`
+  전부 `count` 매개변수를 받아 여러 장 뽑기를 지원하지만, 현재 UI는 1을 고정 전달한다.
+- **확률 총합 검증**: `RollLive()`만 확률 기반(62.5+37.5=100%), 나머지 3개는 각각 단일 등급 100% 확정이다.
+- **[폐기됨] GameGold 이원화 및 확정 슬롯 구조**: 최초 초안(TASK-KBO-063)이 제안했던 "일반 뽑기(`GameGold`)/
+  프리미엄 뽑기(확정 슬롯 포함)" 2단계 구조는 이번에도 채택되지 않았다. `GameGold`는 치어리더 가챠에 전혀
+  관여하지 않는다.
+- **[TBD, v0.2 확정 필요]** 천장(하드 피티), 할인, 보장 슬롯 등은 여전히 미도입 상태다 - `09_probability_policy.md`
+  3절이 전사 공통 정책으로 이런 장치의 필요성을 열어 두고 있으나, 이번 구현에는 포함되지 않았다. 도입 여부와
+  구체적 규칙은 후속 밸런싱 단계에서 재검토한다.
 
 # 4. 중복 획득 처리 방안 [Draft]
 
@@ -57,7 +70,7 @@
 | B안: 한계 돌파(Limit Break) | 이미 보유한 `CatalogId`가 다시 뽑히면 해당 치어리더 인스턴스의 버프(`ConditionBuff`/`ClutchMultiplier`/`EconomicBonusRate`/`SentimentDefense`)를 소폭 강화하는 "돌파 단계"를 부여한다. | 치어리더 육성 요소가 생겨 장기 리텐션에 유리하다. | `Cheerleader`에 돌파 단계 필드 추가, 돌파 시 버프 재계산 로직, UI 표시까지 필요해 구현 범위가 A안보다 크다. `docs/15_team_power_policy.md` 7절의 "치어리더 버프는 경기 조건부 값일 뿐 영구 스탯이 아니다"라는 원칙과 계속 정합적으로 유지하려면(돌파로 버프 수치 자체는 커지되, 그 값이 적용되는 방식은 여전히 ①·②(로스터/표시 OVR)가 아니라 ③(경기 적용 전력) 층위여야 함) 설계 시 각별한 주의가 필요하다. |
 
 - **[Draft 권장안]** A안(마일리지 전환)을 v0.2 1차 목표로, B안(한계 돌파)은 v0.2 이후 스트레치 목표로 제안한다 - A안이 기존 아키텍처 변경 폭이 작고, 이미 있는 "강화 재료" 패턴과 개념적으로 유사해 학습 비용이 낮다.
-- **[구현 완료, TASK-KBO-064, TASK-KBO-127 갱신]** A안이 실제로 구현되었다 - 다만 별도의 신규 `CheerleaderMileage` 재화를 만들지 않고, 기존 재화(TASK-KBO-126에서 `PremiumCurrency`→`CheerStick`(응원봉)으로 개명)를 그대로 "마일리지 대용"으로 재사용했다(`GameManager.AddCheerleader()`가 중복 `CatalogId` 감지 시 등급별로 `LIVE_NORMAL` 10/`LIVE_EPIC` 50/`ICON` 200/`LEGEND` 1000/`SEASON_LIMITED` 3000을 `CheerStick`에 직접 지급). 별도의 마일리지 교환 상점 UI도 아직 없다 - 자동 환급만 구현되어 있다.
+- **[구현 완료, TASK-KBO-064/127/128/129 갱신]** A안이 실제로 구현되었다 - 다만 별도의 신규 `CheerleaderMileage` 재화를 만들지 않고, 등급이 실제로 속한 응원봉 재화를 그대로 "마일리지 대용"으로 재사용한다(`GameManager.ApplyCheerleaderDuplicateConversion()`, TASK-KBO-129 - 구 단일 `CheerStick` 폐기로 4종 응원봉에 각각 지급하도록 라우팅). 환급량은 `GameManager.ResolveCheerleaderDuplicateConversionValue()`: `LIVE_NORMAL`/`LIVE_EPIC` 10/30(→`LiveCheerStick`), `ICON` 50(→`StarCheerStick`), `LEGEND` 100(→`LegendCheerStick`), `SEASON_LIMITED` 300(→`LimitedCheerStick`, TASK-KBO-128이 10연뽑 무한 증식 버그를 하향 조정한 값). 별도의 마일리지 교환 상점 UI도 아직 없다 - 자동 환급만 구현되어 있다. **[결정 필요, TASK-KBO-129]** 이 중복 자동 변환 메커니즘 자체가 GDD 원문에 근거가 없는 AI 고안 장치임이 확인되었다(`GameManager.AddCheerleader()` 주석 참고) - 존치/폐기는 사용자 확인이 필요하다.
 - **[TBD, v0.2 확정 필요]** 등급별 전환량(10/50/200/1000/3000)의 최종 밸런싱은 확정하지 않았다(모두 `[Draft]`). B안(한계 돌파)은 아직 구현되지 않았다.
 
 # 5. 상점 UI 배치 제안 [Draft]

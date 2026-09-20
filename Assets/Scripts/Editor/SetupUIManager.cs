@@ -31,8 +31,13 @@ namespace KBOManager.EditorTools
         // 실제 UIManager.cs의 ScreenType enum에는 Stats가 없고 LeagueStats만 존재한다.
         // SceneInitializer.cs의 기존 StatsPanel 바인딩(Panels 배열)도 동일하게 LeagueStats를 쓰고
         // 있어(문서가 아니라 이미 검증된 코드 선례), 그 선례를 따라 LeagueStats로 해석했다.
-        // CheerleaderShopPanel은 이번 조사 시점 기준 씬에 아직 존재하지 않는다(SetupShopUI.cs가
-        // 아직 실행되지 않음) - 이 경우 아래 6항 예외 처리 규칙대로 경고만 남기고 스킵한다.
+        //
+        // [TASK-KBO-129, 삭제] `ScreenType.CheerleaderShop`("CheerleaderShopPanel") 바인딩을 제거했다 -
+        // `CheerleaderShopPanel`은 더 이상 Canvas 직속 독립 화면이 아니라 `ScoutHubPanel`(선수/치어리더
+        // 영입 통합 화면) 하위의 한 섹션이다. `FindInScene()`은 씬 전체를 재귀 탐색하므로 이 항목을
+        // 남겨두면, 재부모화된 `CheerleaderShopPanel`을 그대로 찾아내 `UIManager.screens`에
+        // `ScreenType.CheerleaderShop`을 다시 등록해버려 `SetupScoutHubUI.RemoveCheerleaderShopScreenEntry()`가
+        // 방금 정리한 상태를 이 메뉴 실행만으로 곧바로 되돌리는 충돌이 있었다.
         private static readonly ScreenBinding[] Bindings =
         {
             new ScreenBinding(ScreenType.Lobby, "LobbyPanel"),
@@ -41,7 +46,7 @@ namespace KBOManager.EditorTools
             new ScreenBinding(ScreenType.Shop, "ShopPanel"),
             new ScreenBinding(ScreenType.Onboarding, "OnboardingPanel"),
             new ScreenBinding(ScreenType.CheerleaderInventory, "CheerleaderInventoryPanel"),
-            new ScreenBinding(ScreenType.CheerleaderShop, "CheerleaderShopPanel"),
+            new ScreenBinding(ScreenType.Scout, "ScoutHubPanel"),
         };
 
         [MenuItem("KBO Manager/Setup/Auto-Bind All UI Screens")]
