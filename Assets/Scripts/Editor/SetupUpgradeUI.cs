@@ -37,6 +37,19 @@ namespace KBOManager.EditorTools
     /// 자식으로 고정 픽셀 좌표에 떨어져 있던 레이아웃 문제(명령서 4항)만 `ActionContainer`
     /// (`HorizontalLayoutGroup`)로 해소했다 - 좌표가 부정확해 클릭 판정 영역이 어긋났을 가능성까지
     /// 함께 정리한다.
+    ///
+    /// [TASK-KBO-133, 사실 정정] 명령서는 "흰 배경 위 흰 텍스트"를 원인으로 가정했으나, 재확인 결과
+    /// `TitleText`/`SelectionCountText`/버튼 라벨/`ItemEntryTemplate`/`PlayerCardTemplate`(재사용,
+    /// `SetupScoutUI.cs`)는 신규 생성 시점에 이미 전부 `Color.black`으로 명시돼 있었다(무결함). 대신
+    /// 실제 백화 원인은 (1) `PlayerListContainer`/`ItemListContainer`가 `ScrollRect`/`Viewport`/
+    /// `Mask` 없이 `GridLayoutGroup`만 붙은 평면 패널이었던 점(표준 스크롤 뷰 계층 미준수, 명령서
+    /// 6항), (2) 재료가 0개일 때 `TitleText`/`SelectionCountText` 두 줄만 남고 나머지가 전부 빈
+    /// 흰 배경이라 사용자에게는 "완전한 백지"로 체감됐을 가능성(명령서 7항 예외 조건)으로 판단된다.
+    /// 이번 수정은 (a) `Panel -> Viewport(RectMask2D) -> Content(GridLayoutGroup+ContentSizeFitter)`
+    /// 표준 계층으로 재조립하고(과거 평면 컨테이너는 `Content`로 마이그레이션, 재생성 아님),
+    /// (b) 재료 0개 시 노출할 안내 `EmptyText`를 신설하며, (c) 팝업 하위 모든 `Text`의 `color`를
+    /// 마지막 단계에서 한 번 더 강제로 검정 처리해(기존 씬에 남아있을 수 있는 레거시 오브젝트 대비)
+    /// 안전장치를 이중화한다.
     /// </summary>
     public static class SetupUpgradeUI
     {
@@ -51,6 +64,8 @@ namespace KBOManager.EditorTools
         private const string PlayerListContainerName = "PlayerListContainer";
         private const string ItemListPanelName = "ItemListPanel";
         private const string ItemListContainerName = "ItemListContainer";
+        private const string ViewportName = "Viewport";
+        private const string EmptyTextName = "EmptyText";
         private const string TemplatesHolderName = "_Templates";
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
         private const string ItemEntryTemplateName = "ItemEntryTemplate";
@@ -85,10 +100,12 @@ namespace KBOManager.EditorTools
             var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
                 Vector2.zero, Vector2.zero);
 
-            var (playerListPanel, playerListContainer) = FindOrCreateListPanel(contentPanel,
-                PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f));
-            var (itemListPanel, itemListContainer) = FindOrCreateListPanel(contentPanel,
-                ItemListPanelName, ItemListContainerName, new Vector2(160f, 60f), new Vector2(10f, 10f));
+            var (playerListPanel, playerListContainer, playerListEmptyText) = FindOrCreateScrollList(contentPanel,
+                PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f),
+                "강화 재료로 사용할 동일 선수가 없습니다.");
+            var (itemListPanel, itemListContainer, itemListEmptyText) = FindOrCreateScrollList(contentPanel,
+                ItemListPanelName, ItemListContainerName, new Vector2(160f, 60f), new Vector2(10f, 10f),
+                "사용 가능한 강화 재료가 없습니다.");
 
             var playerCardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
             var itemEntryPrefab = FindOrCreateItemEntryTemplate(canvas.transform);
@@ -101,7 +118,16 @@ namespace KBOManager.EditorTools
             }
 
             BindController(controller, gameActionController, titleText, selectionCountText, confirmButton, cancelButton,
-                playerListPanel, playerListContainer, playerCardPrefab, itemListPanel, itemListContainer, itemEntryPrefab);
+                playerListPanel, playerListContainer, playerCardPrefab, playerListEmptyText,
+                itemListPanel, itemListContainer, itemEntryPrefab, itemListEmptyText);
+
+            // [TASK-KBO-133] 팝업 하위(ContentPanel/리스트/버튼)의 모든 Text 색상을 마지막에 한 번 더
+            // 강제로 검정 처리한다. 개별 생성 지점에서 이미 Color.black을 지정하지만, 과거 버전에서
+            // 조립된 뒤 씬에 남아있는 레거시 오브젝트까지 놓치지 않기 위한 이중 안전장치다.
+            foreach (var text in controller.GetComponentsInChildren<Text>(true))
+            {
+                text.color = Color.black;
+            }
 
             EditorUtility.SetDirty(controller);
 
@@ -245,8 +271,16 @@ namespace KBOManager.EditorTools
             }
         }
 
-        private static (GameObject panel, Transform container) FindOrCreateListPanel(Transform parent,
-            string panelName, string containerName, Vector2 cellSize, Vector2 spacing)
+        /// <summary>
+        /// [TASK-KBO-133] 표준 유니티 스크롤 뷰 계층(`Panel`(ScrollRect) -&gt; `Viewport`(RectMask2D) -&gt;
+        /// `Content`(GridLayoutGroup+ContentSizeFitter))으로 재료 목록을 조립한다. 과거 버전은
+        /// `Panel` 바로 아래에 `GridLayoutGroup`만 붙은 평면 컨테이너를 뒀는데, 뷰포트/마스크가 없어
+        /// 스크롤이 전혀 동작하지 않았고 `Content` 높이도 항상 `Panel` 높이로 고정돼 카드 수에 따라
+        /// 늘어나지 않았다. 과거 평면 컨테이너(`containerName`)가 이미 존재하면 삭제하지 않고 새
+        /// `Viewport` 하위로 이동시킨다(재생성 아님, 명령서 6항).
+        /// </summary>
+        private static (GameObject panel, Transform content, Text emptyText) FindOrCreateScrollList(Transform parent,
+            string panelName, string containerName, Vector2 cellSize, Vector2 spacing, string emptyMessage)
         {
             var panelTransform = parent.Find(panelName);
             GameObject panelObject;
@@ -267,12 +301,55 @@ namespace KBOManager.EditorTools
                 rect.offsetMax = Vector2.zero;
             }
 
-            var containerTransform = FindOrCreateGridContainer(panelObject.transform, containerName, cellSize, spacing);
+            var viewportTransform = panelObject.transform.Find(ViewportName);
+            GameObject viewportObject;
+            if (viewportTransform != null)
+            {
+                viewportObject = viewportTransform.gameObject;
+            }
+            else
+            {
+                viewportObject = new GameObject(ViewportName, typeof(RectTransform), typeof(RectMask2D));
+                Undo.RegisterCreatedObjectUndo(viewportObject, $"Create {ViewportName}");
+                viewportObject.transform.SetParent(panelObject.transform, false);
 
-            return (panelObject, containerTransform);
+                var viewportRect = (RectTransform)viewportObject.transform;
+                viewportRect.anchorMin = Vector2.zero;
+                viewportRect.anchorMax = Vector2.one;
+                viewportRect.offsetMin = Vector2.zero;
+                viewportRect.offsetMax = Vector2.zero;
+
+                // 과거 `Panel` 직속이었던 평면 컨테이너를 새 `Viewport` 하위로 마이그레이션한다.
+                var legacyContainer = panelObject.transform.Find(containerName);
+                if (legacyContainer != null && legacyContainer.parent == panelObject.transform)
+                {
+                    legacyContainer.SetParent(viewportObject.transform, false);
+                }
+            }
+
+            var contentTransform = FindOrCreateGridContent(viewportObject.transform, containerName, cellSize, spacing);
+
+            if (!panelObject.TryGetComponent<ScrollRect>(out var scrollRect))
+            {
+                scrollRect = panelObject.AddComponent<ScrollRect>();
+            }
+            scrollRect.viewport = (RectTransform)viewportObject.transform;
+            scrollRect.content = (RectTransform)contentTransform;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            var emptyText = FindOrCreateEmptyStateText(panelObject.transform, emptyMessage);
+
+            return (panelObject, contentTransform, emptyText);
         }
 
-        private static Transform FindOrCreateGridContainer(Transform parent, string name, Vector2 cellSize, Vector2 spacing)
+        /// <summary>
+        /// [TASK-KBO-133] `Content`는 위쪽 기준(anchor/pivot 모두 top)으로 고정하고 `ContentSizeFitter`
+        /// (Vertical Fit = Preferred Size)를 붙여, `GridLayoutGroup`이 스폰한 카드 수만큼 세로 크기가
+        /// 자동으로 늘어나도록 한다(가로는 `Viewport`에 스트레치돼 고정).
+        /// </summary>
+        private static Transform FindOrCreateGridContent(Transform parent, string name, Vector2 cellSize, Vector2 spacing)
         {
             var existing = parent.Find(name);
             GameObject containerObject;
@@ -285,22 +362,67 @@ namespace KBOManager.EditorTools
                 containerObject = new GameObject(name, typeof(RectTransform));
                 Undo.RegisterCreatedObjectUndo(containerObject, $"Create {name}");
                 containerObject.transform.SetParent(parent, false);
-
-                var rect = (RectTransform)containerObject.transform;
-                rect.anchorMin = Vector2.zero;
-                rect.anchorMax = Vector2.one;
-                rect.offsetMin = Vector2.zero;
-                rect.offsetMax = Vector2.zero;
             }
+
+            var rect = (RectTransform)containerObject.transform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            rect.anchoredPosition = Vector2.zero;
 
             if (!containerObject.TryGetComponent<GridLayoutGroup>(out var grid))
             {
                 grid = containerObject.AddComponent<GridLayoutGroup>();
-                grid.cellSize = cellSize;
-                grid.spacing = spacing;
             }
+            grid.cellSize = cellSize;
+            grid.spacing = spacing;
+            grid.childAlignment = TextAnchor.UpperCenter;
+
+            if (!containerObject.TryGetComponent<ContentSizeFitter>(out var fitter))
+            {
+                fitter = containerObject.AddComponent<ContentSizeFitter>();
+            }
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             return containerObject.transform;
+        }
+
+        /// <summary>[TASK-KBO-133, 명령서 7항] 재료(중복 카드/아이템)가 0개일 때 대신 노출할 안내 문구.
+        /// 기본은 비활성 상태로 두고, `MaterialSelectUIController`가 목록을 채운 뒤 개수에 따라 켠다.</summary>
+        private static Text FindOrCreateEmptyStateText(Transform panelTransform, string message)
+        {
+            var existing = panelTransform.Find(EmptyTextName);
+            if (existing != null && existing.TryGetComponent<Text>(out var existingText))
+            {
+                existingText.text = message;
+                existingText.color = Color.black;
+                return existingText;
+            }
+
+            var textObject = new GameObject(EmptyTextName, typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, $"Create {EmptyTextName}");
+            textObject.transform.SetParent(panelTransform, false);
+
+            var rect = (RectTransform)textObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var text = textObject.GetComponent<Text>();
+            text.text = message;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+
+            textObject.SetActive(false);
+
+            return text;
         }
 
         /// <summary>
@@ -393,8 +515,8 @@ namespace KBOManager.EditorTools
 
         private static void BindController(MaterialSelectUIController controller, GameActionController gameActionController,
             Text titleText, Text selectionCountText, Button confirmButton, Button cancelButton,
-            GameObject playerListPanel, Transform playerListContainer, PlayerCardUI playerCardPrefab,
-            GameObject itemListPanel, Transform itemListContainer, Button itemEntryPrefab)
+            GameObject playerListPanel, Transform playerListContainer, PlayerCardUI playerCardPrefab, Text playerListEmptyText,
+            GameObject itemListPanel, Transform itemListContainer, Button itemEntryPrefab, Text itemListEmptyText)
         {
             var serialized = new SerializedObject(controller);
 
@@ -409,10 +531,12 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("playerListPanel").objectReferenceValue = playerListPanel;
             serialized.FindProperty("playerListContainer").objectReferenceValue = playerListContainer;
             if (playerCardPrefab != null) serialized.FindProperty("playerCardPrefab").objectReferenceValue = playerCardPrefab;
+            serialized.FindProperty("playerListEmptyText").objectReferenceValue = playerListEmptyText;
 
             serialized.FindProperty("itemListPanel").objectReferenceValue = itemListPanel;
             serialized.FindProperty("itemListContainer").objectReferenceValue = itemListContainer;
             serialized.FindProperty("itemEntryPrefab").objectReferenceValue = itemEntryPrefab;
+            serialized.FindProperty("itemListEmptyText").objectReferenceValue = itemListEmptyText;
 
             serialized.ApplyModifiedProperties();
         }

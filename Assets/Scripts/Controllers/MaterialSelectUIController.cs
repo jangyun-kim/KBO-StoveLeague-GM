@@ -43,6 +43,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Transform playerListContainer;
         [Tooltip("Button 컴포넌트가 포함된 PlayerCardUI 프리팹. 인벤토리 화면과 같은 프리팹을 쓰면 풀을 공유한다.")]
         [SerializeField] private PlayerCardUI playerCardPrefab;
+        [Tooltip("[TASK-KBO-133] 동일 선수 후보(중복 카드)가 0장일 때만 활성화되는 안내 문구.")]
+        [SerializeField] private Text playerListEmptyText;
 
         [Header("Enhance Mode - Item List (단순 버튼 목록)")]
         [SerializeField] private GameObject itemListPanel;
@@ -50,6 +52,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Button itemEntryPrefab;
         [SerializeField] private Color itemSelectedColor = new Color(1f, 0.85f, 0.3f);
         [SerializeField] private Color itemDefaultColor = Color.white;
+        [Tooltip("[TASK-KBO-133] 강화 재료(Item)가 0개일 때만 활성화되는 안내 문구.")]
+        [SerializeField] private Text itemListEmptyText;
 
         /// <summary>확정(성공/실패 무관) 직후 발생. InventoryUIController 등이 구독해 화면을 다시 그린다.</summary>
         public event Action OnActionCompleted;
@@ -126,16 +130,21 @@ namespace KBOManager.Controllers
         {
             ClearPlayerCards();
 
-            if (GameManager.Instance == null || playerCardPrefab == null || playerListContainer == null) return;
-
-            // GDD 3절: 타겟과 완전히 같은 선수(RealPlayerId)만 재료 후보. 타겟 자신은 반드시 제외한다.
-            var candidates = GameManager.Instance.Inventory
-                .Where(p => p != target && p?.Template != null && p.Template.RealPlayerId == target.Template.RealPlayerId);
-
-            foreach (var candidate in candidates)
+            if (GameManager.Instance != null && playerCardPrefab != null && playerListContainer != null)
             {
-                SpawnPlayerCard(candidate);
+                // GDD 3절: 타겟과 완전히 같은 선수(RealPlayerId)만 재료 후보. 타겟 자신은 반드시 제외한다.
+                var candidates = GameManager.Instance.Inventory
+                    .Where(p => p != target && p?.Template != null && p.Template.RealPlayerId == target.Template.RealPlayerId);
+
+                foreach (var candidate in candidates)
+                {
+                    SpawnPlayerCard(candidate);
+                }
             }
+
+            // [TASK-KBO-133] 후보(중복 카드)가 0장이면 팝업이 빈 흰 배경만 보이는 것처럼 느껴지므로
+            // 안내 문구를 대신 노출한다.
+            if (playerListEmptyText != null) playerListEmptyText.gameObject.SetActive(spawnedPlayerCards.Count == 0);
         }
 
         private void SpawnPlayerCard(Player candidate)
@@ -143,6 +152,10 @@ namespace KBOManager.Controllers
             var card = CardPoolManager.Instance != null
                 ? CardPoolManager.Instance.Get(playerCardPrefab, playerListContainer)
                 : Instantiate(playerCardPrefab, playerListContainer);
+
+            // [TASK-KBO-133] 풀링/이동 과정에서 localScale이 어긋나면 카드가 보이지 않거나 비정상
+            // 크기로 렌더링될 수 있어 매 스폰마다 명시적으로 1로 고정한다.
+            card.transform.localScale = Vector3.one;
 
             card.Setup(candidate);
             card.SetSelected(selectedPlayers.Contains(candidate));
@@ -197,23 +210,31 @@ namespace KBOManager.Controllers
         {
             ClearItemEntries();
 
-            if (GameManager.Instance == null || itemEntryPrefab == null || itemListContainer == null) return;
-
-            // GameManager.ItemInventory는 강화 재료(EnhanceMaterial)와 스킬 변경권(SkillChangeTicket)이
-            // 함께 섞여 있는 하나의 리스트다 - 강화 재료 선택 팝업에는 강화 재료만 노출해야 한다
-            // (그렇지 않으면 스킬 변경권이 강화 재료로 잘못 소모되거나, UpgradeProbabilityDB에 없는
-            // MaterialType으로 조회돼 0% 취급되는 등 강화 계산이 오염된다).
-            foreach (var item in GameManager.Instance.ItemInventory)
+            if (GameManager.Instance != null && itemEntryPrefab != null && itemListContainer != null)
             {
-                if (item?.Template == null || item.Template.Category != ItemCategory.EnhanceMaterial) continue;
-                SpawnItemEntry(item);
+                // GameManager.ItemInventory는 강화 재료(EnhanceMaterial)와 스킬 변경권(SkillChangeTicket)이
+                // 함께 섞여 있는 하나의 리스트다 - 강화 재료 선택 팝업에는 강화 재료만 노출해야 한다
+                // (그렇지 않으면 스킬 변경권이 강화 재료로 잘못 소모되거나, UpgradeProbabilityDB에 없는
+                // MaterialType으로 조회돼 0% 취급되는 등 강화 계산이 오염된다).
+                foreach (var item in GameManager.Instance.ItemInventory)
+                {
+                    if (item?.Template == null || item.Template.Category != ItemCategory.EnhanceMaterial) continue;
+                    SpawnItemEntry(item);
+                }
             }
+
+            // [TASK-KBO-133] 강화 재료가 0개면 팝업이 빈 흰 배경만 보이는 것처럼 느껴지므로 안내
+            // 문구를 대신 노출한다.
+            if (itemListEmptyText != null) itemListEmptyText.gameObject.SetActive(spawnedItemEntries.Count == 0);
         }
 
         private void SpawnItemEntry(Item item)
         {
             var button = Instantiate(itemEntryPrefab, itemListContainer);
             button.gameObject.SetActive(true);
+            // [TASK-KBO-133] localScale이 어긋나면 카드/버튼이 보이지 않거나 비정상 크기로 렌더링될
+            // 수 있어 매 스폰마다 명시적으로 1로 고정한다.
+            button.transform.localScale = Vector3.one;
 
             var label = button.GetComponentInChildren<Text>();
             if (label != null)
