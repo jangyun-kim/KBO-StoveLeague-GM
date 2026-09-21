@@ -29,6 +29,15 @@ namespace KBOManager.Controllers
     /// [TASK-KBO-137] `Awake()`에 `scoutManager == null`이면 `FindAnyObjectByType&lt;ScoutManager&gt;()`로
     /// 자동 복구하는 안전장치를 추가했다 - 인스펙터 바인딩이 씬 재조립 과정에서 풀려 콘솔에 경고가
     /// 반복 출력되던 증상(명령서 3항)에 대응한다.
+    ///
+    /// [TASK-KBO-140, 사실 정정] 명령서는 결과 팝업 담당 파일을 `ScoutResultUIController.cs`로
+    /// 가정했으나, 그런 이름의 클래스/파일은 프로젝트에 존재하지 않는다(전수 확인) - 결과 팝업
+    /// (`resultPopupRoot`/`ShowResults()`/`CloseResultPopup()`)은 이 클래스가 그대로 소유한다.
+    /// "다시 뽑기" 버튼은 `lastRetryAction`(직전에 실행한 `ExecuteRoll()`/`ExecuteMultiRoll()` 호출을
+    /// 그대로 다시 실행하는 델리게이트)을 저장해 뒀다가 `OnClickRetry()`에서 재호출하는 방식으로
+    /// 구현했다 - 확률/재화 차감 로직(`ScoutManager.RollX()`)은 그대로 재사용할 뿐 한 줄도 새로
+    /// 추가하지 않았다(명령서 5항). 재화 부족 시 `ShowResults()`가 기존 카드를 지우지 않고 경고만
+    /// 남기도록 순서를 조정했다(명령서 7항 - 재시도 실패가 직전 성공 결과를 지워버리는 사고 방지).
     /// </summary>
     public class ScoutUIController : MonoBehaviour
     {
@@ -60,6 +69,8 @@ namespace KBOManager.Controllers
         [SerializeField] private PlayerCardUI cardPrefab;
         [Tooltip("[TASK-KBO-093] 결과 팝업을 닫는 '확인' 버튼. CloseResultPopup()을 호출한다.")]
         [SerializeField] private Button closeResultPopupButton;
+        [Tooltip("[TASK-KBO-140] 직전과 동일한 카테고리/횟수로 즉시 다시 뽑는 버튼. lastRetryAction을 재호출한다.")]
+        [SerializeField] private Button retryButton;
 
         [Header("Top Pull Announcement")]
         [Tooltip("결과에 SIGNATURE 이상 등급 카드가 있을 때만 활성화되는 강조 텍스트.")]
@@ -106,6 +117,7 @@ namespace KBOManager.Controllers
             if (pickupTitleHolderButton10 != null) pickupTitleHolderButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollPickupTitleHolder(), 10));
 
             if (closeResultPopupButton != null) closeResultPopupButton.onClick.AddListener(CloseResultPopup);
+            if (retryButton != null) retryButton.onClick.AddListener(OnClickRetry);
         }
 
         // GDD 2절 등급 서열(숫자가 클수록 상위 등급). "최고급"의 기준(SIGNATURE 이상)을 여기서 정한다.
@@ -123,6 +135,11 @@ namespace KBOManager.Controllers
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
 
+        /// <summary>[TASK-KBO-140] 직전에 실행한 ExecuteRoll()/ExecuteMultiRoll() 호출을 인자 그대로
+        /// 다시 실행하는 델리게이트. "다시 뽑기" 버튼(OnClickRetry())이 이 델리게이트를 재호출한다 -
+        /// 카테고리/횟수를 별도로 기억할 필요 없이 클로저가 그 정보를 전부 갖고 있다.</summary>
+        private Action lastRetryAction;
+
         /// <summary>[TASK-KBO-129] 6개 카테고리 버튼이 공통으로 쓰는 실행 헬퍼. ScoutManager의 각
         /// Roll* 메서드(단일 Player 반환)를 리스트로 감싸 ShowResults()에 위임한다 - 카드 렌더링
         /// 경로를 6개 카테고리 전부 동일하게 유지한다.</summary>
@@ -133,6 +150,8 @@ namespace KBOManager.Controllers
                 Debug.LogWarning("[ScoutUIController] ScoutManager가 연결되지 않았습니다.");
                 return;
             }
+
+            lastRetryAction = () => ExecuteRoll(rollMethod);
 
             var player = rollMethod();
             ShowResults(player != null ? new List<Player> { player } : new List<Player>());
@@ -151,6 +170,8 @@ namespace KBOManager.Controllers
                 return;
             }
 
+            lastRetryAction = () => ExecuteMultiRoll(rollMethod, count);
+
             var results = new List<Player>();
             for (int i = 0; i < count; i++)
             {
@@ -163,13 +184,17 @@ namespace KBOManager.Controllers
 
         private void ShowResults(List<Player> players)
         {
-            ClearCards();
-
+            // [TASK-KBO-140] 재화 부족 등으로 이번 뽑기가 비었을 때 ClearCards()를 먼저 호출해 버리면
+            // "다시 뽑기"가 실패한 것뿐인데 직전에 성공적으로 보여주고 있던 카드까지 함께 지워진다 -
+            // 빈 결과 체크를 ClearCards()보다 앞으로 옮겨, 실패한 시도는 기존 화면을 그대로 둔 채
+            // 경고만 남기도록 한다(명령서 7항 - "재화가 부족합니다" 경고 + 뽑기 미실행 방어).
             if (players == null || players.Count == 0)
             {
-                Debug.LogWarning("[ScoutUIController] 뽑기 결과가 비어 있습니다 (재화 부족 등으로 소모되지 않았을 수 있습니다).");
+                Debug.LogWarning("[ScoutUIController] 재화가 부족합니다. 뽑기가 실행되지 않았습니다.");
                 return;
             }
+
+            ClearCards();
 
             foreach (var player in players)
             {
@@ -241,6 +266,20 @@ namespace KBOManager.Controllers
         {
             if (resultPopupRoot != null) resultPopupRoot.SetActive(false);
             ClearCards();
+        }
+
+        /// <summary>[TASK-KBO-140] 결과 팝업의 "다시 뽑기" 버튼 OnClick. 직전에 실행했던 뽑기(카테고리 +
+        /// 1회/10회 여부)를 그대로 재호출한다 - 팝업을 닫지 않고 결과만 갱신된다. 재화가 부족하면
+        /// ShowResults()가 기존 카드를 지우지 않고 경고 로그만 남긴다(위 참고).</summary>
+        private void OnClickRetry()
+        {
+            if (lastRetryAction == null)
+            {
+                Debug.LogWarning("[ScoutUIController] 다시 뽑을 직전 뽑기 정보가 없습니다.");
+                return;
+            }
+
+            lastRetryAction();
         }
 
         private void ClearCards()

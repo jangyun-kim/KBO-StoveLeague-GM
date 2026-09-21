@@ -31,6 +31,21 @@ namespace KBOManager.EditorTools
     /// 다르다 - 거긴 `GridLayoutGroup`이 `LayoutElement`를 아예 무시, 여긴 `childControlHeight=false`가
     /// 크기 반영만 막음). `childControlHeight = true`로 바꾸고 각 `LayoutElement`에 `minHeight`를
     /// `preferredHeight`와 동일하게 추가해(TASK-135 압사 방지 패턴 재사용) 해소했다.
+    ///
+    /// [TASK-KBO-140, 사실 정정 + 강화] 명령서는 "이름 검색(Find)에 의존한 클린업 실패로 구형 UI와
+    /// 신규 UI가 중복 렌더링된다"고 전제했다. 재확인 결과 TASK-139 시점 코드는 딱 3개의 구형 이름
+    /// ("CheerStickText"/"Roll1xButton"/"Roll10xButton", TASK-129 세대)만 `DestroyLegacyChild()`로
+    /// 지목하고 있어, 그보다 더 오래됐거나 그 사이 세대에 존재했을 수 있는 다른 이름의 잔재는 애초에
+    /// 정리 대상에 없었다 - "이름 기반 선택적 삭제"라는 접근 자체가 구조적으로 매 세대마다 놓치는
+    /// 이름이 생길 수 있는 취약점이었다는 명령서의 지적은 타당하다. 이번에 `BindShopController()`
+    /// 최상단에서 `ShopPanel`의 모든 자식을 이름과 무관하게 역순 `for` 루프로 전부 `DestroyImmediate`
+    /// 한 뒤(패널 오브젝트 자신과 그 `Image`/`VerticalLayoutGroup`은 유지) 바닥부터 재조립하도록
+    /// 바꿔, "다음 세대에 새 이름이 추가돼도 놓치는" 구조적 취약점 자체를 제거했다(명령서 4항). 카테고리
+    /// 4개는 `SetupScoutUI.cs`(TASK-137/139)와 동일하게 [라벨]-[1회 영입]-[10회 영입] 3칸
+    /// `HorizontalLayoutGroup` 행으로 재구성했다 - `CheerleaderShopUIController.cs`에 10회 전용 필드
+    /// 4개를 신설했다(자세한 내용은 그 파일 주석 참고). 조립 직후 계층 구조를 텍스트로 덤프하는
+    /// `LogHierarchyDump()`를 추가해(명령서 6항, AC-02) 매 실행마다 중복 여부를 콘솔에서 스스로
+    /// 증명한다.
     /// </summary>
     public static class SetupShopUI
     {
@@ -130,29 +145,33 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// [TASK-KBO-129] GDD "뽑기(가챠) > 치어리더 영입" 절의 4개 카테고리(일반 > 라이브/한정,
-        /// 픽업·프리미엄 > 아이콘/레전드) 버튼 + 4개 재화 표시 텍스트를 조립·바인딩한다. 구
-        /// roll1xButton/roll10xButton/cheerStickText(단일 CheerStick 소모, 5단계 혼합 확률)는 더 이상
-        /// 존재하지 않는 필드라 - GDD에 없는 레이아웃/버튼 잔재를 씬에서 완전히 삭제한다(명령서 4항
-        /// DestroyImmediate 지시).
+        /// [TASK-KBO-129/140] GDD "뽑기(가챠) > 치어리더 영입" 절의 4개 카테고리(일반 > 라이브/한정,
+        /// 픽업·프리미엄 > 아이콘/레전드)를 [라벨]-[1회 영입]-[10회 영입] 행으로, 4개 재화 표시 텍스트를
+        /// 조립·바인딩한다. [TASK-KBO-140] 이름 기반 선택적 삭제가 세대를 거듭할수록 놓치는 이름이
+        /// 생기는 구조적 취약점이었다는 사실이 확인돼(클래스 요약 참고), 특정 이름을 지목해 지우는 대신
+        /// `parent`의 모든 자식을 예외 없이 역순으로 파괴한 뒤 바닥부터 다시 조립한다(명령서 4항).
         /// </summary>
         private static void BindShopController(CheerleaderShopUIController controller)
         {
             var parent = controller.transform;
 
-            DestroyLegacyChild(parent, "CheerStickText");
-            DestroyLegacyChild(parent, "Roll1xButton");
-            DestroyLegacyChild(parent, "Roll10xButton");
+            // [TASK-KBO-140] 이름을 몰라도 안전하게 전부 지운다 - 역순으로 순회해 DestroyImmediate가
+            // childCount를 바꿔도 인덱스가 밀리지 않는다. 패널 자신(parent)과 그 Image/
+            // VerticalLayoutGroup 컴포넌트는 대상이 아니다(자식만 제거).
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                Object.DestroyImmediate(parent.GetChild(i).gameObject);
+            }
 
             var liveCheerStickText = FindOrCreateText(parent, "LiveCheerStickText", 32f, isDisplayOnly: true);
             var limitedCheerStickText = FindOrCreateText(parent, "LimitedCheerStickText", 32f, isDisplayOnly: true);
             var starCheerStickText = FindOrCreateText(parent, "StarCheerStickText", 32f, isDisplayOnly: true);
             var legendCheerStickText = FindOrCreateText(parent, "LegendCheerStickText", 32f, isDisplayOnly: true);
 
-            var liveButton = FindOrCreateButton(parent, "LiveButton", "일반 영입 - 라이브 (라이브 응원봉)");
-            var limitedButton = FindOrCreateButton(parent, "LimitedButton", "일반 영입 - 한정 (한정 응원봉)");
-            var iconButton = FindOrCreateButton(parent, "IconButton", "픽업/프리미엄 영입 - 아이콘 (스타 응원봉)");
-            var legendButton = FindOrCreateButton(parent, "LegendButton", "픽업/프리미엄 영입 - 레전드 (레전드 응원봉)");
+            var (liveButton, liveButton10) = CreateCategoryRow(parent, "LiveRow", "일반 영입 - 라이브 (라이브 응원봉)");
+            var (limitedButton, limitedButton10) = CreateCategoryRow(parent, "LimitedRow", "일반 영입 - 한정 (한정 응원봉)");
+            var (iconButton, iconButton10) = CreateCategoryRow(parent, "IconRow", "픽업/프리미엄 영입 - 아이콘 (스타 응원봉)");
+            var (legendButton, legendButton10) = CreateCategoryRow(parent, "LegendRow", "픽업/프리미엄 영입 - 레전드 (레전드 응원봉)");
 
             var closeButton = FindOrCreateButton(parent, CloseButtonName, "닫기");
             var resultLogText = FindOrCreateText(parent, "ResultLogText", 160f, isDisplayOnly: true);
@@ -163,20 +182,125 @@ namespace KBOManager.EditorTools
             serializedController.FindProperty("starCheerStickText").objectReferenceValue = starCheerStickText;
             serializedController.FindProperty("legendCheerStickText").objectReferenceValue = legendCheerStickText;
             serializedController.FindProperty("liveButton").objectReferenceValue = liveButton;
+            serializedController.FindProperty("liveButton10").objectReferenceValue = liveButton10;
             serializedController.FindProperty("limitedButton").objectReferenceValue = limitedButton;
+            serializedController.FindProperty("limitedButton10").objectReferenceValue = limitedButton10;
             serializedController.FindProperty("iconButton").objectReferenceValue = iconButton;
+            serializedController.FindProperty("iconButton10").objectReferenceValue = iconButton10;
             serializedController.FindProperty("legendButton").objectReferenceValue = legendButton;
+            serializedController.FindProperty("legendButton10").objectReferenceValue = legendButton10;
             serializedController.FindProperty("closeButton").objectReferenceValue = closeButton;
             serializedController.FindProperty("resultLogText").objectReferenceValue = resultLogText;
             serializedController.ApplyModifiedProperties();
+
+            // [TASK-KBO-140, 명령서 6항/AC-02] 씬을 직접 볼 수 없으므로, 조립 직후 계층을 텍스트로
+            // 덤프해 중복 생성 여부를 콘솔 로그로 스스로 증명한다.
+            LogHierarchyDump(parent);
         }
 
-        /// <summary>이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다. GDD에 없는 구
-        /// UI 요소를 정리할 때만 쓴다.</summary>
-        private static void DestroyLegacyChild(Transform parent, string name)
+        /// <summary>[TASK-KBO-140] 카테고리 한 칸을 [라벨]-[1회 영입]-[10회 영입] 3칸짜리
+        /// `HorizontalLayoutGroup` 행으로 새로 만든다(`SetupScoutUI.BindCategoryRow()`와 동일 패턴).
+        /// `BindShopController()`가 매 실행마다 부모의 자식을 전부 지운 뒤 호출하므로 재사용 분기 없이
+        /// 항상 새로 만든다.</summary>
+        private static (Button roll1, Button roll10) CreateCategoryRow(Transform parent, string rowName, string label)
         {
-            var legacy = parent.Find(name);
-            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+            var rowObject = new GameObject(rowName, typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+            Undo.RegisterCreatedObjectUndo(rowObject, $"Create {rowName}");
+            rowObject.transform.SetParent(parent, false);
+
+            var layout = rowObject.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.padding = new RectOffset(4, 4, 4, 4);
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandHeight = true;
+
+            // [TASK-KBO-140] minHeight=preferredHeight(TASK-135 패턴)로 부모 VerticalLayoutGroup의
+            // min<->preferred 보간 압사를 방지한다 - 80/90은 SetupScoutUI.BindCategoryRow()와 동일한 값.
+            var rowLayoutElement = rowObject.GetComponent<LayoutElement>();
+            rowLayoutElement.preferredHeight = 90f;
+            rowLayoutElement.minHeight = 80f;
+
+            CreateRowLabel(rowObject.transform, label);
+            var roll1Button = CreateRowButton(rowObject.transform, "Roll1Button", "1회 영입");
+            var roll10Button = CreateRowButton(rowObject.transform, "Roll10Button", "10회 영입");
+
+            return (roll1Button, roll10Button);
+        }
+
+        private static void CreateRowLabel(Transform parent, string label)
+        {
+            var textObject = new GameObject("CategoryLabel", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(textObject, "Create CategoryLabel");
+            textObject.transform.SetParent(parent, false);
+
+            var text = textObject.GetComponent<Text>();
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 14;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 10;
+            text.resizeTextMaxSize = 18;
+            text.raycastTarget = false;
+        }
+
+        private static Button CreateRowButton(Transform parent, string name, string label)
+        {
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
+
+            var image = buttonObject.GetComponent<Image>();
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 14;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+            ApplyButtonLabel(button, label);
+
+            return button;
+        }
+
+        /// <summary>[TASK-KBO-140, 명령서 6항] 유니티 에디터 화면을 직접 볼 수 없는 한계를 코드로
+        /// 보완하기 위해, 조립 직후 `root`(ShopPanel) 하위 전체 계층을 이름+자식 수와 함께 콘솔에
+        /// 텍스트로 덤프한다. 정상이라면 직속 자식은 정확히 10개(재화 텍스트 4 + 카테고리 행 4 + 닫기
+        /// 1 + 결과 로그 1)이고, 각 카테고리 행은 정확히 3개(라벨+1회+10회)여야 한다 - 같은 이름이
+        /// 두 번 나타나거나 이 개수를 넘으면 중복 생성이 재발했다는 뜻이다.</summary>
+        private static void LogHierarchyDump(Transform root)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine($"[SetupShopUI] {root.name} 계층 구조 덤프 (직속 자식 {root.childCount}개, 예상 10개):");
+            AppendHierarchy(root, builder, 1);
+            Debug.Log(builder.ToString());
+        }
+
+        private static void AppendHierarchy(Transform node, System.Text.StringBuilder builder, int depth)
+        {
+            for (int i = 0; i < node.childCount; i++)
+            {
+                var child = node.GetChild(i);
+                builder.AppendLine($"{new string(' ', depth * 2)}- {child.name} (자식 {child.childCount}개)");
+                AppendHierarchy(child, builder, depth + 1);
+            }
         }
 
         /// <summary>

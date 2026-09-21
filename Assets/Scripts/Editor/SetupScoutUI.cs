@@ -45,6 +45,7 @@ namespace KBOManager.EditorTools
         private const string PlayerRollButtonsContainerName = "PlayerRollButtonsContainer";
         private const string ResultPopupName = "ResultPopup";
         private const string ClosePopupButtonName = "ClosePopupBtn";
+        private const string RetryButtonName = "RetryButton";
         private const string ResultButtonContainerName = "ResultButtonContainer";
         private const string CardContainerName = "CardContainer";
         private const string TemplatesHolderName = "_Templates";
@@ -78,9 +79,9 @@ namespace KBOManager.EditorTools
             BindScoutController(scoutController);
             BindCategoryButtons(scoutController);
 
-            var (resultPopupRoot, cardContainer, closeResultPopupButton) = FindOrCreateResultPopup(scoutController.transform);
+            var (resultPopupRoot, cardContainer, closeResultPopupButton, retryButton) = FindOrCreateResultPopup(scoutController.transform);
             var cardTemplate = FindOrCreateCardTemplate(canvasTransform);
-            BindScoutResultFields(scoutController, resultPopupRoot, cardContainer, cardTemplate, closeResultPopupButton);
+            BindScoutResultFields(scoutController, resultPopupRoot, cardContainer, cardTemplate, closeResultPopupButton, retryButton);
 
             EditorUtility.SetDirty(scoutController);
             return scoutController;
@@ -376,7 +377,7 @@ namespace KBOManager.EditorTools
         /// 있다가 ScoutUIController.ShowResults()가 뽑기 시점에 활성화한다(기존 런타임 로직, 여기서는 최초
         /// 생성 시 초기 상태만 비활성으로 맞춘다). [TASK-KBO-093] TASK-092가 남긴 "팝업을 닫을 버튼이
         /// 없다"는 UX 블로커를 여기서 해소한다.</summary>
-        private static (GameObject popupRoot, Transform container, Button closeButton) FindOrCreateResultPopup(Transform scoutPanelTransform)
+        private static (GameObject popupRoot, Transform container, Button closeButton, Button retryButton) FindOrCreateResultPopup(Transform scoutPanelTransform)
         {
             var existingPopup = scoutPanelTransform.Find(ResultPopupName);
             GameObject popupObject;
@@ -402,9 +403,12 @@ namespace KBOManager.EditorTools
 
             var container = FindOrCreateCardContainer(popupObject.transform);
             var buttonContainer = FindOrCreateResultButtonContainer(popupObject.transform);
+            // [TASK-KBO-140] "다시 뽑기"를 "확인" 옆에 신설한다 - 둘 다 같은 ResultButtonContainer
+            // (HorizontalLayoutGroup)에 속하므로 자동으로 나란히 배치된다.
+            var retryButton = FindOrCreateButton(buttonContainer, RetryButtonName, "다시 뽑기", Vector2.zero);
             var closeButton = FindOrCreateButton(buttonContainer, ClosePopupButtonName, "확인", Vector2.zero);
 
-            return (popupObject, container, closeButton);
+            return (popupObject, container, closeButton, retryButton);
         }
 
         /// <summary>
@@ -490,16 +494,17 @@ namespace KBOManager.EditorTools
             return containerObject.transform;
         }
 
-        /// <summary>ScoutUIController의 resultPopupRoot/cardContainer/cardPrefab/closeResultPopupButton
-        /// 4개 필드를 바인딩한다.</summary>
+        /// <summary>ScoutUIController의 resultPopupRoot/cardContainer/cardPrefab/closeResultPopupButton/
+        /// retryButton(TASK-KBO-140 신설) 5개 필드를 바인딩한다.</summary>
         private static void BindScoutResultFields(ScoutUIController controller, GameObject resultPopupRoot,
-            Transform cardContainer, PlayerCardUI cardTemplate, Button closeResultPopupButton)
+            Transform cardContainer, PlayerCardUI cardTemplate, Button closeResultPopupButton, Button retryButton)
         {
             var serializedController = new SerializedObject(controller);
             serializedController.FindProperty("resultPopupRoot").objectReferenceValue = resultPopupRoot;
             serializedController.FindProperty("cardContainer").objectReferenceValue = cardContainer;
             serializedController.FindProperty("cardPrefab").objectReferenceValue = cardTemplate;
             serializedController.FindProperty("closeResultPopupButton").objectReferenceValue = closeResultPopupButton;
+            serializedController.FindProperty("retryButton").objectReferenceValue = retryButton;
             serializedController.ApplyModifiedProperties();
         }
 
