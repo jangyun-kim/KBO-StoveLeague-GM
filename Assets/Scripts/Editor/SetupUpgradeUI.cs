@@ -77,6 +77,14 @@ namespace KBOManager.EditorTools
     /// 그 영역을 침범하지 않게 했다. `InventoryUIController.cs`는 명령서가 가정한 `OpenDetail()`이
     /// 존재하지 않아(사실 정정, 실제 메서드는 `ShowDetail(Player)`) 그 메서드와 `CloseDetail()`에
     /// 메인 닫기 버튼 숨김/복원을 구현했다.
+    ///
+    /// [TASK-KBO-136] TASK-133~135 세 번에 걸쳐 반복된 "하단 버튼 영역이 사라짐" 현상의 공통 원인이
+    /// 결국 `ActionContainer`가 `VerticalLayoutGroup`의 계산에 어떤 형태로든 관여하고 있었다는 점이라
+    /// 판단해, 사용자 피드백대로 "닫기" 버튼을 그 컨테이너에서 완전히 들어내고 레이아웃 계산과 무관한
+    /// `ContentPanel` 우측 상단 절대 좌표의 단순 'X' 버튼(`FindOrCreateCloseButton()`, 60x60,
+    /// `LayoutElement.ignoreLayout=true`)으로 대체했다 - `MaterialSelectUIController.cancelButton`
+    /// 필드는 이름 그대로 "팝업을 닫는 버튼" 역할만 하므로 이 새 버튼을 그대로 연결했다(C# 로직
+    /// 무수정). `ActionContainer`에는 이제 확인 버튼만 남는다.
     /// </summary>
     public static class SetupUpgradeUI
     {
@@ -93,6 +101,9 @@ namespace KBOManager.EditorTools
         private const string ItemListContainerName = "ItemListContainer";
         private const string ViewportName = "Viewport";
         private const string EmptyTextName = "EmptyText";
+        // [TASK-KBO-136] ContentPanel 우측 상단의 단순 'X' 닫기 버튼. 기존 ActionContainer 소속
+        // CancelButtonName("닫기")을 완전히 대체한다.
+        private const string ClosePopupButtonName = "ClosePopupButton";
         private const string TemplatesHolderName = "_Templates";
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
         private const string ItemEntryTemplateName = "ItemEntryTemplate";
@@ -133,16 +144,23 @@ namespace KBOManager.EditorTools
                 new Vector2(0f, 0.1f), new Vector2(1f, 0.15f));
             EnsureLayoutElement(selectionCountText.gameObject, preferredHeight: 50f, flexibleHeight: 0f, minHeight: 50f);
 
-            // [TASK-KBO-123] 확인/취소 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다. 과거
-            // 버전에서 팝업 직속 자식으로 고정 픽셀 앵커에 만들어져 있던 두 버튼은 이 컨테이너 하위로
-            // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지). [TASK-KBO-135] FindOrCreateActionContainer()
-            // 내부에서 VerticalLayoutGroup으로부터 완전히 제외(ignoreLayout)하고 ContentPanel 하단에
-            // 고정 픽셀 높이로 절대 배치하므로, 여기서 별도 LayoutElement 설정은 필요 없다.
+            // [TASK-KBO-123] 확인 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다.
+            // [TASK-KBO-135] FindOrCreateActionContainer() 내부에서 VerticalLayoutGroup으로부터
+            // 완전히 제외(ignoreLayout)하고 ContentPanel 하단에 고정 픽셀 높이로 절대 배치하므로,
+            // 여기서 별도 LayoutElement 설정은 필요 없다.
+            // [TASK-KBO-136] 하단의 "닫기"(cancelButton)는 고질적인 레이아웃 압사 문제(TASK-133~135)의
+            // 반복 진원지였다 - 완전히 폐기하고, ContentPanel 우측 상단에 레이아웃 계산에 전혀 의존하지
+            // 않는 고정 픽셀 크기의 단순 'X' 버튼을 대신 신설해 같은 cancelButton 필드에 연결한다
+            // (아래 FindOrCreateContentPanel 호출 직후). ActionContainer에는 이제 확인 버튼만 남는다.
             var actionContainer = FindOrCreateActionContainer(contentPanel);
             var confirmButton = FindOrCreateButton(actionContainer, ConfirmButtonName, "강화/각성 실행",
                 Vector2.zero, Vector2.zero);
-            var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
-                Vector2.zero, Vector2.zero);
+            DestroyLegacyChild(actionContainer, CancelButtonName);
+
+            // [TASK-KBO-136] MaterialSelectUIController.cancelButton은 이름과 달리 "팝업을 닫는 버튼"
+            // 이라는 범용 역할만 한다(ClosePopup() 연결) - 시각적으로 '닫기' 텍스트 버튼이든 'X' 아이콘
+            // 버튼이든 그 필드에 어떤 Button을 연결하든 동작은 동일하다(C# 로직 무수정, 명령서 5항).
+            var cancelButton = FindOrCreateCloseButton(contentPanel, ClosePopupButtonName, 60f);
 
             var (playerListPanel, playerListContainer, playerListEmptyText) = FindOrCreateScrollList(contentPanel,
                 PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f),
@@ -154,10 +172,12 @@ namespace KBOManager.EditorTools
                 "사용 가능한 강화 재료가 없습니다.");
             EnsureLayoutElement(itemListPanel, preferredHeight: 120f, flexibleHeight: 1f, minHeight: 120f);
 
-            // [TASK-KBO-135] ActionContainer는 이제 레이아웃 그룹 밖에서 절대 배치되지만, sibling
-            // 순서(=그리기 순서)상 스크롤 목록보다 나중이어야 혹시 모를 잔여 겹침에서도 버튼이 항상
-            // 위에 그려진다 - 항상 마지막 sibling으로 강제한다.
+            // [TASK-KBO-135/136] ActionContainer와 새 'X' 닫기 버튼 모두 레이아웃 그룹 밖에서 절대
+            // 배치되지만, sibling 순서(=그리기 순서)상 다른 콘텐츠보다 나중이어야 혹시 모를 잔여
+            // 겹침에서도 항상 클릭 가능한 상태로 최상단에 그려진다 - 둘 다 마지막 sibling으로
+            // 강제한다('X' 버튼을 더 나중에 호출해 최종적으로 가장 위에 오도록 한다).
             actionContainer.SetAsLastSibling();
+            cancelButton.transform.SetAsLastSibling();
 
             var playerCardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
             var itemEntryPrefab = FindOrCreateItemEntryTemplate(canvas.transform);
@@ -307,10 +327,11 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// [TASK-KBO-123] 확인/취소 버튼을 담을 하단 컨테이너에 `HorizontalLayoutGroup`(spacing 20,
+        /// [TASK-KBO-123] 확인 버튼을 담을 하단 컨테이너에 `HorizontalLayoutGroup`(spacing 20,
         /// `MiddleCenter`)을 부착한다. 과거 버전에서 팝업(`MaterialSelectPopup`)의 직속 자식으로 고정
-        /// 픽셀 좌표에 만들어져 있던 `ConfirmButton`/`CancelButton`은 이 컨테이너 하위로 이동시켜
-        /// 중복 생성을 막는다(명령서 6항).
+        /// 픽셀 좌표에 만들어져 있던 `ConfirmButton`은 이 컨테이너 하위로 이동시켜 중복 생성을
+        /// 막는다(명령서 6항). [TASK-KBO-136] `CancelButton`("닫기")은 완전히 폐기 대상이라 더 이상
+        /// 이 컨테이너로 이동시키지 않고 발견 즉시 파괴한다(아래).
         ///
         /// [TASK-KBO-135] `ContentPanel`의 `VerticalLayoutGroup`(childControlHeight=true)은 사용
         /// 가능한 공간이 모든 자식의 `preferredHeight` 합보다 부족해지면 각 자식을 `minHeight`~
@@ -367,9 +388,20 @@ namespace KBOManager.EditorTools
             layoutElement.ignoreLayout = true;
 
             MoveLegacyButtonIfNeeded(popupTransform, containerTransform, ConfirmButtonName);
-            MoveLegacyButtonIfNeeded(popupTransform, containerTransform, CancelButtonName);
+            // [TASK-KBO-136] CancelButton은 더 이상 이 컨테이너로 마이그레이션하지 않는다(완전 폐기
+            // 대상) - popupTransform 직속으로 남아있는 아주 오래된(TASK-123 이전) 잔재까지 함께
+            // 정리한다.
+            DestroyLegacyChild(popupTransform, CancelButtonName);
 
             return containerTransform;
+        }
+
+        /// <summary>이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다. GDD/명령서에서
+        /// 더 이상 쓰지 않기로 한 구 UI 요소를 정리할 때만 쓴다(명령서 6항 - 안전한 재조립).</summary>
+        private static void DestroyLegacyChild(Transform parent, string name)
+        {
+            var legacy = parent.Find(name);
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
         }
 
         private static void MoveLegacyButtonIfNeeded(Transform popupTransform, Transform containerTransform, string buttonName)
@@ -379,6 +411,82 @@ namespace KBOManager.EditorTools
             {
                 legacyButton.SetParent(containerTransform, false);
             }
+        }
+
+        /// <summary>
+        /// [TASK-KBO-136] `ContentPanel` 우측 상단 모서리에 고정 픽셀 크기(`size`x`size`)의 단순 'X'
+        /// 버튼을 절대 배치한다. `ActionContainer`처럼 `VerticalLayoutGroup`의 min↔preferred 보간
+        /// 계산에서 완전히 제외(`LayoutElement.ignoreLayout = true`)하므로, 레이아웃 계산 오류로
+        /// "사라지는" 일 자체가 구조적으로 불가능하다(명령서 2항 "절대 실패하지 않는" 요건). 앵커가
+        /// (1,1)-(1,1) 한 점이라 해상도/종횡비가 바뀌어도 항상 우측 상단 모서리에서 같은 여백을
+        /// 유지한다.
+        /// </summary>
+        private static Button FindOrCreateCloseButton(Transform parent, string name, float size)
+        {
+            var existingChild = parent.Find(name);
+            Button button;
+            GameObject buttonObject;
+            if (existingChild != null && existingChild.TryGetComponent<Button>(out var existingButton))
+            {
+                button = existingButton;
+                buttonObject = existingChild.gameObject;
+            }
+            else
+            {
+                buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+                Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+                buttonObject.transform.SetParent(parent, false);
+
+                var image = buttonObject.GetComponent<Image>();
+                image.color = new Color(0.9f, 0.9f, 0.9f);
+
+                button = buttonObject.GetComponent<Button>();
+                button.targetGraphic = image;
+            }
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.sizeDelta = new Vector2(size, size);
+            rect.anchoredPosition = new Vector2(-12f, -12f);
+
+            if (!buttonObject.TryGetComponent<LayoutElement>(out var layoutElement))
+            {
+                layoutElement = buttonObject.AddComponent<LayoutElement>();
+            }
+            layoutElement.ignoreLayout = true;
+
+            var labelTransform = buttonObject.transform.Find("Label");
+            Text text;
+            if (labelTransform != null && labelTransform.TryGetComponent<Text>(out var existingText))
+            {
+                text = existingText;
+            }
+            else
+            {
+                var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+                Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+                labelObject.transform.SetParent(buttonObject.transform, false);
+
+                var labelRect = (RectTransform)labelObject.transform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = Vector2.zero;
+                labelRect.offsetMax = Vector2.zero;
+
+                text = labelObject.GetComponent<Text>();
+                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.raycastTarget = false;
+            }
+
+            text.text = "X";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 28;
+            ApplyBestFit(text);
+
+            return button;
         }
 
         /// <summary>

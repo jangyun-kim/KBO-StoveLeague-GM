@@ -15,6 +15,16 @@ namespace KBOManager.Controllers
     /// [TASK-KBO-129] 구 roll1Button/roll10Button(단일 재화 혼합 확률)을 폐기했다 - GDD가 10연뽑
     /// 개념을 명시한 카테고리가 없어(픽업의 10/40/80회는 "누적 횟수" 개념이지 "1회 클릭 10연출"이
     /// 아니다) 전부 1회 클릭 = 1장 확정 구조로 통일했다.
+    ///
+    /// [TASK-KBO-136, 사실 정정 + 재정의] 위 TASK-129의 판단(10연뽑 개념 자체를 없앰)과 이번 명령서
+    /// AC-03("모든 선수 스카우트 섹션에 10회 영입 버튼이 존재")은 정면으로 충돌한다. `ScoutManager`에는
+    /// `RollTarget(int)` 같은 배치(batch) 메서드가 없고(전수 확인), GDD에도 "1회 클릭 10연출" 명세가
+    /// 없다는 TASK-129의 사실관계 자체는 지금도 유효하다 - 다만 이번 명령서는 사용자가 명시적으로
+    /// "10회 영입 필수"를 요청한 신규 지시이므로, `ScoutManager`의 확률/재화 로직은 단 한 줄도 건드리지
+    /// 않고 이 컨트롤러(UI 레이어)에서 기존 단일 뽑기 메서드(`RollLiveNormal()` 등)를 10번 반복
+    /// 호출해 결과를 모아 기존 `ShowResults(List&lt;Player&gt;)`(이미 다중 카드 렌더링을 지원)에 그대로
+    /// 넘기는 방식으로 구현했다(`ExecuteMultiRoll()`) - 카테고리별 확률표/천장 로직은 무엇도 새로
+    /// 추가하지 않았다.
     /// </summary>
     public class ScoutUIController : MonoBehaviour
     {
@@ -23,15 +33,21 @@ namespace KBOManager.Controllers
 
         [Header("일반 영입 (라이브 일반 영입권 / 라이브 에픽 영입권)")]
         [SerializeField] private Button liveNormalButton;
+        [SerializeField] private Button liveNormalButton10;
         [SerializeField] private Button liveEpicButton;
+        [SerializeField] private Button liveEpicButton10;
 
         [Header("프리미엄 영입 (싸인볼 / 트로피)")]
         [SerializeField] private Button premiumSignatureButton;
+        [SerializeField] private Button premiumSignatureButton10;
         [SerializeField] private Button premiumTitleHolderButton;
+        [SerializeField] private Button premiumTitleHolderButton10;
 
         [Header("픽업 영입 (픽업 영입권)")]
         [SerializeField] private Button pickupSignatureButton;
+        [SerializeField] private Button pickupSignatureButton10;
         [SerializeField] private Button pickupTitleHolderButton;
+        [SerializeField] private Button pickupTitleHolderButton10;
 
         [Header("Result Popup")]
         [SerializeField] private GameObject resultPopupRoot;
@@ -68,6 +84,17 @@ namespace KBOManager.Controllers
             if (premiumTitleHolderButton != null) premiumTitleHolderButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPremiumTitleHolder()));
             if (pickupSignatureButton != null) pickupSignatureButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPickupSignature()));
             if (pickupTitleHolderButton != null) pickupTitleHolderButton.onClick.AddListener(() => ExecuteRoll(() => scoutManager.RollPickupTitleHolder()));
+
+            // [TASK-KBO-136] 명령서 4항의 명시적 경고(TASK-131 CS8978 재발 방지)대로, `scoutManager?.RollX`
+            // 형태(메서드 그룹에 직접 null 조건부 연산자)를 쓰지 않고 항상 `() => scoutManager.RollX()`
+            // 람다로 감싼다 - ExecuteMultiRoll()이 호출 전에 scoutManager null 여부를 먼저 확인한다.
+            if (liveNormalButton10 != null) liveNormalButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollLiveNormal(), 10));
+            if (liveEpicButton10 != null) liveEpicButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollLiveEpic(), 10));
+            if (premiumSignatureButton10 != null) premiumSignatureButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollPremiumSignature(), 10));
+            if (premiumTitleHolderButton10 != null) premiumTitleHolderButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollPremiumTitleHolder(), 10));
+            if (pickupSignatureButton10 != null) pickupSignatureButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollPickupSignature(), 10));
+            if (pickupTitleHolderButton10 != null) pickupTitleHolderButton10.onClick.AddListener(() => ExecuteMultiRoll(() => scoutManager.RollPickupTitleHolder(), 10));
+
             if (closeResultPopupButton != null) closeResultPopupButton.onClick.AddListener(CloseResultPopup);
         }
 
@@ -99,6 +126,29 @@ namespace KBOManager.Controllers
 
             var player = rollMethod();
             ShowResults(player != null ? new List<Player> { player } : new List<Player>());
+        }
+
+        /// <summary>[TASK-KBO-136] "N회 영입" 버튼 공통 실행 헬퍼. `ScoutManager`에는 배치(batch) 뽑기
+        /// 메서드가 없으므로, 기존 단일 뽑기 메서드(`rollMethod`)를 `count`번 반복 호출해 결과를 모아
+        /// `ShowResults()`에 한 번에 넘긴다 - 확률/재화 소모 로직은 각 `rollMethod()` 호출이 그대로
+        /// 담당하므로 여기서 새로 추가하는 계산은 없다. 중간에 재화가 바닥나 `rollMethod()`가 null을
+        /// 반환하면 그 회차만 결과에서 제외한다(예: 재화가 3개뿐이면 10회를 눌러도 카드 3장만 나온다).</summary>
+        private void ExecuteMultiRoll(Func<Player> rollMethod, int count)
+        {
+            if (scoutManager == null || rollMethod == null)
+            {
+                Debug.LogWarning("[ScoutUIController] ScoutManager가 연결되지 않았습니다.");
+                return;
+            }
+
+            var results = new List<Player>();
+            for (int i = 0; i < count; i++)
+            {
+                var player = rollMethod();
+                if (player != null) results.Add(player);
+            }
+
+            ShowResults(results);
         }
 
         private void ShowResults(List<Player> players)

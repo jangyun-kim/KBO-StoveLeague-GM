@@ -40,6 +40,11 @@ namespace KBOManager.EditorTools
     /// 실제 확인된 문제는 `closeButton`/`closeDetailButton`이 같은 화면 좌표(0.85,0.92~1,1)를 공유해
     /// `CloseButton`(더 나중에 생성돼 sibling index가 높음)이 `CloseDetailButton`을 항상 가리고 클릭을
     /// 가로채던 것과, `OnDisable()`에 `CloseDetail()` 호출이 없어 상세 패널 상태가 누수되던 것 2가지였다.
+    ///
+    /// [TASK-KBO-136] `CloseDetailButton`을 크고 투박한 "상세 닫기" 텍스트 버튼에서 `DetailPanel`
+    /// 우측 상단의 컴팩트한 64x64 'X' 버튼(`FindOrCreateCloseButton()`)으로 교체했다. `InventoryUIController.
+    /// ShowDetail()`이 상세 패널을 열 때 메인 `closeButton`을 이미 숨기므로(TASK-135), 두 버튼이 같은
+    /// 모서리를 공유해도 겹쳐 보이지 않는다.
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -109,9 +114,11 @@ namespace KBOManager.EditorTools
             // CloseDetailButton을 CloseButton과 겹치지 않는 바로 왼쪽 칸으로 옮겨 해소한다.
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
                 new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
-            // [TASK-KBO-125] 두 버튼이 나란히 배치돼도 라벨만으로 구분되도록 "상세 닫기"로 변경한다.
-            var closeDetailButton = FindOrCreateButton(detailPanelRoot.transform, CloseDetailButtonName, "상세 닫기",
-                new Vector2(0.65f, 0.92f), new Vector2(0.83f, 1f));
+            // [TASK-KBO-136] "상세 닫기" 텍스트 버튼(TASK-125)을 폐기하고, DetailPanel 우측 상단
+            // 모서리에 컴팩트한 고정 크기 'X' 버튼으로 대체한다. InventoryUIController.ShowDetail()이
+            // 상세 패널을 열 때 위 closeButton을 이미 숨기므로(TASK-135), 같은 우측 상단 모서리를
+            // 공유해도 두 버튼이 동시에 겹쳐 보일 일이 없다.
+            var closeDetailButton = FindOrCreateCloseButton(detailPanelRoot.transform, CloseDetailButtonName, 64f);
 
             var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
             if (materialSelectUIController == null)
@@ -488,6 +495,83 @@ namespace KBOManager.EditorTools
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
+
+            return button;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-136] 우측 상단 모서리에 고정 픽셀 크기(`size`x`size`)의 단순 'X' 버튼을 절대
+        /// 배치한다(`SetupUpgradeUI.FindOrCreateCloseButton()`과 동일한 패턴 - 각 Setup*.cs 파일이
+        /// 자체 헬퍼를 갖는 이 코드베이스 관례를 따라 이 파일에도 독립적으로 둔다). `DetailPanel`에는
+        /// 현재 레이아웃 그룹이 없어 `LayoutElement.ignoreLayout`이 당장은 아무 효과가 없지만, 추후
+        /// 레이아웃 그룹이 추가되더라도 이 버튼만은 항상 절대 위치를 유지하도록 미리 방어해 둔다.
+        /// </summary>
+        private static Button FindOrCreateCloseButton(Transform parent, string name, float size)
+        {
+            var existingChild = parent.Find(name);
+            Button button;
+            GameObject buttonObject;
+            if (existingChild != null && existingChild.TryGetComponent<Button>(out var existingButton))
+            {
+                button = existingButton;
+                buttonObject = existingChild.gameObject;
+            }
+            else
+            {
+                buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+                Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+                buttonObject.transform.SetParent(parent, false);
+
+                var image = buttonObject.GetComponent<Image>();
+                image.color = new Color(0.9f, 0.9f, 0.9f);
+
+                button = buttonObject.GetComponent<Button>();
+                button.targetGraphic = image;
+            }
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.sizeDelta = new Vector2(size, size);
+            rect.anchoredPosition = new Vector2(-12f, -12f);
+
+            if (!buttonObject.TryGetComponent<LayoutElement>(out var layoutElement))
+            {
+                layoutElement = buttonObject.AddComponent<LayoutElement>();
+            }
+            layoutElement.ignoreLayout = true;
+
+            var labelTransform = buttonObject.transform.Find("Label");
+            Text text;
+            if (labelTransform != null && labelTransform.TryGetComponent<Text>(out var existingText))
+            {
+                text = existingText;
+            }
+            else
+            {
+                var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+                Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+                labelObject.transform.SetParent(buttonObject.transform, false);
+
+                var labelRect = (RectTransform)labelObject.transform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = Vector2.zero;
+                labelRect.offsetMax = Vector2.zero;
+
+                text = labelObject.GetComponent<Text>();
+                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.raycastTarget = false;
+            }
+
+            text.text = "X";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 28;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 18;
+            text.resizeTextMaxSize = 40;
 
             return button;
         }
