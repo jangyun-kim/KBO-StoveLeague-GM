@@ -176,7 +176,13 @@ namespace KBOManager.Controllers
                 SpawnCard(player);
             }
 
-            if (resultPopupRoot != null) resultPopupRoot.SetActive(true);
+            if (resultPopupRoot != null)
+            {
+                resultPopupRoot.SetActive(true);
+                // [TASK-KBO-139] DetailPanel(InventoryUIController)과 동일한 선제적 방어 - 결과 팝업도
+                // ScoutPanel의 다른 형제(카테고리 목록 등)에 가려질 여지를 원천 차단한다(명령서 6항).
+                resultPopupRoot.transform.SetAsLastSibling();
+            }
 
             AnnounceTopPullIfAny(players);
         }

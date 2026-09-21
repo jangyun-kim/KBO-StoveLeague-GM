@@ -16,6 +16,21 @@ namespace KBOManager.EditorTools
     /// 로비 진입 버튼 생성/UIManager 화면 등록은 SetupScoutHubUI.AutoConnectScoutHub()로 이관했다
     /// (GDD가 "스카우트" 하나의 화면 안에 선수 영입/치어리더 영입 두 섹션을 두므로, 별도의
     /// ScreenType.CheerleaderShop 화면과 "치어리더 뽑기" 전용 로비 버튼은 더 이상 만들지 않는다).
+    ///
+    /// [TASK-KBO-139, 사실 정정] 명령서는 "치어리더 영입 탭"의 레이아웃 붕괴 수정 대상 파일로
+    /// `SetupCheerleaderUI.cs`를 지목했으나, 전수 확인 결과 그 파일은 완전히 다른 화면("선수 관리 >
+    /// 치어리더 인벤토리/보관함", `CheerleaderInventoryUIController`)을 조립한다 - 스카우트 허브의
+    /// "치어리더 영입" 섹션(`CheerleaderShopPanel`)을 실제로 조립·바인딩하는 파일은 이 `SetupShopUI.cs`
+    /// (`BindShopController()`)다. 레이아웃 수정은 실제 소유 파일인 이곳에 구현했다. **근본 원인**:
+    /// `FindOrCreateShopPanel()`의 `VerticalLayoutGroup`이 `childControlHeight = false`로 설정돼 있어
+    /// 각 자식(`LayoutElement.preferredHeight`)이 실제 크기 조정에는 전혀 반영되지 않고 "다음 자식이
+    /// 배치될 Y 위치" 계산에만 쓰였다 - 정작 자식 자신의 `RectTransform` 크기는 유니티가 새
+    /// `RectTransform`에 부여하는 기본값(anchorMin=anchorMax=(0,0), sizeDelta=(100,100))에 그대로
+    /// 머물러, 의도한 높이(32~160)보다 훨씬 큰 100px 박스가 다음 자식의 배치 영역을 덮어써 텍스트가
+    /// 심하게 겹쳐 보였다(TASK-137이 `SetupScoutUI.cs`에서 고친 것과 증상은 같지만 원인 메커니즘은
+    /// 다르다 - 거긴 `GridLayoutGroup`이 `LayoutElement`를 아예 무시, 여긴 `childControlHeight=false`가
+    /// 크기 반영만 막음). `childControlHeight = true`로 바꾸고 각 `LayoutElement`에 `minHeight`를
+    /// `preferredHeight`와 동일하게 추가해(TASK-135 압사 방지 패턴 재사용) 해소했다.
     /// </summary>
     public static class SetupShopUI
     {
@@ -104,7 +119,11 @@ namespace KBOManager.EditorTools
             layout.spacing = 12f;
             layout.childControlWidth = true;
             layout.childForceExpandWidth = true;
-            layout.childControlHeight = false;
+            // [TASK-KBO-139] false였을 때 LayoutElement.preferredHeight가 자식 크기 조정에 전혀
+            // 반영되지 않아(스택 위치 계산에만 쓰임), 유니티 기본 크기(100x100)로 남은 자식들이 서로
+            // 겹쳐 보였다(자세한 원인은 클래스 요약 참고) - true로 바꿔 LayoutElement 값이 실제 크기에
+            // 반영되도록 한다.
+            layout.childControlHeight = true;
             layout.childForceExpandHeight = false;
 
             return panelObject.AddComponent<CheerleaderShopUIController>();
@@ -178,7 +197,12 @@ namespace KBOManager.EditorTools
             Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
             textObject.transform.SetParent(parent, false);
 
-            textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+            // [TASK-KBO-139] minHeight를 preferredHeight와 동일하게 맞춰(TASK-135 패턴) 부모
+            // VerticalLayoutGroup이 공간 부족 시 min<->preferred 사이로 보간(Lerp)하며 짓누르는 것을
+            // 방지한다.
+            var textLayoutElement = textObject.GetComponent<LayoutElement>();
+            textLayoutElement.preferredHeight = preferredHeight;
+            textLayoutElement.minHeight = preferredHeight;
 
             var text = textObject.GetComponent<Text>();
             text.alignment = TextAnchor.UpperLeft;
@@ -207,7 +231,11 @@ namespace KBOManager.EditorTools
             Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
             buttonObject.transform.SetParent(parent, false);
 
-            buttonObject.GetComponent<LayoutElement>().preferredHeight = 56f;
+            // [TASK-KBO-139] minHeight를 preferredHeight와 동일하게 맞춘다(TASK-135 패턴, 위 텍스트
+            // 헬퍼와 동일한 이유).
+            var buttonLayoutElement = buttonObject.GetComponent<LayoutElement>();
+            buttonLayoutElement.preferredHeight = 56f;
+            buttonLayoutElement.minHeight = 56f;
 
             var image = buttonObject.GetComponent<Image>();
             image.color = new Color(0.9f, 0.9f, 0.9f);

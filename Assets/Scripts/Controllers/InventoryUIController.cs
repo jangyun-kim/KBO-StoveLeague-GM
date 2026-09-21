@@ -25,6 +25,12 @@ namespace KBOManager.Controllers
     /// 않았던 점, (2) `SkillRerollManager.Instance == null`이면 `OnClickSkillChange()`가 아무 피드백
     /// 없이 조용히 반환했던 점 2가지였다 - 버튼을 항상 활성 상태로 두고, 두 케이스 각각에 `Debug.Log`
     /// + `skillRerollResultText` 안내 문구를 추가했다(명령서 4항, 재추첨 로직 자체는 무수정).
+    ///
+    /// [TASK-KBO-139, 사실 정정] 명령서는 `detailPanel.transform.SetAsLastSibling()`을 지시했으나,
+    /// 이 클래스의 실제 필드명은 `detailPanel`이 아니라 `detailPanelRoot`다 - `ShowDetail(Player)`에
+    /// `detailPanelRoot.transform.SetAsLastSibling()`으로 그대로 구현했다(명령서 6항 검토 결과,
+    /// `MaterialSelectUIController`는 TASK-125부터 이미 `OpenForEnhance()`/`OpenForAwaken()` 양쪽에
+    /// 동일 패턴이 적용돼 있어 추가 조치가 필요 없었다).
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
@@ -212,7 +218,15 @@ namespace KBOManager.Controllers
             selectedPlayer = player;
             if (player?.Template == null) return;
 
-            if (detailPanelRoot != null) detailPanelRoot.SetActive(true);
+            if (detailPanelRoot != null)
+            {
+                detailPanelRoot.SetActive(true);
+                // [TASK-KBO-139] DetailPanel이 카드 리스트(CardListPanel)보다 sibling 순서상 앞서게
+                // 되면(예: 재조립 과정에서 형제 순서가 바뀌는 경우) 뒤에 그려지는 카드 리스트에 가려
+                // 상세 창과 'X' 버튼이 파묻혀 보이지 않는다 - MaterialSelectUIController(TASK-125)와
+                // 동일한 패턴으로, 열 때마다 무조건 부모 계층 최하단(=렌더링 최상위)으로 끌어올린다.
+                detailPanelRoot.transform.SetAsLastSibling();
+            }
             // [TASK-KBO-135] 상세 패널이 열려 있는 동안은 메인 인벤토리 닫기 버튼(로비로 돌아가기)을
             // 숨겨, 우측 상단에 두 닫기 버튼이 겹쳐 보이는 UX 결함을 막는다 - CloseDetail()에서 되돌린다.
             if (closeButton != null) closeButton.gameObject.SetActive(false);
