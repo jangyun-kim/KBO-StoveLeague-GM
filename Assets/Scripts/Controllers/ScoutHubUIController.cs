@@ -21,6 +21,13 @@ namespace KBOManager.Controllers
     /// 참조가 씬 재조립 과정에서 서로 뒤바뀌거나 동일 오브젝트로 잘못 연결되는 것이라 판단해, `Awake()`
     /// 에 그런 오설정을 즉시 드러내는 방어 로그를 추가했다(아래) - 명령서 6항 "보완" 취지를 실제 코드
     /// 결함이 없는 상태에서도 진단 가능하게 만드는 방향으로 반영했다.
+    ///
+    /// [TASK-KBO-142, 명령서 4항] "정말 제대로 된 놈을 끄고 켜는지" 실시간으로 증명하기 위해
+    /// `ShowPlayerSection()`/`ShowCheerleaderSection()` 각각에 `LogSectionToggle()`을 추가했다 -
+    /// 매 탭 전환마다 활성화/비활성화되는 두 GameObject의 이름과 `GetInstanceID()`를 콘솔에 남기고,
+    /// 두 대상이 우연히 같은 InstanceID(=같은 오브젝트)라면 즉시 에러 로그로 강조한다. 이 로직 자체는
+    /// TASK-138부터 무결함이었으므로(위 문단) 여기서도 SetActive 호출 순서/조건은 손대지 않았다 -
+    /// 순수하게 진단 정보만 추가했다(명령서 5항).
     /// </summary>
     public class ScoutHubUIController : MonoBehaviour
     {
@@ -59,14 +66,42 @@ namespace KBOManager.Controllers
 
         public void ShowPlayerSection()
         {
+            // [TASK-KBO-142, 명령서 4/6항] "정말 제대로 된 놈을 끄고 켜는지" 매 전환마다 InstanceID와
+            // 함께 콘솔에 남긴다 - playerSection/cheerleaderSection이 씬 오바인딩으로 엉뚱한 오브젝트를
+            // 가리키고 있다면 이 로그에서 즉시 드러난다(사용자가 직접 대조 가능).
+            LogSectionToggle(nameof(ShowPlayerSection), activate: playerSection, deactivate: cheerleaderSection);
+
             if (playerSection != null) playerSection.SetActive(true);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
         }
 
         public void ShowCheerleaderSection()
         {
+            LogSectionToggle(nameof(ShowCheerleaderSection), activate: cheerleaderSection, deactivate: playerSection);
+
             if (playerSection != null) playerSection.SetActive(false);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(true);
+        }
+
+        /// <summary>[TASK-KBO-142, 명령서 4/6항] 활성화/비활성화되는 두 GameObject의 이름과
+        /// GetInstanceID()를 콘솔에 남긴다. `activate`/`deactivate`가 참조 동일(같은 InstanceID)하면
+        /// "같은 오브젝트를 끄고 켜려 한다"는 오바인딩 신호이므로 강조 경고를 추가로 남긴다.</summary>
+        private void LogSectionToggle(string methodName, GameObject activate, GameObject deactivate)
+        {
+            string activateInfo = activate != null
+                ? $"{activate.name}(InstanceID {activate.GetInstanceID()})"
+                : "null";
+            string deactivateInfo = deactivate != null
+                ? $"{deactivate.name}(InstanceID {deactivate.GetInstanceID()})"
+                : "null";
+
+            Debug.Log($"[ScoutHubUIController] {methodName}: 활성화 -> {activateInfo}, 비활성화 -> {deactivateInfo}");
+
+            if (activate != null && activate == deactivate)
+            {
+                Debug.LogError($"[ScoutHubUIController] {methodName}: 활성화 대상과 비활성화 대상이 " +
+                    "동일한 오브젝트입니다 - playerSection/cheerleaderSection 오바인딩을 의심하십시오.");
+            }
         }
     }
 }

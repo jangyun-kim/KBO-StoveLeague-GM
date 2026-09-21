@@ -62,6 +62,17 @@ namespace KBOManager.EditorTools
     /// 못했다. `FindOrCreateCardListPanel()`이 자신을 `SetAsFirstSibling()`으로, `CloseButton`/
     /// `DetailPanel`을 `SetAsLastSibling()`으로 양방향에서 강제해 씬의 과거 상태와 무관하게 항상 올바른
     /// 순서가 되도록 고쳤다.
+    ///
+    /// [TASK-KBO-142] TASK-141이 커밋됐다는 사실이 "라이브 씬에 반영됐다"는 뜻은 아니다 - 이 파일은
+    /// 에디터 메뉴(Auto-Connect Inventory UI)이고, 사용자의 Unity 에디터 프로세스가 이 작업 세션
+    /// 내내(수 시간) 계속 열려 있어(작업 로그로 확인) 그 사이 커밋된 어떤 Setup*.cs 변경도 사용자가
+    /// 직접 메뉴를 재실행하기 전까지는 씬에 전혀 반영되지 않는다 - "커밋했다"와 "씬이 고쳐졌다"는
+    /// 서로 다른 문장이다. 이번 작업은 TASK-141의 SetAsFirstSibling/SetAsLastSibling 순서 강제(여전히
+    /// 유효, 그대로 둠)에 더해, InventoryPanel의 모든 직속 자식을 매 실행마다 무조건 DestroyImmediate로
+    /// 전부 지운 뒤 올바른 순서(스크롤 뷰 -> 상세 패널/버튼)로 처음부터 다시 만들도록 강화했다(명령서
+    /// 0/4항) - 씬에 어떤 과거 세대의 잔재가 있었든 이 재조립 시점부터는 완전히 무관해진다.
+    /// LogInventorySiblingDump()로 InventoryPanel 직속 자식 전체의 이름+순서를 콘솔에 덤프해 사용자가
+    /// 메뉴 실행 즉시 눈으로 확인할 수 있게 했다(명령서 6항).
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -100,6 +111,18 @@ namespace KBOManager.EditorTools
 
             var controller = FindOrCreateInventoryPanel(canvas.transform);
 
+            // [TASK-KBO-142, 명령서 0/4항] "SetAsFirstSibling/LastSibling로 순서만 고친다"는 TASK-141
+            // 접근을 신뢰하지 않고, InventoryPanel의 모든 직속 자식을 예외 없이 먼저 파괴한 뒤 올바른
+            // 순서로 처음부터 다시 만든다(TASK-140의 SetupShopUI.cs와 동일한 "완전 초기화 후 재조립"
+            // 패턴) - 씬에 어떤 과거 세대의 잔재가 남아있었든 이 시점부터는 전혀 무관해진다. `_Templates`
+            // (PlayerCardTemplate 등 다른 화면과 공유하는 자산)는 InventoryPanel 하위가 아니므로
+            // 영향받지 않는다.
+            for (int i = controller.transform.childCount - 1; i >= 0; i--)
+            {
+                Object.DestroyImmediate(controller.transform.GetChild(i).gameObject);
+            }
+
+            // 카드 스크롤 뷰를 가장 먼저 만든다 - 항상 맨 아래(=렌더링 최하단)에 있어야 한다(명령서 4항).
             var cardContainer = FindOrCreateCardListPanel(controller.transform,
                 new Vector2(140f, 200f), new Vector2(10f, 10f));
             var cardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
@@ -201,9 +224,10 @@ namespace KBOManager.EditorTools
             var scene = controller.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
-            // [TASK-KBO-141, 명령서 6항] Z-Order가 실제로 의도대로 고정됐는지 sibling index를 직접
-            // 읽어 콘솔에 증명한다 - CardListPanel(카드 스크롤 뷰)의 인덱스가 closeButton/DetailPanel의
-            // 인덱스보다 반드시 작아야(=더 먼저 그려져야) 두 버튼이 카드 리스트 위에 보인다.
+            // [TASK-KBO-142, 명령서 6항] InventoryPanel 직속 자식 전체의 이름 + sibling index를 콘솔에
+            // 덤프해 순서를 증명한다(TASK-141의 3개 항목 요약 검증을 전수 덤프로 강화).
+            LogInventorySiblingDump(controller.transform);
+
             int cardListIndex = cardContainer.parent.parent.GetSiblingIndex(); // Content -> Viewport -> CardListPanel
             int closeButtonIndex = closeButton.transform.GetSiblingIndex();
             int detailPanelIndex = detailPanelRoot.transform.GetSiblingIndex();
@@ -222,6 +246,21 @@ namespace KBOManager.EditorTools
             }
 
             Debug.Log("[SetupInventoryUI] 인벤토리 UI 자동 배선 완료.");
+        }
+
+        /// <summary>[TASK-KBO-142, 명령서 6항] `root`(InventoryPanel) 직속 자식 전체를 sibling index
+        /// 순서 그대로 콘솔에 덤프한다. 정상이라면 index 0이 `CardListPanel`(카드 스크롤 뷰)이고,
+        /// `CloseButton`/`DetailPanel`은 그보다 큰 index(=더 나중에 그려짐)여야 한다.</summary>
+        private static void LogInventorySiblingDump(Transform root)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine($"[SetupInventoryUI] {root.name} 직속 자식 Sibling 순서 덤프 (총 {root.childCount}개):");
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                builder.AppendLine($"  [{i}] {child.name} (InstanceID {child.gameObject.GetInstanceID()})");
+            }
+            Debug.Log(builder.ToString());
         }
 
         private static InventoryUIController FindOrCreateInventoryPanel(Transform canvasTransform)
