@@ -50,6 +50,22 @@ namespace KBOManager.EditorTools
     /// (b) 재료 0개 시 노출할 안내 `EmptyText`를 신설하며, (c) 팝업 하위 모든 `Text`의 `color`를
     /// 마지막 단계에서 한 번 더 강제로 검정 처리해(기존 씬에 남아있을 수 있는 레거시 오브젝트 대비)
     /// 안전장치를 이중화한다.
+    ///
+    /// [TASK-KBO-134] 명령서는 텍스트가 "너무 작다"와 하단 [닫기] 버튼이 "가려져 소프트락"이라는 두
+    /// 증상을 전제했다. `MaterialSelectUIController.cs` 원문(72~78/331~341행)을 재확인한 결과
+    /// `cancelButton.onClick.AddListener(ClosePopup)` 등록과 `ClosePopup()`의 `popupRoot.SetActive(false)`
+    /// 는 TASK-123 이후 그대로 존재해 리스너 자체는 무결함이었다(무수정, 아래 재검증 주석 참고) -
+    /// 다만 `ContentPanel`의 5개 자식(`TitleText`/`SelectionCountText`/`ActionContainer`/
+    /// `PlayerListPanel`/`ItemListPanel`)이 고정 퍼센트 앵커로만 배치돼 있어 팝업 크기가 작아지거나
+    /// 콘텐츠가 늘어나는 경우 겹침 여지를 원천적으로 배제하지 못했다는 점은 사실이라, 명령서 4항이
+    /// 요구한 `VerticalLayoutGroup`(+`LayoutElement`)을 `ContentPanel`에 부착해 상단 타이틀 -&gt; 중앙
+    /// 스크롤 뷰(가변 높이) -&gt; 하단 `ActionContainer`(고정 높이, 항상 마지막 sibling으로 강제)가
+    /// 절대 겹치지 않도록 구조적으로 보증한다. 텍스트 시인성은 `ApplyBestFit()`(신설, `resizeTextForBestFit`
+    /// +`resizeTextMinSize`24/`resizeTextMaxSize`72)을 팝업 내 모든 생성 텍스트(타이틀/선택 카운트/
+    /// 빈 목록 안내/버튼 라벨/아이템 항목 라벨)에 일괄 적용하고, 마지막 강제 패스에도 합류시켜
+    /// 레거시 오브젝트까지 놓치지 않는다. `PlayerCardTemplate`(`SetupScoutUI.cs` 소유) 내부 텍스트는
+    /// 명령서 4항 예시(타이틀/안내 문구/버튼 라벨)에 포함되지 않고 관련 데이터 파일 목록 밖이라
+    /// 건드리지 않았다.
     /// </summary>
     public static class SetupUpgradeUI
     {
@@ -70,6 +86,10 @@ namespace KBOManager.EditorTools
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
         private const string ItemEntryTemplateName = "ItemEntryTemplate";
 
+        // [TASK-KBO-134] 명령서 4항이 지정한 bestFit 최소/최대 크기.
+        private const int BestFitMinSize = 24;
+        private const int BestFitMaxSize = 72;
+
         [MenuItem("KBO Manager/Setup/Auto-Connect Upgrade UI")]
         public static void AutoConnectUpgradeUI()
         {
@@ -87,10 +107,17 @@ namespace KBOManager.EditorTools
             // 이동(재생성 아님, 명령서 6항)한다.
             var contentPanel = FindOrCreateContentPanel(controller.transform);
 
+            // [TASK-KBO-134] 아래 개별 anchorMin/anchorMax 인자는 ContentPanel에 부착된
+            // VerticalLayoutGroup(childControlHeight=true)이 매 레이아웃 패스마다 덮어쓰므로 실질적으로는
+            // LayoutElement(바로 아래에서 부착)가 우선한다 - 최초 생성 시의 기본 배치값으로만 남겨둔다.
             var titleText = FindOrCreateText(contentPanel, TitleTextName, "",
                 new Vector2(0f, 0.85f), new Vector2(1f, 1f));
+            EnsureLayoutElement(titleText.gameObject, preferredHeight: 60f, flexibleHeight: 0f);
+
             var selectionCountText = FindOrCreateText(contentPanel, SelectionCountTextName, "",
                 new Vector2(0f, 0.1f), new Vector2(1f, 0.15f));
+            EnsureLayoutElement(selectionCountText.gameObject, preferredHeight: 50f, flexibleHeight: 0f);
+
             // [TASK-KBO-123] 확인/취소 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다. 과거
             // 버전에서 팝업 직속 자식으로 고정 픽셀 앵커에 만들어져 있던 두 버튼은 이 컨테이너 하위로
             // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지).
@@ -99,13 +126,22 @@ namespace KBOManager.EditorTools
                 Vector2.zero, Vector2.zero);
             var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
                 Vector2.zero, Vector2.zero);
+            EnsureLayoutElement(actionContainer.gameObject, preferredHeight: 80f, flexibleHeight: 0f);
 
             var (playerListPanel, playerListContainer, playerListEmptyText) = FindOrCreateScrollList(contentPanel,
                 PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f),
                 "강화 재료로 사용할 동일 선수가 없습니다.");
+            EnsureLayoutElement(playerListPanel, preferredHeight: 0f, flexibleHeight: 1f, minHeight: 120f);
+
             var (itemListPanel, itemListContainer, itemListEmptyText) = FindOrCreateScrollList(contentPanel,
                 ItemListPanelName, ItemListContainerName, new Vector2(160f, 60f), new Vector2(10f, 10f),
                 "사용 가능한 강화 재료가 없습니다.");
+            EnsureLayoutElement(itemListPanel, preferredHeight: 0f, flexibleHeight: 1f, minHeight: 120f);
+
+            // [TASK-KBO-134] ActionContainer(닫기 버튼 포함)가 sibling 순서상 두 스크롤 목록보다
+            // 먼저 생성돼 있으면 VerticalLayoutGroup이 버튼을 목록 "위"에 쌓아버린다 - 항상 맨 아래에
+            // 고정되도록 마지막 sibling으로 강제한다(명령서 3항이 지목한 "가려짐" 가능성 원천 차단).
+            actionContainer.SetAsLastSibling();
 
             var playerCardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
             var itemEntryPrefab = FindOrCreateItemEntryTemplate(canvas.transform);
@@ -121,12 +157,13 @@ namespace KBOManager.EditorTools
                 playerListPanel, playerListContainer, playerCardPrefab, playerListEmptyText,
                 itemListPanel, itemListContainer, itemEntryPrefab, itemListEmptyText);
 
-            // [TASK-KBO-133] 팝업 하위(ContentPanel/리스트/버튼)의 모든 Text 색상을 마지막에 한 번 더
-            // 강제로 검정 처리한다. 개별 생성 지점에서 이미 Color.black을 지정하지만, 과거 버전에서
-            // 조립된 뒤 씬에 남아있는 레거시 오브젝트까지 놓치지 않기 위한 이중 안전장치다.
+            // [TASK-KBO-133/134] 팝업 하위(ContentPanel/리스트/버튼)의 모든 Text 색상과 bestFit
+            // 크기를 마지막에 한 번 더 강제로 재적용한다. 개별 생성 지점에서 이미 지정하지만, 과거
+            // 버전에서 조립된 뒤 씬에 남아있는 레거시 오브젝트까지 놓치지 않기 위한 이중 안전장치다.
             foreach (var text in controller.GetComponentsInChildren<Text>(true))
             {
                 text.color = Color.black;
+                ApplyBestFit(text);
             }
 
             EditorUtility.SetDirty(controller);
@@ -215,7 +252,38 @@ namespace KBOManager.EditorTools
                 }
             }
 
+            // [TASK-KBO-134] 타이틀 -> 스크롤 목록(가변 높이) -> 하단 버튼이 항상 세로로 순서대로
+            // 쌓이고 서로 겹치지 않도록 구조적으로 보증한다. 각 자식의 높이 배분은 LayoutElement
+            // (preferredHeight/flexibleHeight, 호출부에서 개별 부착)가 결정한다.
+            if (!contentTransform.TryGetComponent<VerticalLayoutGroup>(out var verticalLayout))
+            {
+                verticalLayout = contentTransform.gameObject.AddComponent<VerticalLayoutGroup>();
+            }
+            verticalLayout.padding = new RectOffset(24, 24, 24, 24);
+            verticalLayout.spacing = 12f;
+            verticalLayout.childAlignment = TextAnchor.UpperCenter;
+            verticalLayout.childControlWidth = true;
+            verticalLayout.childControlHeight = true;
+            verticalLayout.childForceExpandWidth = true;
+            verticalLayout.childForceExpandHeight = false;
+            verticalLayout.childScaleWidth = false;
+            verticalLayout.childScaleHeight = false;
+
             return contentTransform;
+        }
+
+        /// <summary>[TASK-KBO-134] `VerticalLayoutGroup`(childControlHeight=true) 하위에서 자식의 세로
+        /// 크기 배분을 결정한다. `flexibleHeight`&gt;0인 자식(스크롤 목록)이 나머지 고정 높이 자식들을
+        /// 뺀 잔여 공간을 전부 차지한다.</summary>
+        private static void EnsureLayoutElement(GameObject go, float preferredHeight, float flexibleHeight, float minHeight = 0f)
+        {
+            if (!go.TryGetComponent<LayoutElement>(out var layoutElement))
+            {
+                layoutElement = go.AddComponent<LayoutElement>();
+            }
+            layoutElement.minHeight = minHeight;
+            layoutElement.preferredHeight = preferredHeight;
+            layoutElement.flexibleHeight = flexibleHeight;
         }
 
         /// <summary>
@@ -399,6 +467,7 @@ namespace KBOManager.EditorTools
             {
                 existingText.text = message;
                 existingText.color = Color.black;
+                ApplyBestFit(existingText);
                 return existingText;
             }
 
@@ -419,6 +488,7 @@ namespace KBOManager.EditorTools
             text.fontSize = 16;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyBestFit(text);
 
             textObject.SetActive(false);
 
@@ -495,6 +565,7 @@ namespace KBOManager.EditorTools
             text.fontSize = 14;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyBestFit(text);
 
             return button;
         }
@@ -599,7 +670,17 @@ namespace KBOManager.EditorTools
 
             text.text = label;
             text.color = Color.black;
+            ApplyBestFit(text);
+        }
+
+        /// <summary>[TASK-KBO-134, 명령서 4항] `resizeTextForBestFit`을 켜고 최소/최대 크기를 큼직하게
+        /// 고정해, 텍스트가 담긴 사각형 크기에 맞춰 자동으로 확대/축소되면서도 항상 읽기 쉬운 크기를
+        /// 유지하도록 한다.</summary>
+        private static void ApplyBestFit(Text text)
+        {
             text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = BestFitMinSize;
+            text.resizeTextMaxSize = BestFitMaxSize;
         }
 
         private static Text FindOrCreateText(Transform parent, string name, string defaultText, Vector2 anchorMin, Vector2 anchorMax)
@@ -626,6 +707,7 @@ namespace KBOManager.EditorTools
             text.fontSize = 16;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
+            ApplyBestFit(text);
 
             return text;
         }
