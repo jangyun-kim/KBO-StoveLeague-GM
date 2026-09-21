@@ -26,12 +26,18 @@ namespace KBOManager.EditorTools
     /// 하위에 새로 만들고, 각 타입이 이미 갖고 있던 `PopulateDefaults()`(GDD 기본값 채움 - 스킬 확률표/
     /// 강화 확률표/엔진 밸런스 상수, 기존에 이미 검증되어 있던 메서드)를 "새로 생성한 경우에만" 호출한다
     /// - 이미 존재하는 에셋은 절대 덮어쓰지 않는다(디자이너가 인스펙터에서 손으로 튜닝했을 값 보존).
+    ///
+    /// [TASK-KBO-138] `UpgradeManager`가 "EXP 누적 확정 강화" 방식으로 개편되며 `probabilityDB`
+    /// 필드 자체가 사라져(`UpgradeManager.cs`), 그 필드를 채우던 `BindUpgradeManager()`와
+    /// `UpgradeProbabilityDB.asset` 생성 로직을 제거했다 - `UpgradeManager` 컴포넌트 부착 자체는
+    /// 여전히 필요해 그대로 둔다. 이 변경으로 인한 유일한 실질적 영향은 위 문단이 설명하는
+    /// `UpgradeProbabilityDB` 관련 서술이 이제 역사적 배경(TASK-098 당시의 원인 조사) 설명으로만
+    /// 남는다는 점이다.
     /// </summary>
     public static class SetupManagers
     {
         private const string GameDataFolder = "Assets/GameData";
         private const string SkillDBAssetPath = GameDataFolder + "/SkillDB.asset";
-        private const string UpgradeProbabilityDBAssetPath = GameDataFolder + "/UpgradeProbabilityDB.asset";
         private const string EngineConfigAssetPath = GameDataFolder + "/EngineConfig.asset";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect All Managers")]
@@ -50,15 +56,19 @@ namespace KBOManager.EditorTools
             var playerDatabase = EnsureComponent<PlayerDatabase>(managerObject);
             var scoutManager = EnsureComponent<ScoutManager>(managerObject);
             EnsureComponent<RosterManager>(managerObject); // [SerializeField] 종속성 없음(DCL-067) - 부착만으로 충분
-            var upgradeManager = EnsureComponent<UpgradeManager>(managerObject);
+            EnsureComponent<UpgradeManager>(managerObject); // [TASK-KBO-138] probabilityDB 필드가 사라져 부착만으로 충분
             var leagueManager = EnsureComponent<LeagueManager>(managerObject);
 
             var skillDB = FindOrCreateAsset<SkillDB>(SkillDBAssetPath, db => db.PopulateDefaults());
-            var upgradeProbabilityDB = FindOrCreateAsset<UpgradeProbabilityDB>(UpgradeProbabilityDBAssetPath, db => db.PopulateDefaults());
             var engineConfig = FindOrCreateAsset<EngineConfig>(EngineConfigAssetPath, cfg => cfg.PopulateDefaults());
 
             BindScoutManager(scoutManager, playerDatabase, skillDB);
-            BindUpgradeManager(upgradeManager, upgradeProbabilityDB);
+            // [TASK-KBO-138] UpgradeManager가 "확률 판정 + UpgradeProbabilityDB" 방식에서 "EXP 누적
+            // 확정" 방식으로 개편되며 probabilityDB 필드 자체가 사라져(UpgradeManager.cs) 더 이상 바인딩할
+            // 대상이 없다 - BindUpgradeManager()를 제거했다(원래 이 함수가 있던 자리). UpgradeManager
+            // 컴포넌트 부착(EnsureComponent, 위)은 여전히 필요해 그대로 둔다. UpgradeProbabilityDB.asset
+            // 생성 로직도 함께 제거했다(더 이상 아무도 참조하지 않는 자산이라 생성할 이유가 없다 - .asset
+            // 파일 자체는 삭제하지 않았으므로 기존에 이미 생성된 자산은 그대로 남아 있다).
             BindLeagueManager(leagueManager, skillDB, engineConfig, playerDatabase);
 
             // [TASK-KBO-114] TASK-113(DCL-085)이 발견한 잔여 매니저 3종.
@@ -89,7 +99,8 @@ namespace KBOManager.EditorTools
 
             Debug.Log("[SetupManagers] 필수 매니저(PlayerDatabase/ScoutManager/RosterManager/UpgradeManager/" +
                 "LeagueManager/ItemDatabase/SeasonStatManager/PostSeasonManager/SeasonRollover) 부착 및 " +
-                "SkillDB/UpgradeProbabilityDB/EngineConfig 종속성 바인딩 완료.");
+                "SkillDB/EngineConfig 종속성 바인딩 완료. (TASK-KBO-138: UpgradeManager는 더 이상 " +
+                "UpgradeProbabilityDB를 참조하지 않는다.)");
         }
 
         /// <summary>TryGetComponent로 이미 붙어 있는지 먼저 확인해(명령서 7항 - 여러 번 실행해도 컴포넌트가
@@ -141,14 +152,6 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("skillDB").objectReferenceValue = skillDB;
             serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(scoutManager);
-        }
-
-        private static void BindUpgradeManager(UpgradeManager upgradeManager, UpgradeProbabilityDB probabilityDB)
-        {
-            var serialized = new SerializedObject(upgradeManager);
-            serialized.FindProperty("probabilityDB").objectReferenceValue = probabilityDB;
-            serialized.ApplyModifiedProperties();
-            EditorUtility.SetDirty(upgradeManager);
         }
 
         private static void BindLeagueManager(LeagueManager leagueManager, SkillDB skillDB, EngineConfig engineConfig, PlayerDatabase playerDatabase)

@@ -32,6 +32,11 @@ namespace KBOManager.Models
         public PlayerTemplate Template; // 원본 데이터 참조 (이름/구단/기본OVR/코스트/포지션/등급)
 
         public int ReinforceLevel;     // 0~10강
+        // [TASK-KBO-138] "EXP 누적 확정 강화" 방식으로 개편되며 신설. 다음 강화 단계(ReinforceLevel+1)로
+        // 올라가는 데 필요한 경험치 중 현재까지 쌓인 양 - UpgradeManager.TryEnhance()가 재료 카드의
+        // 등급별 제공 경험치(UpgradeConstants.GetMaterialExp())를 여기 누적하고, 요구치
+        // (UpgradeConstants.GetRequiredExp())를 넘을 때마다 ReinforceLevel을 올리며 초과분만 이월한다.
+        public int ReinforceExp;
         public int AwakenLevel;        // 0~10각 (ALLSTAR 이상 등급만 유효)
         public int StarLevel;          // 1~6, 뽑기 시 등급에 따라 결정되는 초기 성급. 강화/각성과는 별개 개념
         public StarType CurrentStarType;

@@ -322,6 +322,18 @@
 > 강화/각성 레벨당 실제 세부 스탯 성장치는 전항목 균등 +1(`Player.GetEffectiveBatterStats()`/
 > `GetEffectivePitcherStats()`, TODO 임시값)이며, 원안의 "훈련 시 6종에 +3 랜덤 배분" 방식과는 다르다.
 
+> ✅ **[구현 확정 - 변경, TASK-KBO-138]** 사용자 GDD 지시에 따라 **강화(`Player.ReinforceLevel`)를
+> "확률 판정 + 강화 카드(Item) 재료"에서 "경험치(EXP) 누적 확정 + 보유 선수 카드(Player) 재료"** 방식으로
+> 전면 개편했다 - 위 문단의 "강화 성공 확률 테이블(0→1강 75%~5강→10강 0.05% 등)"과 `UpgradeProbabilityDB`
+> 기반 설명은 이제 **역사적 배경**으로만 남는다(`UpgradeProbabilityDB.cs` 파일 자체는 롤백 대비를 위해
+> 삭제하지 않았으나 `UpgradeManager`가 더 이상 참조하지 않는다). 재료 필터도 함께 해제되어 **타겟 자신을
+> 제외한 인벤토리의 모든 보유 선수 카드**가 강화 재료가 될 수 있다(과거 각성 전용이던 "동일 선수만"
+> 제한이 강화에는 적용된 적이 없었음 - 오히려 강화가 아예 Player 카드를 쓰지 않던 것이 문제였다).
+> 신규 `Player.ReinforceExp`(다음 강화 단계까지 누적된 경험치)와 `UpgradeConstants.cs`(등급별 요구/제공
+> 경험치 테이블, 명령서 6항 지시대로 하드코딩+주석)로 구현했다(`UpgradeManager.TryEnhance()`,
+> `GameActionController.ExecuteEnhance()`, `MaterialSelectUIController.OpenForEnhance()`, `DCL-111`).
+> 각성(`TryAwaken`)은 원래부터 확정(포인트 누적) 방식이라 이번 개편과 무관하며 무수정이다.
+
 ## 4.7 재화 시스템
 
 ✅ **[TASK-KBO-129 구현 완료]** 뽑기(가챠) 재화(선수 6종/치어리더 4종)와 그 소모 화면(스카우트 - 선수
@@ -394,7 +406,7 @@
 | 리그 5단계 페이즈(스토브리그~포스트시즌)                        | ✅ 구현                    | `Types.cs` `LeaguePhase` enum                                                                                                                                                                                 |
 | 매치 시뮬레이션 엔진                                            | ✅ 구현                    | `MatchEngine.SimulateAtBat()`(1타석 단위 확률 기반, 팀버프/체력페널티/스킬 반영)                                                                                                                              |
 | 스킬 시스템(티어 확률 + 스킬 목록)                              | ✅ 구현                    | `SkillDB.PopulateDefaults()`(원문과 완전 일치)                                                                                                                                                                |
-| 성장 시스템(강화 0~10강 / 각성 0~10각, 2단계 체제로 축소 확정)  | ✅ 구현                    | `UpgradeManager.TryEnhance()`/`TryAwaken()`, `UpgradeProbabilityDB`(원문 확률표와 일치). 세부 스탯 성장치는 레벨당 전항목 +1 균등(TODO 임시값). 원안의 훈련/훈련돌파/특훈 3단계는 폐기 확정(TASK-KBO-091-REV) |
+| 성장 시스템(강화 0~10강 / 각성 0~10각, 2단계 체제로 축소 확정)  | ✅ 구현                    | `UpgradeManager.TryEnhance()`(TASK-KBO-138부터 EXP 누적 확정 + Player 카드 재료, `UpgradeConstants.cs`)/`TryAwaken()`(확정 포인트 누적, 무수정). 세부 스탯 성장치는 레벨당 전항목 +1 균등(TODO 임시값). 원안의 훈련/훈련돌파/특훈 3단계는 폐기 확정(TASK-KBO-091-REV) |
 | 성장 시스템 UI(강화/각성 재료 선택 팝업 배선 킥오프)            | 🔁 부분 구현                | 실제 담당 컨트롤러는 `UpgradeUIController`가 아니라 `MaterialSelectUIController`(`GameActionController.ExecuteEnhance()`/`ExecuteAwaken()`까지 연결 완료). `SetupUpgradeUI.cs`가 팝업 껍데기(대상 재료 목록/확인·취소 버튼)를 조립·바인딩(`DCL-081`). 이 팝업을 여는 유일한 호스트인 `InventoryUIController`(`[강화하기]`/`[각성하기]` 버튼)가 씬에 아직 조립되지 않아(`DCL-060` 이래 미착수 상태 유지) 현재는 게임 내에서 열 수 있는 진입점이 없음 - 후속 태스크 필요 |
 | 치어리더 영입(스카우트 화면 하위 섹션)                          | ✅ 구현                    | `CheerleaderGachaService`(4개 카테고리별 전용 재화 소모, `DCL-101`), `CheerleaderShopUIController`, `cheerleaders.csv`(`DCL-048`). 독립 화면이 아니라 `ScoutHubPanel`(선수 영입과 통합)의 한 탭(`DCL-101`)     |
 | 치어리더 세부 시너지/고유 스킬(원문 D~S급 수십 종)              | 🕳️ 미구현                  | 현재는 `ConditionBuff`/`ClutchMultiplier`/`EconomicBonusRate`/`SentimentDefense` 4개 범용 수치만 존재                                                                                                         |

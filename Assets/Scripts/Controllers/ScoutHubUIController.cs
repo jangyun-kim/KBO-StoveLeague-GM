@@ -12,6 +12,15 @@ namespace KBOManager.Controllers
     /// ScoutUIController/CheerleaderShopUIController는 각자의 내부 로직(재화 소모/카드 발급/결과
     /// 팝업)을 전혀 수정하지 않고 그대로 재사용한다 - 이 컨트롤러는 두 섹션 GameObject의 SetActive만
     /// 토글하는 얇은 스위처다.
+    ///
+    /// [TASK-KBO-138, 사실 정정] 명령서 3항이 보고한 "탭 전환 시 이전 탭이 안 숨겨지고 겹침" 증상을
+    /// 재확인한 결과, `ShowPlayerSection()`/`ShowCheerleaderSection()` 원문은 이미 두 섹션 모두에
+    /// `SetActive(true)`/`SetActive(false)`를 항상 짝지어 호출하고 있었다(무결함, C# 로직 무수정) -
+    /// 두 메서드 다 활성화할 패널과 비활성화할 패널을 매번 명시적으로 지정하므로, 이 스크립트만으로는
+    /// "겹침"이 재현될 수 없는 구조다. 가장 유력한 원인은 `playerSection`/`cheerleaderSection` 직렬화
+    /// 참조가 씬 재조립 과정에서 서로 뒤바뀌거나 동일 오브젝트로 잘못 연결되는 것이라 판단해, `Awake()`
+    /// 에 그런 오설정을 즉시 드러내는 방어 로그를 추가했다(아래) - 명령서 6항 "보완" 취지를 실제 코드
+    /// 결함이 없는 상태에서도 진단 가능하게 만드는 방향으로 반영했다.
     /// </summary>
     public class ScoutHubUIController : MonoBehaviour
     {
@@ -27,6 +36,16 @@ namespace KBOManager.Controllers
 
         private void Awake()
         {
+            // [TASK-KBO-138] playerSection/cheerleaderSection이 실수로 같은 오브젝트에 연결되면(에디터
+            // 재조립 과정에서 흔히 생길 수 있는 오설정) 두 SetActive 호출이 결국 같은 대상을 놓고
+            // 다투게 되어 "탭이 안 바뀌거나 겹쳐 보인다"는 증상으로 나타난다 - 이 경우를 즉시 경고한다.
+            if (playerSection != null && playerSection == cheerleaderSection)
+            {
+                Debug.LogWarning("[ScoutHubUIController] playerSection과 cheerleaderSection이 같은 " +
+                    "오브젝트로 연결되어 있습니다. 'KBO Manager/Setup/Auto-Connect Scout Hub'를 다시 " +
+                    "실행해 바인딩을 복구하십시오.");
+            }
+
             if (playerTabButton != null) playerTabButton.onClick.AddListener(ShowPlayerSection);
             if (cheerleaderTabButton != null) cheerleaderTabButton.onClick.AddListener(ShowCheerleaderSection);
         }

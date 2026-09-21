@@ -22,13 +22,15 @@ namespace KBOManager.Controllers
         [SerializeField] private int salaryCap = 300;
 
         private Player enhanceTarget;
-        private readonly List<Item> enhanceMaterials = new List<Item>();
+        // [TASK-KBO-138] 강화 재료가 Item(소모 아이템)에서 Player(보유 선수 카드)로 바뀌었다 - EXP
+        // 누적 확정 강화 개편, 아래 ExecuteEnhance() 참고.
+        private readonly List<Player> enhanceMaterials = new List<Player>();
 
         private Player awakenTarget;
         private readonly List<Player> awakenMaterials = new List<Player>();
 
         public Player EnhanceTarget => enhanceTarget;
-        public IReadOnlyList<Item> EnhanceMaterials => enhanceMaterials;
+        public IReadOnlyList<Player> EnhanceMaterials => enhanceMaterials;
 
         public Player AwakenTarget => awakenTarget;
         public IReadOnlyList<Player> AwakenMaterials => awakenMaterials;
@@ -49,15 +51,15 @@ namespace KBOManager.Controllers
             enhanceTarget = target;
         }
 
-        public void AddEnhanceMaterial(Item material)
+        public void AddEnhanceMaterial(Player material)
         {
-            if (material == null || enhanceMaterials.Contains(material)) return;
+            if (material == null || material == enhanceTarget || enhanceMaterials.Contains(material)) return;
             if (enhanceMaterials.Count >= UpgradeManager.MaxEnhanceMaterials) return;
 
             enhanceMaterials.Add(material);
         }
 
-        public void RemoveEnhanceMaterial(Item material)
+        public void RemoveEnhanceMaterial(Player material)
         {
             enhanceMaterials.Remove(material);
         }
@@ -102,24 +104,27 @@ namespace KBOManager.Controllers
 
         // ----- 버튼 OnClick 엔드포인트 -----
 
-        /// <summary>강화 버튼 OnClick. 성공 시 소모된 재료(Item)를 인벤토리에서 제거한다.</summary>
+        /// <summary>강화 버튼 OnClick. [TASK-KBO-138] 재료가 Item에서 Player 카드로 바뀌어, 성공 시
+        /// 소모된 재료(Player)를 인벤토리에서 제거한다(RemovePlayerFromInventory - Awaken과 동일한
+        /// 경로 재사용).</summary>
         public void ExecuteEnhance()
         {
             if (UpgradeManager.Instance == null || GameManager.Instance == null || enhanceTarget == null) return;
 
-            var usedMaterials = new List<Item>(enhanceMaterials);
+            var usedMaterials = new List<Player>(enhanceMaterials);
             bool success = UpgradeManager.Instance.TryEnhance(enhanceTarget, usedMaterials);
 
             Debug.Log($"[GameActionController] ExecuteEnhance: {(success ? "성공" : "실패")} " +
-                      $"(대상: {enhanceTarget.Template?.PlayerName}, 현재 {enhanceTarget.ReinforceLevel}강)");
+                      $"(대상: {enhanceTarget.Template?.PlayerName}, 현재 {enhanceTarget.ReinforceLevel}강, " +
+                      $"EXP {enhanceTarget.ReinforceExp}/{UpgradeConstants.GetRequiredExp(enhanceTarget)})");
 
             var completedTarget = enhanceTarget;
 
             if (success)
             {
-                foreach (var item in usedMaterials)
+                foreach (var material in usedMaterials)
                 {
-                    GameManager.Instance.RemoveItemFromInventory(item);
+                    GameManager.Instance.RemovePlayerFromInventory(material);
                 }
                 ClearEnhanceSelection();
             }

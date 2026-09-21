@@ -17,6 +17,14 @@ namespace KBOManager.Controllers
     /// 이 클래스에는 그런 이름의 메서드가 없다 - 실제로 상세 패널을 여는 메서드는 `ShowDetail(Player)`
     /// (188행)이며 닫는 메서드는 `CloseDetail()`(230행)이 맞다. 명령서 4항이 요구한 "메인 닫기 버튼
     /// 숨김/복원"은 이 두 실제 메서드에 구현했다.
+    ///
+    /// [TASK-KBO-138, 사실 정정] 명령서는 `changeSkillButton` 필드를 "선언/바인딩"하라고 지시했으나,
+    /// 이 클래스에는 이미 동일한 역할의 `skillChangeButton` 필드(원문)가 `Awake()`에서 리스너까지
+    /// 연결돼 있었다(DCL-102 Part 1에서도 이미 확인된 사실). 실제 "미작동" 원인은 필드 부재가 아니라
+    /// (1) 보유 스킬이 0개면 버튼 자체를 `interactable = false`로 꺼 버려 클릭 이벤트가 아예 발생하지
+    /// 않았던 점, (2) `SkillRerollManager.Instance == null`이면 `OnClickSkillChange()`가 아무 피드백
+    /// 없이 조용히 반환했던 점 2가지였다 - 버튼을 항상 활성 상태로 두고, 두 케이스 각각에 `Debug.Log`
+    /// + `skillRerollResultText` 안내 문구를 추가했다(명령서 4항, 재추첨 로직 자체는 무수정).
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
@@ -231,7 +239,9 @@ namespace KBOManager.Controllers
 
             if (enhanceButton != null) enhanceButton.interactable = player.ReinforceLevel < Player.MaxReinforceLevel;
             if (awakenButton != null) awakenButton.interactable = player.CanAwaken && player.AwakenLevel < Player.MaxAwakenLevel;
-            if (skillChangeButton != null) skillChangeButton.interactable = player.AcquiredSkillIds.Count > 0;
+            // [TASK-KBO-138] 과거에는 보유 스킬이 0개면 버튼 자체를 비활성화해 눌러도 아무 반응이
+            // 없었다("미작동"으로 보이는 원인 중 하나) - 이제 항상 클릭 가능하게 두고, OnClickSkillChange()
+            // 내부에서 0개/매니저 부재 케이스마다 최소한의 피드백을 낸다(명령서 4항).
         }
 
         /// <summary>상세 패널의 닫기 버튼 OnClick.</summary>
@@ -261,7 +271,24 @@ namespace KBOManager.Controllers
         /// </summary>
         private void OnClickSkillChange()
         {
-            if (selectedPlayer == null || SkillRerollManager.Instance == null) return;
+            if (selectedPlayer == null) return;
+
+            // [TASK-KBO-138] 클릭했는데 아무 반응이 없어 "미작동"으로 보이던 두 경로(보유 스킬 0개,
+            // SkillRerollManager 미존재)에 명시적 피드백을 추가한다(명령서 4항 - 최소한 Debug.Log/안내
+            // 텍스트). 기존 재추첨 로직(TryRerollSkill/ConfirmPendingReroll) 자체는 무수정이다.
+            if (selectedPlayer.AcquiredSkillIds.Count == 0)
+            {
+                Debug.Log("[InventoryUIController] 보유 스킬이 없어 변경할 스킬이 없습니다.");
+                if (skillRerollResultText != null) skillRerollResultText.text = "보유 스킬이 없습니다.";
+                return;
+            }
+
+            if (SkillRerollManager.Instance == null)
+            {
+                Debug.LogWarning("[InventoryUIController] 스킬 변경 시스템은 개발 중입니다. (SkillRerollManager 없음)");
+                if (skillRerollResultText != null) skillRerollResultText.text = "스킬 변경 시스템은 개발 중입니다.";
+                return;
+            }
 
             RerollResult result = pendingRerollTarget == selectedPlayer
                 ? SkillRerollManager.Instance.ConfirmPendingReroll(selectedPlayer)

@@ -10,7 +10,9 @@ using UnityEngine.UI;
 
 namespace KBOManager.Controllers
 {
-    /// <summary>강화(Item 재료)와 각성(Player 재료)은 후보 데이터 타입 자체가 다르므로 팝업 내부에서 모드를 나눈다.</summary>
+    /// <summary>강화와 각성은 재료 후보 필터가 다르므로(강화: 타겟 제외 전원, 각성: 동일 선수만) 팝업
+    /// 내부에서 모드를 나눈다. [TASK-KBO-138] 이전에는 강화가 Item 재료를 썼으나, EXP 누적 확정 강화로
+    /// 개편되며 각성과 동일하게 Player 카드 재료를 쓰도록 바뀌었다(아래 클래스 주석 참고).</summary>
     public enum MaterialSelectMode
     {
         Enhance,
@@ -20,11 +22,20 @@ namespace KBOManager.Controllers
     /// <summary>
     /// 인벤토리 상세 패널의 [강화하기]/[각성하기] 버튼이 여는 재료 다중 선택 팝업.
     ///
-    /// 강화는 GameManager.ItemInventory에서 강화 재료(Item)를 최대 UpgradeManager.MaxEnhanceMaterials(5)장,
+    /// [TASK-KBO-138, 전면 개편] 강화 재료가 "GameManager.ItemInventory의 강화 재료(Item)"에서
+    /// "GameManager.Inventory의 아무 보유 선수 카드(타겟 자신 제외, 동일 선수 제한 없음)"로 바뀌었다 -
+    /// 사용자 GDD 지시에 따른 "EXP 누적 확정 강화" 개편(UpgradeManager.TryEnhance() 참고)의 일부다.
+    /// 그 결과 강화도 각성과 동일하게 `playerListPanel`(CardPoolManager로 재사용하는 PlayerCardUI
+    /// 목록)을 공유해서 쓴다 - 최대 선택 개수(UpgradeManager.MaxEnhanceMaterials, 5장)만 강화 모드에서
+    /// 추가로 강제한다(각성은 원래부터 개수 제한이 없다). 기존 Item 기반 목록(`itemListPanel`/
+    /// `PopulateItemList()` 등)은 명령서 5항("UI 디자인 자체를 갈아엎지 마라")에 따라 코드를 그대로
+    /// 남겨 뒀지만(SetupUpgradeUI.cs가 계속 조립·바인딩함), 이제 어떤 모드에서도 호출되지 않는
+    /// 휴면 코드다.
+    ///
     /// 각성은 GameManager.Inventory에서 타겟과 RealPlayerId가 같은(GDD 3절 "동일 선수") Player 카드를
-    /// 개수 제한 없이 다중 토글로 선택하게 한다. 각성 후보 목록은 CardPoolManager로 PlayerCardUI를
-    /// 재사용하며, 타겟 카드 자신은 항상 후보 목록에서 제외한다(원본을 실수로 재료로 넣는 사고 방지).
-    /// 확정(Confirm) 시에만 실제로 GameActionController.ExecuteEnhance/ExecuteAwaken을 호출한다.
+    /// 개수 제한 없이 다중 토글로 선택하게 한다. 타겟 카드 자신은 두 모드 모두 항상 후보 목록에서
+    /// 제외한다(원본을 실수로 재료로 넣는 사고 방지). 확정(Confirm) 시에만 실제로
+    /// GameActionController.ExecuteEnhance/ExecuteAwaken을 호출한다.
     /// </summary>
     public class MaterialSelectUIController : MonoBehaviour
     {
@@ -77,7 +88,8 @@ namespace KBOManager.Controllers
             ClosePopup();
         }
 
-        /// <summary>강화 모드로 팝업을 연다. 인벤토리의 강화 재료(Item)를 최대 5장까지 골라 선택한다.</summary>
+        /// <summary>[TASK-KBO-138] 강화 모드로 팝업을 연다. 인벤토리의 보유 선수 카드(타겟 자신 제외,
+        /// 동일 선수 제한 없음)를 최대 5장까지 골라 선택한다 - EXP 누적 확정 강화 재료.</summary>
         public void OpenForEnhance(Player targetPlayer)
         {
             if (targetPlayer == null) return;
@@ -88,10 +100,10 @@ namespace KBOManager.Controllers
             selectedItems.Clear();
 
             if (titleText != null) titleText.text = $"강화 재료 선택 (최대 {UpgradeManager.MaxEnhanceMaterials}장)";
-            if (playerListPanel != null) playerListPanel.SetActive(false);
-            if (itemListPanel != null) itemListPanel.SetActive(true);
+            if (itemListPanel != null) itemListPanel.SetActive(false);
+            if (playerListPanel != null) playerListPanel.SetActive(true);
 
-            PopulateItemList();
+            PopulatePlayerList();
             UpdateSelectionCountText();
 
             // [TASK-KBO-125] 이 팝업(popupRoot == 이 컴포넌트의 GameObject 자신)은 Canvas 하위에서
@@ -124,17 +136,21 @@ namespace KBOManager.Controllers
             if (popupRoot != null) popupRoot.SetActive(true);
         }
 
-        // ----- 각성: Player 카드 목록 (풀링) -----
+        // ----- 강화/각성 공통: Player 카드 목록 (풀링) -----
 
+        /// <summary>[TASK-KBO-138] 강화/각성 모드에 따라 서로 다른 필터로 재료 후보 Player 카드를
+        /// 채운다 - 강화는 타겟 자신만 제외한 "모든 보유 카드"(동일 선수 제한 삭제), 각성은 기존대로
+        /// RealPlayerId가 타겟과 같은 카드만(GDD 3절 "동일 선수").</summary>
         private void PopulatePlayerList()
         {
             ClearPlayerCards();
 
             if (GameManager.Instance != null && playerCardPrefab != null && playerListContainer != null)
             {
-                // GDD 3절: 타겟과 완전히 같은 선수(RealPlayerId)만 재료 후보. 타겟 자신은 반드시 제외한다.
-                var candidates = GameManager.Instance.Inventory
-                    .Where(p => p != target && p?.Template != null && p.Template.RealPlayerId == target.Template.RealPlayerId);
+                IEnumerable<Player> candidates = mode == MaterialSelectMode.Enhance
+                    ? GameManager.Instance.Inventory.Where(p => p != target && p?.Template != null)
+                    : GameManager.Instance.Inventory.Where(p => p != target && p?.Template != null
+                        && p.Template.RealPlayerId == target.Template.RealPlayerId);
 
                 foreach (var candidate in candidates)
                 {
@@ -180,6 +196,9 @@ namespace KBOManager.Controllers
             }
             else
             {
+                // [TASK-KBO-138] 강화 재료는 최대 5장(UpgradeManager.MaxEnhanceMaterials)까지만 선택
+                // 가능하다(기존 Item 기반 강화의 제한을 그대로 계승) - 각성 재료는 원래대로 개수 제한이 없다.
+                if (mode == MaterialSelectMode.Enhance && selectedPlayers.Count >= UpgradeManager.MaxEnhanceMaterials) return;
                 selectedPlayers.Add(candidate);
             }
 
@@ -291,8 +310,10 @@ namespace KBOManager.Controllers
         {
             if (selectionCountText == null) return;
 
+            // [TASK-KBO-138] 강화도 이제 selectedPlayers를 쓴다(과거 selectedItems 대체) - 최대 개수
+            // 표시만 모드별로 다르다(강화 5장 제한, 각성 무제한).
             selectionCountText.text = mode == MaterialSelectMode.Enhance
-                ? $"선택: {selectedItems.Count} / {UpgradeManager.MaxEnhanceMaterials}"
+                ? $"선택: {selectedPlayers.Count} / {UpgradeManager.MaxEnhanceMaterials}"
                 : $"선택: {selectedPlayers.Count}";
         }
 
@@ -306,11 +327,12 @@ namespace KBOManager.Controllers
 
             if (mode == MaterialSelectMode.Enhance)
             {
+                // [TASK-KBO-138] 강화 재료도 이제 selectedPlayers를 쓴다(과거 selectedItems 대체).
                 gameActionController.ClearEnhanceSelection();
                 gameActionController.SetEnhanceTarget(target);
-                foreach (var item in selectedItems)
+                foreach (var player in selectedPlayers)
                 {
-                    gameActionController.AddEnhanceMaterial(item);
+                    gameActionController.AddEnhanceMaterial(player);
                 }
                 gameActionController.ExecuteEnhance();
             }

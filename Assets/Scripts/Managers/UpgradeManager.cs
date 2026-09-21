@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
-using KBOManager.Data;
 using KBOManager.Models;
 using UnityEngine;
 
@@ -8,15 +6,18 @@ namespace KBOManager.Managers
 {
     /// <summary>
     /// 강화(0~10강)와 각성(1~10각)을 처리하는 싱글톤 매니저.
-    /// 확률 판정은 UpgradeProbabilityDB(데이터 테이블)에 위임하고, 이 클래스는 판정/적용 로직만 담당한다.
+    ///
+    /// [TASK-KBO-138, 전면 개편] 강화(`TryEnhance`)를 "확률 판정 + Item 재료" 방식에서 "경험치(EXP)
+    /// 누적 확정 + Player 카드 재료" 방식으로 교체했다. 등급별 확률표(`UpgradeProbabilityDB`)는 더 이상
+    /// 참조하지 않는다(파일 자체는 삭제하지 않고 그대로 남겨 뒀다 - 향후 롤백/참고용). 요구/제공 경험치
+    /// 테이블은 `UpgradeConstants.cs`에 분리했다. 각성(`TryAwaken`)은 원래부터 확정(포인트 누적) 방식이라
+    /// 이번 개편과 무관하며 무수정이다.
     /// </summary>
     public class UpgradeManager : MonoBehaviour
     {
         public static UpgradeManager Instance { get; private set; }
 
         public const int MaxEnhanceMaterials = 5; // GDD: 최대 선택 가능 재료 수 5장
-
-        [SerializeField] private UpgradeProbabilityDB probabilityDB;
 
         private void Awake()
         {
@@ -31,28 +32,48 @@ namespace KBOManager.Managers
         }
 
         /// <summary>
-        /// 재료(최대 5장)의 성공 확률을 합산해 강화 성공 여부를 판정한다.
-        /// 성공 시 target의 ReinforceLevel을 1 올린다. 소모된 재료를 인벤토리에서 제거하는 것은 호출부 책임이다.
+        /// [TASK-KBO-138] "EXP 누적 확정 강화". 재료(최대 5장, 타겟 자신 제외 아무 보유 카드나 가능)의
+        /// 등급별 제공 경험치(`UpgradeConstants.GetMaterialExp()`)를 target.ReinforceExp에 합산하고,
+        /// 다음 단계 요구 경험치(`UpgradeConstants.GetRequiredExp()`)를 넘을 때마다 ReinforceLevel을
+        /// 1씩 올리며 초과분만 다음 단계로 이월한다(재료를 한꺼번에 많이 넣으면 여러 단계를 한 번에 올릴
+        /// 수도 있다). 확률 판정이 사라졌으므로 유효 재료가 하나라도 있으면 항상 true(확정 성공)를
+        /// 반환한다 - "실패"는 더 이상 존재하지 않는다. 소모된 재료를 인벤토리에서 제거하는 것은
+        /// 호출부(GameActionController) 책임이다.
         /// </summary>
-        public bool TryEnhance(Player target, List<Item> enhanceCards)
+        public bool TryEnhance(Player target, List<Player> materialCards)
         {
-            if (probabilityDB == null || target == null || target.Template == null) return false;
+            if (target == null || target.Template == null) return false;
             if (target.ReinforceLevel >= Player.MaxReinforceLevel) return false;
-            if (enhanceCards == null || enhanceCards.Count == 0 || enhanceCards.Count > MaxEnhanceMaterials) return false;
+            if (materialCards == null || materialCards.Count == 0 || materialCards.Count > MaxEnhanceMaterials) return false;
 
-            int fromLevel = target.ReinforceLevel;
-            float totalRate = enhanceCards
-                .Where(item => item?.Template != null)
-                .Sum(item => probabilityDB.GetSuccessRate(fromLevel, item.Template.MaterialType));
-            totalRate = Mathf.Clamp(totalRate, 0f, 100f);
-
-            bool success = Random.Range(0f, 100f) < totalRate;
-            if (success)
+            int gainedExp = 0;
+            foreach (var material in materialCards)
             {
-                target.ReinforceLevel = Mathf.Min(target.ReinforceLevel + 1, Player.MaxReinforceLevel);
+                if (material?.Template == null) continue;
+                if (material == target) continue; // 자기 자신은 재료가 될 수 없음
+
+                gainedExp += UpgradeConstants.GetMaterialExp(material.Template.Grade, target.Template.Grade);
             }
 
-            return success;
+            if (gainedExp <= 0) return false;
+
+            target.ReinforceExp += gainedExp;
+
+            while (target.ReinforceLevel < Player.MaxReinforceLevel)
+            {
+                int required = UpgradeConstants.GetRequiredExp(target);
+                if (target.ReinforceExp < required) break;
+
+                target.ReinforceExp -= required;
+                target.ReinforceLevel++;
+            }
+
+            if (target.ReinforceLevel >= Player.MaxReinforceLevel)
+            {
+                target.ReinforceExp = 0; // 만렙에서는 더 쌓일 필요가 없다.
+            }
+
+            return true;
         }
 
         /// <summary>

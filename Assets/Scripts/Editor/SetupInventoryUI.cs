@@ -45,10 +45,19 @@ namespace KBOManager.EditorTools
     /// 우측 상단의 컴팩트한 64x64 'X' 버튼(`FindOrCreateCloseButton()`)으로 교체했다. `InventoryUIController.
     /// ShowDetail()`이 상세 패널을 열 때 메인 `closeButton`을 이미 숨기므로(TASK-135), 두 버튼이 같은
     /// 모서리를 공유해도 겹쳐 보이지 않는다.
+    ///
+    /// [TASK-KBO-138] 카드 목록(`CardContainer`)이 평면 `GridLayoutGroup`만 갖고 있어 카드가 화면을
+    /// 넘어가도 스크롤되지 않던 문제를, `SetupUpgradeUI.cs`(TASK-133)와 동일한 표준 스크롤 뷰 계층
+    /// (`CardListPanel`(ScrollRect) -&gt; `Viewport`(RectMask2D) -&gt; `Content`=`CardContainer`
+    /// (GridLayoutGroup+ContentSizeFitter))으로 재조립해 해소했다(`FindOrCreateCardListPanel()`).
     /// </summary>
     public static class SetupInventoryUI
     {
         private const string PanelName = "InventoryPanel";
+        // [TASK-KBO-138] 카드 목록을 감싸는 표준 스크롤 뷰 계층(Panel-Viewport-Content). CardContainerName은
+        // 이제 "Content"(GridLayoutGroup+ContentSizeFitter) 오브젝트 이름으로 쓰인다(마이그레이션 대상).
+        private const string CardListPanelName = "CardListPanel";
+        private const string ViewportName = "Viewport";
         private const string CardContainerName = "CardContainer";
         private const string DetailPanelName = "DetailPanel";
         private const string DetailPreviewCardName = "DetailPreviewCard";
@@ -79,7 +88,7 @@ namespace KBOManager.EditorTools
 
             var controller = FindOrCreateInventoryPanel(canvas.transform);
 
-            var cardContainer = FindOrCreateGridContainer(controller.transform, CardContainerName,
+            var cardContainer = FindOrCreateCardListPanel(controller.transform,
                 new Vector2(140f, 200f), new Vector2(10f, 10f));
             var cardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
 
@@ -200,7 +209,82 @@ namespace KBOManager.EditorTools
             return panelObject.AddComponent<InventoryUIController>();
         }
 
-        private static Transform FindOrCreateGridContainer(Transform parent, string name, Vector2 cellSize, Vector2 spacing)
+        /// <summary>
+        /// [TASK-KBO-138] 인벤토리 카드 목록을 표준 유니티 스크롤 뷰 계층(`Panel`(ScrollRect) -&gt;
+        /// `Viewport`(RectMask2D) -&gt; `Content`(GridLayoutGroup+ContentSizeFitter))으로 조립한다.
+        /// 과거 버전은 `InventoryPanel` 바로 아래에 `GridLayoutGroup`만 붙은 평면 `CardContainer`를
+        /// 뒀는데, 뷰포트/마스크가 없어 카드가 화면을 넘어가도 스크롤이 전혀 동작하지 않았다
+        /// (`SetupUpgradeUI.cs`의 `FindOrCreateScrollList()`, TASK-133과 동일한 원인/해법).
+        /// 과거 평면 `CardContainer`가 이미 존재하면 삭제하지 않고 새 `Viewport` 하위로 이동시킨다
+        /// (재생성 아님, 명령서 7항).
+        /// </summary>
+        private static Transform FindOrCreateCardListPanel(Transform parent, Vector2 cellSize, Vector2 spacing)
+        {
+            var panelTransform = parent.Find(CardListPanelName);
+            GameObject panelObject;
+            if (panelTransform != null)
+            {
+                panelObject = panelTransform.gameObject;
+            }
+            else
+            {
+                panelObject = new GameObject(CardListPanelName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(panelObject, $"Create {CardListPanelName}");
+                panelObject.transform.SetParent(parent, false);
+
+                var rect = (RectTransform)panelObject.transform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+            }
+
+            var viewportTransform = panelObject.transform.Find(ViewportName);
+            GameObject viewportObject;
+            if (viewportTransform != null)
+            {
+                viewportObject = viewportTransform.gameObject;
+            }
+            else
+            {
+                viewportObject = new GameObject(ViewportName, typeof(RectTransform), typeof(RectMask2D));
+                Undo.RegisterCreatedObjectUndo(viewportObject, $"Create {ViewportName}");
+                viewportObject.transform.SetParent(panelObject.transform, false);
+
+                var viewportRect = (RectTransform)viewportObject.transform;
+                viewportRect.anchorMin = Vector2.zero;
+                viewportRect.anchorMax = Vector2.one;
+                viewportRect.offsetMin = Vector2.zero;
+                viewportRect.offsetMax = Vector2.zero;
+
+                // 과거 InventoryPanel 직속이었던 평면 CardContainer를 새 Viewport 하위로 마이그레이션한다.
+                var legacyContainer = parent.Find(CardContainerName);
+                if (legacyContainer != null && legacyContainer.parent == parent)
+                {
+                    legacyContainer.SetParent(viewportObject.transform, false);
+                }
+            }
+
+            var contentTransform = FindOrCreateGridContent(viewportObject.transform, CardContainerName, cellSize, spacing);
+
+            if (!panelObject.TryGetComponent<ScrollRect>(out var scrollRect))
+            {
+                scrollRect = panelObject.AddComponent<ScrollRect>();
+            }
+            scrollRect.viewport = (RectTransform)viewportObject.transform;
+            scrollRect.content = (RectTransform)contentTransform;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            return contentTransform;
+        }
+
+        /// <summary>`Content`는 위쪽 기준(anchor/pivot 모두 top)으로 고정하고 `ContentSizeFitter`
+        /// (Vertical Fit = Preferred Size)를 붙여, `GridLayoutGroup`이 스폰한 카드 수만큼 세로 크기가
+        /// 자동으로 늘어나도록 한다(가로는 `Viewport`에 스트레치돼 고정). 재실행 시에도 최신 값이
+        /// 반영되도록 cellSize/spacing을 매번 무조건 재적용한다.</summary>
+        private static Transform FindOrCreateGridContent(Transform parent, string name, Vector2 cellSize, Vector2 spacing)
         {
             var existing = parent.Find(name);
             GameObject containerObject;
@@ -213,20 +297,29 @@ namespace KBOManager.EditorTools
                 containerObject = new GameObject(name, typeof(RectTransform));
                 Undo.RegisterCreatedObjectUndo(containerObject, $"Create {name}");
                 containerObject.transform.SetParent(parent, false);
-
-                var rect = (RectTransform)containerObject.transform;
-                rect.anchorMin = Vector2.zero;
-                rect.anchorMax = Vector2.one;
-                rect.offsetMin = Vector2.zero;
-                rect.offsetMax = Vector2.zero;
             }
+
+            var rect = (RectTransform)containerObject.transform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            rect.anchoredPosition = Vector2.zero;
 
             if (!containerObject.TryGetComponent<GridLayoutGroup>(out var grid))
             {
                 grid = containerObject.AddComponent<GridLayoutGroup>();
-                grid.cellSize = cellSize;
-                grid.spacing = spacing;
             }
+            grid.cellSize = cellSize;
+            grid.spacing = spacing;
+
+            if (!containerObject.TryGetComponent<ContentSizeFitter>(out var fitter))
+            {
+                fitter = containerObject.AddComponent<ContentSizeFitter>();
+            }
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             return containerObject.transform;
         }

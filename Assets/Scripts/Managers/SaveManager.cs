@@ -19,6 +19,10 @@ namespace KBOManager.Managers
         public string InstanceId;
         public string TemplateId;
         public int ReinforceLevel;
+        // [TASK-KBO-138] EXP 누적 확정 강화 방식으로 개편되며 신설(Player.ReinforceExp). 이 필드가 없는
+        // 구버전 세이브는 JsonUtility가 기본값 0으로 채우며, 강화 진행 중 EXP가 없는 상태와 완전히
+        // 동일해 별도의 구버전 판별 로직이 필요 없다.
+        public int ReinforceExp;
         public int AwakenLevel;
         public int StarLevel;
         public StarType CurrentStarType;
@@ -340,6 +344,7 @@ namespace KBOManager.Managers
             InstanceId = player.InstanceId,
             TemplateId = player.Template != null ? player.Template.TemplateId : null,
             ReinforceLevel = player.ReinforceLevel,
+            ReinforceExp = player.ReinforceExp,
             AwakenLevel = player.AwakenLevel,
             StarLevel = player.StarLevel,
             CurrentStarType = player.CurrentStarType,
@@ -483,6 +488,7 @@ namespace KBOManager.Managers
             var player = new Player(saved.InstanceId, template)
             {
                 ReinforceLevel = saved.ReinforceLevel,
+                ReinforceExp = saved.ReinforceExp,
                 AwakenLevel = saved.AwakenLevel,
                 StarLevel = saved.StarLevel,
                 CurrentStarType = saved.CurrentStarType,
