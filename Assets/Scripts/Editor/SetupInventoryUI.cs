@@ -50,6 +50,18 @@ namespace KBOManager.EditorTools
     /// 넘어가도 스크롤되지 않던 문제를, `SetupUpgradeUI.cs`(TASK-133)와 동일한 표준 스크롤 뷰 계층
     /// (`CardListPanel`(ScrollRect) -&gt; `Viewport`(RectMask2D) -&gt; `Content`=`CardContainer`
     /// (GridLayoutGroup+ContentSizeFitter))으로 재조립해 해소했다(`FindOrCreateCardListPanel()`).
+    ///
+    /// [TASK-KBO-141, 근본 원인 확정] TASK-139/140이 반복 보고받은 "닫기 X 버튼이 카드 리스트에
+    /// 가려짐" 증상의 실제 원인을 특정했다 - TASK-138이 신설한 `FindOrCreateCardListPanel()`은
+    /// `AutoConnectInventoryUI()` 맨 처음에 호출되는데, `new GameObject(...).transform.SetParent(parent,
+    /// false)`는 유니티 기본 동작상 대상을 부모의 "마지막(=최상단 렌더링) 자식"으로 붙인다. TASK-138
+    /// 이전 상태(CardContainer/DetailPanel/CloseButton이 이미 구 순서로 존재하는 씬)에서 이 새 코드를
+    /// 처음 실행하면, 새로 만들어진 `CardListPanel`이 기존 `CloseButton`/`DetailPanel`보다 더 나중
+    /// sibling이 되어 그 위를 덮어버린다 - `ShowDetail()`의 런타임 `SetAsLastSibling()`(TASK-139)은
+    /// DetailPanel이 열릴 때만 작동하는 런타임 대응이라 이 씬 저작 시점의 정적 순서 문제 자체는 고치지
+    /// 못했다. `FindOrCreateCardListPanel()`이 자신을 `SetAsFirstSibling()`으로, `CloseButton`/
+    /// `DetailPanel`을 `SetAsLastSibling()`으로 양방향에서 강제해 씬의 과거 상태와 무관하게 항상 올바른
+    /// 순서가 되도록 고쳤다.
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -129,6 +141,13 @@ namespace KBOManager.EditorTools
             // 공유해도 두 버튼이 동시에 겹쳐 보일 일이 없다.
             var closeDetailButton = FindOrCreateCloseButton(detailPanelRoot.transform, CloseDetailButtonName, 64f);
 
+            // [TASK-KBO-141, 명령서 4항] `FindOrCreateCardListPanel()`이 자신을 맨 앞으로 강제하는 것과
+            // 대칭으로, 이 두 버튼(과 DetailPanel)은 항상 맨 뒤(=렌더링 최상단)로 강제한다 - 씬 상태가
+            // 어떻든 두 방향에서 순서를 강제로 고정하므로 어느 한쪽만으로도 이미 충분하지만, "코드로
+            // 강제 해결"이라는 명령서 취지에 맞춰 이중으로 보증한다.
+            closeButton.transform.SetAsLastSibling();
+            detailPanelRoot.transform.SetAsLastSibling();
+
             var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
             if (materialSelectUIController == null)
             {
@@ -181,6 +200,26 @@ namespace KBOManager.EditorTools
 
             var scene = controller.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
+
+            // [TASK-KBO-141, 명령서 6항] Z-Order가 실제로 의도대로 고정됐는지 sibling index를 직접
+            // 읽어 콘솔에 증명한다 - CardListPanel(카드 스크롤 뷰)의 인덱스가 closeButton/DetailPanel의
+            // 인덱스보다 반드시 작아야(=더 먼저 그려져야) 두 버튼이 카드 리스트 위에 보인다.
+            int cardListIndex = cardContainer.parent.parent.GetSiblingIndex(); // Content -> Viewport -> CardListPanel
+            int closeButtonIndex = closeButton.transform.GetSiblingIndex();
+            int detailPanelIndex = detailPanelRoot.transform.GetSiblingIndex();
+            bool zOrderOk = cardListIndex < closeButtonIndex && cardListIndex < detailPanelIndex;
+
+            if (zOrderOk)
+            {
+                Debug.Log($"[SetupInventoryUI] Inventory Z-Order 갱신 완료 - CardListPanel(index {cardListIndex}) < " +
+                    $"CloseButton(index {closeButtonIndex}), DetailPanel(index {detailPanelIndex}).");
+            }
+            else
+            {
+                Debug.LogError($"[SetupInventoryUI] Inventory Z-Order 검증 실패 - CardListPanel(index {cardListIndex})가 " +
+                    $"CloseButton(index {closeButtonIndex}) 또는 DetailPanel(index {detailPanelIndex})보다 뒤에 있습니다. " +
+                    "씬을 직접 확인하십시오.");
+            }
 
             Debug.Log("[SetupInventoryUI] 인벤토리 UI 자동 배선 완료.");
         }
@@ -276,6 +315,16 @@ namespace KBOManager.EditorTools
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            // [TASK-KBO-141, 근본 원인 확정] 이 메서드가 새 GameObject를 만들 때 `SetParent(parent, false)`는
+            // 유니티 기본 동작상 "부모의 마지막(=최상단 렌더링) 자식"으로 붙인다 - 이 함수는 항상
+            // `AutoConnectInventoryUI()`의 맨 처음에 호출되므로, 만약 InventoryPanel에 예전 실행에서 만든
+            // CloseButton/DetailPanel이 이미 존재하는 씬에서 처음 이 새 버전을 실행하면(TASK-138 이전 ->
+            // 이후 마이그레이션 시점) CardListPanel이 그 뒤(=그 위)에 추가되어 CloseButton/DetailPanel을
+            // 완전히 덮어버린다 - TASK-139/140이 보고받은 "닫기 X 버튼이 카드 리스트에 가려짐" 증상의
+            // 실제 원인이다(사실 확인, 코드 우기기 아님). 재실행마다 무조건 맨 앞(=렌더링 최하단)으로
+            // 강제해 이후에 생성/발견되는 CloseButton/DetailPanel이 항상 그 위에 그려지도록 한다.
+            panelObject.transform.SetAsFirstSibling();
 
             return contentTransform;
         }

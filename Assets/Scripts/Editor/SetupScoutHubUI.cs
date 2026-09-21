@@ -24,6 +24,17 @@ namespace KBOManager.EditorTools
     /// 허브(`ScoutHubPanel`) 레벨 우측 상단에 'X' 버튼 하나로 통일한다. 두 컨트롤러의 `closeButton`
     /// 필드를 이 새 버튼으로 재바인딩하는 것만으로 통합되므로(`Awake()`의 리스너 등록 로직은 무수정),
     /// C# 로직을 전혀 건드리지 않는다(명령서 5항).
+    ///
+    /// [TASK-KBO-141] `ScoutHubUIController.ShowPlayerSection()`/`ShowCheerleaderSection()` 자체는
+    /// TASK-138에서 이미 무결함을 재확인했지만(둘 다 항상 SetActive(true)/(false)를 짝지어 호출),
+    /// "탭 전환 시 겹침"이 반복 보고돼 씬 데이터 쪽 오바인딩 가능성을 정면으로 다룬다 - `ScoutPanel`/
+    /// `CheerleaderShopPanel`/`ScoutHubPanel` 각각이 씬에 중복 존재하면, 이 메뉴가 매번 새로 찾아
+    /// 고치는 "정본" 인스턴스와 실제로 `UIManager.screens` 등 다른 곳이 참조 중인 "구본" 인스턴스가
+    /// 서로 다를 수 있어 아무리 정본을 고쳐도 화면엔 반영되지 않는 "보이지 않는 오바인딩"이 가능하다.
+    /// `DestroyDuplicateInstances()`로 정본 하나만 남기고 나머지를 파괴한 뒤, 재부모화가 끝난
+    /// `hubController` 하위에서 `GetComponentInChildren()`으로 다시 찾아 덮어써(명령서 4항, 인스펙터
+    /// 값을 신뢰하지 않음) `LogHubBindingVerification()`으로 실제 저장된 값을 콘솔에 증명한다(명령서
+    /// 6항 - "ScoutHub 바인딩 갱신 완료").
     /// </summary>
     public static class SetupScoutHubUI
     {
@@ -47,12 +58,37 @@ namespace KBOManager.EditorTools
             var shopController = SetupShopUI.EnsureShopPanelAssembled(canvas.transform);
 
             var hubController = FindOrCreateHubPanel(canvas.transform);
+
+            // [TASK-KBO-141] 씬 어딘가에 같은 컴포넌트의 사본이 남아있으면, 이 메뉴가 방금 확정한
+            // 정본(scoutController/shopController/hubController)을 아무리 고쳐도 실제로 화면에 쓰이는
+            // 사본은 그대로 방치되는 "보이지 않는 오바인딩"이 가능하다 - 정본만 남기고 전부 파괴한다.
+            DestroyDuplicateInstances(scoutController);
+            DestroyDuplicateInstances(shopController);
+            DestroyDuplicateInstances(hubController);
+
             ReparentSection(scoutController.transform, hubController.transform);
             ReparentSection(shopController.transform, hubController.transform);
 
             var (playerTabButton, cheerleaderTabButton) = FindOrCreateTabButtons(hubController.transform);
+
+            // [TASK-KBO-141, 명령서 4항] 인스펙터에 남아있을 수 있는 오바인딩을 신뢰하지 않고, 방금
+            // 재부모화까지 끝낸 hubController 하위에서 GetComponentInChildren으로 직접 다시 찾아
+            // 덮어쓴다 - scoutController/shopController 변수를 그대로 재사용하는 대신 한 번 더 검증한다.
+            var verifiedScoutSection = hubController.GetComponentInChildren<ScoutUIController>(true);
+            var verifiedShopSection = hubController.GetComponentInChildren<CheerleaderShopUIController>(true);
+            if (verifiedScoutSection == null || verifiedShopSection == null)
+            {
+                Debug.LogError("[SetupScoutHubUI] ScoutHubPanel 하위에서 ScoutUIController/" +
+                    "CheerleaderShopUIController를 찾지 못해 바인딩을 중단합니다 - 재부모화가 실패한 " +
+                    "것으로 보입니다.");
+                return;
+            }
+
             BindHubController(hubController, playerTabButton, cheerleaderTabButton,
-                scoutController.gameObject, shopController.gameObject);
+                verifiedScoutSection.gameObject, verifiedShopSection.gameObject);
+
+            // [TASK-KBO-141, 명령서 6항] 실제로 저장된 값을 SerializedObject로 다시 읽어 콘솔에 증명한다.
+            LogHubBindingVerification(hubController, verifiedScoutSection.gameObject, verifiedShopSection.gameObject);
 
             // [TASK-KBO-137] 각 섹션의 구 하단-좌측 "닫기" 버튼을 정리하고, 허브 우측 상단에 'X'
             // 버튼 하나로 통일해 두 컨트롤러의 closeButton 필드 모두에 재바인딩한다.
@@ -272,6 +308,66 @@ namespace KBOManager.EditorTools
             serialized.FindProperty("playerSection").objectReferenceValue = playerSection;
             serialized.FindProperty("cheerleaderSection").objectReferenceValue = cheerleaderSection;
             serialized.ApplyModifiedProperties();
+        }
+
+        /// <summary>[TASK-KBO-141] 씬 전체에서 `T` 타입 컴포넌트를 전수 검색해 `keep` 외의 사본을 전부
+        /// `DestroyImmediate`로 제거한다 - "탭 전환 시 겹침"처럼 코드는 멀쩡한데 재현되는 버그의
+        /// 흔한 원인(어딘가가 정본이 아닌 사본을 참조 중)을 원천 차단한다. 사본이 없으면 아무 일도
+        /// 하지 않는다.</summary>
+        private static void DestroyDuplicateInstances<T>(T keep) where T : Component
+        {
+            var all = Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            if (all.Length <= 1) return;
+
+            Debug.LogWarning($"[SetupScoutHubUI] {typeof(T).Name} 중복 {all.Length}개 발견 - 정본 " +
+                $"{GetHierarchyPath(keep.transform)} 하나만 남기고 나머지를 제거합니다.");
+
+            foreach (var instance in all)
+            {
+                if (instance == keep) continue;
+
+                Debug.LogWarning($"[SetupScoutHubUI]   - 중복 제거: {GetHierarchyPath(instance.transform)}");
+                Object.DestroyImmediate(instance.gameObject);
+            }
+        }
+
+        /// <summary>[TASK-KBO-141, 명령서 6항] `hubController`에 실제로 저장된 `playerSection`/
+        /// `cheerleaderSection` 값을 `SerializedObject`로 다시 읽어(방금 쓴 값이 아니라 저장된 값을
+        /// 재확인) 기대값과 정확히 일치하는지, 서로 다른 오브젝트인지까지 검증하고 콘솔에 결과를
+        /// 남긴다.</summary>
+        private static void LogHubBindingVerification(ScoutHubUIController hubController,
+            GameObject expectedPlayerSection, GameObject expectedCheerleaderSection)
+        {
+            var serialized = new SerializedObject(hubController);
+            var boundPlayerSection = serialized.FindProperty("playerSection").objectReferenceValue as GameObject;
+            var boundCheerleaderSection = serialized.FindProperty("cheerleaderSection").objectReferenceValue as GameObject;
+
+            bool ok = boundPlayerSection == expectedPlayerSection
+                && boundCheerleaderSection == expectedCheerleaderSection
+                && boundPlayerSection != boundCheerleaderSection;
+
+            if (ok)
+            {
+                Debug.Log("[SetupScoutHubUI] ScoutHub 바인딩 갱신 완료 - " +
+                    $"playerSection={GetHierarchyPath(boundPlayerSection.transform)}, " +
+                    $"cheerleaderSection={GetHierarchyPath(boundCheerleaderSection.transform)}");
+            }
+            else
+            {
+                Debug.LogError("[SetupScoutHubUI] ScoutHub 바인딩 검증 실패 - playerSection/" +
+                    "cheerleaderSection이 기대한 오브젝트와 다르거나 서로 같습니다. 씬을 직접 확인하십시오.");
+            }
+        }
+
+        private static string GetHierarchyPath(Transform t)
+        {
+            var path = t.name;
+            while (t.parent != null)
+            {
+                t = t.parent;
+                path = t.name + "/" + path;
+            }
+            return path;
         }
 
         private static Button FindOrCreateScoutButton(Transform parent)
