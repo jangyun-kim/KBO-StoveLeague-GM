@@ -66,6 +66,17 @@ namespace KBOManager.EditorTools
     /// 레거시 오브젝트까지 놓치지 않는다. `PlayerCardTemplate`(`SetupScoutUI.cs` 소유) 내부 텍스트는
     /// 명령서 4항 예시(타이틀/안내 문구/버튼 라벨)에 포함되지 않고 관련 데이터 파일 목록 밖이라
     /// 건드리지 않았다.
+    ///
+    /// [TASK-KBO-135] 명령서 3항 진단(`VerticalLayoutGroup`의 min↔preferred 보간 계산에서 `ActionContainer`
+    /// 가 압사)이 실제로 성립하는 계산 특성임을 확인했다 - TASK-134가 `ActionContainer`에 `minHeight`를
+    /// 부여하지 않은 채(preferredHeight만 80) `VerticalLayoutGroup`에 맡겼기 때문에, 가용 공간이
+    /// 부족해지면 버튼 영역이 0에 가깝게 축소될 수 있었다. 명령서 4항의 두 번째 대안(절대 좌표 고정)을
+    /// 채택해 `FindOrCreateActionContainer()`가 `LayoutElement.ignoreLayout = true`로 레이아웃 계산에서
+    /// 완전히 제외하고 `ContentPanel` 하단에 고정 픽셀 높이(`ActionContainerHeight`=90)로 절대 배치하도록
+    /// 재작성했다 - `ContentPanel`의 `VerticalLayoutGroup` 하단 padding도 그만큼 예약해 스크롤 목록이
+    /// 그 영역을 침범하지 않게 했다. `InventoryUIController.cs`는 명령서가 가정한 `OpenDetail()`이
+    /// 존재하지 않아(사실 정정, 실제 메서드는 `ShowDetail(Player)`) 그 메서드와 `CloseDetail()`에
+    /// 메인 닫기 버튼 숨김/복원을 구현했다.
     /// </summary>
     public static class SetupUpgradeUI
     {
@@ -90,6 +101,10 @@ namespace KBOManager.EditorTools
         private const int BestFitMinSize = 24;
         private const int BestFitMaxSize = 72;
 
+        // [TASK-KBO-135] ActionContainer(확인/취소 버튼)의 고정 픽셀 높이. VerticalLayoutGroup의
+        // min<->preferred 보간 계산에서 완전히 제외(ignoreLayout)하고 이 값으로 절대 배치한다.
+        private const float ActionContainerHeight = 90f;
+
         [MenuItem("KBO Manager/Setup/Auto-Connect Upgrade UI")]
         public static void AutoConnectUpgradeUI()
         {
@@ -112,35 +127,36 @@ namespace KBOManager.EditorTools
             // LayoutElement(바로 아래에서 부착)가 우선한다 - 최초 생성 시의 기본 배치값으로만 남겨둔다.
             var titleText = FindOrCreateText(contentPanel, TitleTextName, "",
                 new Vector2(0f, 0.85f), new Vector2(1f, 1f));
-            EnsureLayoutElement(titleText.gameObject, preferredHeight: 60f, flexibleHeight: 0f);
+            EnsureLayoutElement(titleText.gameObject, preferredHeight: 60f, flexibleHeight: 0f, minHeight: 60f);
 
             var selectionCountText = FindOrCreateText(contentPanel, SelectionCountTextName, "",
                 new Vector2(0f, 0.1f), new Vector2(1f, 0.15f));
-            EnsureLayoutElement(selectionCountText.gameObject, preferredHeight: 50f, flexibleHeight: 0f);
+            EnsureLayoutElement(selectionCountText.gameObject, preferredHeight: 50f, flexibleHeight: 0f, minHeight: 50f);
 
             // [TASK-KBO-123] 확인/취소 버튼을 전용 컨테이너(HorizontalLayoutGroup)로 정렬한다. 과거
             // 버전에서 팝업 직속 자식으로 고정 픽셀 앵커에 만들어져 있던 두 버튼은 이 컨테이너 하위로
-            // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지).
+            // 옮겨 재사용한다(명령서 6항 - 중복 생성 방지). [TASK-KBO-135] FindOrCreateActionContainer()
+            // 내부에서 VerticalLayoutGroup으로부터 완전히 제외(ignoreLayout)하고 ContentPanel 하단에
+            // 고정 픽셀 높이로 절대 배치하므로, 여기서 별도 LayoutElement 설정은 필요 없다.
             var actionContainer = FindOrCreateActionContainer(contentPanel);
             var confirmButton = FindOrCreateButton(actionContainer, ConfirmButtonName, "강화/각성 실행",
                 Vector2.zero, Vector2.zero);
             var cancelButton = FindOrCreateButton(actionContainer, CancelButtonName, "닫기",
                 Vector2.zero, Vector2.zero);
-            EnsureLayoutElement(actionContainer.gameObject, preferredHeight: 80f, flexibleHeight: 0f);
 
             var (playerListPanel, playerListContainer, playerListEmptyText) = FindOrCreateScrollList(contentPanel,
                 PlayerListPanelName, PlayerListContainerName, new Vector2(140f, 200f), new Vector2(10f, 10f),
                 "강화 재료로 사용할 동일 선수가 없습니다.");
-            EnsureLayoutElement(playerListPanel, preferredHeight: 0f, flexibleHeight: 1f, minHeight: 120f);
+            EnsureLayoutElement(playerListPanel, preferredHeight: 120f, flexibleHeight: 1f, minHeight: 120f);
 
             var (itemListPanel, itemListContainer, itemListEmptyText) = FindOrCreateScrollList(contentPanel,
                 ItemListPanelName, ItemListContainerName, new Vector2(160f, 60f), new Vector2(10f, 10f),
                 "사용 가능한 강화 재료가 없습니다.");
-            EnsureLayoutElement(itemListPanel, preferredHeight: 0f, flexibleHeight: 1f, minHeight: 120f);
+            EnsureLayoutElement(itemListPanel, preferredHeight: 120f, flexibleHeight: 1f, minHeight: 120f);
 
-            // [TASK-KBO-134] ActionContainer(닫기 버튼 포함)가 sibling 순서상 두 스크롤 목록보다
-            // 먼저 생성돼 있으면 VerticalLayoutGroup이 버튼을 목록 "위"에 쌓아버린다 - 항상 맨 아래에
-            // 고정되도록 마지막 sibling으로 강제한다(명령서 3항이 지목한 "가려짐" 가능성 원천 차단).
+            // [TASK-KBO-135] ActionContainer는 이제 레이아웃 그룹 밖에서 절대 배치되지만, sibling
+            // 순서(=그리기 순서)상 스크롤 목록보다 나중이어야 혹시 모를 잔여 겹침에서도 버튼이 항상
+            // 위에 그려진다 - 항상 마지막 sibling으로 강제한다.
             actionContainer.SetAsLastSibling();
 
             var playerCardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
@@ -255,11 +271,15 @@ namespace KBOManager.EditorTools
             // [TASK-KBO-134] 타이틀 -> 스크롤 목록(가변 높이) -> 하단 버튼이 항상 세로로 순서대로
             // 쌓이고 서로 겹치지 않도록 구조적으로 보증한다. 각 자식의 높이 배분은 LayoutElement
             // (preferredHeight/flexibleHeight, 호출부에서 개별 부착)가 결정한다.
+            // [TASK-KBO-135] `ActionContainer`는 이 레이아웃 그룹에서 완전히 제외(ignoreLayout, 아래
+            // `FindOrCreateActionContainer()`)되고 ContentPanel 하단에 고정 픽셀 높이로 절대 배치되므로,
+            // 나머지 자식(스크롤 목록)이 그 영역까지 늘어나 겹치지 않도록 하단 padding으로 그만큼의
+            // 공간을 예약해 둔다.
             if (!contentTransform.TryGetComponent<VerticalLayoutGroup>(out var verticalLayout))
             {
                 verticalLayout = contentTransform.gameObject.AddComponent<VerticalLayoutGroup>();
             }
-            verticalLayout.padding = new RectOffset(24, 24, 24, 24);
+            verticalLayout.padding = new RectOffset(24, 24, 24, Mathf.RoundToInt(ActionContainerHeight) + 24 + 12);
             verticalLayout.spacing = 12f;
             verticalLayout.childAlignment = TextAnchor.UpperCenter;
             verticalLayout.childControlWidth = true;
@@ -287,42 +307,64 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>
-        /// [TASK-KBO-123] 확인/취소 버튼을 담을 하단 컨테이너. 명령서 4항이 지정한 좌표(anchorMin 0,0 ~
-        /// anchorMax 1,0.15)에 `HorizontalLayoutGroup`(spacing 20, `MiddleCenter`)을 부착한다. 과거
-        /// 버전에서 팝업(`MaterialSelectPopup`)의 직속 자식으로 고정 픽셀 좌표에 만들어져 있던
-        /// `ConfirmButton`/`CancelButton`은 이 컨테이너 하위로 이동시켜 중복 생성을 막는다(명령서 6항).
+        /// [TASK-KBO-123] 확인/취소 버튼을 담을 하단 컨테이너에 `HorizontalLayoutGroup`(spacing 20,
+        /// `MiddleCenter`)을 부착한다. 과거 버전에서 팝업(`MaterialSelectPopup`)의 직속 자식으로 고정
+        /// 픽셀 좌표에 만들어져 있던 `ConfirmButton`/`CancelButton`은 이 컨테이너 하위로 이동시켜
+        /// 중복 생성을 막는다(명령서 6항).
+        ///
+        /// [TASK-KBO-135] `ContentPanel`의 `VerticalLayoutGroup`(childControlHeight=true)은 사용
+        /// 가능한 공간이 모든 자식의 `preferredHeight` 합보다 부족해지면 각 자식을 `minHeight`~
+        /// `preferredHeight` 사이로 보간(Lerp)해 축소한다 - 이때 `ActionContainer`의 `minHeight`가
+        /// 0에 가까우면 버튼 영역이 거의 0까지 짓눌릴 수 있다(명령서 3항이 보고한 "압사" 현상과 정확히
+        /// 일치하는 계산 특성). 이 클래스의 다른 레이아웃 요소처럼 `minHeight`를 넉넉히 주는 대신,
+        /// 명령서 4항의 두 번째 대안(절대 좌표 고정)을 택해 `LayoutElement.ignoreLayout = true`로
+        /// `VerticalLayoutGroup` 계산에서 아예 제외하고, `ContentPanel` 하단에 고정 픽셀 높이
+        /// (`ActionContainerHeight`)로 절대 배치한다 - 이러면 Lerp 압사 자체가 구조적으로 불가능해진다.
+        /// 가로는 `anchorMin.x`=0/`anchorMax.x`=1로 항상 스트레치돼, 해상도/종횡비가 바뀌어도 버튼
+        /// 영역이 화면 밖으로 밀려나지 않는다(명령서 6항).
         /// </summary>
         private static Transform FindOrCreateActionContainer(Transform popupTransform)
         {
             var existingContainer = popupTransform.Find(ActionContainerName);
             Transform containerTransform;
+            GameObject containerObject;
             if (existingContainer != null)
             {
                 containerTransform = existingContainer;
+                containerObject = existingContainer.gameObject;
             }
             else
             {
-                var containerObject = new GameObject(ActionContainerName, typeof(RectTransform));
+                containerObject = new GameObject(ActionContainerName, typeof(RectTransform));
                 Undo.RegisterCreatedObjectUndo(containerObject, $"Create {ActionContainerName}");
                 containerObject.transform.SetParent(popupTransform, false);
-
-                var rect = (RectTransform)containerObject.transform;
-                rect.anchorMin = new Vector2(0f, 0f);
-                rect.anchorMax = new Vector2(1f, 0.15f);
-                rect.offsetMin = Vector2.zero;
-                rect.offsetMax = Vector2.zero;
 
                 containerTransform = containerObject.transform;
             }
 
+            // 하단 고정, 가로 스트레치, 세로는 항상 ActionContainerHeight 고정 - 재실행 시에도
+            // 과거 퍼센트 앵커가 남아있을 수 있어 매번 강제로 재적용한다.
+            var rect = (RectTransform)containerTransform;
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.sizeDelta = new Vector2(0f, ActionContainerHeight);
+            rect.anchoredPosition = Vector2.zero;
+
             if (!containerTransform.TryGetComponent<HorizontalLayoutGroup>(out var layout))
             {
-                layout = containerTransform.gameObject.AddComponent<HorizontalLayoutGroup>();
-                layout.spacing = 20f;
-                layout.childAlignment = TextAnchor.MiddleCenter;
-                layout.childForceExpandWidth = false;
-                layout.childForceExpandHeight = false;
+                layout = containerObject.AddComponent<HorizontalLayoutGroup>();
             }
+            layout.spacing = 20f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            if (!containerTransform.TryGetComponent<LayoutElement>(out var layoutElement))
+            {
+                layoutElement = containerObject.AddComponent<LayoutElement>();
+            }
+            layoutElement.ignoreLayout = true;
 
             MoveLegacyButtonIfNeeded(popupTransform, containerTransform, ConfirmButtonName);
             MoveLegacyButtonIfNeeded(popupTransform, containerTransform, CancelButtonName);

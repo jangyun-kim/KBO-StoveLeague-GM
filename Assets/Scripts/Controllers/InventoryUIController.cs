@@ -12,6 +12,11 @@ namespace KBOManager.Controllers
     /// 패널(강화/각성 상태, 보유 스킬)을 띄우는 인벤토리 메인 허브. 상세 패널의 [강화하기]/[각성하기]
     /// 버튼은 MaterialSelectUIController의 재료 다중 선택 팝업을 연다 - 실제 GameActionController 호출과
     /// 인벤토리 소모는 그 팝업의 확정(Confirm) 시점에 일어난다. 카드 목록은 CardPoolManager로 재사용한다.
+    ///
+    /// [TASK-KBO-135, 사실 정정] 명령서는 상세 패널을 여는 메서드 이름을 `OpenDetail()`로 가정했으나,
+    /// 이 클래스에는 그런 이름의 메서드가 없다 - 실제로 상세 패널을 여는 메서드는 `ShowDetail(Player)`
+    /// (188행)이며 닫는 메서드는 `CloseDetail()`(230행)이 맞다. 명령서 4항이 요구한 "메인 닫기 버튼
+    /// 숨김/복원"은 이 두 실제 메서드에 구현했다.
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
@@ -200,6 +205,9 @@ namespace KBOManager.Controllers
             if (player?.Template == null) return;
 
             if (detailPanelRoot != null) detailPanelRoot.SetActive(true);
+            // [TASK-KBO-135] 상세 패널이 열려 있는 동안은 메인 인벤토리 닫기 버튼(로비로 돌아가기)을
+            // 숨겨, 우측 상단에 두 닫기 버튼이 겹쳐 보이는 UX 결함을 막는다 - CloseDetail()에서 되돌린다.
+            if (closeButton != null) closeButton.gameObject.SetActive(false);
             if (detailPreviewCard != null) detailPreviewCard.Setup(player);
 
             if (detailReinforceText != null)
@@ -237,6 +245,8 @@ namespace KBOManager.Controllers
 
             selectedPlayer = null;
             if (detailPanelRoot != null) detailPanelRoot.SetActive(false);
+            // [TASK-KBO-135] ShowDetail()에서 숨긴 메인 닫기 버튼을 되돌린다.
+            if (closeButton != null) closeButton.gameObject.SetActive(true);
         }
 
         // ----- 스킬 변경 버튼 브릿지 -----
