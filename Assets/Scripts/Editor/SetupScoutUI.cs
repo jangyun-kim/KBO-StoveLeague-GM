@@ -29,6 +29,11 @@ namespace KBOManager.EditorTools
     /// 전수 확인). 6개 카테고리 버튼을 실제로 조립·바인딩하는 코드는 이 파일의 `BindCategoryButtons()`
     /// 이고, `onClick` 연결은 `ScoutUIController.cs`의 `Awake()`이므로, "1회/10회 영입" 버튼 쌍 신설은
     /// 실제 소유 파일인 이 두 곳에 구현했다. `SetupScoutHubUI.cs`/`ScoutHubUIController.cs`는 무수정이다.
+    ///
+    /// [TASK-KBO-137] TASK-136의 "2열 그리드 x 셀" 구조가 라이브 씬에서 텍스트 겹침 압사로 확인돼,
+    /// `BindCategoryButtons()`/`FindOrCreateCategoryListContainer()`/`BindCategoryRow()`를 "6개 행이
+    /// 세로로 나열되는 `VerticalLayoutGroup`" 구조로 재작성했다(자세한 근거는 `BindCategoryButtons()`
+    /// 문서 주석 참고).
     /// </summary>
     public static class SetupScoutUI
     {
@@ -134,43 +139,51 @@ namespace KBOManager.EditorTools
         /// 삭제한다(명령서 4항 DestroyImmediate 지시). 실제 onClick 연결은 ScoutUIController.Awake()가
         /// 담당한다(closeButton과 동일한 관례 - 에디터 스크립트는 필드 참조만 채운다).
         ///
-        /// [TASK-KBO-136] 카테고리 하나당 셀이 "1회 영입" 버튼 그 자체였던 구조를, "1회 영입"/"10회
-        /// 영입" 두 버튼을 담는 셀 컨테이너 구조로 개편한다. 과거 6개 카테고리 버튼(예: `LiveNormalButton`)
-        /// 은 Image+Button이 셀 루트에 직접 붙어 있어 새 셀 컨테이너(순수 레이아웃 그룹)와 이름은
-        /// 달라도 자리가 겹쳐 중복 렌더링될 수 있으므로, 먼저 6개 전부 DestroyImmediate로 정리한 뒤
-        /// 새 구조로 다시 조립한다(명령서 6항 - 안전한 재조립).
+        /// [TASK-KBO-137, 사실 정정 + 재조립] TASK-136이 도입한 "2열 그리드(`GridLayoutGroup`) x
+        /// 셀(라벨+버튼 줄을 세로로 쌓은 `VerticalLayoutGroup`)" 구조가 실제 라이브 씬에서 텍스트가
+        /// 심하게 겹치는 압사로 나타났다 - `GridLayoutGroup`은 자식의 `LayoutElement`(preferred/min)를
+        /// 전혀 참조하지 않고 `cellSize`만으로 고정 크기를 강제하는 "둔감한" 레이아웃이라, 셀 내부의
+        /// 중첩 레이아웃 그룹과 상호작용이 매끄럽지 않았다. 명령서 4항 지시대로 `GridLayoutGroup`을
+        /// 완전히 걷어내고, 부모 컨테이너(`PlayerRollButtonsContainer`)를 `VerticalLayoutGroup`으로
+        /// 바꿔 6개 카테고리를 세로로 나열되는 "행(Row)"으로 재구성했다 - 각 행 자체가
+        /// `HorizontalLayoutGroup`이라 [카테고리 라벨 | 1회 영입 | 10회 영입] 3칸이 가로로 나란히
+        /// 배치되고(명령서 6항 "Child Force Expand"로 균등 분할), 행에는 `LayoutElement`
+        /// (minHeight=80, preferredHeight=90)를 부여해 TASK-135의 압사 방지 패턴을 그대로 재사용한다.
+        /// TASK-136이 만든 구 "셀"(`LiveNormalCell` 등)과 그보다 더 오래된 구 단일 버튼(`LiveNormalButton`
+        /// 등)을 모두 `DestroyImmediate`로 정리한 뒤 새 구조를 조립한다(명령서 6항 - 안전한 재조립).
         /// </summary>
         private static void BindCategoryButtons(ScoutUIController controller)
         {
             DestroyLegacyChild(controller.transform, Roll1ButtonName);
             DestroyLegacyChild(controller.transform, Roll10ButtonName);
 
-            var grid = FindOrCreateGridContainer(controller.transform, PlayerRollButtonsContainerName,
+            var list = FindOrCreateCategoryListContainer(controller.transform, PlayerRollButtonsContainerName,
                 new Vector2(0f, 0.15f), new Vector2(0.6f, 0.85f));
 
-            // [TASK-KBO-136] 과거 "셀 = 버튼 그 자체" 구조의 잔재 6개를 정리한다 - 새 셀은 이름이
-            // 달라(예: LiveNormalCell) 겹치지는 않지만, 정리하지 않으면 화면에 옛 단일 버튼이 그대로
-            // 남아 새 1회/10회 버튼 쌍과 중복 렌더링된다.
+            // [TASK-KBO-137] TASK-136의 "셀" 구조와 그보다 오래된 "셀=버튼 그 자체" 구조의 잔재를
+            // 전부 정리한다 - 새 "행(Row)"은 이름이 달라 자동으로는 안 지워지므로 명시적으로 파괴한다.
             foreach (var legacyName in new[]
             {
+                "LiveNormalCell", "LiveEpicCell", "PremiumSignatureCell",
+                "PremiumTitleHolderCell", "PickupSignatureCell", "PickupTitleHolderCell",
                 "LiveNormalButton", "LiveEpicButton", "PremiumSignatureButton",
                 "PremiumTitleHolderButton", "PickupSignatureButton", "PickupTitleHolderButton",
             })
             {
-                DestroyLegacyChild(grid, legacyName);
+                DestroyLegacyChild(list, legacyName);
             }
 
-            BindCategoryCell(controller, grid, "LiveNormalCell", "일반 영입\n라이브 일반",
+            BindCategoryRow(controller, list, "LiveNormalRow", "일반 영입\n라이브 일반",
                 "liveNormalButton", "liveNormalButton10");
-            BindCategoryCell(controller, grid, "LiveEpicCell", "일반 영입\n라이브 에픽",
+            BindCategoryRow(controller, list, "LiveEpicRow", "일반 영입\n라이브 에픽",
                 "liveEpicButton", "liveEpicButton10");
-            BindCategoryCell(controller, grid, "PremiumSignatureCell", "프리미엄 영입\n시그니처 (싸인볼)",
+            BindCategoryRow(controller, list, "PremiumSignatureRow", "프리미엄 영입\n시그니처 (싸인볼)",
                 "premiumSignatureButton", "premiumSignatureButton10");
-            BindCategoryCell(controller, grid, "PremiumTitleHolderCell", "프리미엄 영입\n타이틀 홀더 (트로피)",
+            BindCategoryRow(controller, list, "PremiumTitleHolderRow", "프리미엄 영입\n타이틀 홀더 (트로피)",
                 "premiumTitleHolderButton", "premiumTitleHolderButton10");
-            BindCategoryCell(controller, grid, "PickupSignatureCell", "픽업 영입\n시그니처 (픽업권)",
+            BindCategoryRow(controller, list, "PickupSignatureRow", "픽업 영입\n시그니처 (픽업권)",
                 "pickupSignatureButton", "pickupSignatureButton10");
-            BindCategoryCell(controller, grid, "PickupTitleHolderCell", "픽업 영입\n타이틀 홀더 (픽업권)",
+            BindCategoryRow(controller, list, "PickupTitleHolderRow", "픽업 영입\n타이틀 홀더 (픽업권)",
                 "pickupTitleHolderButton", "pickupTitleHolderButton10");
         }
 
@@ -182,10 +195,11 @@ namespace KBOManager.EditorTools
             if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
         }
 
-        /// <summary>2x3 그리드로 카테고리 셀을 배치할 컨테이너를 찾거나 만든다. [TASK-KBO-136] 셀 하나에
-        /// "1회 영입"/"10회 영입" 버튼이 함께 들어가도록 셀 높이를 80->120으로 키웠다. 재실행 시에도
-        /// 최신 값이 반영되도록(과거에는 신규 생성 분기에서만 설정) 매번 무조건 재적용한다.</summary>
-        private static Transform FindOrCreateGridContainer(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        /// <summary>[TASK-KBO-137] 6개 카테고리 행(Row)을 세로로 나열할 컨테이너. 과거(TASK-136)
+        /// `GridLayoutGroup`을 썼던 자리를 `VerticalLayoutGroup`으로 교체한다 - 남아있을 수 있는 구
+        /// `GridLayoutGroup` 컴포넌트는 명시적으로 제거한다(명령서 6항 안전한 재조립). 재실행 시에도
+        /// 최신 값이 반영되도록 매번 무조건 재적용한다.</summary>
+        private static Transform FindOrCreateCategoryListContainer(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
         {
             var existing = parent.Find(name);
             GameObject containerObject;
@@ -206,63 +220,70 @@ namespace KBOManager.EditorTools
                 rect.offsetMax = Vector2.zero;
             }
 
-            if (!containerObject.TryGetComponent<GridLayoutGroup>(out var grid))
+            if (containerObject.TryGetComponent<GridLayoutGroup>(out var legacyGrid))
             {
-                grid = containerObject.AddComponent<GridLayoutGroup>();
-            }
-            grid.cellSize = new Vector2(260f, 120f);
-            grid.spacing = new Vector2(16f, 16f);
-            grid.childAlignment = TextAnchor.UpperCenter;
-            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
-
-            return containerObject.transform;
-        }
-
-        /// <summary>[TASK-KBO-136] 카테고리 하나(예: "일반 영입 - 라이브 일반")의 셀을 조립한다.
-        /// 세로로 [카테고리 라벨] -&gt; [1회/10회 버튼이 가로로 나란한 줄]을 쌓고, 완성된 두 버튼을
-        /// 컨트롤러의 대응 필드(roll1FieldName/roll10FieldName)에 바인딩한다.</summary>
-        private static void BindCategoryCell(ScoutUIController controller, Transform grid, string cellName,
-            string categoryLabel, string roll1FieldName, string roll10FieldName)
-        {
-            var existing = grid.Find(cellName);
-            GameObject cellObject;
-            if (existing != null)
-            {
-                cellObject = existing.gameObject;
-            }
-            else
-            {
-                cellObject = new GameObject(cellName, typeof(RectTransform));
-                Undo.RegisterCreatedObjectUndo(cellObject, $"Create {cellName}");
-                cellObject.transform.SetParent(grid, false);
+                Object.DestroyImmediate(legacyGrid);
             }
 
-            if (!cellObject.TryGetComponent<VerticalLayoutGroup>(out var vertical))
+            if (!containerObject.TryGetComponent<VerticalLayoutGroup>(out var vertical))
             {
-                vertical = cellObject.AddComponent<VerticalLayoutGroup>();
+                vertical = containerObject.AddComponent<VerticalLayoutGroup>();
             }
-            vertical.spacing = 4f;
+            vertical.padding = new RectOffset(8, 8, 8, 8);
+            vertical.spacing = 12f;
             vertical.childAlignment = TextAnchor.UpperCenter;
             vertical.childControlWidth = true;
             vertical.childForceExpandWidth = true;
             vertical.childControlHeight = true;
             vertical.childForceExpandHeight = false;
 
-            var labelText = FindOrCreateCellLabel(cellObject.transform, categoryLabel);
-            EnsureLayoutElement(labelText.gameObject, preferredHeight: 60f, flexibleHeight: 0f, minHeight: 60f);
+            return containerObject.transform;
+        }
 
-            var buttonRow = FindOrCreateButtonRow(cellObject.transform);
-            EnsureLayoutElement(buttonRow.gameObject, preferredHeight: 44f, flexibleHeight: 0f, minHeight: 44f);
+        /// <summary>[TASK-KBO-137] 카테고리 하나(예: "일반 영입 - 라이브 일반")를 가로 한 줄(Row)로
+        /// 조립한다. `HorizontalLayoutGroup`(childForceExpandWidth=true)이 [카테고리 라벨 | 1회 영입 |
+        /// 10회 영입] 3칸을 균등 분할하고(명령서 6항), 행 자체에는 `LayoutElement`(minHeight=80,
+        /// preferredHeight=90)를 부여해 부모 `VerticalLayoutGroup`의 min↔preferred 보간으로 압사되지
+        /// 않도록 방어한다(TASK-135와 동일 패턴). 완성된 두 버튼을 컨트롤러의 대응 필드에 바인딩한다.</summary>
+        private static void BindCategoryRow(ScoutUIController controller, Transform list, string rowName,
+            string categoryLabel, string roll1FieldName, string roll10FieldName)
+        {
+            var existing = list.Find(rowName);
+            GameObject rowObject;
+            if (existing != null)
+            {
+                rowObject = existing.gameObject;
+            }
+            else
+            {
+                rowObject = new GameObject(rowName, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(rowObject, $"Create {rowName}");
+                rowObject.transform.SetParent(list, false);
+            }
 
-            var roll1Button = FindOrCreateRowButton(buttonRow, "Roll1Button", "1회 영입");
-            var roll10Button = FindOrCreateRowButton(buttonRow, "Roll10Button", "10회 영입");
+            if (!rowObject.TryGetComponent<HorizontalLayoutGroup>(out var layout))
+            {
+                layout = rowObject.AddComponent<HorizontalLayoutGroup>();
+            }
+            layout.spacing = 8f;
+            layout.padding = new RectOffset(8, 8, 4, 4);
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandHeight = true;
+
+            EnsureLayoutElement(rowObject, preferredHeight: 90f, flexibleHeight: 0f, minHeight: 80f);
+
+            FindOrCreateRowLabel(rowObject.transform, categoryLabel);
+            var roll1Button = FindOrCreateRowButton(rowObject.transform, "Roll1Button", "1회 영입");
+            var roll10Button = FindOrCreateRowButton(rowObject.transform, "Roll10Button", "10회 영입");
 
             BindButtonField(controller, roll1FieldName, roll1Button);
             BindButtonField(controller, roll10FieldName, roll10Button);
         }
 
-        private static Text FindOrCreateCellLabel(Transform parent, string label)
+        private static Text FindOrCreateRowLabel(Transform parent, string label)
         {
             const string name = "CategoryLabel";
             var existing = parent.Find(name);
@@ -291,36 +312,6 @@ namespace KBOManager.EditorTools
             text.resizeTextMaxSize = 18;
 
             return text;
-        }
-
-        private static Transform FindOrCreateButtonRow(Transform parent)
-        {
-            const string name = "ButtonRow";
-            var existing = parent.Find(name);
-            GameObject rowObject;
-            if (existing != null)
-            {
-                rowObject = existing.gameObject;
-            }
-            else
-            {
-                rowObject = new GameObject(name, typeof(RectTransform));
-                Undo.RegisterCreatedObjectUndo(rowObject, $"Create {name}");
-                rowObject.transform.SetParent(parent, false);
-            }
-
-            if (!rowObject.TryGetComponent<HorizontalLayoutGroup>(out var layout))
-            {
-                layout = rowObject.AddComponent<HorizontalLayoutGroup>();
-            }
-            layout.spacing = 8f;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = true;
-            layout.childForceExpandWidth = true;
-            layout.childControlHeight = true;
-            layout.childForceExpandHeight = true;
-
-            return rowObject.transform;
         }
 
         private static Button FindOrCreateRowButton(Transform parent, string name, string label)

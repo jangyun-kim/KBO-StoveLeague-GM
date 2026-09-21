@@ -25,6 +25,10 @@ namespace KBOManager.Controllers
     /// 호출해 결과를 모아 기존 `ShowResults(List&lt;Player&gt;)`(이미 다중 카드 렌더링을 지원)에 그대로
     /// 넘기는 방식으로 구현했다(`ExecuteMultiRoll()`) - 카테고리별 확률표/천장 로직은 무엇도 새로
     /// 추가하지 않았다.
+    ///
+    /// [TASK-KBO-137] `Awake()`에 `scoutManager == null`이면 `FindAnyObjectByType&lt;ScoutManager&gt;()`로
+    /// 자동 복구하는 안전장치를 추가했다 - 인스펙터 바인딩이 씬 재조립 과정에서 풀려 콘솔에 경고가
+    /// 반복 출력되던 증상(명령서 3항)에 대응한다.
     /// </summary>
     public class ScoutUIController : MonoBehaviour
     {
@@ -69,6 +73,12 @@ namespace KBOManager.Controllers
 
         private void Awake()
         {
+            // [TASK-KBO-137] 인스펙터 바인딩이 씬 재조립/재배선 과정 등으로 풀려도(콘솔에 "ScoutManager가
+            // 연결되지 않았습니다" 경고가 반복 출력되는 증상) 런타임에 자동으로 씬의 ScoutManager를 찾아
+            // 복구하는 안전장치. ScoutManager.Awake()가 DontDestroyOnLoad로 항상 유일한 인스턴스를
+            // 유지하므로 FindAnyObjectByType 1회 호출로 충분하다.
+            if (scoutManager == null) scoutManager = FindAnyObjectByType<ScoutManager>();
+
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
             // [TASK-KBO-131] CS8978 핫픽스: `scoutManager?.RollX`(메서드 그룹에 직접 null 조건부 연산자를
             // 적용해 Func&lt;Player&gt;로 변환하려는 시도)는 C# 컴파일러가 이 조합의 결과 타입을 확정할 수

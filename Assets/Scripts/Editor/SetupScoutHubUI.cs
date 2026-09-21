@@ -18,6 +18,12 @@ namespace KBOManager.EditorTools
     /// 탭 버튼 2개 + ScoutHubUIController를 조립한다. Find-or-Create 관례를 그대로 따르며(명령서 6항),
     /// 더 이상 쓰이지 않는 구 "GachaShopButton"(치어리더 전용 로비 진입 버튼)과 UIManager.screens의
     /// CheerleaderShop 항목은 DestroyImmediate/배열 제거로 완전히 정리한다(명령서 4항).
+    ///
+    /// [TASK-KBO-137] `ScoutUIController`/`CheerleaderShopUIController`가 각자 하단-좌측에 갖고 있던
+    /// "닫기" 버튼(둘 다 `UIManager.Instance?.ShowScreen(ScreenType.Lobby)`로 동일한 로직)을 폐기하고,
+    /// 허브(`ScoutHubPanel`) 레벨 우측 상단에 'X' 버튼 하나로 통일한다. 두 컨트롤러의 `closeButton`
+    /// 필드를 이 새 버튼으로 재바인딩하는 것만으로 통합되므로(`Awake()`의 리스너 등록 로직은 무수정),
+    /// C# 로직을 전혀 건드리지 않는다(명령서 5항).
     /// </summary>
     public static class SetupScoutHubUI
     {
@@ -28,6 +34,9 @@ namespace KBOManager.EditorTools
         private const string CheerleaderTabButtonName = "CheerleaderTabButton";
         private const string ScoutButtonName = "ScoutButton";
         private const string LegacyGachaShopButtonName = "GachaShopButton";
+        // [TASK-KBO-137] 각 섹션이 개별로 갖고 있던 구 "닫기" 버튼 오브젝트 이름(둘 다 동일).
+        private const string LegacySectionCloseButtonName = "CloseButton";
+        private const string HubCloseButtonName = "HubCloseButton";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Scout Hub")]
         public static void AutoConnectScoutHub()
@@ -44,6 +53,21 @@ namespace KBOManager.EditorTools
             var (playerTabButton, cheerleaderTabButton) = FindOrCreateTabButtons(hubController.transform);
             BindHubController(hubController, playerTabButton, cheerleaderTabButton,
                 scoutController.gameObject, shopController.gameObject);
+
+            // [TASK-KBO-137] 각 섹션의 구 하단-좌측 "닫기" 버튼을 정리하고, 허브 우측 상단에 'X'
+            // 버튼 하나로 통일해 두 컨트롤러의 closeButton 필드 모두에 재바인딩한다.
+            DestroyLegacyChild(scoutController.transform, LegacySectionCloseButtonName);
+            DestroyLegacyChild(shopController.transform, LegacySectionCloseButtonName);
+
+            var hubCloseButton = FindOrCreateCloseButton(hubController.transform, HubCloseButtonName, 60f);
+            BindButtonField(scoutController, "closeButton", hubCloseButton);
+            BindButtonField(shopController, "closeButton", hubCloseButton);
+            EditorUtility.SetDirty(scoutController);
+            EditorUtility.SetDirty(shopController);
+
+            // 탭 컨테이너(FindOrCreateTabButtons 내부에서 이미 SetAsLastSibling)보다도 나중에 그려져야
+            // 우측 상단에서 겹치는 탭 버튼 위로 항상 클릭 가능하다.
+            hubCloseButton.transform.SetAsLastSibling();
 
             var dashboard = Object.FindAnyObjectByType<LeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dashboard == null)
@@ -305,6 +329,92 @@ namespace KBOManager.EditorTools
             var serializedController = new SerializedObject(controller);
             serializedController.FindProperty(fieldName).objectReferenceValue = button;
             serializedController.ApplyModifiedProperties();
+        }
+
+        /// <summary>이름으로 자식을 찾아 존재하면 DestroyImmediate로 완전히 제거한다. 명령서에서 더
+        /// 이상 쓰지 않기로 한 구 UI 요소를 정리할 때만 쓴다(명령서 6항 - 안전한 재조립).</summary>
+        private static void DestroyLegacyChild(Transform parent, string name)
+        {
+            var legacy = parent.Find(name);
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        }
+
+        /// <summary>
+        /// [TASK-KBO-137] 허브 우측 상단 모서리에 고정 픽셀 크기(`size`x`size`)의 단순 'X' 버튼을
+        /// 절대 배치한다(`SetupUpgradeUI.FindOrCreateCloseButton()`/`SetupInventoryUI.
+        /// FindOrCreateCloseButton()`과 동일한 패턴 - 각 Setup*.cs 파일이 자체 헬퍼를 갖는 이 코드베이스
+        /// 관례를 따라 이 파일에도 독립적으로 둔다). `ScoutHubPanel`에는 레이아웃 그룹이 없어
+        /// `LayoutElement.ignoreLayout`이 당장은 아무 효과가 없지만, 추후 레이아웃 그룹이 추가되더라도
+        /// 이 버튼만은 항상 절대 위치를 유지하도록 미리 방어해 둔다.
+        /// </summary>
+        private static Button FindOrCreateCloseButton(Transform parent, string name, float size)
+        {
+            var existingChild = parent.Find(name);
+            Button button;
+            GameObject buttonObject;
+            if (existingChild != null && existingChild.TryGetComponent<Button>(out var existingButton))
+            {
+                button = existingButton;
+                buttonObject = existingChild.gameObject;
+            }
+            else
+            {
+                buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+                Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+                buttonObject.transform.SetParent(parent, false);
+
+                var image = buttonObject.GetComponent<Image>();
+                image.color = new Color(0.9f, 0.9f, 0.9f);
+
+                button = buttonObject.GetComponent<Button>();
+                button.targetGraphic = image;
+            }
+
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.sizeDelta = new Vector2(size, size);
+            rect.anchoredPosition = new Vector2(-12f, -12f);
+
+            if (!buttonObject.TryGetComponent<LayoutElement>(out var layoutElement))
+            {
+                layoutElement = buttonObject.AddComponent<LayoutElement>();
+            }
+            layoutElement.ignoreLayout = true;
+
+            var labelTransform = buttonObject.transform.Find("Label");
+            Text text;
+            if (labelTransform != null && labelTransform.TryGetComponent<Text>(out var existingText))
+            {
+                text = existingText;
+            }
+            else
+            {
+                var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+                Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+                labelObject.transform.SetParent(buttonObject.transform, false);
+
+                var labelRect = (RectTransform)labelObject.transform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = Vector2.zero;
+                labelRect.offsetMax = Vector2.zero;
+
+                text = labelObject.GetComponent<Text>();
+                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.raycastTarget = false;
+            }
+
+            text.text = "X";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 28;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 18;
+            text.resizeTextMaxSize = 40;
+
+            return button;
         }
 
         /// <summary>[TASK-KBO-129] 구 ScreenType.CheerleaderShop 항목이 UIManager.screens에 남아있으면
