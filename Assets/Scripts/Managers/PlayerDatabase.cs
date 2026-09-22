@@ -92,6 +92,30 @@ namespace KBOManager.Managers
             { "TEM_010", Team.Kiwoom },
         };
 
+        /// <summary>
+        /// [TASK-KBO-160, 사용자 직접 지시] `cards_{TOKEN}.csv` 파일명의 `{TOKEN}`(예: "SAMSUNG",
+        /// "KIA")을 Team enum으로 매핑한다. `GenerateKBODatabase.py`의 `TEAMS` 목록과 토큰을
+        /// 동일하게 맞춰야 한다. 이 매핑은 카드 한 장의 `PlayerTemplate.Team`을 "그 카드가 실제로
+        /// 발급된 구단"으로 강제하는 데 쓰인다 - 이적/FA로 여러 구단을 거친 실존 선수(예: 최형우
+        /// 삼성↔KIA, 양의지 두산↔NC)의 각 시즌 카드가 발급 당시 소속을 정확히 표시해야, 향후
+        /// 왕조/구단 세트덱 보너스 판정이 "그 카드가 지금 보유자의 어느 팀에 속했었는가"가 아니라
+        /// "그 카드 자체가 어느 팀 소속으로 발급됐는가"를 기준으로 정확히 걸러낼 수 있다(사용자
+        /// 지시: "KIA 소속 시즌의 최형우 카드는 삼성 세트덱에 들어가지 않아야 한다").
+        /// </summary>
+        private static readonly Dictionary<string, Team> CardsFileTokenToTeam = new Dictionary<string, Team>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "KIA", Team.KIA },
+            { "SAMSUNG", Team.Samsung },
+            { "LG", Team.LG },
+            { "DOOSAN", Team.Doosan },
+            { "KT", Team.KT },
+            { "SSG", Team.SSG },
+            { "LOTTE", Team.Lotte },
+            { "HANWHA", Team.Hanwha },
+            { "NC", Team.NC },
+            { "KIWOOM", Team.Kiwoom },
+        };
+
         private readonly Dictionary<string, PlayerTemplate> templates = new Dictionary<string, PlayerTemplate>();
 
         /// <summary>[TASK-KBO-085] Initialize()가 이미 실행됐는지(성공/실패 무관) 나타내는 플래그. 파싱
@@ -173,7 +197,17 @@ namespace KBOManager.Managers
             var playerIdsWithCards = new HashSet<string>();
             foreach (var asset in cardsCsvAssets)
             {
-                playerIdsWithCards.UnionWith(ParseCardsCsv(asset.text, baseTemplates));
+                // [TASK-KBO-160] 파일명(예: "cards_SAMSUNG")에서 접두사를 뗀 토큰으로 이 파일의
+                // 카드들이 실제로 발급된 구단을 알아낸다 - 매핑 실패 시 Team.None으로 안전 폴백
+                // 하고 경고만 남긴다(크래시 없음, TASK-085 명령서 9항 관례).
+                string token = asset.name.Substring(CardsFilePrefix.Length);
+                if (!CardsFileTokenToTeam.TryGetValue(token, out var cardTeam))
+                {
+                    Debug.LogWarning($"[PlayerDatabase] 카드 CSV 파일명 '{asset.name}'에서 구단 토큰 '{token}'을 " +
+                        "Team enum으로 매핑하지 못해 Team.None으로 폴백합니다.");
+                    cardTeam = Team.None;
+                }
+                playerIdsWithCards.UnionWith(ParseCardsCsv(asset.text, baseTemplates, cardTeam));
             }
 
             if (cardsCsvAssets.Length == 0)
@@ -311,16 +345,20 @@ namespace KBOManager.Managers
             return baseTemplates;
         }
 
-        /// <summary>[TASK-KBO-153, TASK-KBO-154] cards_{TEAM}.csv 한 장을 파싱해 player_id별로 등급
-        /// 변형 카드를 만들어 `templates`에 직접 등록한다. 헤더: card_id,player_id,grade_id,grade_name,
-        /// base_ovr,salary_cost,max_enhance,max_awaken,is_droppable,year(10컬럼, TASK-154에서 year
-        /// 추가) - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)/year만 쓴다. 여러 파일에서
-        /// 반복 호출되므로(Initialize() 참고) `templates`/`playerIdsWithCards`는 매 호출마다 누적된다.
+        /// <summary>[TASK-KBO-153, TASK-KBO-154, TASK-KBO-160] cards_{TEAM}.csv 한 장을 파싱해
+        /// player_id별로 등급 변형 카드를 만들어 `templates`에 직접 등록한다. 헤더: card_id,player_id,
+        /// grade_id,grade_name,base_ovr,salary_cost,max_enhance,max_awaken,is_droppable,year(10컬럼,
+        /// TASK-154에서 year 추가) - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)/year만
+        /// 쓴다. 여러 파일에서 반복 호출되므로(Initialize() 참고) `templates`/`playerIdsWithCards`는
+        /// 매 호출마다 누적된다. `cardTeam`은 이 파일(=이 구단)의 카드 전부에 강제로 대입되는 Team
+        /// 값이다(TASK-160) - 기본 템플릿의 Team을 그대로 물려받으면 이적/FA로 여러 구단을 거친
+        /// 선수(최형우, 양의지 등)의 과거 소속 카드가 현재/기준 구단으로 잘못 표시되므로, 반드시
+        /// "이 카드가 실제로 들어있는 파일=구단"으로 덮어쓴다.
         /// 반환값은 "이 파일에서 카드가 최소 1장이라도 등록된 player_id 집합"이다 - Initialize()가 전체
         /// 파일의 반환값을 합집합한 뒤, 그 안에 없는 player_id만 기본(LIVE_NORMAL) 템플릿으로 폴백 등록한다.
         /// 알 수 없는 player_id를 참조하는 카드 행이나 형변환 실패 행은 그 한 줄만 Warning 후 건너뛴다
         /// (players.csv와 동일한 방어 관례, 명령서 6/7항).</summary>
-        private HashSet<string> ParseCardsCsv(string csvText, Dictionary<string, PlayerTemplate> baseTemplates)
+        private HashSet<string> ParseCardsCsv(string csvText, Dictionary<string, PlayerTemplate> baseTemplates, Team cardTeam)
         {
             var playerIdsWithCards = new HashSet<string>();
             if (string.IsNullOrEmpty(csvText)) return playerIdsWithCards;
@@ -386,6 +424,7 @@ namespace KBOManager.Managers
                     cardTemplate.RealPlayerId = playerId;  // 동일 선수 판정(각성 재료 등)은 그대로 player_id 기준
                     cardTemplate.Grade = grade;
                     cardTemplate.SeasonYear = year;        // [TASK-KBO-154] 카드별 실제 연도로 재정의
+                    cardTemplate.Team = cardTeam;          // [TASK-KBO-160] 카드가 실제로 발급된 구단(파일 기준)으로 강제 - 이적/FA 선수의 과거 소속 정확도 보장
 
                     templates[cardId] = cardTemplate;
                     playerIdsWithCards.Add(playerId);
