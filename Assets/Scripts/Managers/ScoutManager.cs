@@ -51,6 +51,43 @@ namespace KBOManager.Managers
             new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 5f },
         };
 
+        // [TASK-KBO-144] 프리미엄/픽업 영입(시그니처·타이틀 홀더)이 "타겟 등급 100% 확정"으로
+        // 동작하던 치명적 기획 오류를 해소하기 위한 가중치 확률표. 위 gradeDropRates(RollGradeAtLeast
+        // 필터링용, SEASON~LIVE_EPIC 3종 한정)와 별개로, 이 두 카테고리는 SIGNATURE/TITLE_HOLDER까지
+        // 등급 범위가 넓어 전용 드랍 테이블이 필요하다 - RollGradeAtLeast()로 gradeDropRates를
+        // 필터링하면 그 표에 SIGNATURE/TITLE_HOLDER 자체가 없어 eligible이 비고, "필터링 결과가
+        // 없으면 최소 등급으로 확정"하는 안전장치(215행)가 오히려 매번 타겟 등급만 반환하는 버그로
+        // 뒤바뀌어 있었다(명령서 3항이 지적한 실제 원인). 아래 4개 상수는 명령서 4항이 제시한 예시
+        // 배분(타겟 최고 등급/바로 아래 등급/중간 등급/기본 등급)을 그대로 채택했다 - 기획 조정 시 이
+        // 4개 값만 바꾸면 두 표 모두에 반영된다.
+        private const float PremiumTargetRatePercent = 0.5f;   // 타겟 최고 등급
+        private const float PremiumOneBelowRatePercent = 1.5f; // 바로 아래 등급
+        private const float PremiumMidRatePercent = 3.0f;      // 중간 등급
+        private const float PremiumBaseRatePercent = 95.0f;    // 기본(소비) 등급
+
+        /// <summary>[프리미엄/픽업 영입 &gt; 시그니처] RollPremiumSignature()/RollPickupSignature() 공용
+        /// 드랍 테이블. SIGNATURE(타겟) 0.5% / TITLE_HOLDER(한 단계 아래) 1.5% / ALLSTAR(중간) 3.0% /
+        /// LIVE_EPIC(기본, 나머지 전부) 95.0% - 합계 100%.</summary>
+        private static readonly List<GradeDropRate> SignatureDropTable = new List<GradeDropRate>
+        {
+            new GradeDropRate { Grade = Grade.SIGNATURE, RatePercent = PremiumTargetRatePercent },
+            new GradeDropRate { Grade = Grade.TITLE_HOLDER, RatePercent = PremiumOneBelowRatePercent },
+            new GradeDropRate { Grade = Grade.ALLSTAR, RatePercent = PremiumMidRatePercent },
+            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = PremiumBaseRatePercent },
+        };
+
+        /// <summary>[프리미엄/픽업 영입 &gt; 타이틀 홀더] RollPremiumTitleHolder()/RollPickupTitleHolder()
+        /// 공용 드랍 테이블. 타겟이 시그니처보다 한 등급 낮으므로 전체 표도 한 칸씩 아래로 옮긴다 -
+        /// TITLE_HOLDER(타겟) 0.5% / ALLSTAR(한 단계 아래) 1.5% / LIVE_EPIC(중간) 3.0% /
+        /// LIVE_NORMAL(기본, 나머지 전부) 95.0% - 합계 100%.</summary>
+        private static readonly List<GradeDropRate> TitleHolderDropTable = new List<GradeDropRate>
+        {
+            new GradeDropRate { Grade = Grade.TITLE_HOLDER, RatePercent = PremiumTargetRatePercent },
+            new GradeDropRate { Grade = Grade.ALLSTAR, RatePercent = PremiumOneBelowRatePercent },
+            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = PremiumMidRatePercent },
+            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = PremiumBaseRatePercent },
+        };
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -88,8 +125,9 @@ namespace KBOManager.Managers
                 () => RollGradeAtLeast(Grade.LIVE_EPIC));
         }
 
-        /// <summary>[프리미엄 영입 &gt; 시그니처] SignatureBall(싸인볼)을 소모해 SIGNATURE 등급을 확정
-        /// 발급한다.</summary>
+        /// <summary>[프리미엄 영입 &gt; 시그니처] SignatureBall(싸인볼)을 소모한다. [TASK-KBO-144] 기존
+        /// "SIGNATURE 확정 발급"을 폐기하고 SignatureDropTable 가중치 확률로 교체했다 - 하위 등급도
+        /// 확률적으로 등장한다(AC-01).</summary>
         public Player RollPremiumSignature()
         {
             return RollWithCurrency(
@@ -97,11 +135,11 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.SignatureBall = amount,
                 premiumCost,
                 "싸인볼",
-                () => RollGradeAtLeast(Grade.SIGNATURE));
+                () => RollWeightedGrade(SignatureDropTable));
         }
 
-        /// <summary>[프리미엄 영입 &gt; 타이틀 홀더] Trophy(트로피)를 소모해 TITLE_HOLDER 등급을 확정
-        /// 발급한다.</summary>
+        /// <summary>[프리미엄 영입 &gt; 타이틀 홀더] Trophy(트로피)를 소모한다. [TASK-KBO-144] 기존
+        /// "TITLE_HOLDER 확정 발급"을 폐기하고 TitleHolderDropTable 가중치 확률로 교체했다.</summary>
         public Player RollPremiumTitleHolder()
         {
             return RollWithCurrency(
@@ -109,12 +147,13 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.Trophy = amount,
                 premiumCost,
                 "트로피",
-                () => RollGradeAtLeast(Grade.TITLE_HOLDER));
+                () => RollWeightedGrade(TitleHolderDropTable));
         }
 
-        /// <summary>[픽업 영입 &gt; 시그니처] PickupTicket(픽업 영입권)을 소모해 SIGNATURE 등급을 확정
-        /// 발급한다. [결정 필요, 클래스 요약 참고] 10/40/80회 누적 확정(천장) 카운터는 미구현 - 매회
-        /// 독립적인 확정 1회 뽑기다.</summary>
+        /// <summary>[픽업 영입 &gt; 시그니처] PickupTicket(픽업 영입권)을 소모한다. [TASK-KBO-144]
+        /// RollPremiumSignature()와 동일한 SignatureDropTable을 공유해 가중치 확률로 교체했다.
+        /// [결정 필요, 클래스 요약 참고] 10/40/80회 누적 확정(천장) 카운터는 여전히 미구현 - 매회
+        /// 독립적인 가중치 뽑기다.</summary>
         public Player RollPickupSignature()
         {
             return RollWithCurrency(
@@ -122,11 +161,12 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.PickupTicket = amount,
                 pickupCost,
                 "픽업 영입권",
-                () => RollGradeAtLeast(Grade.SIGNATURE));
+                () => RollWeightedGrade(SignatureDropTable));
         }
 
-        /// <summary>[픽업 영입 &gt; 타이틀 홀더] PickupTicket(픽업 영입권)을 소모해 TITLE_HOLDER 등급을
-        /// 확정 발급한다. [결정 필요] RollPickupSignature()와 동일한 천장 미구현 사유.</summary>
+        /// <summary>[픽업 영입 &gt; 타이틀 홀더] PickupTicket(픽업 영입권)을 소모한다. [TASK-KBO-144]
+        /// RollPremiumTitleHolder()와 동일한 TitleHolderDropTable을 공유해 가중치 확률로 교체했다.
+        /// [결정 필요] RollPickupSignature()와 동일한 천장 미구현 사유.</summary>
         public Player RollPickupTitleHolder()
         {
             return RollWithCurrency(
@@ -134,7 +174,7 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.PickupTicket = amount,
                 pickupCost,
                 "픽업 영입권",
-                () => RollGradeAtLeast(Grade.TITLE_HOLDER));
+                () => RollWeightedGrade(TitleHolderDropTable));
         }
 
         /// <summary>
@@ -249,6 +289,25 @@ namespace KBOManager.Managers
             }
 
             return eligible[eligible.Count - 1].Grade;
+        }
+
+        /// <summary>[TASK-KBO-144] 명령서 6항 지시대로 Random.Range(0f, 100f) + 누적 확률(Cumulative
+        /// Probability) 방식으로 dropTable(총합 100%)에서 등급 하나를 추첨한다. dropTable은 List라
+        /// 순서가 고정되어 있어(Dictionary와 달리 열거 순서가 런타임마다 바뀔 위험이 없음) 매 실행마다
+        /// 동일한 누적 구간으로 계산된다. 부동소수점 합산 오차로 극히 드물게 roll이 마지막 누적값을
+        /// 넘는 경우에도 예외 없이 마지막 항목(명령서 7항 - 기본 등급, 항상 목록의 가장 낮은 확정
+        /// 등급)으로 안전하게 폴백한다.</summary>
+        private static Grade RollWeightedGrade(List<GradeDropRate> dropTable)
+        {
+            float roll = UnityEngine.Random.Range(0f, 100f);
+            float cumulative = 0f;
+            foreach (var entry in dropTable)
+            {
+                cumulative += entry.RatePercent;
+                if (roll <= cumulative) return entry.Grade;
+            }
+
+            return dropTable[dropTable.Count - 1].Grade;
         }
 
         private PlayerTemplate PickTemplate(Grade grade)

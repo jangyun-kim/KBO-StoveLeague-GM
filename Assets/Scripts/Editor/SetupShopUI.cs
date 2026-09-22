@@ -111,21 +111,23 @@ namespace KBOManager.EditorTools
             if (existingChild != null)
             {
                 var existingController = existingChild.GetComponent<CheerleaderShopUIController>();
-                if (existingController != null) return existingController;
+                if (existingController != null)
+                {
+                    // [TASK-KBO-144] 기존 코드는 여기서 곧장 return해 이미 씬에 있는 패널의
+                    // RectTransform을 전혀 건드리지 않았다 - 그 결과 이 메뉴를 다시 실행해도 예전에
+                    // 640px로 생성된 패널은 계속 640px에 머물러 오버플로우가 재현됐을 것이다(라이브
+                    // 에디터 세션이 이 작업 내내 열려 있어 매 태스크가 "재실행"으로 반영되는 것과 동일한
+                    // 문제). Find-or-Create든 아니든 항상 최신 높이를 강제 적용하도록 아래로 옮겼다.
+                    ApplyPanelRect((RectTransform)existingChild);
+                    return existingController;
+                }
             }
 
             var panelObject = new GameObject(ShopPanelName, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
             Undo.RegisterCreatedObjectUndo(panelObject, $"Create {ShopPanelName}");
             panelObject.transform.SetParent(canvasTransform, false);
 
-            // 넓게(명령서 6항 2번) - 화면 중앙에 큼직한 고정 크기로 배치한다. 정밀 앵커/디자인은
-            // 이번 작업 범위 밖이며, QA가 필요하면 인스펙터에서 직접 조정하면 된다.
-            var rect = (RectTransform)panelObject.transform;
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(700f, 640f);
-            rect.anchoredPosition = Vector2.zero;
+            ApplyPanelRect((RectTransform)panelObject.transform);
 
             panelObject.GetComponent<Image>().color = Color.white;
 
@@ -142,6 +144,25 @@ namespace KBOManager.EditorTools
             layout.childForceExpandHeight = false;
 
             return panelObject.AddComponent<CheerleaderShopUIController>();
+        }
+
+        /// <summary>[TASK-KBO-144] 패널의 중앙 정렬 앵커/크기를 새로 만들 때와 기존 것을 재사용할 때
+        /// 양쪽 모두에서 동일하게 강제 적용한다(명령서 6항 - 넓게, 화면 중앙 고정 크기). 정밀 앵커/
+        /// 디자인은 이번 작업 범위 밖이며, QA가 필요하면 인스펙터에서 직접 조정하면 된다.
+        ///
+        /// 높이 900f 근거: 실제 내용물(재화 텍스트 4개×32 + 카테고리 행 4개×90 + 닫기 버튼 56 +
+        /// 결과 로그 160 = 704)에 VerticalLayoutGroup의 padding 상하 24×2=48 + spacing 12×9칸=108을
+        /// 더하면 860px가 필요하다 - 기존 640px는 220px 부족해 하단(닫기 버튼/결과 로그 등)이 패널
+        /// 밖으로 삐져나오고 있었다(유저 스크린샷 4 증상과 정확히 일치). 860px보다 40px 여유를 둔
+        /// 900f로 늘렸다. CanvasScaler 기준 해상도가 1080x1920(세로 모바일, SceneInitializer.cs)이라
+        /// 900px는 화면 높이 안에 충분히 들어간다.</summary>
+        private static void ApplyPanelRect(RectTransform rect)
+        {
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(700f, 900f);
+            rect.anchoredPosition = Vector2.zero;
         }
 
         /// <summary>

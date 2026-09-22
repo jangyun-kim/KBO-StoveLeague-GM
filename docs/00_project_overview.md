@@ -350,6 +350,16 @@
 전용 재화가 없어 하나로 통합했다. 아래는 원문을 그대로 보존한 참고 자료(구단 관리 영입/라커룸/
 포지션 특훈/조합/제작소 등)이며, 여전히 대부분 미구현이다.
 
+✅ **[TASK-KBO-144 구현 완료]** TASK-129가 남긴 치명적 기획 오류(프리미엄/픽업 영입 4종 -
+`RollPremiumSignature()`/`RollPremiumTitleHolder()`/`RollPickupSignature()`/`RollPickupTitleHolder()`,
+치어리더 `RollIcon()`/`RollLegend()` - 가 전부 타겟 등급을 100% 확정 반환하고 있었다)를 해소했다.
+가챠 대중 게임(컴투스프로야구V 계열)의 실제 확률 공시표 구조를 참고해 카테고리별 가중치 드랍 테이블
+(`ScoutManager.SignatureDropTable`/`TitleHolderDropTable`, `CheerleaderGachaService.IconDropTable`/
+`LegendDropTable`)을 신설하고 `Random.Range(0f, 100f)` + 누적 확률 방식으로 교체했다 - 타겟 최고
+등급 0.5% / 바로 아래 등급 1.5% / 중간 등급 3.0% / 기본 등급 95.0%(상수로 분리해 기획 조정 가능,
+`DCL-117`). 일반 영입(`RollLiveNormal()`/`RollLiveEpic()`/`RollLive()`/`RollLimited()`)은 이미
+확률적이거나 "단일 등급 전용 티켓"으로 의도된 상품이라 이번 범위에서 제외했다.
+
 - 뽑기(가챠) : 선수 영입(픽업/타이틀홀더/프리미엄/일반 영입), 치어리더 영입(픽업/프리미엄/일반/한정 영입)
 - 구단 관리 영입 : 라이브 올스타/타이틀 홀더/시그니처/골든 글러브/왕조 영입(각각 고정재료/변경재료/재화 상세 요구사항)
 - 라커룸 : 리더 선정, 유니폼, 라커룸 효과(LV.7까지), 라인업 세부 스탯 보너스(파워/정확/선구/인내/주루/수비 등 +n)

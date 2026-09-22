@@ -30,6 +30,41 @@ namespace KBOManager.Services
         private const float LiveNormalRatePercent = 62.5f;
         // LIVE_EPIC은 나머지 전부(37.5%) - 누적 판정의 마지막 분기로 처리한다.
 
+        // [TASK-KBO-144] 픽업/프리미엄 영입(아이콘·레전드)이 "타겟 등급 100% 확정"으로 동작하던
+        // 치명적 기획 오류를 해소하기 위한 가중치 확률표 - ScoutManager.cs의 SignatureDropTable/
+        // TitleHolderDropTable과 동일하게 명령서 4항 예시 배분(타겟 최고 등급/바로 아래 등급/중간
+        // 등급/기본 등급)을 채택했다. 등급 서열은 Cheerleader.cs의 CheerleaderGrade 정수값
+        // (LIVE_NORMAL=2 &lt; LIVE_EPIC=3 &lt; ICON=4 &lt; LEGEND=5)을 그대로 따른다.
+        private const float PremiumTargetRatePercent = 0.5f;   // 타겟 최고 등급
+        private const float PremiumOneBelowRatePercent = 1.5f; // 바로 아래 등급
+        private const float PremiumMidRatePercent = 3.0f;      // 중간 등급
+        private const float PremiumBaseRatePercent = 95.0f;    // 기본(소비) 등급
+
+        /// <summary>[픽업/프리미엄 영입 &gt; 아이콘] RollIcon() 전용 드랍 테이블. ICON 아래 등급이
+        /// LIVE_EPIC/LIVE_NORMAL 2개뿐이라("바로 아래"+"중간"을 나눌 3번째 등급이 없음) 두 비율을
+        /// LIVE_EPIC 한 칸에 합쳐(1.5%+3.0%=4.5%) 3단계로 구성한다 - ICON(타겟) 0.5% /
+        /// LIVE_EPIC(한 단계 아래+중간 통합) 4.5% / LIVE_NORMAL(기본, 나머지 전부) 95.0% - 합계 100%.</summary>
+        private static readonly List<(CheerleaderGrade Grade, float RatePercent)> IconDropTable =
+            new List<(CheerleaderGrade, float)>
+            {
+                (CheerleaderGrade.ICON, PremiumTargetRatePercent),
+                (CheerleaderGrade.LIVE_EPIC, PremiumOneBelowRatePercent + PremiumMidRatePercent),
+                (CheerleaderGrade.LIVE_NORMAL, PremiumBaseRatePercent),
+            };
+
+        /// <summary>[픽업/프리미엄 영입 &gt; 레전드] RollLegend() 전용 드랍 테이블. LEGEND 아래 등급이
+        /// ICON/LIVE_EPIC/LIVE_NORMAL 3개라 명령서 4항 예시를 그대로 4단계로 적용한다 - LEGEND(타겟)
+        /// 0.5% / ICON(한 단계 아래) 1.5% / LIVE_EPIC(중간) 3.0% / LIVE_NORMAL(기본, 나머지 전부)
+        /// 95.0% - 합계 100%.</summary>
+        private static readonly List<(CheerleaderGrade Grade, float RatePercent)> LegendDropTable =
+            new List<(CheerleaderGrade, float)>
+            {
+                (CheerleaderGrade.LEGEND, PremiumTargetRatePercent),
+                (CheerleaderGrade.ICON, PremiumOneBelowRatePercent),
+                (CheerleaderGrade.LIVE_EPIC, PremiumMidRatePercent),
+                (CheerleaderGrade.LIVE_NORMAL, PremiumBaseRatePercent),
+            };
+
         /// <summary>[일반 영입 &gt; 라이브] LiveCheerStick(라이브 응원봉)을 소모해 {LIVE_NORMAL, LIVE_EPIC}
         /// 풀에서만 추첨한다.</summary>
         public static List<Cheerleader> RollLive(int count) => RollWithCurrency(count,
@@ -46,21 +81,23 @@ namespace KBOManager.Services
             "한정 응원봉",
             () => CheerleaderGrade.SEASON_LIMITED);
 
-        /// <summary>[픽업/프리미엄 영입 &gt; 아이콘] StarCheerStick(스타 응원봉)을 소모해 ICON 등급을
-        /// 확정 발급한다.</summary>
+        /// <summary>[픽업/프리미엄 영입 &gt; 아이콘] StarCheerStick(스타 응원봉)을 소모한다. [TASK-KBO-144]
+        /// 기존 "ICON 확정 발급"을 폐기하고 IconDropTable 가중치 확률로 교체했다 - 하위 등급도
+        /// 확률적으로 등장한다(AC-01).</summary>
         public static List<Cheerleader> RollIcon(int count) => RollWithCurrency(count,
             () => GameManager.Instance.StarCheerStick,
             amount => GameManager.Instance.StarCheerStick = amount,
             "스타 응원봉",
-            () => CheerleaderGrade.ICON);
+            () => RollWeightedGrade(IconDropTable));
 
-        /// <summary>[픽업/프리미엄 영입 &gt; 레전드] LegendCheerStick(레전드 응원봉)을 소모해 LEGEND
-        /// 등급을 확정 발급한다.</summary>
+        /// <summary>[픽업/프리미엄 영입 &gt; 레전드] LegendCheerStick(레전드 응원봉)을 소모한다.
+        /// [TASK-KBO-144] 기존 "LEGEND 확정 발급"을 폐기하고 LegendDropTable 가중치 확률로
+        /// 교체했다.</summary>
         public static List<Cheerleader> RollLegend(int count) => RollWithCurrency(count,
             () => GameManager.Instance.LegendCheerStick,
             amount => GameManager.Instance.LegendCheerStick = amount,
             "레전드 응원봉",
-            () => CheerleaderGrade.LEGEND);
+            () => RollWeightedGrade(LegendDropTable));
 
         /// <summary>
         /// 카테고리 공통 소모/발급 파이프라인. count번 가챠를 실행하고, 실제로 발급된 Cheerleader
@@ -120,6 +157,24 @@ namespace KBOManager.Services
         {
             float roll = UnityEngine.Random.Range(0f, 100f);
             return roll < LiveNormalRatePercent ? CheerleaderGrade.LIVE_NORMAL : CheerleaderGrade.LIVE_EPIC;
+        }
+
+        /// <summary>[TASK-KBO-144] 명령서 6항 지시대로 Random.Range(0f, 100f) + 누적 확률(Cumulative
+        /// Probability) 방식으로 dropTable(총합 100%)에서 등급 하나를 추첨한다. List(튜플)라 열거
+        /// 순서가 고정되어 있어 매 실행마다 동일한 누적 구간으로 계산된다. 부동소수점 합산 오차로
+        /// 극히 드물게 roll이 마지막 누적값을 넘는 경우에도 예외 없이 마지막 항목(명령서 7항 - 기본
+        /// 등급, 항상 목록의 가장 낮은 확정 등급)으로 안전하게 폴백한다.</summary>
+        private static CheerleaderGrade RollWeightedGrade(List<(CheerleaderGrade Grade, float RatePercent)> dropTable)
+        {
+            float roll = UnityEngine.Random.Range(0f, 100f);
+            float cumulative = 0f;
+            foreach (var entry in dropTable)
+            {
+                cumulative += entry.RatePercent;
+                if (roll <= cumulative) return entry.Grade;
+            }
+
+            return dropTable[dropTable.Count - 1].Grade;
         }
 
         /// <summary>
