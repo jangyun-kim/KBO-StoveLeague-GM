@@ -8,14 +8,37 @@ namespace KBOManager.UI
     /// <summary>
     /// 카드 한 장의 시각 요소를 담당하는 순수 표시 컴포넌트. Setup(Player)을 호출하면 이름/구단/포지션/
     /// 최종 OVR/등급 색상/성급 별을 UGUI 요소에 매핑한다. 시뮬레이션·저장 로직은 전혀 갖지 않는다.
+    ///
+    /// [TASK-KBO-147] 실제 선수 초상화 연동 - `Resources.Load&lt;Sprite&gt;($"{PortraitResourceFolder}/
+    /// {player.Template.TemplateId}")`로 카드별 초상화를 동적으로 불러온다. 폴더 규칙은
+    /// `Assets/Resources/Portraits/{TemplateId}.png`(또는 .jpg 등 Unity가 지원하는 이미지 포맷) 하나뿐이다
+    /// - `TemplateId`는 `PlayerDatabase`가 현재 player_id(예: "PLY_0001")를 그대로 채우고 있어(cards.csv
+    /// 조인 전까지는 카드 등급과 무관하게 선수 1명당 값 1개, DCL-057 참고) 지금 당장도 유효한 키다.
+    /// 리소스가 없으면(카드 신설 초기 상태, 지금 세션 시점) `fallbackPortraitSprite`로 안전하게
+    /// 폴백한다 - 풀링된 카드가 이전 선수의 초상화를 그대로 보여주는 사고를 막기 위해 Setup()이 매번
+    /// 명시적으로 두 경우(발견/미발견) 모두 스프라이트를 다시 대입한다(캐시해 두지 않고 항상
+    /// 재계산 - Resources.Load 자체가 내부적으로 캐싱하므로 매 호출 비용은 낮다).
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
+        /// <summary>[TASK-KBO-147] 초상화 리소스 폴더 규칙. PM이 이 폴더에
+        /// "{TemplateId}.png"(예: "PLY_0001.png")만 넣으면 별도 코드 수정 없이 즉시 연동된다.</summary>
+        public const string PortraitResourceFolder = "Portraits";
+
         [Header("Text")]
         [SerializeField] private Text nameText;
         [SerializeField] private Text teamText;
         [SerializeField] private Text positionText;
         [SerializeField] private Text ovrText;
+
+        [Header("Portrait (TASK-KBO-147 - Resources/Portraits/{TemplateId} 동적 로딩)")]
+        [Tooltip("실제 선수 초상화를 표시할 Image. 비워두면 초상화 기능 자체를 생략한다(기존 카드 프리팹 " +
+                 "호환 - 필드가 없어도 크래시하지 않음).")]
+        [SerializeField] private Image portraitImage;
+        [Tooltip("Resources/Portraits/{TemplateId}에 이미지가 없을 때 대신 표시할 기본 실루엣. " +
+                 "비워두면 스프라이트가 비워진 채로 표시된다(투명/흰 박스 - 크래시는 아니지만 시각적으로 " +
+                 "어색하므로 실제 사용 시 반드시 채워 넣을 것을 권장).")]
+        [SerializeField] private Sprite fallbackPortraitSprite;
 
         [Header("Grade Visual")]
         [Tooltip("카드 배경 또는 테두리 이미지. 등급(StarType)에 따라 색이 바뀐다.")]
@@ -75,6 +98,22 @@ namespace KBOManager.UI
             SetupStars(player.StarLevel, gradeColor);
             SetupStamina(player);
             SetupCondition(player.CurrentCondition);
+            SetupPortrait(player.Template.TemplateId);
+        }
+
+        /// <summary>[TASK-KBO-147] `Resources/Portraits/{templateId}`에서 초상화를 동적으로 불러와
+        /// `portraitImage`에 대입한다. 없으면 `fallbackPortraitSprite`로 폴백한다 - 풀링 재사용 시 이전
+        /// 선수의 초상화가 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
+        private void SetupPortrait(string templateId)
+        {
+            if (portraitImage == null) return;
+
+            Sprite portrait = !string.IsNullOrEmpty(templateId)
+                ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}")
+                : null;
+
+            portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
+            portraitImage.enabled = portraitImage.sprite != null;
         }
 
         /// <summary>빈 카드로 되돌린다 (풀링/재사용 시 사용).</summary>
@@ -90,6 +129,12 @@ namespace KBOManager.UI
             if (staminaBarRoot != null) staminaBarRoot.SetActive(false);
             SetupCondition(PlayerCondition.Normal);
             SetSelected(false);
+
+            if (portraitImage != null)
+            {
+                portraitImage.sprite = fallbackPortraitSprite;
+                portraitImage.enabled = fallbackPortraitSprite != null;
+            }
         }
 
         /// <summary>투수 카드에서만 체력 게이지를 켠다. fillAmount = CurrentStamina/MaxStamina, 색은

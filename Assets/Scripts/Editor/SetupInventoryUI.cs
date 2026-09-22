@@ -73,6 +73,18 @@ namespace KBOManager.EditorTools
     /// 0/4항) - 씬에 어떤 과거 세대의 잔재가 있었든 이 재조립 시점부터는 완전히 무관해진다.
     /// LogInventorySiblingDump()로 InventoryPanel 직속 자식 전체의 이름+순서를 콘솔에 덤프해 사용자가
     /// 메뉴 실행 즉시 눈으로 확인할 수 있게 했다(명령서 6항).
+    ///
+    /// [TASK-KBO-147, 전면 개편] 명령서 지시대로 텍스트 나열형 구 `DetailPanel`(강화/각성 수치 4줄 +
+    /// 강화하기/각성하기/스킬 변경 버튼 3개)을 완전히 폐기했다 - `AutoConnectInventoryUI()`가 이미 매
+    /// 실행마다 `InventoryPanel`의 모든 직속 자식을 `DestroyImmediate`하므로(TASK-142), `DetailPanel`도
+    /// 그 시점에 예외 없이 파괴된 뒤 아래 `FindOrCreateDetailPanel()`이 처음부터 다시 조립한다(명령서
+    /// "기존 낡은 상세 창 오브젝트는 DestroyImmediate로 완벽히 폭파" 그대로 이행 - 별도 타겟 삭제 코드가
+    /// 필요 없다). 새 구조는 상단 대형 카드 미리보기+이름+팀·등급, 하단 4탭(기본 스탯/특이폼·페이스/
+    /// 핫·콜드존/스킬) - 탭 전환 로직은 신규 `PlayerDetailUIController`가 전담한다(`InventoryUIController`는
+    /// `Show()`/`Hide()` 호출만 위임). 구 상세 패널의 [강화하기]/[각성하기]/[스킬 변경] 버튼은 이미
+    /// TASK-145/146에서 `PlayerManagementUIController`/`EnhanceUIController`로 완전히 이관되어 중복이었
+    /// 으므로(카드 클릭 시 애초에 이 패널이 아니라 선수 관리 허브가 뜬다) 새 패널에는 다시 만들지
+    /// 않았다 - 새 패널은 순수 "정보 열람" 전용이다(명령서 4항 범위와 일치).
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -82,21 +94,31 @@ namespace KBOManager.EditorTools
         private const string CardListPanelName = "CardListPanel";
         private const string ViewportName = "Viewport";
         private const string CardContainerName = "CardContainer";
-        private const string DetailPanelName = "DetailPanel";
-        private const string DetailPreviewCardName = "DetailPreviewCard";
-        private const string DetailReinforceTextName = "DetailReinforceText";
-        private const string DetailAwakenTextName = "DetailAwakenText";
-        private const string DetailSkillsTextName = "DetailSkillsText";
-        private const string EnhanceButtonName = "EnhanceButton";
-        private const string AwakenButtonName = "AwakenButton";
-        private const string SkillChangeButtonName = "SkillChangeButton";
-        private const string SkillRerollResultTextName = "SkillRerollResultText";
-        private const string DetailCardFlashImageName = "DetailCardFlashImage";
         private const string InventoryButtonName = "InventoryButton";
         private const string CloseButtonName = "CloseButton";
-        private const string CloseDetailButtonName = "CloseDetailButton";
         private const string TemplatesHolderName = "_Templates";
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
+
+        // ----- [TASK-KBO-147] 상세 정보 패널(탭 UI) 관련 이름 상수 -----
+        private const string DetailPanelName = "DetailPanel";
+        private const string DetailPreviewCardName = "DetailPreviewCard";
+        private const string DetailNameTextName = "DetailNameText";
+        private const string DetailTeamGradeTextName = "DetailTeamGradeText";
+        private const string DetailTabBarName = "DetailTabBar";
+        private const string StatsTabButtonName = "StatsTabButton";
+        private const string SpecialFormTabButtonName = "SpecialFormTabButton";
+        private const string HotColdTabButtonName = "HotColdTabButton";
+        private const string SkillTabButtonName = "SkillTabButton";
+        private const string StatsContentPanelName = "StatsContentPanel";
+        private const string SpecialFormContentPanelName = "SpecialFormContentPanel";
+        private const string HotColdContentPanelName = "HotColdContentPanel";
+        private const string SkillContentPanelName = "SkillContentPanel";
+        private const string DetailReinforceTextName = "DetailReinforceText";
+        private const string DetailAwakenTextName = "DetailAwakenText";
+        private const string StatRowTextName = "StatRowText";
+        private const string SkillListTextName = "SkillListText";
+        private const string HotColdGridName = "HotColdGrid";
+        private const string DetailCloseButtonName = "DetailCloseButton";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Inventory UI")]
         public static void AutoConnectInventoryUI()
@@ -127,69 +149,24 @@ namespace KBOManager.EditorTools
                 new Vector2(140f, 200f), new Vector2(10f, 10f));
             var cardPrefab = FindOrCreatePlayerCardTemplate(canvas.transform);
 
-            var detailPanelRoot = FindOrCreateDetailPanel(controller.transform);
-            var detailPreviewCard = FindOrCreateDetailPreviewCard(detailPanelRoot.transform, cardPrefab);
-            var detailReinforceText = FindOrCreateText(detailPanelRoot.transform, DetailReinforceTextName, "",
-                new Vector2(0.35f, 0.6f), new Vector2(1f, 0.68f));
-            var detailAwakenText = FindOrCreateText(detailPanelRoot.transform, DetailAwakenTextName, "",
-                new Vector2(0.35f, 0.5f), new Vector2(1f, 0.58f));
-            var detailSkillsText = FindOrCreateText(detailPanelRoot.transform, DetailSkillsTextName, "",
-                new Vector2(0.35f, 0.4f), new Vector2(1f, 0.48f));
-            var skillRerollResultText = FindOrCreateText(detailPanelRoot.transform, SkillRerollResultTextName, "",
-                new Vector2(0.35f, 0.3f), new Vector2(1f, 0.38f));
+            // [TASK-KBO-147] 상세 정보 패널을 탭 UI로 전면 개편한다 - `FindOrCreateDetailPanel()`이
+            // 상단 카드 미리보기+이름+팀/등급, 하단 4탭(기본 스탯/특이폼·페이스/핫·콜드존/스킬)까지
+            // 전부 조립하고 `PlayerDetailUIController`에 배선까지 마친 뒤 반환한다.
+            var playerDetailController = FindOrCreateDetailPanel(controller.transform, cardPrefab);
 
-            var enhanceButton = FindOrCreateButton(detailPanelRoot.transform, EnhanceButtonName, "강화하기",
-                new Vector2(0.35f, 0.15f), new Vector2(0.55f, 0.25f));
-            var awakenButton = FindOrCreateButton(detailPanelRoot.transform, AwakenButtonName, "각성하기",
-                new Vector2(0.57f, 0.15f), new Vector2(0.77f, 0.25f));
-            var skillChangeButton = FindOrCreateButton(detailPanelRoot.transform, SkillChangeButtonName, "스킬 변경",
-                new Vector2(0.35f, 0.03f), new Vector2(0.55f, 0.13f));
-
-            var detailCardFlashImage = FindOrCreateImage(detailPanelRoot.transform, DetailCardFlashImageName,
-                new Vector2(0.05f, 0.4f), new Vector2(0.3f, 0.9f));
-
-            // [TASK-KBO-111] 인벤토리 화면 자체를 닫는 버튼(InventoryPanel 우측 상단)과 상세 패널만
-            // 닫는 버튼(DetailPanel 우측 상단)을 각각 배치한다(명령서 5항 - 대략적인 우측 상단 앵커만).
-            //
-            // [TASK-KBO-124] 두 버튼이 원래 같은 앵커(0.85,0.92~1,1)를 썼는데, DetailPanel이 CloseButton
-            // 보다 먼저 생성돼(70행 FindOrCreateDetailPanel, 93행보다 앞) InventoryPanel 하위 형제 순서상
-            // CloseButton이 더 나중(=위쪽 sibling index)이라 항상 CloseDetailButton 위에 그려져 클릭을
-            // 가로채고 있었다 - 상세 패널만 닫으려 눌러도 매번 로비로 이동해 버리는 원인이었다.
-            // CloseDetailButton을 CloseButton과 겹치지 않는 바로 왼쪽 칸으로 옮겨 해소한다.
+            // [TASK-KBO-111] 인벤토리 화면 자체를 닫는 버튼(InventoryPanel 우측 상단). 상세 패널 자체
+            // 닫기 버튼은 FindOrCreateDetailPanel() 내부에서 DetailPanel 우측 상단에 별도로 만든다.
             var closeButton = FindOrCreateButton(controller.transform, CloseButtonName, "닫기",
                 new Vector2(0.85f, 0.92f), new Vector2(1f, 1f));
-            // [TASK-KBO-136] "상세 닫기" 텍스트 버튼(TASK-125)을 폐기하고, DetailPanel 우측 상단
-            // 모서리에 컴팩트한 고정 크기 'X' 버튼으로 대체한다. InventoryUIController.ShowDetail()이
-            // 상세 패널을 열 때 위 closeButton을 이미 숨기므로(TASK-135), 같은 우측 상단 모서리를
-            // 공유해도 두 버튼이 동시에 겹쳐 보일 일이 없다.
-            var closeDetailButton = FindOrCreateCloseButton(detailPanelRoot.transform, CloseDetailButtonName, 64f);
 
             // [TASK-KBO-141, 명령서 4항] `FindOrCreateCardListPanel()`이 자신을 맨 앞으로 강제하는 것과
             // 대칭으로, 이 두 버튼(과 DetailPanel)은 항상 맨 뒤(=렌더링 최상단)로 강제한다 - 씬 상태가
             // 어떻든 두 방향에서 순서를 강제로 고정하므로 어느 한쪽만으로도 이미 충분하지만, "코드로
             // 강제 해결"이라는 명령서 취지에 맞춰 이중으로 보증한다.
             closeButton.transform.SetAsLastSibling();
-            detailPanelRoot.transform.SetAsLastSibling();
+            playerDetailController.transform.SetAsLastSibling();
 
-            var materialSelectUIController = Object.FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
-            if (materialSelectUIController == null)
-            {
-                Debug.LogWarning("[SetupInventoryUI] 씬에서 MaterialSelectUIController를 찾지 못해 " +
-                    "materialSelectUIController 바인딩을 건너뜁니다. 먼저 'KBO Manager/Setup/" +
-                    "Auto-Connect Upgrade UI'(TASK-KBO-109)를 실행하십시오.");
-            }
-
-            var gameActionController = Object.FindAnyObjectByType<GameActionController>(FindObjectsInactive.Include);
-            if (gameActionController == null)
-            {
-                Debug.LogWarning("[SetupInventoryUI] 씬에서 GameActionController를 찾지 못해 " +
-                    "gameActionController 바인딩을 건너뜁니다.");
-            }
-
-            BindController(controller, materialSelectUIController, gameActionController, cardContainer, cardPrefab,
-                detailPanelRoot, detailPreviewCard, detailReinforceText, detailAwakenText, detailSkillsText,
-                enhanceButton, awakenButton, skillChangeButton, skillRerollResultText, detailCardFlashImage,
-                closeButton, closeDetailButton);
+            BindController(controller, cardContainer, cardPrefab, playerDetailController, closeButton);
 
             EditorUtility.SetDirty(controller);
 
@@ -230,7 +207,7 @@ namespace KBOManager.EditorTools
 
             int cardListIndex = cardContainer.parent.parent.GetSiblingIndex(); // Content -> Viewport -> CardListPanel
             int closeButtonIndex = closeButton.transform.GetSiblingIndex();
-            int detailPanelIndex = detailPanelRoot.transform.GetSiblingIndex();
+            int detailPanelIndex = playerDetailController.transform.GetSiblingIndex();
             bool zOrderOk = cardListIndex < closeButtonIndex && cardListIndex < detailPanelIndex;
 
             if (zOrderOk)
@@ -441,13 +418,24 @@ namespace KBOManager.EditorTools
             return existingCard.GetComponent<PlayerCardUI>();
         }
 
-        /// <summary>상세 패널. 평소 비활성 상태로 둔다 - `InventoryUIController.Awake()`가 `CloseDetail()`로
-        /// 다시 한번 비활성화하지만, 라이브 에디터에서 메뉴 실행 직후 미리보기 화면이 어색하게 뜨지
-        /// 않도록 생성 시점에도 명시적으로 꺼 둔다(`ScoutUIController.resultPopupRoot`와 동일한 관례).</summary>
-        private static GameObject FindOrCreateDetailPanel(Transform parent)
+        /// <summary>
+        /// [TASK-KBO-147, 전면 개편] 상세 정보 패널 전체(상단 카드 미리보기+이름+팀/등급, 하단 4탭 -
+        /// 기본 스탯/특이폼·페이스/핫·콜드존/스킬)를 조립하고 `PlayerDetailUIController`에 전부 배선한
+        /// 뒤 반환한다. `AutoConnectInventoryUI()`가 매 실행마다 `InventoryPanel`의 모든 직속 자식을
+        /// 먼저 `DestroyImmediate`하므로(TASK-142), 이 메서드는 사실상 항상 "새로 만들기" 분기를 타 -
+        /// 명령서가 요구한 "기존 낡은 상세 창 오브젝트 완벽 폭파 후 재생성"이 그대로 보장된다. 평소
+        /// 비활성 상태로 둔다 - `InventoryUIController.Awake()`가 `CloseDetail()`로 다시 한번
+        /// 비활성화하지만, 라이브 에디터에서 메뉴 실행 직후 어색하게 뜨지 않도록 생성 시점에도 명시적으로
+        /// 꺼 둔다(`ScoutUIController.resultPopupRoot`와 동일한 관례).
+        /// </summary>
+        private static PlayerDetailUIController FindOrCreateDetailPanel(Transform parent, PlayerCardUI cardTemplate)
         {
             var existing = parent.Find(DetailPanelName);
-            if (existing != null) return existing.gameObject;
+            if (existing != null)
+            {
+                var existingController = existing.GetComponent<PlayerDetailUIController>();
+                if (existingController != null) return existingController;
+            }
 
             var panelObject = new GameObject(DetailPanelName, typeof(RectTransform), typeof(Image));
             Undo.RegisterCreatedObjectUndo(panelObject, $"Create {DetailPanelName}");
@@ -459,13 +447,73 @@ namespace KBOManager.EditorTools
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            panelObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.75f);
+            panelObject.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.85f);
             panelObject.SetActive(false);
 
-            return panelObject;
+            // ----- 상단 요약: 대형 카드 미리보기 + 이름 + 팀/등급 -----
+            var previewCard = FindOrCreateDetailPreviewCard(panelObject.transform, cardTemplate);
+            var nameText = FindOrCreateText(panelObject.transform, DetailNameTextName, "",
+                new Vector2(0.42f, 0.85f), new Vector2(0.95f, 0.95f));
+            nameText.fontSize = 26;
+            var teamGradeText = FindOrCreateText(panelObject.transform, DetailTeamGradeTextName, "",
+                new Vector2(0.42f, 0.78f), new Vector2(0.95f, 0.85f));
+
+            // ----- 탭 바: [기본 스탯]/[특이폼·페이스]/[핫·콜드존]/[스킬] -----
+            var tabBar = FindOrCreateTabBar(panelObject.transform);
+            var statsTabButton = FindOrCreateTabButton(tabBar, StatsTabButtonName, "기본 스탯");
+            var specialFormTabButton = FindOrCreateTabButton(tabBar, SpecialFormTabButtonName, "특이폼/페이스");
+            var hotColdTabButton = FindOrCreateTabButton(tabBar, HotColdTabButtonName, "핫/콜드존");
+            var skillTabButton = FindOrCreateTabButton(tabBar, SkillTabButtonName, "스킬");
+
+            // ----- 탭 콘텐츠 4개(같은 영역에 겹쳐두고 SelectTab()이 하나만 SetActive(true)) -----
+            var contentAnchorMin = new Vector2(0.05f, 0.08f);
+            var contentAnchorMax = new Vector2(0.95f, 0.66f);
+
+            var statsPanel = FindOrCreateContentPanel(panelObject.transform, StatsContentPanelName, contentAnchorMin, contentAnchorMax);
+            var reinforceText = FindOrCreateText(statsPanel, DetailReinforceTextName, "",
+                new Vector2(0.05f, 0.85f), new Vector2(0.95f, 0.95f));
+            var awakenText = FindOrCreateText(statsPanel, DetailAwakenTextName, "",
+                new Vector2(0.05f, 0.72f), new Vector2(0.95f, 0.82f));
+            var statRowTexts = new Text[5];
+            float[] rowTopY = { 0.63f, 0.50f, 0.37f, 0.24f, 0.11f };
+            for (int i = 0; i < statRowTexts.Length; i++)
+            {
+                statRowTexts[i] = FindOrCreateText(statsPanel, $"{StatRowTextName}{i}", "",
+                    new Vector2(0.05f, rowTopY[i] - 0.10f), new Vector2(0.95f, rowTopY[i]));
+                statRowTexts[i].fontSize = 20;
+            }
+
+            var specialFormPanel = FindOrCreateContentPanel(panelObject.transform, SpecialFormContentPanelName, contentAnchorMin, contentAnchorMax);
+            var specialFormPlaceholderText = FindOrCreateText(specialFormPanel, "SpecialFormPlaceholderText",
+                "특이폼/페이스 정보는 추후 업데이트 예정입니다.", new Vector2(0.05f, 0.4f), new Vector2(0.95f, 0.6f));
+            specialFormPlaceholderText.alignment = TextAnchor.MiddleCenter;
+
+            var hotColdPanel = FindOrCreateContentPanel(panelObject.transform, HotColdContentPanelName, contentAnchorMin, contentAnchorMax);
+            FindOrCreateHotColdGrid(hotColdPanel);
+            var hotColdCaptionText = FindOrCreateText(hotColdPanel, "HotColdCaptionText",
+                "핫/콜드존 데이터는 추후 업데이트 예정입니다.", new Vector2(0.05f, 0.02f), new Vector2(0.95f, 0.14f));
+            hotColdCaptionText.alignment = TextAnchor.MiddleCenter;
+
+            var skillPanel = FindOrCreateContentPanel(panelObject.transform, SkillContentPanelName, contentAnchorMin, contentAnchorMax);
+            var skillListText = FindOrCreateText(skillPanel, SkillListTextName, "",
+                new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.95f));
+            skillListText.alignment = TextAnchor.UpperLeft;
+
+            var detailCloseButton = FindOrCreateCloseButton(panelObject.transform, DetailCloseButtonName, 64f);
+
+            var controller = panelObject.GetComponent<PlayerDetailUIController>();
+            if (controller == null) controller = panelObject.AddComponent<PlayerDetailUIController>();
+
+            BindDetailController(controller, previewCard, nameText, teamGradeText,
+                statsTabButton, specialFormTabButton, hotColdTabButton, skillTabButton,
+                statsPanel.gameObject, specialFormPanel.gameObject, hotColdPanel.gameObject, skillPanel.gameObject,
+                reinforceText, awakenText, statRowTexts, skillListText, detailCloseButton);
+            EditorUtility.SetDirty(controller);
+
+            return controller;
         }
 
-        /// <summary>`cardPrefab`(템플릿)을 복제해 상세 패널 전용 미리보기 카드 인스턴스를 만든다
+        /// <summary>`cardPrefab`(템플릿)을 복제해 상세 패널 전용 대형 미리보기 카드 인스턴스를 만든다
         /// (풀링 대상인 목록 카드와 달리 항상 하나만 존재하는 고정 인스턴스). 템플릿을 찾지 못했으면
         /// (cardPrefab == null) 미리보기 카드도 만들지 않고 null을 반환한다(명령서 7항 - 안전한 스킵).</summary>
         private static PlayerCardUI FindOrCreateDetailPreviewCard(Transform detailPanelTransform, PlayerCardUI cardPrefab)
@@ -484,34 +532,167 @@ namespace KBOManager.EditorTools
             instance.gameObject.name = DetailPreviewCardName;
 
             var rect = (RectTransform)instance.transform;
-            rect.anchorMin = new Vector2(0.05f, 0.4f);
-            rect.anchorMax = new Vector2(0.3f, 0.9f);
+            rect.anchorMin = new Vector2(0.05f, 0.55f);
+            rect.anchorMax = new Vector2(0.38f, 0.95f);
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
             return instance;
         }
 
-        private static Image FindOrCreateImage(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        /// <summary>[TASK-KBO-147] 4개 탭 버튼을 담을 가로 배치 컨테이너.</summary>
+        private static Transform FindOrCreateTabBar(Transform parent)
+        {
+            var existing = parent.Find(DetailTabBarName);
+            GameObject barObject;
+            if (existing != null)
+            {
+                barObject = existing.gameObject;
+            }
+            else
+            {
+                barObject = new GameObject(DetailTabBarName, typeof(RectTransform), typeof(HorizontalLayoutGroup));
+                Undo.RegisterCreatedObjectUndo(barObject, $"Create {DetailTabBarName}");
+                barObject.transform.SetParent(parent, false);
+            }
+
+            var rect = (RectTransform)barObject.transform;
+            rect.anchorMin = new Vector2(0.05f, 0.68f);
+            rect.anchorMax = new Vector2(0.95f, 0.76f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var layout = barObject.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandHeight = true;
+
+            return barObject.transform;
+        }
+
+        /// <summary>[TASK-KBO-147, 명령서 4항] 탭 버튼 1개. 클릭 리스너는 `BindDetailController()`가
+        /// 붙이지 않는다 - `PlayerDetailUIController.Awake()`가 스스로 자신의 4개 버튼에
+        /// `onClick.AddListener()`를 연결하므로(SetupPlayerManagementUI.cs 등 다른 컨트롤러와 동일
+        /// 관례 - 클릭 로직은 항상 컨트롤러 쪽에 둔다), 여기서는 순수 시각 요소만 만든다.</summary>
+        private static Button FindOrCreateTabButton(Transform parent, string name, string label)
         {
             var existingChild = parent.Find(name);
-            if (existingChild != null && existingChild.TryGetComponent<Image>(out var existingImage)) return existingImage;
+            if (existingChild != null)
+            {
+                var existingButton = existingChild.GetComponent<Button>();
+                if (existingButton != null)
+                {
+                    ApplyButtonLabel(existingButton, label);
+                    return existingButton;
+                }
+            }
 
-            var imageObject = new GameObject(name, typeof(RectTransform), typeof(Image));
-            Undo.RegisterCreatedObjectUndo(imageObject, $"Create {name}");
-            imageObject.transform.SetParent(parent, false);
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            Undo.RegisterCreatedObjectUndo(buttonObject, $"Create {name}");
+            buttonObject.transform.SetParent(parent, false);
 
-            var rect = (RectTransform)imageObject.transform;
+            var image = buttonObject.GetComponent<Image>();
+            image.color = Color.white;
+
+            var button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            Undo.RegisterCreatedObjectUndo(labelObject, $"Create {name} Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.GetComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 16;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.raycastTarget = false;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 10;
+            text.resizeTextMaxSize = 18;
+            ApplyButtonLabel(button, label);
+
+            return button;
+        }
+
+        /// <summary>[TASK-KBO-147] 탭 콘텐츠 1개(같은 영역에 4개가 겹쳐 배치되며, PlayerDetailUIController가
+        /// 한 번에 하나만 SetActive(true)한다). 배경은 없음(투명) - 각 콘텐츠가 자기 텍스트/그리드만
+        /// 그린다.</summary>
+        private static Transform FindOrCreateContentPanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var existing = parent.Find(name);
+            GameObject panelObject;
+            if (existing != null)
+            {
+                panelObject = existing.gameObject;
+            }
+            else
+            {
+                panelObject = new GameObject(name, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(panelObject, $"Create {name}");
+                panelObject.transform.SetParent(parent, false);
+            }
+
+            var rect = (RectTransform)panelObject.transform;
             rect.anchorMin = anchorMin;
             rect.anchorMax = anchorMax;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            var image = imageObject.GetComponent<Image>();
-            image.color = new Color(1f, 1f, 1f, 0f); // 평소엔 투명 - VFXController가 강화 연출 시에만 색을 바꿔 재생한다.
-            image.raycastTarget = false;
+            return panelObject.transform;
+        }
 
-            return image;
+        /// <summary>[명령서 5항 - 더미 데이터] 실제 타격 존 데이터가 없으므로, 3x3 중립 회색 타일
+        /// 그리드만 자리에 채워 둔다(추후 실데이터 연동 시 이 타일들의 색상만 갱신하면 된다).</summary>
+        private static void FindOrCreateHotColdGrid(Transform parent)
+        {
+            var existing = parent.Find(HotColdGridName);
+            GameObject gridObject;
+            if (existing != null)
+            {
+                gridObject = existing.gameObject;
+            }
+            else
+            {
+                gridObject = new GameObject(HotColdGridName, typeof(RectTransform), typeof(GridLayoutGroup));
+                Undo.RegisterCreatedObjectUndo(gridObject, $"Create {HotColdGridName}");
+                gridObject.transform.SetParent(parent, false);
+            }
+
+            var rect = (RectTransform)gridObject.transform;
+            rect.anchorMin = new Vector2(0.3f, 0.2f);
+            rect.anchorMax = new Vector2(0.7f, 0.95f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var grid = gridObject.GetComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(56f, 56f);
+            grid.spacing = new Vector2(6f, 6f);
+            grid.childAlignment = TextAnchor.MiddleCenter;
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = 3;
+
+            for (int i = 0; i < 9; i++)
+            {
+                string tileName = $"Tile{i}";
+                var tileTransform = gridObject.transform.Find(tileName);
+                GameObject tileObject = tileTransform != null ? tileTransform.gameObject : null;
+                if (tileObject == null)
+                {
+                    tileObject = new GameObject(tileName, typeof(RectTransform), typeof(Image));
+                    Undo.RegisterCreatedObjectUndo(tileObject, $"Create {tileName}");
+                    tileObject.transform.SetParent(gridObject.transform, false);
+                }
+
+                tileObject.GetComponent<Image>().color = new Color(0.55f, 0.55f, 0.55f); // 더미 - 전부 동일한 중립 회색
+            }
         }
 
         private static void RegisterInventoryScreen(UIManager uiManager, GameObject inventoryRoot)
@@ -541,35 +722,62 @@ namespace KBOManager.EditorTools
             serializedManager.ApplyModifiedProperties();
         }
 
+        /// <summary>[TASK-KBO-147] `InventoryUIController`의 대폭 축소된 필드 세트를 배선한다 - 구
+        /// 상세 패널 관련 필드(`materialSelectUIController`/`gameActionController`/`detailPreviewCard`
+        /// 등)는 컨트롤러 자체에서 전부 제거됐으므로(신규 `playerDetailUIController` 하나로 대체) 더
+        /// 이상 여기서 바인딩하지 않는다.</summary>
         private static void BindController(InventoryUIController controller,
-            MaterialSelectUIController materialSelectUIController, GameActionController gameActionController,
-            Transform cardContainer, PlayerCardUI cardPrefab, GameObject detailPanelRoot, PlayerCardUI detailPreviewCard,
-            Text detailReinforceText, Text detailAwakenText, Text detailSkillsText,
-            Button enhanceButton, Button awakenButton, Button skillChangeButton,
-            Text skillRerollResultText, Image detailCardFlashImage,
-            Button closeButton, Button closeDetailButton)
+            Transform cardContainer, PlayerCardUI cardPrefab,
+            PlayerDetailUIController playerDetailUIController, Button closeButton)
         {
             var serialized = new SerializedObject(controller);
-
-            if (materialSelectUIController != null) serialized.FindProperty("materialSelectUIController").objectReferenceValue = materialSelectUIController;
-            if (gameActionController != null) serialized.FindProperty("gameActionController").objectReferenceValue = gameActionController;
 
             serialized.FindProperty("cardContainer").objectReferenceValue = cardContainer;
             if (cardPrefab != null) serialized.FindProperty("cardPrefab").objectReferenceValue = cardPrefab;
 
-            serialized.FindProperty("detailPanelRoot").objectReferenceValue = detailPanelRoot;
-            if (detailPreviewCard != null) serialized.FindProperty("detailPreviewCard").objectReferenceValue = detailPreviewCard;
-            serialized.FindProperty("detailReinforceText").objectReferenceValue = detailReinforceText;
-            serialized.FindProperty("detailAwakenText").objectReferenceValue = detailAwakenText;
-            serialized.FindProperty("detailSkillsText").objectReferenceValue = detailSkillsText;
-            serialized.FindProperty("enhanceButton").objectReferenceValue = enhanceButton;
-            serialized.FindProperty("awakenButton").objectReferenceValue = awakenButton;
-            serialized.FindProperty("skillChangeButton").objectReferenceValue = skillChangeButton;
-            serialized.FindProperty("skillRerollResultText").objectReferenceValue = skillRerollResultText;
-            serialized.FindProperty("detailCardFlashImage").objectReferenceValue = detailCardFlashImage;
-
+            serialized.FindProperty("playerDetailUIController").objectReferenceValue = playerDetailUIController;
             serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
-            serialized.FindProperty("closeDetailButton").objectReferenceValue = closeDetailButton;
+
+            serialized.ApplyModifiedProperties();
+        }
+
+        /// <summary>[TASK-KBO-147] 신규 `PlayerDetailUIController`(탭 UI)의 전체 필드를 배선한다.</summary>
+        private static void BindDetailController(PlayerDetailUIController controller,
+            PlayerCardUI previewCard, Text nameText, Text teamGradeText,
+            Button statsTabButton, Button specialFormTabButton, Button hotColdTabButton, Button skillTabButton,
+            GameObject statsContentPanel, GameObject specialFormContentPanel, GameObject hotColdContentPanel, GameObject skillContentPanel,
+            Text reinforceText, Text awakenText, Text[] statRowTexts, Text skillListText, Button closeButton)
+        {
+            var serialized = new SerializedObject(controller);
+
+            serialized.FindProperty("panelRoot").objectReferenceValue = controller.gameObject;
+
+            if (previewCard != null) serialized.FindProperty("previewCard").objectReferenceValue = previewCard;
+            serialized.FindProperty("nameText").objectReferenceValue = nameText;
+            serialized.FindProperty("teamGradeText").objectReferenceValue = teamGradeText;
+
+            serialized.FindProperty("statsTabButton").objectReferenceValue = statsTabButton;
+            serialized.FindProperty("specialFormTabButton").objectReferenceValue = specialFormTabButton;
+            serialized.FindProperty("hotColdTabButton").objectReferenceValue = hotColdTabButton;
+            serialized.FindProperty("skillTabButton").objectReferenceValue = skillTabButton;
+
+            serialized.FindProperty("statsContentPanel").objectReferenceValue = statsContentPanel;
+            serialized.FindProperty("specialFormContentPanel").objectReferenceValue = specialFormContentPanel;
+            serialized.FindProperty("hotColdContentPanel").objectReferenceValue = hotColdContentPanel;
+            serialized.FindProperty("skillContentPanel").objectReferenceValue = skillContentPanel;
+
+            serialized.FindProperty("reinforceText").objectReferenceValue = reinforceText;
+            serialized.FindProperty("awakenText").objectReferenceValue = awakenText;
+
+            var statRowsProperty = serialized.FindProperty("statRowTexts");
+            statRowsProperty.arraySize = statRowTexts.Length;
+            for (int i = 0; i < statRowTexts.Length; i++)
+            {
+                statRowsProperty.GetArrayElementAtIndex(i).objectReferenceValue = statRowTexts[i];
+            }
+
+            serialized.FindProperty("skillListText").objectReferenceValue = skillListText;
+            serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
 
             serialized.ApplyModifiedProperties();
         }

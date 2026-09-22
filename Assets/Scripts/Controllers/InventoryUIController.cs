@@ -8,44 +8,28 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// GameManager.Instance.Inventory 전체를 PlayerCardUI 목록으로 그리고, 카드를 클릭하면 상세 정보
-    /// 패널(강화/각성 상태, 보유 스킬)을 띄우는 인벤토리 메인 허브. 상세 패널의 [강화하기]/[각성하기]
-    /// 버튼은 MaterialSelectUIController의 재료 다중 선택 팝업을 연다 - 실제 GameActionController 호출과
-    /// 인벤토리 소모는 그 팝업의 확정(Confirm) 시점에 일어난다. 카드 목록은 CardPoolManager로 재사용한다.
+    /// GameManager.Instance.Inventory 전체를 PlayerCardUI 목록으로 그리는 인벤토리 메인 허브. 카드를
+    /// 클릭하면 `PlayerManagementUIController`(선수 관리 허브, TASK-145)를 띄운다. 카드 목록은
+    /// CardPoolManager로 재사용한다.
     ///
-    /// [TASK-KBO-135, 사실 정정] 명령서는 상세 패널을 여는 메서드 이름을 `OpenDetail()`로 가정했으나,
-    /// 이 클래스에는 그런 이름의 메서드가 없다 - 실제로 상세 패널을 여는 메서드는 `ShowDetail(Player)`
-    /// (188행)이며 닫는 메서드는 `CloseDetail()`(230행)이 맞다. 명령서 4항이 요구한 "메인 닫기 버튼
-    /// 숨김/복원"은 이 두 실제 메서드에 구현했다.
+    /// [TASK-KBO-145] 카드 클릭 시 뜨던 "기존의 단순 팝업"(강화하기/각성하기/스킬 변경 버튼 3개만
+    /// 나열하던 구 상세 패널)을 폐기하고 `PlayerManagementUIController`(격자형 선수 관리 허브)를 대신
+    /// 띄운다 - `SpawnCard()`의 클릭 리스너가 `OpenPlayerManagement()`를 호출한다.
     ///
-    /// [TASK-KBO-138, 사실 정정] 명령서는 `changeSkillButton` 필드를 "선언/바인딩"하라고 지시했으나,
-    /// 이 클래스에는 이미 동일한 역할의 `skillChangeButton` 필드(원문)가 `Awake()`에서 리스너까지
-    /// 연결돼 있었다(DCL-102 Part 1에서도 이미 확인된 사실). 실제 "미작동" 원인은 필드 부재가 아니라
-    /// (1) 보유 스킬이 0개면 버튼 자체를 `interactable = false`로 꺼 버려 클릭 이벤트가 아예 발생하지
-    /// 않았던 점, (2) `SkillRerollManager.Instance == null`이면 `OnClickSkillChange()`가 아무 피드백
-    /// 없이 조용히 반환했던 점 2가지였다 - 버튼을 항상 활성 상태로 두고, 두 케이스 각각에 `Debug.Log`
-    /// + `skillRerollResultText` 안내 문구를 추가했다(명령서 4항, 재추첨 로직 자체는 무수정).
-    ///
-    /// [TASK-KBO-139, 사실 정정] 명령서는 `detailPanel.transform.SetAsLastSibling()`을 지시했으나,
-    /// 이 클래스의 실제 필드명은 `detailPanel`이 아니라 `detailPanelRoot`다 - `ShowDetail(Player)`에
-    /// `detailPanelRoot.transform.SetAsLastSibling()`으로 그대로 구현했다(명령서 6항 검토 결과,
-    /// `MaterialSelectUIController`는 TASK-125부터 이미 `OpenForEnhance()`/`OpenForAwaken()` 양쪽에
-    /// 동일 패턴이 적용돼 있어 추가 조치가 필요 없었다).
-    ///
-    /// [TASK-KBO-145] 명령서 지시대로 카드 클릭 시 뜨던 "기존의 단순 팝업"(`detailPanelRoot` - 강화하기/
-    /// 각성하기/스킬 변경 버튼 3개만 나열)을 폐기하고 `PlayerManagementUIController`(격자형 선수 관리
-    /// 허브)를 대신 띄운다 - `SpawnCard()`의 클릭 리스너만 `ShowDetail()`에서 `OpenPlayerManagement()`로
-    /// 바꿨다. `detailPanelRoot`와 그 하위 필드/메서드(`ShowDetail`/`CloseDetail`/`OnClickEnhance`/
-    /// `OnClickAwaken`/`OnClickSkillChange` 등)는 명령서 0항("1mm도 벗어난 임의 리팩토링 금지")에 따라
-    /// 전혀 삭제하지 않고 그대로 남겨 뒀다 - 더 이상 이 클래스 내부에서 호출되지 않는 휴면 코드이지만,
-    /// 인스펙터에 필드가 비어 있는 구형 씬에서도(아래 폴백 참고) 여전히 안전하게 동작한다.
+    /// [TASK-KBO-147, 전면 개편] 구 상세 패널(`detailPanelRoot` 및 그 하위 텍스트 나열형 구성 -
+    /// `detailReinforceText`/`detailAwakenText`/`detailSkillsText`/`enhanceButton`/`awakenButton`/
+    /// `skillChangeButton` 등)을 명령서 지시대로 완전히 폐기했다 - 씬에서 해당 GameObject 전부를
+    /// DestroyImmediate로 제거하고, 탭 UI(기본 스탯/특이폼·페이스/핫·콜드존/스킬)를 갖춘 신규
+    /// `PlayerDetailUIController`로 교체했다(`SetupInventoryUI.cs` 참고). 구 상세 패널이 담당하던
+    /// [강화하기]/[각성하기]/[스킬 변경] 기능은 이미 TASK-145/146에서 `PlayerManagementUIController`/
+    /// `EnhanceUIController`로 완전히 이관되어 중복이었으므로(사용자가 카드를 클릭하면 애초에 구
+    /// 상세 패널이 아니라 선수 관리 허브가 뜬다 - 위 TASK-145 항목 참고), 새 상세 패널은 순수 "정보
+    /// 열람"(스탯/스킬 등) 전용으로 좁혀 재설계했고 그 두 버튼/로직은 이관과 함께 자연히 제거됐다.
+    /// `ShowDetail()`/`CloseDetail()`은 이제 `playerDetailUIController`에 얇게 위임만 한다.
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private MaterialSelectUIController materialSelectUIController;
-        [Tooltip("ExecuteEnhance()의 성공/실패를 구독해 VFXController 연출을 트리거하는 데 쓴다.")]
-        [SerializeField] private GameActionController gameActionController;
         [Tooltip("[TASK-KBO-145] 카드 클릭 시 뜨는 신규 '선수 관리 허브'. 비어 있으면(구형 씬 - Setup " +
                  "메뉴 재실행 전) 기존 ShowDetail() 팝업으로 자동 폴백한다.")]
         [SerializeField] private PlayerManagementUIController playerManagementUIController;
@@ -57,43 +41,20 @@ namespace KBOManager.Controllers
                  "연결하면 CardPoolManager 풀을 공유해 카드 인스턴스를 재사용한다.")]
         [SerializeField] private PlayerCardUI cardPrefab;
 
-        [Header("Detail Panel")]
-        [SerializeField] private GameObject detailPanelRoot;
-        [Tooltip("상세 패널 상단에 선택한 카드를 미리보기로 다시 그릴 때 쓴다(선택 사항).")]
-        [SerializeField] private PlayerCardUI detailPreviewCard;
-        [SerializeField] private Text detailReinforceText;
-        [SerializeField] private Text detailAwakenText;
-        [SerializeField] private Text detailSkillsText;
-        [SerializeField] private Button enhanceButton;
-        [SerializeField] private Button awakenButton;
-        [Tooltip("스킬 변경권을 소모해 첫 번째 보유 스킬(AcquiredSkillIds[0])을 재추첨한다. " +
-                 "SkillRerollManager.Instance를 정적으로 참조하므로 별도 인스펙터 연결이 필요 없다.")]
-        [SerializeField] private Button skillChangeButton;
-        [Tooltip("스킬 변경 결과(성공/실패/F등급 재확인 대기)를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
-        [SerializeField] private Text skillRerollResultText;
-        [Tooltip("강화 성공/실패 시 VFXController가 반짝이는 색으로 재생할 카드 배경/테두리 Image. 비워두면 색 연출만 생략된다.")]
-        [SerializeField] private Image detailCardFlashImage;
+        [Header("Detail Panel (TASK-KBO-147 - 탭 UI 전면 개편)")]
+        [Tooltip("[TASK-KBO-147] 구 텍스트 나열형 DetailPanel을 대체하는 신규 탭 UI 컨트롤러. " +
+                 "playerManagementUIController가 비어 있을 때의 폴백 경로(OpenPlayerManagement() 참고)에서만 열린다.")]
+        [SerializeField] private PlayerDetailUIController playerDetailUIController;
 
         [Header("Close Buttons")]
         [Tooltip("[TASK-KBO-111] 인벤토리 화면을 닫고 로비로 돌아가는 버튼. UIManager.ShowScreen()만 호출한다.")]
         [SerializeField] private Button closeButton;
-        [Tooltip("[TASK-KBO-111] 상세 정보 패널만 닫는 버튼. CloseDetail()을 호출한다.")]
-        [SerializeField] private Button closeDetailButton;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
-        private Player selectedPlayer;
-
-        /// <summary>SkillRerollManager에 F등급 확정 대기가 걸려 있는 선수. 다른 카드를 선택하거나 패널을
-        /// 닫으면 자동으로 취소한다(보류 상태가 다른 선수로 잘못 이어지는 것을 방지).</summary>
-        private Player pendingRerollTarget;
 
         private void Awake()
         {
-            if (enhanceButton != null) enhanceButton.onClick.AddListener(OnClickEnhance);
-            if (awakenButton != null) awakenButton.onClick.AddListener(OnClickAwaken);
-            if (skillChangeButton != null) skillChangeButton.onClick.AddListener(OnClickSkillChange);
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
-            if (closeDetailButton != null) closeDetailButton.onClick.AddListener(CloseDetail);
 
             CloseDetail();
         }
@@ -105,58 +66,18 @@ namespace KBOManager.Controllers
             // 화면에 처음 진입하면(또는 재진입해도) 카드가 갱신되지 않고 비어 보였다.
             RefreshInventory();
 
-            if (materialSelectUIController != null)
-            {
-                materialSelectUIController.OnActionCompleted += HandleMaterialActionCompleted;
-            }
-
-            if (gameActionController != null)
-            {
-                gameActionController.OnEnhanceCompleted += HandleEnhanceCompleted;
-            }
+            // [TASK-KBO-147] 상세 패널의 내부 닫기(X) 버튼이 눌리면 메인 닫기 버튼을 되돌린다.
+            if (playerDetailUIController != null) playerDetailUIController.OnClosed += CloseDetail;
         }
 
         private void OnDisable()
         {
             // [TASK-KBO-124] 상세 패널을 연 채로 화면을 나가면(다른 화면 버튼 클릭 등으로 이 패널이
-            // SetActive(false)됨) detailPanelRoot가 활성 상태로 남아 있다가, 다음 재진입 시 이전에
-            // 선택했던 선수의 상세 패널이 그대로 다시 보이는 상태 누수가 있었다 - CloseDetail()로
-            // 선택 상태(selectedPlayer/pendingRerollTarget)까지 함께 초기화한다.
+            // SetActive(false)됨) 다음 재진입 시 이전 상태가 그대로 다시 보이는 상태 누수가 있었다 -
+            // CloseDetail()로 항상 초기화한다.
             CloseDetail();
 
-            if (materialSelectUIController != null)
-            {
-                materialSelectUIController.OnActionCompleted -= HandleMaterialActionCompleted;
-            }
-
-            if (gameActionController != null)
-            {
-                gameActionController.OnEnhanceCompleted -= HandleEnhanceCompleted;
-            }
-        }
-
-        private void HandleMaterialActionCompleted()
-        {
-            RefreshInventory();
-            if (selectedPlayer != null) ShowDetail(selectedPlayer); // 최신 강화/각성 수치로 패널 다시 그림
-        }
-
-        /// <summary>GameActionController.OnEnhanceCompleted 핸들러. 지금 상세 패널에 열려 있는 카드가
-        /// 방금 강화를 시도한 그 카드일 때만(다른 화면에서 강화가 일어났을 가능성은 없지만 방어적으로 확인)
-        /// VFXController에 성공/실패 연출을 위임한다.</summary>
-        private void HandleEnhanceCompleted(Player target, bool success)
-        {
-            if (target == null || target != selectedPlayer || detailPreviewCard == null) return;
-
-            if (success)
-            {
-                Transform reinforceTextTransform = detailReinforceText != null ? detailReinforceText.transform : null;
-                VFXController.Instance?.PlayEnhanceSuccess(detailCardFlashImage, reinforceTextTransform);
-            }
-            else
-            {
-                VFXController.Instance?.PlayEnhanceFailure(detailPreviewCard.transform, detailCardFlashImage);
-            }
+            if (playerDetailUIController != null) playerDetailUIController.OnClosed -= CloseDetail;
         }
 
         /// <summary>GameManager.Instance.Inventory 전체를 다시 읽어 카드 리스트를 새로 그린다.</summary>
@@ -202,7 +123,7 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>[TASK-KBO-145] 카드 클릭 진입점. 신규 선수 관리 허브가 배선되어 있으면 그쪽을 띄우고,
-        /// 아직 배선 전(구형 씬)이면 예전처럼 ShowDetail() 팝업으로 폴백해 클릭이 조용히 무시되는 것을
+        /// 아직 배선 전(구형 씬)이면 신규 상세 패널(TASK-KBO-147)로 폴백해 클릭이 조용히 무시되는 것을
         /// 막는다.</summary>
         private void OpenPlayerManagement(Player player)
         {
@@ -228,151 +149,25 @@ namespace KBOManager.Controllers
             spawnedCards.Clear();
         }
 
-        // ----- 상세 정보 패널 -----
+        // ----- 상세 정보 패널 (TASK-KBO-147 - PlayerDetailUIController에 위임) -----
 
         private void ShowDetail(Player player)
         {
-            // 다른 선수를 새로 선택하면(=재조회가 아니면) 이전 선수의 F등급 확정 대기를 취소한다 -
-            // 보류된 재추첨 결과가 엉뚱한 선수에게 잘못 적용되는 사고를 막는다.
-            if (pendingRerollTarget != null && pendingRerollTarget != player)
-            {
-                SkillRerollManager.Instance?.CancelPendingReroll(pendingRerollTarget);
-                pendingRerollTarget = null;
-                if (skillRerollResultText != null) skillRerollResultText.text = "";
-            }
-
-            selectedPlayer = player;
             if (player?.Template == null) return;
 
-            if (detailPanelRoot != null)
-            {
-                detailPanelRoot.SetActive(true);
-                // [TASK-KBO-139] DetailPanel이 카드 리스트(CardListPanel)보다 sibling 순서상 앞서게
-                // 되면(예: 재조립 과정에서 형제 순서가 바뀌는 경우) 뒤에 그려지는 카드 리스트에 가려
-                // 상세 창과 'X' 버튼이 파묻혀 보이지 않는다 - MaterialSelectUIController(TASK-125)와
-                // 동일한 패턴으로, 열 때마다 무조건 부모 계층 최하단(=렌더링 최상위)으로 끌어올린다.
-                detailPanelRoot.transform.SetAsLastSibling();
-            }
+            if (playerDetailUIController != null) playerDetailUIController.Show(player);
+
             // [TASK-KBO-135] 상세 패널이 열려 있는 동안은 메인 인벤토리 닫기 버튼(로비로 돌아가기)을
             // 숨겨, 우측 상단에 두 닫기 버튼이 겹쳐 보이는 UX 결함을 막는다 - CloseDetail()에서 되돌린다.
             if (closeButton != null) closeButton.gameObject.SetActive(false);
-            if (detailPreviewCard != null) detailPreviewCard.Setup(player);
-
-            if (detailReinforceText != null)
-            {
-                detailReinforceText.text = $"강화 {player.ReinforceLevel} / {Player.MaxReinforceLevel}";
-            }
-
-            if (detailAwakenText != null)
-            {
-                detailAwakenText.text = player.CanAwaken
-                    ? $"각성 {player.AwakenLevel} / {Player.MaxAwakenLevel}"
-                    : "각성 불가 (LIVE 등급)";
-            }
-
-            if (detailSkillsText != null)
-            {
-                detailSkillsText.text = player.AcquiredSkillIds.Count > 0
-                    ? string.Join(", ", player.AcquiredSkillIds)
-                    : "보유 스킬 없음";
-            }
-
-            if (enhanceButton != null) enhanceButton.interactable = player.ReinforceLevel < Player.MaxReinforceLevel;
-            if (awakenButton != null) awakenButton.interactable = player.CanAwaken && player.AwakenLevel < Player.MaxAwakenLevel;
-            // [TASK-KBO-138] 과거에는 보유 스킬이 0개면 버튼 자체를 비활성화해 눌러도 아무 반응이
-            // 없었다("미작동"으로 보이는 원인 중 하나) - 이제 항상 클릭 가능하게 두고, OnClickSkillChange()
-            // 내부에서 0개/매니저 부재 케이스마다 최소한의 피드백을 낸다(명령서 4항).
         }
 
-        /// <summary>상세 패널의 닫기 버튼 OnClick.</summary>
         public void CloseDetail()
         {
-            if (pendingRerollTarget != null)
-            {
-                SkillRerollManager.Instance?.CancelPendingReroll(pendingRerollTarget);
-                pendingRerollTarget = null;
-            }
+            if (playerDetailUIController != null) playerDetailUIController.Hide();
 
-            selectedPlayer = null;
-            if (detailPanelRoot != null) detailPanelRoot.SetActive(false);
             // [TASK-KBO-135] ShowDetail()에서 숨긴 메인 닫기 버튼을 되돌린다.
             if (closeButton != null) closeButton.gameObject.SetActive(true);
-        }
-
-        // ----- 스킬 변경 버튼 브릿지 -----
-
-        /// <summary>
-        /// [스킬 변경] 버튼 OnClick. 항상 첫 번째 보유 스킬(AcquiredSkillIds[0])을 재추첨 대상으로 삼는다
-        /// (현재 유저 카드는 ScoutManager.AttachInitialSkill()로 스킬을 최대 1개만 보유하므로 충분하다 -
-        /// 추후 스킬 슬롯이 여러 개로 늘어나면 선택 UI를 추가하고 이 인덱스를 그 선택값으로 바꾸면 된다).
-        ///
-        /// 직전 시도가 F등급 확정 대기 상태였다면(이 버튼을 다시 눌렀다는 것은 "그래도 적용" 의사로
-        /// 해석한다) 새로 재추첨하지 않고 ConfirmPendingReroll()로 그 결과를 그대로 확정 적용한다.
-        /// </summary>
-        private void OnClickSkillChange()
-        {
-            if (selectedPlayer == null) return;
-
-            // [TASK-KBO-138] 클릭했는데 아무 반응이 없어 "미작동"으로 보이던 두 경로(보유 스킬 0개,
-            // SkillRerollManager 미존재)에 명시적 피드백을 추가한다(명령서 4항 - 최소한 Debug.Log/안내
-            // 텍스트). 기존 재추첨 로직(TryRerollSkill/ConfirmPendingReroll) 자체는 무수정이다.
-            if (selectedPlayer.AcquiredSkillIds.Count == 0)
-            {
-                Debug.Log("[InventoryUIController] 보유 스킬이 없어 변경할 스킬이 없습니다.");
-                if (skillRerollResultText != null) skillRerollResultText.text = "보유 스킬이 없습니다.";
-                return;
-            }
-
-            if (SkillRerollManager.Instance == null)
-            {
-                Debug.LogWarning("[InventoryUIController] 스킬 변경 시스템은 개발 중입니다. (SkillRerollManager 없음)");
-                if (skillRerollResultText != null) skillRerollResultText.text = "스킬 변경 시스템은 개발 중입니다.";
-                return;
-            }
-
-            RerollResult result = pendingRerollTarget == selectedPlayer
-                ? SkillRerollManager.Instance.ConfirmPendingReroll(selectedPlayer)
-                : SkillRerollManager.Instance.TryRerollSkill(selectedPlayer, 0);
-
-            pendingRerollTarget = result.Outcome == RerollOutcome.PendingDowngradeConfirmation ? selectedPlayer : null;
-
-            ShowSkillRerollResult(result);
-
-            if (result.Outcome == RerollOutcome.Applied)
-            {
-                ShowDetail(selectedPlayer); // 갱신된 AcquiredSkillIds를 패널에 다시 반영
-            }
-        }
-
-        private void ShowSkillRerollResult(RerollResult result)
-        {
-            if (skillRerollResultText == null) return;
-
-            skillRerollResultText.text = result.Outcome switch
-            {
-                RerollOutcome.Applied => $"'{result.OldSkillName}' -> '{result.NewSkillName}' ({result.NewSkillTier}) 변경 완료!",
-                RerollOutcome.NoTicket => "스킬 변경권이 없습니다.",
-                RerollOutcome.NoSkillAvailable => "뽑을 수 있는 스킬이 없습니다.",
-                RerollOutcome.PendingDowngradeConfirmation =>
-                    $"새로 뽑힌 스킬이 최하위 F등급입니다 ('{result.NewSkillName}'). 그래도 적용하려면 [스킬 변경]을 한 번 더 눌러주세요.",
-                _ => "스킬 변경에 실패했습니다.",
-            };
-        }
-
-        // ----- 강화/각성 버튼 브릿지 -----
-
-        /// <summary>[강화하기] 버튼 OnClick. 재료(강화 카드) 다중 선택 팝업을 연다.</summary>
-        private void OnClickEnhance()
-        {
-            if (selectedPlayer == null || materialSelectUIController == null) return;
-            materialSelectUIController.OpenForEnhance(selectedPlayer);
-        }
-
-        /// <summary>[각성하기] 버튼 OnClick. 동일 선수 카드만 노출되는 재료 다중 선택 팝업을 연다.</summary>
-        private void OnClickAwaken()
-        {
-            if (selectedPlayer?.Template == null || materialSelectUIController == null) return;
-            materialSelectUIController.OpenForAwaken(selectedPlayer);
         }
     }
 }
