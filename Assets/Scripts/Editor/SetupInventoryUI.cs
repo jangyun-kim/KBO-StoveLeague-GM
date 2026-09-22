@@ -481,38 +481,42 @@ namespace KBOManager.EditorTools
             var skillTabButton = FindOrCreateTabButton(tabBar, SkillTabButtonName, "스킬");
 
             // ----- 탭 콘텐츠 4개(같은 영역에 겹쳐두고 SelectTab()이 하나만 SetActive(true)) -----
+            // [TASK-KBO-152, 명령서 4항] 명령서는 "부착된 VerticalLayoutGroup의 Padding을 설정하라"고
+            // 지시했으나, TASK-147 원문에는 애초에 VerticalLayoutGroup 자체가 없었다(각 텍스트를 명시적
+            // anchor 분수로 손수 배치) - 이번에 `FindOrCreateContentPanel()`에 실제로 `VerticalLayoutGroup`을
+            // 신설하고, 아래 4개 탭의 내용물도 명시적 anchor 대신 `FindOrCreateLayoutText()`(LayoutElement
+            // 기반 한 줄)로 다시 만들어 그 레이아웃 그룹이 세로 배치·여백·간격을 전담하게 했다.
             var contentAnchorMin = new Vector2(0.05f, 0.08f);
             var contentAnchorMax = new Vector2(0.95f, 0.66f);
 
-            var statsPanel = FindOrCreateContentPanel(panelObject.transform, StatsContentPanelName, contentAnchorMin, contentAnchorMax);
-            var reinforceText = FindOrCreateText(statsPanel, DetailReinforceTextName, "",
-                new Vector2(0.05f, 0.85f), new Vector2(0.95f, 0.95f));
-            var awakenText = FindOrCreateText(statsPanel, DetailAwakenTextName, "",
-                new Vector2(0.05f, 0.72f), new Vector2(0.95f, 0.82f));
+            var statsPanel = FindOrCreateContentPanel(panelObject.transform, StatsContentPanelName,
+                contentAnchorMin, contentAnchorMax, TextAnchor.UpperCenter);
+            var reinforceText = FindOrCreateLayoutText(statsPanel, DetailReinforceTextName, "", 44f);
+            var awakenText = FindOrCreateLayoutText(statsPanel, DetailAwakenTextName, "", 44f);
             var statRowTexts = new Text[5];
-            float[] rowTopY = { 0.63f, 0.50f, 0.37f, 0.24f, 0.11f };
             for (int i = 0; i < statRowTexts.Length; i++)
             {
-                statRowTexts[i] = FindOrCreateText(statsPanel, $"{StatRowTextName}{i}", "",
-                    new Vector2(0.05f, rowTopY[i] - 0.10f), new Vector2(0.95f, rowTopY[i]));
-                statRowTexts[i].fontSize = 20;
+                statRowTexts[i] = FindOrCreateLayoutText(statsPanel, $"{StatRowTextName}{i}", "", 40f);
             }
 
-            var specialFormPanel = FindOrCreateContentPanel(panelObject.transform, SpecialFormContentPanelName, contentAnchorMin, contentAnchorMax);
-            var specialFormPlaceholderText = FindOrCreateText(specialFormPanel, "SpecialFormPlaceholderText",
-                "특이폼/페이스 정보는 추후 업데이트 예정입니다.", new Vector2(0.05f, 0.4f), new Vector2(0.95f, 0.6f));
-            specialFormPlaceholderText.alignment = TextAnchor.MiddleCenter;
+            // [명령서 4항] 더미 안내 문구가 화면 중앙에 오도록 childAlignment=MiddleCenter로 만든다 -
+            // 콘텐츠가 1~2줄뿐이라 `childForceExpandHeight=false`(FindOrCreateContentPanel 기본값)와
+            // 함께 쓰면 그 한두 줄이 패널 정중앙에 떠 있는 형태가 된다.
+            var specialFormPanel = FindOrCreateContentPanel(panelObject.transform, SpecialFormContentPanelName,
+                contentAnchorMin, contentAnchorMax, TextAnchor.MiddleCenter);
+            FindOrCreateLayoutText(specialFormPanel, "SpecialFormPlaceholderText",
+                "특이폼/페이스 정보는\n추후 업데이트 예정입니다.", 80f);
 
-            var hotColdPanel = FindOrCreateContentPanel(panelObject.transform, HotColdContentPanelName, contentAnchorMin, contentAnchorMax);
+            var hotColdPanel = FindOrCreateContentPanel(panelObject.transform, HotColdContentPanelName,
+                contentAnchorMin, contentAnchorMax, TextAnchor.MiddleCenter);
             FindOrCreateHotColdGrid(hotColdPanel);
-            var hotColdCaptionText = FindOrCreateText(hotColdPanel, "HotColdCaptionText",
-                "핫/콜드존 데이터는 추후 업데이트 예정입니다.", new Vector2(0.05f, 0.02f), new Vector2(0.95f, 0.14f));
-            hotColdCaptionText.alignment = TextAnchor.MiddleCenter;
+            FindOrCreateLayoutText(hotColdPanel, "HotColdCaptionText",
+                "핫/콜드존 데이터는 추후 업데이트 예정입니다.", 44f);
 
-            var skillPanel = FindOrCreateContentPanel(panelObject.transform, SkillContentPanelName, contentAnchorMin, contentAnchorMax);
-            var skillListText = FindOrCreateText(skillPanel, SkillListTextName, "",
-                new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.95f));
-            skillListText.alignment = TextAnchor.UpperLeft;
+            var skillPanel = FindOrCreateContentPanel(panelObject.transform, SkillContentPanelName,
+                contentAnchorMin, contentAnchorMax, TextAnchor.UpperCenter);
+            var skillListText = FindOrCreateLayoutText(skillPanel, SkillListTextName, "", 260f);
+            skillListText.alignment = TextAnchor.UpperLeft; // 목록은 정중앙 정렬 대신 좌상단부터 읽히도록 유지
 
             var detailCloseButton = FindOrCreateCloseButton(panelObject.transform, DetailCloseButtonName, 64f);
 
@@ -707,8 +711,13 @@ namespace KBOManager.EditorTools
 
         /// <summary>[TASK-KBO-147] 탭 콘텐츠 1개(같은 영역에 4개가 겹쳐 배치되며, PlayerDetailUIController가
         /// 한 번에 하나만 SetActive(true)한다). 배경은 없음(투명) - 각 콘텐츠가 자기 텍스트/그리드만
-        /// 그린다.</summary>
-        private static Transform FindOrCreateContentPanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        /// 그린다.
+        /// [TASK-KBO-152, 명령서 4항 - 사실 정정] 명령서는 "부착된 VerticalLayoutGroup의 Padding을
+        /// 조정하라"고 지시했으나, 이 패널에는 애초에 VerticalLayoutGroup이 없었다(각 자식 텍스트를
+        /// 명시적 anchor 분수로 손수 배치하는 방식). 이번에 실제로 VerticalLayoutGroup을 신설하고
+        /// Padding(28)/Spacing(16)을 넉넉히 준다.</summary>
+        private static Transform FindOrCreateContentPanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax,
+            TextAnchor childAlignment = TextAnchor.UpperCenter)
         {
             var existing = parent.Find(name);
             GameObject panelObject;
@@ -718,7 +727,7 @@ namespace KBOManager.EditorTools
             }
             else
             {
-                panelObject = new GameObject(name, typeof(RectTransform));
+                panelObject = new GameObject(name, typeof(RectTransform), typeof(VerticalLayoutGroup));
                 Undo.RegisterCreatedObjectUndo(panelObject, $"Create {name}");
                 panelObject.transform.SetParent(parent, false);
             }
@@ -729,11 +738,67 @@ namespace KBOManager.EditorTools
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
+            var layoutGroup = panelObject.GetComponent<VerticalLayoutGroup>();
+            if (layoutGroup == null)
+            {
+                layoutGroup = panelObject.AddComponent<VerticalLayoutGroup>();
+            }
+            layoutGroup.padding = new RectOffset(28, 28, 28, 28);
+            layoutGroup.spacing = 16f;
+            layoutGroup.childAlignment = childAlignment;
+            layoutGroup.childControlWidth = true;
+            layoutGroup.childForceExpandWidth = true;
+            layoutGroup.childControlHeight = true;
+            layoutGroup.childForceExpandHeight = false;
+
             return panelObject.transform;
         }
 
+        /// <summary>[TASK-KBO-152] 위 `FindOrCreateContentPanel()`이 만드는 VerticalLayoutGroup 안에
+        /// 들어갈 텍스트 한 줄. 명시적 anchor 분수 대신 LayoutElement.preferredHeight로 자기 높이를
+        /// 선언해 부모 레이아웃 그룹이 세로 배치를 전담하게 한다.</summary>
+        private static Text FindOrCreateLayoutText(Transform parent, string name, string defaultText, float preferredHeight)
+        {
+            var existing = parent.Find(name);
+            GameObject textObject;
+            if (existing != null)
+            {
+                textObject = existing.gameObject;
+            }
+            else
+            {
+                textObject = new GameObject(name, typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+                Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
+                textObject.transform.SetParent(parent, false);
+            }
+
+            var layoutElement = textObject.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+            {
+                layoutElement = textObject.AddComponent<LayoutElement>();
+            }
+            layoutElement.preferredHeight = preferredHeight;
+            layoutElement.minHeight = preferredHeight;
+
+            var text = textObject.GetComponent<Text>();
+            if (existing == null)
+            {
+                text.text = defaultText;
+                text.color = Color.white; // 상세 패널 배경(반투명 검정)과 대비시킨다 - FindOrCreateText와 동일 관례.
+                text.fontSize = 16;
+                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.raycastTarget = false;
+            }
+            text.alignment = TextAnchor.MiddleCenter;
+
+            return text;
+        }
+
         /// <summary>[명령서 5항 - 더미 데이터] 실제 타격 존 데이터가 없으므로, 3x3 중립 회색 타일
-        /// 그리드만 자리에 채워 둔다(추후 실데이터 연동 시 이 타일들의 색상만 갱신하면 된다).</summary>
+        /// 그리드만 자리에 채워 둔다(추후 실데이터 연동 시 이 타일들의 색상만 갱신하면 된다).
+        /// [TASK-KBO-152] 부모(hotColdPanel)에 VerticalLayoutGroup이 신설되어 자식의 위치를
+        /// 전담하므로, 기존 수동 anchor 지정은 제거하고 LayoutElement.preferredHeight로 자기 높이만
+        /// 선언한다 - 3행 × 56px + 2칸 간격 × 6px = 180px.</summary>
         private static void FindOrCreateHotColdGrid(Transform parent)
         {
             var existing = parent.Find(HotColdGridName);
@@ -744,16 +809,18 @@ namespace KBOManager.EditorTools
             }
             else
             {
-                gridObject = new GameObject(HotColdGridName, typeof(RectTransform), typeof(GridLayoutGroup));
+                gridObject = new GameObject(HotColdGridName, typeof(RectTransform), typeof(GridLayoutGroup), typeof(LayoutElement));
                 Undo.RegisterCreatedObjectUndo(gridObject, $"Create {HotColdGridName}");
                 gridObject.transform.SetParent(parent, false);
             }
 
-            var rect = (RectTransform)gridObject.transform;
-            rect.anchorMin = new Vector2(0.3f, 0.2f);
-            rect.anchorMax = new Vector2(0.7f, 0.95f);
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            var gridLayoutElement = gridObject.GetComponent<LayoutElement>();
+            if (gridLayoutElement == null)
+            {
+                gridLayoutElement = gridObject.AddComponent<LayoutElement>();
+            }
+            gridLayoutElement.preferredHeight = 180f;
+            gridLayoutElement.minHeight = 180f;
 
             var grid = gridObject.GetComponent<GridLayoutGroup>();
             grid.cellSize = new Vector2(56f, 56f);

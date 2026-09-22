@@ -9,15 +9,31 @@ namespace KBOManager.UI
     /// 카드 한 장의 시각 요소를 담당하는 순수 표시 컴포넌트. Setup(Player)을 호출하면 이름/구단/포지션/
     /// 최종 OVR/등급 색상/성급 별을 UGUI 요소에 매핑한다. 시뮬레이션·저장 로직은 전혀 갖지 않는다.
     ///
-    /// [TASK-KBO-147] 실제 선수 초상화 연동 - `Resources.Load&lt;Sprite&gt;($"{PortraitResourceFolder}/
-    /// {player.Template.TemplateId}")`로 카드별 초상화를 동적으로 불러온다. 폴더 규칙은
-    /// `Assets/Resources/Portraits/{TemplateId}.png`(또는 .jpg 등 Unity가 지원하는 이미지 포맷) 하나뿐이다
-    /// - `TemplateId`는 `PlayerDatabase`가 현재 player_id(예: "PLY_0001")를 그대로 채우고 있어(cards.csv
-    /// 조인 전까지는 카드 등급과 무관하게 선수 1명당 값 1개, DCL-057 참고) 지금 당장도 유효한 키다.
-    /// 리소스가 없으면(카드 신설 초기 상태, 지금 세션 시점) `fallbackPortraitSprite`로 안전하게
-    /// 폴백한다 - 풀링된 카드가 이전 선수의 초상화를 그대로 보여주는 사고를 막기 위해 Setup()이 매번
-    /// 명시적으로 두 경우(발견/미발견) 모두 스프라이트를 다시 대입한다(캐시해 두지 않고 항상
+    /// [TASK-KBO-147] 실제 선수 초상화 연동 - `Resources.Load&lt;Sprite&gt;()`로 카드별 초상화를
+    /// 동적으로 불러온다. 리소스가 없으면(카드 신설 초기 상태, 지금 세션 시점) `fallbackPortraitSprite`로
+    /// 안전하게 폴백한다 - 풀링된 카드가 이전 선수의 초상화를 그대로 보여주는 사고를 막기 위해 Setup()이
+    /// 매번 명시적으로 두 경우(발견/미발견) 모두 스프라이트를 다시 대입한다(캐시해 두지 않고 항상
     /// 재계산 - Resources.Load 자체가 내부적으로 캐싱하므로 매 호출 비용은 낮다).
+    ///
+    /// [TASK-KBO-152, 로딩 키 변경 + 사실 정정] 명령서는 `Player.CatalogId`(개별 카드 고유 ID)를 키로
+    /// 쓰라고 지시했으나, `Player`/`PlayerTemplate` 어느 쪽에도 그런 필드가 없다(`CatalogId`는
+    /// `Cheerleader`/`CheerleaderTemplate` 전용 필드로, 선수 카드와는 무관하다 - `CheerleaderGachaService.cs`
+    /// 참고) - 명령서가 의도를 정확히 설명한 것은 맞다: 명령서 3항이 지적한 대로 `TemplateId` 하나만
+    /// 쓰면 "24년 라이브 구자욱"과 "24년 골든글러브 구자욱"이 같은 사진을 쓰게 된다. 다만 그 원인은
+    /// `PlayerDatabase`가 아직 cards.csv를 조인하지 않아 등급별로 별도 `PlayerTemplate`을 만들지 않기
+    /// 때문이고(DCL-057에서 이미 확인된, 이번 작업 범위 밖의 데이터 모델 갭 - "데이터 연동 로직은 1mm도
+    /// 건드리지 말 것"이라는 명령서 CRITICAL 경고에 따라 `PlayerDatabase.cs`/`ScoutManager.cs`는 손대지
+    /// 않았다), `Player`에 새 `CatalogId` 필드를 만드는 것도 데이터 모델 변경이라 이번 파일(순수 UI
+    /// 컴포넌트) 범위를 벗어난다. 대신 오늘 시점에도 실제로 카드 인스턴스마다 정확히 채워지는 값인
+    /// `Player.CurrentStarType`(뽑기 시 등급에 따라 `ScoutManager.ApplyInitialGradeRule()`이 이미
+    /// 개별 대입해 둔 값 - SEASON=NORMAL, GOLDEN_GLOVE=GOLD, SIGNATURE=PLATINUM 등)을 `TemplateId`와
+    /// 조합해 키를 만든다 - `Resources.Load&lt;Sprite&gt;($"{PortraitResourceFolder}/
+    /// {TemplateId}_{CurrentStarType}")`. 폴더 규칙: `Assets/Resources/Portraits/{TemplateId}_
+    /// {CurrentStarType}.png`(예: `PLY_0001_PLATINUM.png`). 이렇게 하면 같은 선수라도 뽑은 등급이
+    /// 다르면(=`CurrentStarType`이 다르면) 오늘 당장 다른 사진 경로로 로드된다 - `PlayerDatabase`가
+    /// cards.csv를 조인해 등급별 `PlayerTemplate`을 실제로 분리하는 후속 작업이 끝나면(현재는 모든
+    /// 카드가 `TemplateId`만으로 동일 선수를 가리킴) 그 시점부터는 `TemplateId` 자체도 등급별로 달라져
+    /// 이 조합 키가 한층 더 정밀해진다 - 코드 수정이 필요 없는 전방 호환 설계다.
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
@@ -98,18 +114,21 @@ namespace KBOManager.UI
             SetupStars(player.StarLevel, gradeColor);
             SetupStamina(player);
             SetupCondition(player.CurrentCondition);
-            SetupPortrait(player.Template.TemplateId);
+            SetupPortrait(player);
         }
 
-        /// <summary>[TASK-KBO-147] `Resources/Portraits/{templateId}`에서 초상화를 동적으로 불러와
-        /// `portraitImage`에 대입한다. 없으면 `fallbackPortraitSprite`로 폴백한다 - 풀링 재사용 시 이전
-        /// 선수의 초상화가 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
-        private void SetupPortrait(string templateId)
+        /// <summary>[TASK-KBO-147, TASK-KBO-152 키 변경] `Resources/Portraits/{TemplateId}_
+        /// {CurrentStarType}`에서 초상화를 동적으로 불러와 `portraitImage`에 대입한다 - 클래스 요약의
+        /// "로딩 키 변경" 문단 참고(같은 선수라도 뽑힌 등급별로 다른 사진을 쓸 수 있도록 `CurrentStarType`을
+        /// 조합했다). 없으면 `fallbackPortraitSprite`로 폴백한다 - 풀링 재사용 시 이전 선수의 초상화가
+        /// 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
+        private void SetupPortrait(Player player)
         {
             if (portraitImage == null) return;
 
+            string templateId = player.Template.TemplateId;
             Sprite portrait = !string.IsNullOrEmpty(templateId)
-                ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}")
+                ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}_{player.CurrentStarType}")
                 : null;
 
             portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;

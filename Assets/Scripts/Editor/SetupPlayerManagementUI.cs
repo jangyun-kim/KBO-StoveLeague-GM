@@ -68,11 +68,13 @@ namespace KBOManager.EditorTools
                 new Vector2(0.27f, 0.85f), new Vector2(0.95f, 0.95f), 28);
 
             var menuGrid = FindOrCreateMenuGrid(controller.transform);
-            var trainButton = FindOrCreateGridButton(menuGrid, "TrainButton", "훈련");
-            var enhanceButton = FindOrCreateGridButton(menuGrid, "EnhanceButton", "강화");
-            var breakthroughButton = FindOrCreateGridButton(menuGrid, "BreakthroughButton", "한계 돌파");
-            var skillChangeButton = FindOrCreateGridButton(menuGrid, "SkillChangeButton", "스킬 변경");
-            var awakenButton = FindOrCreateGridButton(menuGrid, "AwakenButton", "각성");
+            // [TASK-KBO-152, 명령서 4항] isReady는 PlayerManagementUIController.Awake()의 실제 리스너
+            // 배선(강화/스킬 변경만 OnClickXxx, 나머지는 LogNotReady)과 정확히 일치시켰다.
+            var trainButton = FindOrCreateGridButton(menuGrid, "TrainButton", "훈련", isReady: false);
+            var enhanceButton = FindOrCreateGridButton(menuGrid, "EnhanceButton", "강화", isReady: true);
+            var breakthroughButton = FindOrCreateGridButton(menuGrid, "BreakthroughButton", "한계 돌파", isReady: false);
+            var skillChangeButton = FindOrCreateGridButton(menuGrid, "SkillChangeButton", "스킬 변경", isReady: true);
+            var awakenButton = FindOrCreateGridButton(menuGrid, "AwakenButton", "각성", isReady: false);
 
             var skillChangeResultText = FindOrCreateText(controller.transform, SkillChangeResultTextName, "",
                 new Vector2(0.05f, 0.08f), new Vector2(0.95f, 0.14f), 18);
@@ -330,7 +332,10 @@ namespace KBOManager.EditorTools
             return gridObject.transform;
         }
 
-        private static Button FindOrCreateGridButton(Transform parent, string name, string label)
+        /// <summary>[TASK-KBO-152, 명령서 4항] 준비 중인 메뉴(`isReady=false`)는 배경/라벨을 흐리게
+        /// 딤(Dim) 처리한다. 재사용(reuse) 경로에서도 딤 상태를 항상 재적용해, 메뉴를 다시 실행하면
+        /// 매번 최신 준비 상태를 반영하도록 한다(생성/재사용 분기 밖에서 무조건 실행).</summary>
+        private static Button FindOrCreateGridButton(Transform parent, string name, string label, bool isReady)
         {
             var existingChild = parent.Find(name);
             if (existingChild != null)
@@ -339,6 +344,7 @@ namespace KBOManager.EditorTools
                 if (existingButton != null)
                 {
                     ApplyButtonLabel(existingButton, label);
+                    ApplyReadyState(existingButton, isReady);
                     return existingButton;
                 }
             }
@@ -369,6 +375,7 @@ namespace KBOManager.EditorTools
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
+            ApplyReadyState(button, isReady);
 
             return button;
         }
@@ -381,6 +388,24 @@ namespace KBOManager.EditorTools
             text.text = label;
             text.color = Color.black;
             text.resizeTextForBestFit = true;
+        }
+
+        /// <summary>[TASK-KBO-152] 준비 중 메뉴는 배경을 반투명 회색, 라벨을 짙은 회색으로 낮춰
+        /// "비활성" 느낌을 시각적으로 준다. 클릭 자체는 여전히 동작한다(PlayerManagementUIController가
+        /// LogNotReady()로 응답) - 이 작업은 순수 시각 폴리싱이며 클릭/라우팅 로직은 건드리지 않는다.</summary>
+        private static void ApplyReadyState(Button button, bool isReady)
+        {
+            var image = button.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = isReady ? Color.white : new Color(0.6f, 0.6f, 0.6f, 0.55f);
+            }
+
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text != null)
+            {
+                text.color = isReady ? Color.black : new Color(0.35f, 0.35f, 0.35f, 0.9f);
+            }
         }
 
         private static Text FindOrCreateText(Transform parent, string name, string defaultText,

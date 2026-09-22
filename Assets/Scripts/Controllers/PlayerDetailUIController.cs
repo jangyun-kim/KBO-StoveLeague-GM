@@ -55,9 +55,15 @@ namespace KBOManager.Controllers
         [SerializeField] private GameObject hotColdContentPanel;
         [SerializeField] private GameObject skillContentPanel;
 
-        [Header("Tab Visual (선택 표시 - 선택된 탭만 밝게)")]
-        [SerializeField] private Color activeTabColor = Color.white;
-        [SerializeField] private Color inactiveTabColor = new Color(0.75f, 0.75f, 0.75f);
+        [Header("Tab Visual (TASK-KBO-152 - 활성/비활성 시각 구분 강화)")]
+        [Tooltip("선택된 탭 버튼의 배경색 - 눈에 띄는 강조색을 쓴다.")]
+        [SerializeField] private Color activeTabColor = new Color(0.20f, 0.55f, 0.95f);
+        [Tooltip("선택되지 않은 탭 버튼의 배경색 - 어두운 회색으로 확실히 죽인다.")]
+        [SerializeField] private Color inactiveTabColor = new Color(0.30f, 0.30f, 0.32f);
+        [Tooltip("선택된 탭 라벨 텍스트 색상.")]
+        [SerializeField] private Color activeTabTextColor = Color.white;
+        [Tooltip("선택되지 않은 탭 라벨 텍스트 색상 - 배경과 마찬가지로 흐리게.")]
+        [SerializeField] private Color inactiveTabTextColor = new Color(0.65f, 0.65f, 0.65f);
 
         [Header("[기본 스탯] 탭 내용")]
         [SerializeField] private Text reinforceText;
@@ -174,10 +180,26 @@ namespace KBOManager.Controllers
             ApplyTabButtonColor(skillTabButton, tab == Tab.Skill);
         }
 
-        private static void ApplyTabButtonColor(Button button, bool active)
+        /// <summary>[TASK-KBO-152, 명령서 4항] 탭 버튼 하이라이트 - 예전엔 이 메서드가 `static`이라
+        /// 인스펙터에서 조정 가능하도록 만들어 둔 `activeTabColor`/`inactiveTabColor` 필드를 전혀 읽지
+        /// 않고 하드코딩된 흰색/연회색만 썼다(사실상 죽은 필드였다) - 인스턴스 메서드로 바꿔 그 필드들을
+        /// 실제로 사용하고, 배경색뿐 아니라 라벨 텍스트 색상까지 함께 바꿔 "선택됨"이 더 뚜렷하게
+        /// 보이도록 강화했다. 화면 전환/데이터 로직은 전혀 건드리지 않은 순수 시각 효과다.</summary>
+        private void ApplyTabButtonColor(Button button, bool active)
         {
-            if (button == null || button.targetGraphic == null) return;
-            button.targetGraphic.color = active ? Color.white : new Color(0.75f, 0.75f, 0.75f);
+            if (button == null) return;
+
+            if (button.targetGraphic != null)
+            {
+                button.targetGraphic.color = active ? activeTabColor : inactiveTabColor;
+            }
+
+            var label = button.GetComponentInChildren<Text>(true);
+            if (label != null)
+            {
+                label.color = active ? activeTabTextColor : inactiveTabTextColor;
+                label.fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+            }
         }
 
         /// <summary>[기본 스탯] 탭 - 강화/각성 진행도(기존 구 DetailPanel의 텍스트를 그대로 이관)와
