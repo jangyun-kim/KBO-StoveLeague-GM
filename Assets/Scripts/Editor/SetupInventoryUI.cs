@@ -538,6 +538,28 @@ namespace KBOManager.EditorTools
                 playerManagementUIController = Object.FindAnyObjectByType<PlayerManagementUIController>(FindObjectsInactive.Include);
             }
 
+            // [TASK-KBO-151, CRITICAL - 근본 원인 수정] 위 코드는 지금까지 "이 DetailPanel이 참조할
+            // Hub"만 찾아 한 방향으로만 바인딩했다 - 그런데 이 메서드는 매 실행마다 `PlayerDetailUIController`
+            // 자체를 완전히 새로 만든다(이 파일 맨 위 `AutoConnectInventoryUI()`가 `InventoryPanel`의
+            // 모든 자식을 `DestroyImmediate`하므로, `DetailPanel`도 그 시점에 파괴되고 여기서 새
+            // 인스턴스로 재생성된다). 만약 씬에 `PlayerManagementUIController`가 이미 있었다면(=이전에
+            // "Auto-Connect Player Management UI"를 먼저 실행해 둔 상태였다면), 그 Hub가 들고 있던
+            // `playerDetailUIController` 필드는 여전히 "방금 파괴된 이전 DetailPanel 인스턴스"를 가리키고
+            // 있다 - Hub 쪽에서 아무도 그 필드를 다시 갱신해 주지 않으므로, 허브의 초상화를 클릭하면
+            // 유니티가 "파괴된 오브젝트"를 null처럼 취급해 `PlayerManagementUIController.OnClickCardPortrait()`가
+            // "playerDetailUIController가 바인딩되지 않았다"는 경고를 내며 조용히 실패한다 - 사용자가
+            // 보고한 증상과 정확히 일치하는 근본 원인이다("Auto-Connect Inventory UI"를 나중에 재실행하면
+            // 매번 재발한다). 이 자리에서 Hub 쪽 필드도 직접 다시 써서 항상 최신 DetailPanel 인스턴스를
+            // 가리키도록 강제한다 - 어느 메뉴를 어떤 순서로 실행하든 매번 확실하게 동기화된다(명령서
+            // 4항 "확실하게 할당").
+            if (playerManagementUIController != null)
+            {
+                var serializedHub = new SerializedObject(playerManagementUIController);
+                serializedHub.FindProperty("playerDetailUIController").objectReferenceValue = controller;
+                serializedHub.ApplyModifiedProperties();
+                EditorUtility.SetDirty(playerManagementUIController);
+            }
+
             BindDetailController(controller, previewCard, nameText, teamGradeText,
                 statsTabButton, specialFormTabButton, hotColdTabButton, skillTabButton,
                 statsPanel.gameObject, specialFormPanel.gameObject, hotColdPanel.gameObject, skillPanel.gameObject,
@@ -555,6 +577,20 @@ namespace KBOManager.EditorTools
             {
                 Debug.LogError("[SetupInventoryUI] [선수 관리] 버튼 바인딩 실패 - playerManagementUIController가 " +
                     "여전히 null입니다. 'Auto-Connect Player Management UI'가 오류 없이 끝났는지 확인하십시오.");
+            }
+
+            // [TASK-KBO-151, 명령서 4항] 위 "역방향 동기화"가 실제로 반영됐는지 다시 읽어 검증한다.
+            bool hubPointsBackToThisDetail = playerManagementUIController != null &&
+                new SerializedObject(playerManagementUIController).FindProperty("playerDetailUIController").objectReferenceValue == controller;
+            if (hubPointsBackToThisDetail)
+            {
+                Debug.Log("[SetupInventoryUI] 허브 ↔ 상세창 역방향 바인딩 성공 - " +
+                    "PlayerManagementUIController.playerDetailUIController가 이 DetailPanel을 정확히 가리킵니다.");
+            }
+            else
+            {
+                Debug.LogError("[SetupInventoryUI] 허브 ↔ 상세창 역방향 바인딩 실패 - 허브의 초상화 클릭이 " +
+                    "여전히 무반응일 수 있습니다. playerManagementUIController가 null인지 확인하십시오.");
             }
 
             return controller;
