@@ -7,10 +7,11 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// [TASK-KBO-053, Phase A] 로비 화면에서 세트덱 시너지(+12 OVR)/치어리더 효과/팬심 상태를 한 줄씩
-    /// 요약해 보여주는 어댑터. 세 시스템(GameManager.CalculateSynergy, GameManager.EquippedCheerleader,
-    /// GameManager.FanSentiment) 중 무엇도 직접 계산하지 않고, 오직 이미 공개된 값을 읽어 UI 문자열로만
-    /// 가공한다. 프리팹 조립/씬 배치는 이번 작업 범위 밖이라 아직 어디에도 연결되어 있지 않다.
+    /// [TASK-KBO-053, Phase A] 로비 화면에서 세트덱 시너지(일반 +12 및/또는 왕조 +15, TASK-KBO-166)/
+    /// 치어리더 효과/팬심 상태를 한 줄씩 요약해 보여주는 어댑터. 세 시스템(GameManager.CalculateSynergy,
+    /// GameManager.EquippedCheerleader, GameManager.FanSentiment) 중 무엇도 직접 계산하지 않고, 오직
+    /// 이미 공개된 값을 읽어 UI 문자열로만 가공한다. 프리팹 조립/씬 배치는 이번 작업 범위 밖이라
+    /// 아직 어디에도 연결되어 있지 않다.
     /// </summary>
     public class TeamSynergyUIController : MonoBehaviour
     {
@@ -48,7 +49,9 @@ namespace KBOManager.Controllers
             string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
             int synergy = GameManager.CalculateSynergy(gm.Roster.ToList(), favoriteTeamName);
 
-            setDeckText.text = synergy > 0 ? "활성화 (+12 OVR)" : "미활성화";
+            // [TASK-KBO-166] 왕조 세트덱 보너스가 가산되며 합계가 +12 고정이 아니게 됐다(+12/+15/+27
+            // 조합 가능) - 하드코딩 문구 대신 실제 값을 그대로 표시한다.
+            setDeckText.text = synergy > 0 ? $"활성화 (+{synergy} OVR)" : "미활성화";
         }
 
         private void RefreshCheerleaderText(GameManager gm)
