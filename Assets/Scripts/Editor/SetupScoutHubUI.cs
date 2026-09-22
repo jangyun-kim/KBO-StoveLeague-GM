@@ -40,8 +40,12 @@ namespace KBOManager.EditorTools
     /// 에디터 메뉴이고, 사용자의 Unity 에디터 프로세스가 이 작업 세션 내내(수 시간) 계속 열려 있어
     /// 그 사이 커밋된 어떤 Setup*.cs 변경도 사용자가 직접 메뉴를 재실행하기 전까지는 씬에 반영되지
     /// 않는다. TASK-141의 중복 검색/파괴/재바인딩 로직 자체는 재검증 결과 그대로 유효해 무수정이고,
-    /// `LogHubBindingVerification()`에 `GetInstanceID()` 출력을 추가해(명령서 4/6항 - "인스턴스 ID를
-    /// 출력해 정말 제대로 된 놈을 바인딩했는지 증명") 진단력을 강화했다.
+    /// `LogHubBindingVerification()`에 식별용 해시코드 출력을 추가해(명령서 4/6항 - "정말 제대로 된
+    /// 놈을 바인딩했는지 증명") 진단력을 강화했다.
+    ///
+    /// [TASK-KBO-143, 사실 정정] 위 문단이 쓴 `GetInstanceID()`가 유니티 6 환경에서 CS0619(obsolete)
+    /// 컴파일 에러를 일으켜 `GetHashCode()`로 교체했다 - 진단 취지(오바인딩 시 두 값이 같은지 비교)는
+    /// 그대로 유지된다.
     /// </summary>
     public static class SetupScoutHubUI
     {
@@ -340,9 +344,11 @@ namespace KBOManager.EditorTools
 
         /// <summary>[TASK-KBO-141/142, 명령서 6항] `hubController`에 실제로 저장된 `playerSection`/
         /// `cheerleaderSection` 값을 `SerializedObject`로 다시 읽어(방금 쓴 값이 아니라 저장된 값을
-        /// 재확인) 기대값과 정확히 일치하는지, 서로 다른 오브젝트인지까지 검증하고, 이름+
-        /// `GetInstanceID()`까지 콘솔에 남긴다(TASK-142 명령서 6항 - "인스턴스 ID를 출력해 정말 제대로
-        /// 된 놈이 바인딩됐는지" 증명).</summary>
+        /// 재확인) 기대값과 정확히 일치하는지, 서로 다른 오브젝트인지까지 검증하고, 이름+식별용
+        /// 해시코드까지 콘솔에 남긴다(TASK-142 명령서 6항 - "정말 제대로 된 놈이 바인딩됐는지" 증명).
+        /// [TASK-KBO-143, 사실 정정] 원래 `GetInstanceID()`로 출력했으나 유니티 6 환경에서
+        /// `CS0619(obsolete)` 컴파일 에러가 발생해 `GetHashCode()`로 교체했다(명령서 4항) - 두 값이
+        /// 같은지 비교하는 진단 목적은 동일하게 달성된다.</summary>
         private static void LogHubBindingVerification(ScoutHubUIController hubController,
             GameObject expectedPlayerSection, GameObject expectedCheerleaderSection)
         {
@@ -358,18 +364,18 @@ namespace KBOManager.EditorTools
             {
                 Debug.Log("[SetupScoutHubUI] ScoutHub 바인딩 갱신 완료 - " +
                     $"playerSection={GetHierarchyPath(boundPlayerSection.transform)}" +
-                    $"(InstanceID {boundPlayerSection.GetInstanceID()}), " +
+                    $"(HashCode {boundPlayerSection.GetHashCode()}), " +
                     $"cheerleaderSection={GetHierarchyPath(boundCheerleaderSection.transform)}" +
-                    $"(InstanceID {boundCheerleaderSection.GetInstanceID()}), " +
+                    $"(HashCode {boundCheerleaderSection.GetHashCode()}), " +
                     $"hubController={GetHierarchyPath(hubController.transform)}" +
-                    $"(InstanceID {hubController.gameObject.GetInstanceID()})");
+                    $"(HashCode {hubController.gameObject.GetHashCode()})");
             }
             else
             {
                 Debug.LogError("[SetupScoutHubUI] ScoutHub 바인딩 검증 실패 - playerSection/" +
                     "cheerleaderSection이 기대한 오브젝트와 다르거나 서로 같습니다. 씬을 직접 확인하십시오. " +
-                    $"(bound playerSection InstanceID={(boundPlayerSection != null ? boundPlayerSection.GetInstanceID() : 0)}, " +
-                    $"bound cheerleaderSection InstanceID={(boundCheerleaderSection != null ? boundCheerleaderSection.GetInstanceID() : 0)})");
+                    $"(bound playerSection HashCode={(boundPlayerSection != null ? boundPlayerSection.GetHashCode() : 0)}, " +
+                    $"bound cheerleaderSection HashCode={(boundCheerleaderSection != null ? boundCheerleaderSection.GetHashCode() : 0)})");
             }
         }
 

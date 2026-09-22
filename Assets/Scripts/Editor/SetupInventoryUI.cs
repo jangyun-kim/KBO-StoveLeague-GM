@@ -250,7 +250,9 @@ namespace KBOManager.EditorTools
 
         /// <summary>[TASK-KBO-142, 명령서 6항] `root`(InventoryPanel) 직속 자식 전체를 sibling index
         /// 순서 그대로 콘솔에 덤프한다. 정상이라면 index 0이 `CardListPanel`(카드 스크롤 뷰)이고,
-        /// `CloseButton`/`DetailPanel`은 그보다 큰 index(=더 나중에 그려짐)여야 한다.</summary>
+        /// `CloseButton`/`DetailPanel`은 그보다 큰 index(=더 나중에 그려짐)여야 한다.
+        /// [TASK-KBO-143, 사실 정정] 원래 `GetInstanceID()`로 식별자를 출력했으나 유니티 6 환경에서
+        /// `CS0619(obsolete)` 컴파일 에러가 발생해 `GetHashCode()`로 교체했다(명령서 4항).</summary>
         private static void LogInventorySiblingDump(Transform root)
         {
             var builder = new System.Text.StringBuilder();
@@ -258,7 +260,7 @@ namespace KBOManager.EditorTools
             for (int i = 0; i < root.childCount; i++)
             {
                 var child = root.GetChild(i);
-                builder.AppendLine($"  [{i}] {child.name} (InstanceID {child.gameObject.GetInstanceID()})");
+                builder.AppendLine($"  [{i}] {child.name} (HashCode {child.gameObject.GetHashCode()})");
             }
             Debug.Log(builder.ToString());
         }

@@ -24,10 +24,15 @@ namespace KBOManager.Controllers
     ///
     /// [TASK-KBO-142, 명령서 4항] "정말 제대로 된 놈을 끄고 켜는지" 실시간으로 증명하기 위해
     /// `ShowPlayerSection()`/`ShowCheerleaderSection()` 각각에 `LogSectionToggle()`을 추가했다 -
-    /// 매 탭 전환마다 활성화/비활성화되는 두 GameObject의 이름과 `GetInstanceID()`를 콘솔에 남기고,
-    /// 두 대상이 우연히 같은 InstanceID(=같은 오브젝트)라면 즉시 에러 로그로 강조한다. 이 로직 자체는
+    /// 매 탭 전환마다 활성화/비활성화되는 두 GameObject의 이름과 식별용 해시코드를 콘솔에 남기고,
+    /// 두 대상이 우연히 같은 값(=같은 오브젝트)이라면 즉시 에러 로그로 강조한다. 이 로직 자체는
     /// TASK-138부터 무결함이었으므로(위 문단) 여기서도 SetActive 호출 순서/조건은 손대지 않았다 -
     /// 순수하게 진단 정보만 추가했다(명령서 5항).
+    ///
+    /// [TASK-KBO-143, 사실 정정] 위 문단이 도입한 `GetInstanceID()` 호출이 유니티 6 환경에서
+    /// `CS0619(obsolete)` 컴파일 에러를 일으켜 이 파일 전체의 컴파일이 막혔다 - `LogSectionToggle()`의
+    /// 식별자 출력을 `GetHashCode()`로 교체해 해소했다(명령서 4항). 진단 목적(오바인딩 시 두 값이
+    /// 같은지 비교)은 `GetHashCode()`로도 동일하게 달성되므로 기능적 퇴보는 없다.
     /// </summary>
     public class ScoutHubUIController : MonoBehaviour
     {
@@ -84,15 +89,17 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>[TASK-KBO-142, 명령서 4/6항] 활성화/비활성화되는 두 GameObject의 이름과
-        /// GetInstanceID()를 콘솔에 남긴다. `activate`/`deactivate`가 참조 동일(같은 InstanceID)하면
-        /// "같은 오브젝트를 끄고 켜려 한다"는 오바인딩 신호이므로 강조 경고를 추가로 남긴다.</summary>
+        /// HashCode를 콘솔에 남긴다. `activate`/`deactivate`가 참조 동일(같은 HashCode)하면
+        /// "같은 오브젝트를 끄고 켜려 한다"는 오바인딩 신호이므로 강조 경고를 추가로 남긴다.
+        /// [TASK-KBO-143] `Object.GetInstanceID()`가 유니티 6 환경에서 CS0619(obsolete) 컴파일
+        /// 에러를 일으켜, 동일한 식별 목적의 `GetHashCode()`로 교체했다(명령서 4항).</summary>
         private void LogSectionToggle(string methodName, GameObject activate, GameObject deactivate)
         {
             string activateInfo = activate != null
-                ? $"{activate.name}(InstanceID {activate.GetInstanceID()})"
+                ? $"{activate.name}(HashCode {activate.GetHashCode()})"
                 : "null";
             string deactivateInfo = deactivate != null
-                ? $"{deactivate.name}(InstanceID {deactivate.GetInstanceID()})"
+                ? $"{deactivate.name}(HashCode {deactivate.GetHashCode()})"
                 : "null";
 
             Debug.Log($"[ScoutHubUIController] {methodName}: 활성화 -> {activateInfo}, 비활성화 -> {deactivateInfo}");
