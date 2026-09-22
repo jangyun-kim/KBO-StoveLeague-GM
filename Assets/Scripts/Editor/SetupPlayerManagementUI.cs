@@ -68,11 +68,20 @@ namespace KBOManager.EditorTools
             var closeButton = FindOrCreateCloseButton(controller.transform, CloseButtonName, 64f);
             closeButton.transform.SetAsLastSibling();
 
+            // [TASK-KBO-146, CRITICAL] 기존 코드는 EnhanceUIController가 씬에 없으면 경고만 남기고
+            // enhanceUIController 바인딩을 영영 건너뛰었다 - 사용자가 "Auto-Connect Player Management
+            // UI"를 "Auto-Connect Enhance UI"보다 먼저(또는 그것 없이) 실행했다면, 이후 Enhance UI를
+            // 따로 만들어도 이 허브의 필드는 계속 null로 남아 [강화] 버튼이 조용히 무반응이었다
+            // (PlayerManagementUIController.OnClickEnhance() 참고 - 실제 버그 원인). 메뉴 실행 순서에
+            // 의존하지 않도록, 못 찾으면 SetupEnhanceUI.AutoConnectEnhanceUI()를 여기서 직접 연쇄
+            // 호출해 Enhance 화면을 스스로 만들고 다시 조회한다(명령서 3항 "코드로 강제 해결").
             var enhanceUIController = Object.FindAnyObjectByType<EnhanceUIController>(FindObjectsInactive.Include);
             if (enhanceUIController == null)
             {
                 Debug.LogWarning("[SetupPlayerManagementUI] 씬에서 EnhanceUIController를 찾지 못해 " +
-                    "enhanceUIController 바인딩을 건너뜁니다. 먼저 'KBO Manager/Setup/Auto-Connect Enhance UI'를 실행하십시오.");
+                    "'KBO Manager/Setup/Auto-Connect Enhance UI'를 자동으로 먼저 실행합니다.");
+                SetupEnhanceUI.AutoConnectEnhanceUI();
+                enhanceUIController = Object.FindAnyObjectByType<EnhanceUIController>(FindObjectsInactive.Include);
             }
 
             BindController(controller, enhanceUIController, targetPreviewCard, targetNameText,
@@ -112,7 +121,58 @@ namespace KBOManager.EditorTools
             var scene = controller.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
+            // [TASK-KBO-146, 명령서 6항] "실행하면 성공한 것으로 보인다"가 아니라 실제 바인딩 결과를
+            // 다시 읽어 검증한다 - enhanceButton 필드 자체와 enhanceUIController 참조가 둘 다 non-null인
+            // 경우에만 성공으로 판정한다.
+            bool enhanceButtonBound = enhanceButton != null && enhanceUIController != null;
+            if (enhanceButtonBound)
+            {
+                Debug.Log("[SetupPlayerManagementUI] [강화] 버튼 바인딩 성공 - enhanceButton -> " +
+                    "PlayerManagementUIController.enhanceUIController -> EnhanceUIController 연결 확인.");
+            }
+            else
+            {
+                Debug.LogError("[SetupPlayerManagementUI] [강화] 버튼 바인딩 실패 - enhanceUIController가 " +
+                    "여전히 null입니다. 씬에 Canvas가 있는지, 'Auto-Connect Enhance UI'가 오류 없이 " +
+                    "끝났는지 확인하십시오.");
+            }
+
+            bool enhanceScreenRegistered = uiManager != null &&
+                FindRegisteredScreenRoot(uiManager, ScreenType.Enhance) != null;
+            if (enhanceScreenRegistered)
+            {
+                Debug.Log("[SetupPlayerManagementUI] EnhanceUI 렌더러 등록 성공 - UIManager.screens에 " +
+                    "ScreenType.Enhance 항목이 존재하고 Root가 연결돼 있습니다.");
+            }
+            else
+            {
+                Debug.LogError("[SetupPlayerManagementUI] EnhanceUI 렌더러 등록 실패 - UIManager.screens에서 " +
+                    "ScreenType.Enhance를 찾지 못했습니다. UIManager.ShowScreen(ScreenType.Enhance)이 " +
+                    "\"화면이 등록되어 있지 않습니다\" 경고만 남기고 아무 화면도 켜지 않을 것입니다.");
+            }
+
             Debug.Log("[SetupPlayerManagementUI] 선수 관리 허브 UI 자동 배선 완료.");
+        }
+
+        /// <summary>[TASK-KBO-146] `RegisterScreen()`이 방금 쓴 값을 그대로 다시 읽어 검증하는 읽기 전용
+        /// 헬퍼 - `UIManager.GetScreenRoot()`는 런타임 `Awake()`가 채우는 딕셔너리를 보므로 에디터
+        /// 타임(플레이 모드 아님)에는 항상 비어 있어 검증에 쓸 수 없다 - `screens` SerializedProperty를
+        /// 직접 다시 읽는다.</summary>
+        private static GameObject FindRegisteredScreenRoot(UIManager uiManager, ScreenType screenType)
+        {
+            var serializedManager = new SerializedObject(uiManager);
+            var screensProperty = serializedManager.FindProperty("screens");
+
+            for (int i = 0; i < screensProperty.arraySize; i++)
+            {
+                var element = screensProperty.GetArrayElementAtIndex(i);
+                if (element.FindPropertyRelative("Type").intValue == (int)screenType)
+                {
+                    return element.FindPropertyRelative("Root").objectReferenceValue as GameObject;
+                }
+            }
+
+            return null;
         }
 
         private static PlayerManagementUIController FindOrCreateHubPanel(Transform canvasTransform)

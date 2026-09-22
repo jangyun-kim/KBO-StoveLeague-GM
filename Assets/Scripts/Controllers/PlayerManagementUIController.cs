@@ -113,9 +113,29 @@ namespace KBOManager.Controllers
             pendingRerollTarget = null;
         }
 
+        /// <summary>[TASK-KBO-146, 명령서 3/4항] 기존 코드는 `currentPlayer`/`enhanceUIController` 둘 중
+        /// 하나라도 null이면 로그 한 줄 없이 조용히 반환했다 - 사용자가 보고한 "[강화] 버튼 클릭 시
+        /// 어떠한 에러 로그도 없이 무반응"의 정확한 원인이었다(각성/스킬 변경 등 다른 타일은 이미
+        /// Debug.Log/LogWarning을 남기고 있어 상대적으로 [강화]만 완전히 침묵하는 것처럼 보였다). 클릭
+        /// 이벤트 자체가 발생하는지부터 증명하는 로그를 맨 앞에 추가하고, 두 null 케이스 각각에 원인을
+        /// 특정하는 로그를 남기도록 고쳤다.</summary>
         private void OnClickEnhance()
         {
-            if (currentPlayer == null || enhanceUIController == null) return;
+            Debug.Log("[PlayerManagement] 강화 버튼 클릭됨, EnhanceUI 호출 시도");
+
+            if (currentPlayer == null)
+            {
+                Debug.LogWarning("[PlayerManagementUIController] currentPlayer가 없어 강화 화면을 열 수 없습니다.");
+                return;
+            }
+
+            if (enhanceUIController == null)
+            {
+                Debug.LogError("[PlayerManagementUIController] enhanceUIController가 바인딩되지 않아 강화 화면을 " +
+                    "열 수 없습니다. 'KBO Manager/Setup/Auto-Connect Player Management UI'를 다시 실행하십시오.");
+                return;
+            }
+
             enhanceUIController.Show(currentPlayer);
         }
 

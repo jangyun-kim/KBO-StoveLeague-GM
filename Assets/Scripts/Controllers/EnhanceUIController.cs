@@ -78,10 +78,23 @@ namespace KBOManager.Controllers
             target = null;
         }
 
-        /// <summary>선수 관리 허브의 [강화] 타일이 호출한다. 타겟을 고정하고 화면을 띄운다.</summary>
+        /// <summary>선수 관리 허브의 [강화] 타일이 호출한다. 타겟을 고정하고 화면을 띄운다.
+        /// [TASK-KBO-146, 명령서 6항] 이 메서드까지 호출이 도달했는지 자체를 증명하는 로그를 남긴다 -
+        /// `PlayerManagementUIController.OnClickEnhance()`의 로그는 보이는데 이 로그가 안 보이면
+        /// `UIManager.ShowScreen(ScreenType.Enhance)` 호출 이전 단계(이 메서드 진입 자체)에 문제가
+        /// 있다는 뜻이고, 이 로그까지는 보이는데 화면이 안 뜨면 `ScreenType.Enhance`가
+        /// `UIManager.screens`에 등록되지 않았다는 뜻이다(`ShowScreen()`이 그 경우 자체적으로
+        /// "화면이 등록되어 있지 않습니다" 경고를 남긴다).</summary>
         public void Show(Player targetPlayer)
         {
-            if (targetPlayer?.Template == null) return;
+            if (targetPlayer?.Template == null)
+            {
+                Debug.LogWarning("[EnhanceUIController] Show() 호출됐지만 targetPlayer/Template이 없어 화면을 열지 않습니다.");
+                return;
+            }
+
+            Debug.Log($"[EnhanceUIController] Show() 진입 - target={targetPlayer.Template.PlayerName}, " +
+                "UIManager.ShowScreen(ScreenType.Enhance) 호출 시도.");
 
             target = targetPlayer;
             selectedMaterials.Clear();

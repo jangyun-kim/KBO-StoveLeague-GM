@@ -112,7 +112,37 @@ namespace KBOManager.EditorTools
             var scene = controller.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
+            // [TASK-KBO-146, 명령서 6항] 등록을 "시도했다"가 아니라 방금 쓴 값을 다시 읽어 실제로
+            // 등록됐는지 검증한다 - `UIManager.GetScreenRoot()`는 런타임 `Awake()`가 채우는 딕셔너리를
+            // 보므로 에디터 타임에는 항상 비어 있어 검증에 쓸 수 없다(`screens` SerializedProperty를
+            // 직접 다시 읽어야 한다).
+            bool enhanceScreenRegistered = uiManager != null && FindRegisteredScreenRoot(uiManager) == controller.gameObject;
+            Debug.Log(enhanceScreenRegistered
+                ? "[SetupEnhanceUI] EnhanceUI 렌더러 등록 성공 - UIManager.screens에 ScreenType.Enhance -> " +
+                    $"{controller.gameObject.name} 확인."
+                : "[SetupEnhanceUI] EnhanceUI 렌더러 등록 실패 - UIManager.screens에서 ScreenType.Enhance를 " +
+                    "확인하지 못했습니다. UIManager가 씬에 있는지 다시 확인하십시오.");
+
             Debug.Log("[SetupEnhanceUI] 강화 전용 UI 자동 배선 완료.");
+        }
+
+        /// <summary>[TASK-KBO-146] `RegisterScreen()`이 방금 쓴 값을 그대로 다시 읽어 검증하는 읽기 전용
+        /// 헬퍼.</summary>
+        private static GameObject FindRegisteredScreenRoot(UIManager uiManager)
+        {
+            var serializedManager = new SerializedObject(uiManager);
+            var screensProperty = serializedManager.FindProperty("screens");
+
+            for (int i = 0; i < screensProperty.arraySize; i++)
+            {
+                var element = screensProperty.GetArrayElementAtIndex(i);
+                if (element.FindPropertyRelative("Type").intValue == (int)ScreenType.Enhance)
+                {
+                    return element.FindPropertyRelative("Root").objectReferenceValue as GameObject;
+                }
+            }
+
+            return null;
         }
 
         private static EnhanceUIController FindOrCreateEnhancePanel(Transform canvasTransform)
