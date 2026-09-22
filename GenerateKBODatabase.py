@@ -282,6 +282,17 @@ REAL_AWARDS_2025 = {
 }
 
 real_player_records = {}
+
+# [TASK-KBO-161, 버그 수정] 왕조 로스터(해태/삼성, 명령서 3항)의 실존 인물 29명 전원을 여기서
+# 미리 등록해 둔다 - 이전에는 "최형우"만 예외적으로 등록해 그 선수만 후속 골든글러브/타이틀
+# 역대 기록과 정확히 병합됐고, 나머지 28명(김상수/차우찬/안지만/오승환 등)은 등록되지 않아
+# 실제로는 동일 인물인데도 새로운 중복 인물이 생성되는 결함이 있었다(예: 왕조 로스터의
+# "김상수"(1루수 아님, 유격수, 2011~2014)가 실제로는 2014년 도루왕과 동일 인물인데 병합되지
+# 않았음 - 이번에 발견해 수정).
+for rec in player_records:
+    if rec.is_dynasty_member:
+        real_player_records[rec.name] = rec
+
 for name, team_token, team_id, team_enum, is_pitcher, position, z_value in REAL_PLAYERS_2025:
     # 최형우처럼 이미 왕조 로스터로 등록된 실존 인물이면 새 player_id를 또 만들지 않고 기존
     # 레코드를 재사용한다(동일 인물은 RealPlayerId/PlayerId가 하나여야 각성 재료 판정이 맞다).
@@ -317,10 +328,13 @@ if existing_choi is not None:
 ROSTER_2026 = {
     "KT": {
         # [TASK-KBO-158] 박영현(2025 세이브왕, 마무리) 추가 - 2026년에도 KT 마무리로 활동 확인.
-        "pitchers": ["고영표", "스기모토", "우규민", "문용익", "배제성", "이정현", "김민수", "전용주", "대니엘", "주권", "손동현", "로건", "김정운", "장민호", "박영현"],
+        # [TASK-KBO-161] "김민수"는 LG 포수와, "김현수"는 KIA 투수와 동명이인이라 서로 다른
+        # 실존 인물임을 구분하기 위해 접미사를 붙였다(둘 다 골든글러브/타이틀 역대 기록에 나오는
+        # "그" 김현수/김상수와도 무관한 별개 인물).
+        "pitchers": ["고영표", "스기모토", "우규민", "문용익", "배제성", "이정현", "김민수(KT)", "전용주", "대니엘", "주권", "손동현", "로건", "김정운", "장민호", "박영현"],
         "catchers": ["장성우", "조대현", "한승택", "강현우"],
         "infielders": ["허경민", "힐리어드", "오윤석", "권동진", "장준원", "손민석", "김상수", "류현인"],
-        "outfielders": ["김현수", "안현민", "최원준", "이정훈", "장진혁", "김민혁", "유준규", "안치영"],
+        "outfielders": ["김현수(KT)", "안현민", "최원준", "이정훈", "장진혁", "김민혁", "유준규", "안치영"],
     },
     "SAMSUNG": {
         "pitchers": ["원태인", "최원태", "이승현", "김태훈", "이승민", "임기영", "양창섭", "이승현", "페덱", "장찬희", "김재윤", "김백산", "사토시", "후라도"],
@@ -335,7 +349,8 @@ ROSTER_2026 = {
         "outfielders": ["박해민", "함창건", "최원영", "이재원", "송찬의"],
     },
     "KIA": {
-        "pitchers": ["곽도규", "김태형", "조상우", "김현수", "올러", "최지민", "네일", "황동하", "이태양", "이의리", "김범수", "전상현", "양현종", "한재승", "정해영", "시라카와"],
+        # [TASK-KBO-161] "김현수(KIA)" - KT 투수, 골든글러브 역대 기록의 그 "김현수"(두산->LG)와는 별개 인물.
+        "pitchers": ["곽도규", "김태형", "조상우", "김현수(KIA)", "올러", "최지민", "네일", "황동하", "이태양", "이의리", "김범수", "전상현", "양현종", "한재승", "정해영", "시라카와"],
         "catchers": ["주효상", "한준수", "김태군"],
         "infielders": ["정현창", "김규성", "윤도현", "변우혁", "김선빈", "하주석", "황대인", "이호연"],
         "outfielders": ["박정우", "카스트로", "김호령", "한승연", "김민규", "나성범"],
@@ -364,14 +379,16 @@ ROSTER_2026 = {
     },
     "LOTTE": {
         "pitchers": ["김태균", "현도훈", "박세웅", "구승민", "비슬리", "로드리게스", "김원중", "박정민", "이이무라", "이영재", "박세진", "나균안", "이진하", "이준서", "윤성빈"],
-        "catchers": ["유강남", "손성빈", "박건우"],
+        # [TASK-KBO-161] "박건우(포수)" - NC 외야수(골든글러브 2023 수상자)와 동명이인인 별개 인물.
+        "catchers": ["유강남", "손성빈", "박건우(포수)"],
         "infielders": ["전민재", "고승민", "한동희", "이호준", "정대선", "김세민", "나승엽", "노진혁", "박승욱", "한태양"],
         "outfielders": ["황성빈", "조세진", "레이예스", "김동혁", "장두성", "전준우"],
     },
     "HANWHA": {
         "pitchers": ["짐머맨", "이상규", "화이트", "장유호", "황준서", "김종수", "박재규", "김서현", "원종혁", "강재민", "조동욱", "주현상", "박준영", "하동준", "류현진"],
         "catchers": ["최재훈", "장규현", "허인서"],
-        "infielders": ["정민규", "최원준", "정은원", "이도윤", "강백호", "박정현", "심우준", "최유빈", "황영묵"],
+        # [TASK-KBO-161] "최원준(한화)" - KT 외야수와 동명이인인 별개 인물.
+        "infielders": ["정민규", "최원준(한화)", "정은원", "이도윤", "강백호", "박정현", "심우준", "최유빈", "황영묵"],
         "outfielders": ["권광민", "김태연", "페라자", "유로결", "한지윤", "이원석", "최인호"],
     },
     "KIWOOM": {
@@ -410,6 +427,18 @@ for team_token, groups in ROSTER_2026.items():
         name = _unique_roster_name(raw_name, team_token)
         rec = add_player(team_token, team_id, team_enum, name, is_pitcher, position,
                           2018, MAX_YEAR, skip_random_cards=True)
+        # [TASK-KBO-161, 버그 수정] 동명이인 접미사가 붙지 않았고(=이 팀 안에서는 유일한 이름),
+        # 아직 다른 실존 인물이 그 이름을 선점하지도 않았을 때만 real_player_records에 등록한다.
+        # 이렇게 해야 이후 처리되는 골든글러브/개인 타이틀 역대 데이터가 이 선수를 새 인물로
+        # 중복 생성하지 않고 정확히 재사용한다(수정 전: 2026 로스터에서 새로 만든 선수는 여기
+        # 등록되지 않아, 나중에 같은 이름이 역대 기록에 나오면 완전히 별개의 중복 인물이 생성되는
+        # 결함이 있었다). 두 번째 조건(`raw_name not in real_player_records`)은 왕조 로스터 등
+        # "먼저 등록된 실존 인물"과 다른 구단 소속의 동명이인이 2026 로스터에 있을 때(예: 왕조
+        # 로스터의 김상수와 별개일 수도 있는 2026년 KT 소속 김상수) 먼저 등록된 쪽을 보존하고
+        # 이 새 레코드는 등록을 건너뛴다 - 실존 인물 정보가 불확실할 때 "등록하지 않음"(즉 이후
+        # 역대 기록과 자동 병합되지 않음)이 "잘못 병합함"보다 안전한 기본값이라고 판단했다.
+        if name == raw_name and raw_name not in real_player_records:
+            real_player_records[raw_name] = rec
         return rec
 
     for raw_name in groups["catchers"]:
@@ -478,6 +507,68 @@ for year in sorted(GOLDEN_GLOVE_HISTORY.keys(), reverse=True):  # 최신 연도�
         is_pitcher = position == "SP"
         rec = _resolve_historical(name, team_token, is_pitcher, position)
         golden_glove_cards_to_issue.append((rec, year, team_token))
+
+# ---------------------------------------------------------------------------
+# 5-G. [TASK-KBO-161, 사용자 직접 지시 "(1) 진행해봅시다"] 2013~2024년 KBO 개인 타이틀
+# 14개 부문(타자 8: 타율/최다안타/홈런/타점/득점/도루/출루율/장타율, 투수 6: 다승/평균자책점/
+# 탈삼진/세이브/홀드/승률) 전수를 나무위키 "KBO 리그/역대 타이틀홀더/타자·투수" 실시간 조회
+# (2026-09-22)로 확인해 반영한다. 한 해에 여러 부문을 동시 석권한 선수(예: 2013 박병호가
+# 홈런·타점·득점·장타율 4개 부문)는 카드 스키마가 부문을 구분하지 않으므로(TASK-155 범위 밖)
+# 연도당 1장으로 중복 제거했다. 공동 수상(예: 2017 다승 양현종·노에시)은 두 명 모두 카드를
+# 받는다. 이미 GOLDEN_GLOVE_HISTORY/2025시즌/2026로스터/왕조 로스터에 등록된 실존 인물과
+# 이름이 겹치면(양의지/최형우/구자욱/손아섭/최정 등 다수) `_resolve_historical()`이 자동으로
+# 재사용한다 - 이름 문자열을 그 기존 등록 표기와 정확히 맞췄다(예: "에릭 테임즈"가 아니라
+# GOLDEN_GLOVE_HISTORY와 동일한 "테임즈"). 넥센→키움, SK→SSG 매핑은 기존 관례와 동일하다.
+TITLE_HOLDER_HISTORY = {
+    2013: [("이병규", "LG"), ("손아섭", "LOTTE"), ("박병호", "KIWOOM"), ("김종호", "NC"), ("김태균", "HANWHA"),
+           ("배영수", "SAMSUNG"), ("쉬렉", "NC"), ("리즈", "LG"), ("손승락", "KIWOOM"), ("한현희", "KIWOOM"), ("류제국", "LG")],
+    2014: [("서건창", "KIWOOM"), ("박병호", "KIWOOM"), ("김상수", "SAMSUNG"), ("김태균", "HANWHA"), ("강정호", "KIWOOM"),
+           ("밴헤켄", "KIWOOM"), ("밴덴헐크", "SAMSUNG"), ("손승락", "KIWOOM"), ("한현희", "KIWOOM"), ("소사", "KIWOOM")],
+    2015: [("테임즈", "NC"), ("유한준", "KIWOOM"), ("박병호", "KIWOOM"), ("박해민", "SAMSUNG"), ("해커", "NC"),
+           ("양현종", "KIA"), ("차우찬", "SAMSUNG"), ("임창용", "SAMSUNG"), ("안지만", "SAMSUNG")],
+    2016: [("최형우", "SAMSUNG"), ("테임즈", "NC"), ("최정", "SSG"), ("정근우", "HANWHA"), ("박해민", "SAMSUNG"),
+           ("김태균", "HANWHA"), ("니퍼트", "DOOSAN"), ("보우덴", "DOOSAN"), ("김세현", "KIWOOM"), ("이보근", "KIWOOM")],
+    2017: [("김선빈", "KIA"), ("손아섭", "LOTTE"), ("최정", "SSG"), ("러프", "SAMSUNG"), ("버나디나", "KIA"),
+           ("박해민", "SAMSUNG"), ("최형우", "KIA"), ("양현종", "KIA"), ("노에시", "KIA"), ("피어밴드", "KT"),
+           ("메릴 켈리", "SSG"), ("손승락", "LOTTE"), ("진해수", "LG")],
+    2018: [("김현수", "LG"), ("전준우", "LOTTE"), ("김재환", "DOOSAN"), ("박해민", "SAMSUNG"), ("박병호", "KIWOOM"),
+           ("후랭코프", "DOOSAN"), ("린드블럼", "DOOSAN"), ("샘슨", "HANWHA"), ("정우람", "HANWHA"), ("오현택", "LOTTE")],
+    2019: [("양의지", "NC"), ("페르난데스", "DOOSAN"), ("박병호", "KIWOOM"), ("샌즈", "KIWOOM"), ("김하성", "KIWOOM"),
+           ("박찬호", "KIA"), ("린드블럼", "DOOSAN"), ("양현종", "KIA"), ("하재훈", "SSG"), ("김상수(투수)", "KIWOOM")],
+    2020: [("최형우", "KIA"), ("페르난데스", "DOOSAN"), ("로하스", "KT"), ("심우준", "KT"), ("박석민", "NC"),
+           ("알칸타라", "DOOSAN"), ("요키시", "KIWOOM"), ("스트레일리", "LOTTE"), ("조상우", "KIWOOM"), ("주권", "KT")],
+    2021: [("이정후", "KIWOOM"), ("전준우", "LOTTE"), ("최정", "SSG"), ("양의지", "NC"), ("구자욱", "SAMSUNG"),
+           ("김혜성", "KIWOOM"), ("홍창기", "LG"), ("뷰캐넌", "SAMSUNG"), ("요키시", "KIWOOM"), ("미란다", "DOOSAN"),
+           ("오승환", "SAMSUNG"), ("장현식", "KIA"), ("수아레즈", "LG")],
+    2022: [("이정후", "KIWOOM"), ("박병호", "KT"), ("피렐라", "SAMSUNG"), ("박찬호", "KIA"), ("케이시 켈리", "LG"),
+           ("안우진", "KIWOOM"), ("고우석", "LG"), ("정우영", "LG"), ("엄상백", "KT")],
+    2023: [("손아섭", "NC"), ("노시환", "HANWHA"), ("홍창기", "LG"), ("정수빈", "DOOSAN"), ("최정", "SSG"),
+           ("페디", "NC"), ("서진용", "SSG"), ("박영현", "KT"), ("쿠에바스", "KT")],
+    2024: [("에레디아", "SSG"), ("레이예스", "LOTTE"), ("데이비슨", "NC"), ("오스틴", "LG"), ("김도영", "KIA"),
+           ("조수행", "DOOSAN"), ("홍창기", "LG"), ("곽빈", "DOOSAN"), ("원태인", "SAMSUNG"), ("네일", "KIA"),
+           ("하트", "NC"), ("정해영", "KIA"), ("노경은", "SSG"), ("박영현", "KT")],
+}
+# 이번 회차에 처음 등장하는 투수만 골라 둔다(이미 등록된 인물은 _resolve_historical이 기존
+# is_pitcher/포지션을 그대로 유지하므로 아래 집합은 "신규 등록 시"에만 참조된다).
+TITLE_HOLDER_NEW_PITCHERS = {
+    "배영수", "쉬렉", "리즈", "한현희", "류제국", "밴헤켄", "밴덴헐크", "소사", "차우찬", "임창용", "안지만",
+    "니퍼트", "보우덴", "김세현", "이보근", "노에시", "피어밴드", "메릴 켈리", "진해수", "후랭코프", "린드블럼",
+    "샘슨", "정우람", "오현택", "하재훈", "김상수(투수)", "알칸타라", "요키시", "스트레일리", "조상우", "주권",
+    "뷰캐넌", "미란다", "오승환", "장현식", "수아레즈", "케이시 켈리", "안우진", "고우석", "정우영", "엄상백",
+    "페디", "서진용", "박영현", "쿠에바스", "네일", "하트", "정해영", "노경은",
+}
+
+title_holder_cards_to_issue = []  # (rec, year) - 7-E 절에서 make_card_row로 발급(팀은 rec.team_token 그대로)
+for year in sorted(TITLE_HOLDER_HISTORY.keys(), reverse=True):
+    seen_this_year = set()  # (name) - 한 해 다관왕을 카드 1장으로 축약
+    for name, team_token in TITLE_HOLDER_HISTORY[year]:
+        if name in seen_this_year:
+            continue
+        seen_this_year.add(name)
+        is_pitcher = name in TITLE_HOLDER_NEW_PITCHERS
+        position = "SP" if is_pitcher else "DH"  # 신규 등록 시에만 쓰이는 기본값(기존 인물은 무시됨)
+        rec = _resolve_historical(name, team_token, is_pitcher, position)
+        title_holder_cards_to_issue.append((rec, year, team_token))
 
 # ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
@@ -593,6 +684,17 @@ for rec, year, team_token in golden_glove_cards_to_issue:
     gg_history_card_count += 1
 
 # ---------------------------------------------------------------------------
+# 7-E. [TASK-KBO-161] 2013~2024 개인 타이틀 카드를 100% 확정 발급한다. 골든글러브와 마찬가지로
+# `team_token_override`를 반드시 써야 한다 - 예를 들어 손승락은 2013~2014년 키움 소속으로
+# 타이틀을 받았지만 2017년엔 롯데 소속으로 또 타이틀을 받았다(실제 FA 이적) - 처리 순서상
+# 기본 템플릿의 team_token은 둘 중 하나로 고정되므로, 그 값을 그대로 쓰면 다른 한쪽 연도의
+# 카드가 잘못된 구단으로 표시된다.
+title_history_card_count = 0
+for rec, year, team_token in title_holder_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "TITLE_HOLDER", team_token_override=team_token))
+    title_history_card_count += 1
+
+# ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
 # ---------------------------------------------------------------------------
 CHEERLEADERS_HEADER = [
@@ -678,6 +780,7 @@ print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장
 print(f"  - 실제 인물로 등록된 누적 총원(2025 수상 + 역대 골든글러브 등): {len(real_player_records)}명")
 print(f"  - 이 중 2026년 실제 현역 로스터 LIVE_NORMAL 카드: {roster_2026_card_count}장 ({len(real_2026_records)}명, 감독/코치 제외)")
 print(f"  - 이 중 2013~2024 골든글러브 확정 카드: {gg_history_card_count}장 ({len(GOLDEN_GLOVE_HISTORY)}개 시즌 x 10명)")
+print(f"  - 이 중 2013~2024 개인 타이틀 확정 카드: {title_history_card_count}장 (다관왕은 연도당 1장으로 통합)")
 print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
