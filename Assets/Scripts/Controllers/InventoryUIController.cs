@@ -31,6 +31,14 @@ namespace KBOManager.Controllers
     /// `detailPanelRoot.transform.SetAsLastSibling()`으로 그대로 구현했다(명령서 6항 검토 결과,
     /// `MaterialSelectUIController`는 TASK-125부터 이미 `OpenForEnhance()`/`OpenForAwaken()` 양쪽에
     /// 동일 패턴이 적용돼 있어 추가 조치가 필요 없었다).
+    ///
+    /// [TASK-KBO-145] 명령서 지시대로 카드 클릭 시 뜨던 "기존의 단순 팝업"(`detailPanelRoot` - 강화하기/
+    /// 각성하기/스킬 변경 버튼 3개만 나열)을 폐기하고 `PlayerManagementUIController`(격자형 선수 관리
+    /// 허브)를 대신 띄운다 - `SpawnCard()`의 클릭 리스너만 `ShowDetail()`에서 `OpenPlayerManagement()`로
+    /// 바꿨다. `detailPanelRoot`와 그 하위 필드/메서드(`ShowDetail`/`CloseDetail`/`OnClickEnhance`/
+    /// `OnClickAwaken`/`OnClickSkillChange` 등)는 명령서 0항("1mm도 벗어난 임의 리팩토링 금지")에 따라
+    /// 전혀 삭제하지 않고 그대로 남겨 뒀다 - 더 이상 이 클래스 내부에서 호출되지 않는 휴면 코드이지만,
+    /// 인스펙터에 필드가 비어 있는 구형 씬에서도(아래 폴백 참고) 여전히 안전하게 동작한다.
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
@@ -38,6 +46,9 @@ namespace KBOManager.Controllers
         [SerializeField] private MaterialSelectUIController materialSelectUIController;
         [Tooltip("ExecuteEnhance()의 성공/실패를 구독해 VFXController 연출을 트리거하는 데 쓴다.")]
         [SerializeField] private GameActionController gameActionController;
+        [Tooltip("[TASK-KBO-145] 카드 클릭 시 뜨는 신규 '선수 관리 허브'. 비어 있으면(구형 씬 - Setup " +
+                 "메뉴 재실행 전) 기존 ShowDetail() 팝업으로 자동 폴백한다.")]
+        [SerializeField] private PlayerManagementUIController playerManagementUIController;
 
         [Header("Card List")]
         [Tooltip("카드가 나열될 부모(Scroll View의 Content). GridLayoutGroup을 붙여 정렬한다.")]
@@ -184,10 +195,25 @@ namespace KBOManager.Controllers
                 // 풀링된 카드는 같은 Button 인스턴스가 재사용되므로, 이전 대여에서 붙은 리스너(다른 player를
                 // 가리키는 클로저)가 쌓이지 않도록 먼저 전부 제거한 뒤 새로 연결한다.
                 button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(() => ShowDetail(player));
+                button.onClick.AddListener(() => OpenPlayerManagement(player));
             }
 
             spawnedCards.Add(card);
+        }
+
+        /// <summary>[TASK-KBO-145] 카드 클릭 진입점. 신규 선수 관리 허브가 배선되어 있으면 그쪽을 띄우고,
+        /// 아직 배선 전(구형 씬)이면 예전처럼 ShowDetail() 팝업으로 폴백해 클릭이 조용히 무시되는 것을
+        /// 막는다.</summary>
+        private void OpenPlayerManagement(Player player)
+        {
+            if (playerManagementUIController != null)
+            {
+                playerManagementUIController.Show(player);
+            }
+            else
+            {
+                ShowDetail(player);
+            }
         }
 
         private void ClearCards()

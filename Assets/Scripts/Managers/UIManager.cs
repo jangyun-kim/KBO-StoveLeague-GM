@@ -25,7 +25,13 @@ namespace KBOManager.Managers
         // 변경권)를 위한 값으로 이미 쓰이고 있다. 치어리더 가챠 상점(CheerleaderShopUIController,
         // TASK-KBO-066)은 완전히 다른 컨트롤러/화면이라 CheerleaderInventory와 동일한 이유로 값을
         // 재사용하지 않고 끝에 추가했다.
-        CheerleaderShop
+        CheerleaderShop,
+        // [TASK-KBO-145] 인벤토리에서 카드를 클릭하면 뜨는 신규 "선수 관리 허브"(격자형 메뉴 -
+        // 훈련/강화/한계돌파/스킬 변경/각성)와, 그 허브의 [강화] 타일을 누르면 진입하는 "강화 전용
+        // 화면"(EXP 바 + 재료 선택). 둘 다 인벤토리를 완전히 덮는 별도 풀스크린이라(모달 팝업이 아님)
+        // 다른 화면들과 동일하게 ScreenType으로 등록한다 - 항상 끝에 추가하는 관례를 그대로 따랐다.
+        PlayerManagementHub,
+        Enhance
     }
 
     /// <summary>
