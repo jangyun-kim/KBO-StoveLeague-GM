@@ -751,6 +751,130 @@ for name, team_token, year in SIGNATURE_HISTORY:
     signature_cards_to_issue.append((rec, year, team_token))
 
 # ---------------------------------------------------------------------------
+# 5-J. [TASK-KBO-165, 사용자 직접 지시 "우선 2014~2025까지"] ALLSTAR(올스타) 등급 - 나무위키
+# 연도별 "KBO 올스타전/{연도}년"(2014년만 "한국프로야구 올스타전/2014년") 12개 페이지를
+# 실시간 조회(2026-09-22)해 확보했다. 올스타전은 매년 팬투표+선수단투표로 뽑힌 "BEST 12"
+# (포지션당 1명: 선발/중간/마무리 투수, 포수, 1~3루, 유격수, 외야 3, 지명타자) x 2개 팀
+# (2015년부터 "드림/나눔", 2014년은 "동군/서군")으로 구성된다 - 감독 추천 후보/예비 선수까지
+# 포함하면 연도당 30명 안팎으로 늘어나 이번 1차 반영에서는 **가장 공식적이고 명확한 단위인
+# BEST 12(팬+선수단 투표 선정)만** 담았다(감독 추천 후보는 다음 회차 확장 대상). 2021년은
+# 코로나19로 실제 경기가 취소됐지만 BEST 12 선정 자체는 발표됐으므로 그대로 포함했다.
+# 포지션 순서 고정: SP, RP, CP, C, 1B, 2B, 3B, SS, OF, OF, OF, DH.
+ALLSTAR_POSITION_SLOTS = ["SP", "RP", "CP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+
+ALLSTAR_HISTORY = {
+    2025: {
+        "DREAM": [("원태인", "SAMSUNG"), ("배찬승", "SAMSUNG"), ("김원중", "LOTTE"), ("강민호", "SAMSUNG"),
+                  ("디아즈", "SAMSUNG"), ("류지혁", "SAMSUNG"), ("최정", "SSG"), ("전민재", "LOTTE"),
+                  ("구자욱", "SAMSUNG"), ("김지찬", "SAMSUNG"), ("레이예스", "LOTTE"), ("전준우", "LOTTE")],
+        "NANUM": [("폰세", "HANWHA"), ("박상원", "HANWHA"), ("김서현", "HANWHA"), ("박동원", "LG"),
+                  ("채은성", "HANWHA"), ("박민우", "NC"), ("송성문", "KIWOOM"), ("박찬호", "KIA"),
+                  ("박건우", "NC"), ("이주형", "KIWOOM"), ("박해민", "LG"), ("문현빈", "HANWHA")],
+    },
+    2024: {
+        "DREAM": [("원태인", "SAMSUNG"), ("김택연", "DOOSAN"), ("오승환", "SAMSUNG"), ("양의지", "DOOSAN"),
+                  ("맥키넌", "SAMSUNG"), ("류지혁", "SAMSUNG"), ("최정", "SSG"), ("이재현", "SAMSUNG"),
+                  ("정수빈", "DOOSAN"), ("윤동희", "LOTTE"), ("에레디아", "SSG"), ("구자욱", "SAMSUNG")],
+        "NANUM": [("류현진", "HANWHA"), ("전상현", "KIA"), ("주현상", "HANWHA"), ("박동원", "LG"),
+                  ("이우성", "NC"), ("김혜성", "KIWOOM"), ("김도영", "KIA"), ("박찬호", "KIA"),
+                  ("페라자", "HANWHA"), ("나성범", "KIA"), ("도슨", "KIWOOM"), ("최형우", "KIA")],
+    },
+    2023: {
+        "DREAM": [("박세웅", "LOTTE"), ("구승민", "LOTTE"), ("김원중", "LOTTE"), ("양의지", "DOOSAN"),
+                  ("박병호", "KT"), ("안치홍", "LOTTE"), ("한동희", "LOTTE"), ("노진혁", "LOTTE"),
+                  ("구자욱", "SAMSUNG"), ("피렐라", "SAMSUNG"), ("김민석", "LOTTE"), ("전준우", "LOTTE")],
+        "NANUM": [("양현종", "KIA"), ("최지민", "KIA"), ("고우석", "LG"), ("박동원", "LG"),
+                  ("채은성", "HANWHA"), ("김혜성", "KIWOOM"), ("노시환", "HANWHA"), ("김주원", "NC"),
+                  ("이정후", "KIWOOM"), ("브리토", "KIA"), ("박건우", "NC"), ("최형우", "KIA")],
+    },
+    2022: {
+        "DREAM": [("김광현", "SSG"), ("이승현", "SAMSUNG"), ("오승환", "SAMSUNG"), ("김태군", "SAMSUNG"),
+                  ("박병호", "KT"), ("김지찬", "SAMSUNG"), ("최정", "SSG"), ("박성한", "SSG"),
+                  ("피렐라", "SAMSUNG"), ("한유섬", "SSG"), ("구자욱", "SAMSUNG"), ("이대호", "LOTTE")],
+        "NANUM": [("양현종", "KIA"), ("정우영", "LG"), ("정해영", "KIA"), ("양의지", "NC"),
+                  ("황대인", "KIA"), ("김선빈", "KIA"), ("류지혁", "KIA"), ("오지환", "LG"),
+                  ("이정후", "KIWOOM"), ("나성범", "KIA"), ("김현수", "LG"), ("최형우", "KIA")],
+    },
+    2021: {  # 코로나19로 실제 경기는 취소됐으나 BEST 12 선정은 발표됨
+        "DREAM": [("원태인", "SAMSUNG"), ("우규민", "SAMSUNG"), ("오승환", "SAMSUNG"), ("강민호", "SAMSUNG"),
+                  ("오재일", "SAMSUNG"), ("김상수", "SAMSUNG"), ("이원석", "SAMSUNG"), ("김지찬", "SAMSUNG"),
+                  ("구자욱", "SAMSUNG"), ("추신수", "SSG"), ("박해민", "SAMSUNG"), ("피렐라", "SAMSUNG")],
+        "NANUM": [("수아레즈", "LG"), ("정우영", "LG"), ("고우석", "LG"), ("양의지", "NC"),
+                  ("박병호", "KIWOOM"), ("정은원", "HANWHA"), ("노시환", "HANWHA"), ("오지환", "LG"),
+                  ("이정후", "KIWOOM"), ("김현수", "LG"), ("홍창기", "LG"), ("채은성", "LG")],
+    },
+    2020: {
+        "DREAM": [("스트레일리", "LOTTE"), ("구승민", "LOTTE"), ("김원중", "LOTTE"), ("강민호", "SAMSUNG"),
+                  ("강백호", "KT"), ("김상수", "SAMSUNG"), ("최정", "SSG"), ("마차도", "LOTTE"),
+                  ("로하스", "KT"), ("손아섭", "LOTTE"), ("김재환", "DOOSAN"), ("페르난데스", "DOOSAN")],
+        "NANUM": [("구창모", "NC"), ("박준표", "KIA"), ("조상우", "KIWOOM"), ("양의지", "NC"),
+                  ("강진성", "NC"), ("김선빈", "KIA"), ("김민성", "LG"), ("김하성", "KIWOOM"),
+                  ("이정후", "KIWOOM"), ("김현수", "LG"), ("터커", "KIA"), ("나성범", "NC")],
+    },
+    2019: {
+        "DREAM": [("김광현", "SSG"), ("김택형", "SSG"), ("하재훈", "SSG"), ("강민호", "SAMSUNG"),
+                  ("로맥", "SSG"), ("김상수", "SAMSUNG"), ("최정", "SSG"), ("김재호", "DOOSAN"),
+                  ("고종욱", "SSG"), ("구자욱", "SAMSUNG"), ("강백호", "KT"), ("페르난데스", "DOOSAN")],
+        "NANUM": [("윌슨", "LG"), ("정우영", "LG"), ("고우석", "LG"), ("양의지", "NC"),
+                  ("박병호", "KIWOOM"), ("박민우", "NC"), ("김민성", "LG"), ("김하성", "KIWOOM"),
+                  ("김현수", "LG"), ("이정후", "KIWOOM"), ("이천웅", "LG"), ("이형종", "LG")],
+    },
+    2018: {
+        "DREAM": [("린드블럼", "DOOSAN"), ("박치국", "DOOSAN"), ("함덕주", "DOOSAN"), ("양의지", "DOOSAN"),
+                  ("이대호", "LOTTE"), ("오재원", "DOOSAN"), ("최정", "SSG"), ("김재호", "DOOSAN"),
+                  ("손아섭", "LOTTE"), ("박건우", "DOOSAN"), ("김재환", "DOOSAN"), ("최주환", "DOOSAN")],
+        "NANUM": [("소사", "LG"), ("서균", "HANWHA"), ("정우람", "HANWHA"), ("유강남", "LG"),
+                  ("박병호", "KIWOOM"), ("안치홍", "KIA"), ("송광민", "HANWHA"), ("오지환", "LG"),
+                  ("김현수", "LG"), ("호잉", "HANWHA"), ("이형종", "LG"), ("박용택", "LG")],
+    },
+    2017: {
+        "DREAM": [("니퍼트", "DOOSAN"), ("이현승", "DOOSAN"), ("김재윤", "KT"), ("양의지", "DOOSAN"),
+                  ("이대호", "LOTTE"), ("최주환", "DOOSAN"), ("최정", "SSG"), ("김재호", "DOOSAN"),
+                  ("구자욱", "SAMSUNG"), ("민병헌", "DOOSAN"), ("손아섭", "LOTTE"), ("이승엽", "SAMSUNG")],
+        "NANUM": [("양현종", "KIA"), ("김윤동", "KIA"), ("임창민", "NC"), ("김민식", "KIA"),
+                  ("로사리오", "HANWHA"), ("안치홍", "KIA"), ("이범호", "KIA"), ("김선빈", "KIA"),
+                  ("최형우", "KIA"), ("버나디나", "KIA"), ("이정후", "KIWOOM"), ("김태균", "HANWHA")],
+    },
+    2016: {
+        "DREAM": [("니퍼트", "DOOSAN"), ("정재훈", "DOOSAN"), ("이현승", "DOOSAN"), ("양의지", "DOOSAN"),
+                  ("구자욱", "SAMSUNG"), ("오재원", "DOOSAN"), ("허경민", "DOOSAN"), ("김재호", "DOOSAN"),
+                  ("민병헌", "DOOSAN"), ("최형우", "SAMSUNG"), ("김문호", "LOTTE"), ("이승엽", "SAMSUNG")],
+        "NANUM": [("신재영", "KIWOOM"), ("송창식", "HANWHA"), ("정우람", "HANWHA"), ("박동원", "KIWOOM"),
+                  ("테임즈", "NC"), ("정근우", "HANWHA"), ("박석민", "NC"), ("김하성", "KIWOOM"),
+                  ("이용규", "HANWHA"), ("나성범", "NC"), ("김주찬", "KIA"), ("로사리오", "HANWHA")],
+    },
+    2015: {
+        "DREAM": [("김광현", "SSG"), ("정우람", "SSG"), ("임창용", "SAMSUNG"), ("강민호", "LOTTE"),
+                  ("구자욱", "SAMSUNG"), ("나바로", "SAMSUNG"), ("황재균", "LOTTE"), ("김상수", "SAMSUNG"),
+                  ("최형우", "SAMSUNG"), ("김현수", "DOOSAN"), ("민병헌", "DOOSAN"), ("이승엽", "SAMSUNG")],
+        "NANUM": [("양현종", "KIA"), ("박정진", "HANWHA"), ("권혁", "HANWHA"), ("김태군", "NC"),
+                  ("테임즈", "NC"), ("정근우", "HANWHA"), ("김민성", "KIWOOM"), ("김하성", "KIWOOM"),
+                  ("이용규", "HANWHA"), ("김주찬", "KIA"), ("유한준", "KIWOOM"), ("이호준", "NC")],
+    },
+    2014: {  # 이 해만 팀명이 "동군/서군"이었다(드림/나눔은 2015년부터) - 나무위키 원문에 예비선수 명단이 없어 12명 미만인 자리는 비워 둔다.
+        "EASTERN": [("김광현", "SSG"), ("임창용", "SAMSUNG"), ("이재원", "SSG"), ("칸투", "DOOSAN"),
+                    ("오재원", "DOOSAN"), ("박석민", "SAMSUNG"), ("김상수", "SAMSUNG"), ("손아섭", "LOTTE"),
+                    ("민병헌", "DOOSAN"), ("김현수", "DOOSAN"), ("히메네스", "LOTTE")],
+        "WESTERN": [("양현종", "KIA"), ("봉중근", "LG"), ("김태군", "NC"), ("박병호", "KIWOOM"),
+                    ("서건창", "KIWOOM"), ("모창민", "NC"), ("강정호", "KIWOOM"), ("나성범", "NC"),
+                    ("피에", "HANWHA"), ("이종욱", "NC"), ("나지완", "KIA")],
+    },
+}
+
+def _allstar_position_for_index(i):
+    base = ALLSTAR_POSITION_SLOTS
+    return base[i] if i < len(base) else "DH"
+
+allstar_cards_to_issue = []  # (rec, year, team_token) - 7-H 절에서 make_card_row로 발급
+for year in sorted(ALLSTAR_HISTORY.keys(), reverse=True):
+    for squad_name, entries in ALLSTAR_HISTORY[year].items():
+        for i, (name, team_token) in enumerate(entries):
+            position = _allstar_position_for_index(i)
+            is_pitcher = position in ("SP", "RP", "CP")
+            rec = _resolve_historical(name, team_token, is_pitcher, position)
+            allstar_cards_to_issue.append((rec, year, team_token))
+
+# ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
 # ---------------------------------------------------------------------------
 PLAYERS_HEADER = [
@@ -890,6 +1014,13 @@ for rec, year, team_token in signature_cards_to_issue:
     signature_card_count += 1
 
 # ---------------------------------------------------------------------------
+# 7-H. [TASK-KBO-165] 2014~2025 올스타 BEST 12 카드를 100% 확정 발급한다.
+allstar_card_count = 0
+for rec, year, team_token in allstar_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "ALLSTAR", team_token_override=team_token))
+    allstar_card_count += 1
+
+# ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
 # ---------------------------------------------------------------------------
 CHEERLEADERS_HEADER = [
@@ -978,6 +1109,7 @@ print(f"  - 이 중 1986~2024 골든글러브 확정 카드: {gg_history_card_co
 print(f"  - 이 중 2013~2024 개인 타이틀 확정 카드: {title_history_card_count}장 (다관왕은 연도당 1장으로 통합)")
 print(f"  - 이 중 영구결번(RETIRED_NUMBER) 확정 카드: {retired_number_card_count}장 ({len(RETIRED_NUMBER_HISTORY)}명 전원, 1986~2025)")
 print(f"  - 이 중 시그니처(SIGNATURE) 확정 카드: {signature_card_count}장 (KBO 레전드 40인 전원)")
+print(f"  - 이 중 올스타(ALLSTAR) 확정 카드: {allstar_card_count}장 (2014~2025 BEST 12, 감독 추천 후보 제외)")
 print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
