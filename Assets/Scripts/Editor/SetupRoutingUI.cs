@@ -124,7 +124,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 18;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
 
             return button;
         }

@@ -262,7 +262,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 14;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.resizeTextForBestFit = true;
             text.resizeTextMinSize = 10;
             text.resizeTextMaxSize = 18;
@@ -294,7 +294,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 14;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
 
@@ -353,7 +353,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.UpperLeft;
             text.color = Color.black;
             text.fontSize = 20;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = !isDisplayOnly;
 
             return text;
@@ -401,7 +401,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             // 버튼 라벨은 어차피 부모 Button의 Image가 클릭을 받으므로 라벨 자체는 레이캐스트 대상일
             // 필요가 없다(명령서 9항과 동일한 취지의 최적화 - 클릭 처리에는 영향 없음).
             text.raycastTarget = false;

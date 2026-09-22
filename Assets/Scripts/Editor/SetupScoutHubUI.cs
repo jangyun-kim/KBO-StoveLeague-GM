@@ -293,7 +293,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 20;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
 
@@ -433,7 +433,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 18;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, "스카우트");
 
@@ -518,7 +518,7 @@ namespace KBOManager.EditorTools
                 labelRect.offsetMax = Vector2.zero;
 
                 text = labelObject.GetComponent<Text>();
-                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.font = KBOFonts.Default;
                 text.raycastTarget = false;
             }
 

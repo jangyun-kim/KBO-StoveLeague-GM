@@ -277,7 +277,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white;
             text.fontSize = 14;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return text;
@@ -377,7 +377,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white;
             text.fontSize = 14;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return text;
@@ -423,7 +423,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return button;
@@ -449,7 +449,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.black;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return text;

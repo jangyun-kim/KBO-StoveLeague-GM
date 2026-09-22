@@ -476,7 +476,7 @@ namespace KBOManager.EditorTools
                 labelRect.offsetMax = Vector2.zero;
 
                 text = labelObject.GetComponent<Text>();
-                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.font = KBOFonts.Default;
                 text.raycastTarget = false;
             }
 
@@ -636,7 +636,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyBestFit(text);
 
@@ -713,7 +713,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 14;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyBestFit(text);
 
@@ -804,7 +804,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 18;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
 
@@ -855,7 +855,7 @@ namespace KBOManager.EditorTools
             // 위가 아님), 검은색으로 대비시킨다 - 흰색으로 두면 흰 배경 위에서 안 보인다.
             text.color = Color.black;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyBestFit(text);
 

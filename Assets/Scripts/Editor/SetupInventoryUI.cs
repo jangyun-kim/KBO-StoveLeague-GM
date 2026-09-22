@@ -699,7 +699,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             text.resizeTextForBestFit = true;
             text.resizeTextMinSize = 10;
@@ -786,7 +786,7 @@ namespace KBOManager.EditorTools
                 text.text = defaultText;
                 text.color = Color.white; // 상세 패널 배경(반투명 검정)과 대비시킨다 - FindOrCreateText와 동일 관례.
                 text.fontSize = 16;
-                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.font = KBOFonts.Default;
                 text.raycastTarget = false;
             }
             text.alignment = TextAnchor.MiddleCenter;
@@ -987,7 +987,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 18;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return button;
@@ -1040,7 +1040,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
 
@@ -1109,7 +1109,7 @@ namespace KBOManager.EditorTools
                 labelRect.offsetMax = Vector2.zero;
 
                 text = labelObject.GetComponent<Text>();
-                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.font = KBOFonts.Default;
                 text.raycastTarget = false;
             }
 
@@ -1156,7 +1156,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white; // 상세 패널 배경(반투명 검정)과 대비시킨다.
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return text;

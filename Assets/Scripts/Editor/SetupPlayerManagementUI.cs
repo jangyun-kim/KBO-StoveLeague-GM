@@ -372,7 +372,7 @@ namespace KBOManager.EditorTools
             var text = labelObject.GetComponent<Text>();
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 22;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
             ApplyButtonLabel(button, label);
             ApplyReadyState(button, isReady);
@@ -429,7 +429,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.black;
             text.fontSize = fontSize;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
             text.raycastTarget = false;
 
             return text;
@@ -493,7 +493,7 @@ namespace KBOManager.EditorTools
                 labelRect.offsetMax = Vector2.zero;
 
                 text = labelObject.GetComponent<Text>();
-                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.font = KBOFonts.Default;
                 text.raycastTarget = false;
             }
 

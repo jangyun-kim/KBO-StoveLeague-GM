@@ -138,7 +138,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
 
             return text;
         }

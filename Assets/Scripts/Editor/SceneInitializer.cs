@@ -275,7 +275,7 @@ namespace KBOManager.EditorTools
             label.text = team.ToString();
             label.alignment = TextAnchor.MiddleCenter;
             label.color = Color.black;
-            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.font = KBOFonts.Default;
 
             return (button, label);
         }
@@ -499,7 +499,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
 
             return button;
         }
@@ -520,7 +520,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleLeft;
             text.color = Color.white;
             text.fontSize = 16;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = KBOFonts.Default;
 
             return text;
         }
