@@ -17,6 +17,13 @@ namespace KBOManager.EditorTools
     ///
     /// `SetupInventoryUI.cs`(TASK-142)가 확립한 "매 실행마다 직속 자식 전부 DestroyImmediate 후 처음부터
     /// 재조립" 패턴을 그대로 따른다(명령서 0항 - UI 에디터 스크립트는 완벽한 초기화를 선행할 것).
+    ///
+    /// [TASK-KBO-148] 허브 상단 타겟 카드(초상화)에 클릭 감지용 Button을 배선하고, TASK-147이 만든 4탭
+    /// 상세 창(`PlayerDetailUIController`, 실체는 `SetupInventoryUI.cs`가 `InventoryPanel` 하위에 조립하는
+    /// `DetailPanel`)을 찾아 `PlayerManagementUIController.playerDetailUIController`에 연결한다. 씬에
+    /// 아직 없으면(=`Auto-Connect Inventory UI`를 이 메뉴보다 먼저 실행한 적이 없으면) TASK-146이 확립한
+    /// "메뉴 실행 순서 의존성 제거" 패턴 그대로 `SetupInventoryUI.AutoConnectInventoryUI()`를 직접 연쇄
+    /// 호출해 스스로 만든 뒤 다시 조회한다.
     /// </summary>
     public static class SetupPlayerManagementUI
     {
@@ -52,6 +59,11 @@ namespace KBOManager.EditorTools
 
             var cardTemplate = FindOrCreatePlayerCardTemplate(canvas.transform);
             var targetPreviewCard = FindOrCreateTargetPreviewCard(controller.transform, cardTemplate);
+            // [TASK-KBO-148] targetPreviewCard는 _Templates/PlayerCardTemplate을 복제한 것이라 이미
+            // Button 컴포넌트를 갖고 있다(인벤토리 목록 카드 클릭용으로 SetupInventoryUI.cs가 붙여 둔
+            // 것이 그대로 복제됨) - 새로 만들 필요 없이 그 Button을 그대로 찾아 재사용한다(없으면 방어적으로
+            // 추가). 클릭 리스너 자체는 PlayerManagementUIController.Awake()가 붙인다(명령서 4항).
+            var cardClickButton = EnsureCardClickButton(targetPreviewCard);
             var targetNameText = FindOrCreateText(controller.transform, TargetNameTextName, "",
                 new Vector2(0.27f, 0.85f), new Vector2(0.95f, 0.95f), 28);
 
@@ -84,9 +96,22 @@ namespace KBOManager.EditorTools
                 enhanceUIController = Object.FindAnyObjectByType<EnhanceUIController>(FindObjectsInactive.Include);
             }
 
-            BindController(controller, enhanceUIController, targetPreviewCard, targetNameText,
-                trainButton, enhanceButton, breakthroughButton, skillChangeButton, awakenButton,
-                skillChangeResultText, closeButton);
+            // [TASK-KBO-148, CRITICAL] EnhanceUIController와 동일한 이유로 - PlayerDetailUIController를
+            // 못 찾으면(=Auto-Connect Inventory UI를 아직 실행한 적이 없으면) 경고만 남기고 영영 null로
+            // 두지 않는다. 여기서 직접 SetupInventoryUI.AutoConnectInventoryUI()를 연쇄 호출해 스스로
+            // 만든 뒤 다시 조회한다(메뉴 실행 순서 의존성 제거, TASK-146과 동일 패턴).
+            var playerDetailUIController = Object.FindAnyObjectByType<PlayerDetailUIController>(FindObjectsInactive.Include);
+            if (playerDetailUIController == null)
+            {
+                Debug.LogWarning("[SetupPlayerManagementUI] 씬에서 PlayerDetailUIController를 찾지 못해 " +
+                    "'KBO Manager/Setup/Auto-Connect Inventory UI'를 자동으로 먼저 실행합니다.");
+                SetupInventoryUI.AutoConnectInventoryUI();
+                playerDetailUIController = Object.FindAnyObjectByType<PlayerDetailUIController>(FindObjectsInactive.Include);
+            }
+
+            BindController(controller, enhanceUIController, playerDetailUIController, targetPreviewCard,
+                targetNameText, cardClickButton, trainButton, enhanceButton, breakthroughButton,
+                skillChangeButton, awakenButton, skillChangeResultText, closeButton);
 
             EditorUtility.SetDirty(controller);
 
@@ -151,7 +176,38 @@ namespace KBOManager.EditorTools
                     "\"화면이 등록되어 있지 않습니다\" 경고만 남기고 아무 화면도 켜지 않을 것입니다.");
             }
 
+            // [TASK-KBO-148, 명령서 7항] cardClickButton -> playerDetailUIController 배선도 동일하게
+            // 검증 로그를 남긴다(TASK-146이 확립한 관례).
+            bool cardClickBound = cardClickButton != null && playerDetailUIController != null;
+            if (cardClickBound)
+            {
+                Debug.Log("[SetupPlayerManagementUI] 타겟 카드(초상화) 클릭 바인딩 성공 - cardClickButton -> " +
+                    "PlayerManagementUIController.playerDetailUIController -> PlayerDetailUIController 연결 확인.");
+            }
+            else
+            {
+                Debug.LogError("[SetupPlayerManagementUI] 타겟 카드(초상화) 클릭 바인딩 실패 - " +
+                    "playerDetailUIController가 여전히 null입니다. 'Auto-Connect Inventory UI'가 오류 없이 " +
+                    "끝났는지 확인하십시오.");
+            }
+
             Debug.Log("[SetupPlayerManagementUI] 선수 관리 허브 UI 자동 배선 완료.");
+        }
+
+        /// <summary>[TASK-KBO-148] `targetPreviewCard`(카드 템플릿 복제본)가 이미 갖고 있는 `Button`
+        /// 컴포넌트를 그대로 재사용한다 - 카드 템플릿(`_Templates/PlayerCardTemplate`)은
+        /// `SetupInventoryUI.FindOrCreatePlayerCardTemplate()`이 인벤토리 목록 클릭용으로 이미 `Button`을
+        /// 붙여 두므로, 이를 복제한 이 미리보기 카드도 태어날 때부터 `Button`을 갖고 있다. 혹시 없는
+        /// 경우(카드 템플릿이 아직 준비되지 않은 극단적 상황)에만 방어적으로 새로 추가한다.</summary>
+        private static Button EnsureCardClickButton(PlayerCardUI card)
+        {
+            if (card == null) return null;
+
+            if (card.TryGetComponent<Button>(out var button)) return button;
+
+            button = card.gameObject.AddComponent<Button>();
+            if (card.TryGetComponent<Image>(out var image)) button.targetGraphic = image;
+            return button;
         }
 
         /// <summary>[TASK-KBO-146] `RegisterScreen()`이 방금 쓴 값을 그대로 다시 읽어 검증하는 읽기 전용
@@ -455,15 +511,18 @@ namespace KBOManager.EditorTools
         }
 
         private static void BindController(PlayerManagementUIController controller,
-            EnhanceUIController enhanceUIController, PlayerCardUI targetPreviewCard, Text targetNameText,
+            EnhanceUIController enhanceUIController, PlayerDetailUIController playerDetailUIController,
+            PlayerCardUI targetPreviewCard, Text targetNameText, Button cardClickButton,
             Button trainButton, Button enhanceButton, Button breakthroughButton, Button skillChangeButton,
             Button awakenButton, Text skillChangeResultText, Button closeButton)
         {
             var serialized = new SerializedObject(controller);
 
             if (enhanceUIController != null) serialized.FindProperty("enhanceUIController").objectReferenceValue = enhanceUIController;
+            if (playerDetailUIController != null) serialized.FindProperty("playerDetailUIController").objectReferenceValue = playerDetailUIController;
             if (targetPreviewCard != null) serialized.FindProperty("targetPreviewCard").objectReferenceValue = targetPreviewCard;
             serialized.FindProperty("targetNameText").objectReferenceValue = targetNameText;
+            if (cardClickButton != null) serialized.FindProperty("cardClickButton").objectReferenceValue = cardClickButton;
 
             serialized.FindProperty("trainButton").objectReferenceValue = trainButton;
             serialized.FindProperty("enhanceButton").objectReferenceValue = enhanceButton;

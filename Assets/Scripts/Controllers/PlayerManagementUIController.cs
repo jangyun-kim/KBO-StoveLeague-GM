@@ -23,15 +23,29 @@ namespace KBOManager.Controllers
     /// 호출 흐름을 그대로 이 클래스 안에 다시 구현했다 - 별도의 재사용 가능한 컴포넌트가 원래 없었고,
     /// `InventoryUIController` 쪽 구현은 명령서 0항에 따라 손대지 않고 그대로 남겨 뒀다(현재는 이
     /// 허브가 카드 클릭의 유일한 진입점이라 그쪽은 휴면 코드가 됐다).
+    ///
+    /// [TASK-KBO-148, 사실 정정] 명령서는 `InventoryUIController.Instance.ShowDetail(currentPlayer)`를
+    /// 호출하라고 지시했으나, `InventoryUIController`에는 정적 `Instance` 싱글톤이 없고(원래 화면 전환은
+    /// 전부 `UIManager.ShowScreen()`으로만 하는 구조라 직접 참조 자체가 설계에 없었다) `ShowDetail()`도
+    /// `private`이다 - 존재하지 않는 API를 그대로 호출하면 컴파일이 깨진다. 명령서 0항("범위 밖 리팩토링
+    /// 금지")에 따라 `InventoryUIController`를 굳이 싱글톤으로 바꾸는(더 큰 구조 변경) 대신, TASK-147이
+    /// 실제로 만든 탭 UI 컨트롤러 `PlayerDetailUIController`를 `enhanceUIController`와 동일한 패턴으로
+    /// 직접 참조해 `Show(currentPlayer)`를 호출한다 - 사용자에게 보이는 결과(초상화 클릭 → 4탭 상세 창)는
+    /// 명령서 의도와 완전히 동일하다.
     /// </summary>
     public class PlayerManagementUIController : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private EnhanceUIController enhanceUIController;
+        [Tooltip("[TASK-KBO-148] 타겟 카드(초상화) 클릭 시 여는 4탭 상세 창(TASK-147).")]
+        [SerializeField] private PlayerDetailUIController playerDetailUIController;
 
         [Header("Target Card Preview")]
         [SerializeField] private PlayerCardUI targetPreviewCard;
         [SerializeField] private Text targetNameText;
+        [Tooltip("[TASK-KBO-148] targetPreviewCard(초상화)에 부착된 클릭 감지용 Button. 클릭하면 4탭 " +
+                 "상세 창을 연다.")]
+        [SerializeField] private Button cardClickButton;
 
         [Header("Grid Menu (명령서 4항 - 훈련/강화/한계돌파/스킬 변경/각성)")]
         [SerializeField] private Button trainButton;
@@ -58,6 +72,7 @@ namespace KBOManager.Controllers
             if (breakthroughButton != null) breakthroughButton.onClick.AddListener(() => LogNotReady("한계 돌파"));
             if (skillChangeButton != null) skillChangeButton.onClick.AddListener(OnClickSkillChange);
             if (awakenButton != null) awakenButton.onClick.AddListener(() => LogNotReady("각성"));
+            if (cardClickButton != null) cardClickButton.onClick.AddListener(OnClickCardPortrait);
             if (closeButton != null) closeButton.onClick.AddListener(Close);
         }
 
@@ -137,6 +152,31 @@ namespace KBOManager.Controllers
             }
 
             enhanceUIController.Show(currentPlayer);
+        }
+
+        /// <summary>[TASK-KBO-148] 상단 타겟 카드(초상화) 클릭 시 4탭 상세 창을 연다.
+        /// [명령서 6항 - Z-Order 점검] `PlayerDetailUIController`(TASK-147)의 패널 실체는
+        /// `SetupInventoryUI.cs`가 `InventoryPanel`의 자식으로 조립해 둔 `DetailPanel`이다 - 즉 이
+        /// 허브(`PlayerManagementHubPanel`)와는 별개의 화면(`ScreenType.Inventory`) 소속이라, 허브가
+        /// 활성 상태인 동안 `Show()`만 호출하면 부모 `InventoryPanel` 자체가 `UIManager`에 의해 비활성
+        /// 상태로 남아 있어 화면에 아무것도 그려지지 않는다. `UIManager.ShowScreen(ScreenType.Inventory)`로
+        /// 먼저 부모 화면을 활성화한 뒤 `Show()`를 호출해야 실제로 보인다 - `ShowScreen()`이 나머지 모든
+        /// 화면(허브 포함)을 배타적으로 끄므로 허브와 겹쳐 보일 위험 자체가 없고, `Show()` 내부에서도
+        /// `panelRoot.transform.SetAsLastSibling()`을 이미 강제해(TASK-147) `InventoryPanel`의 카드
+        /// 목록보다 항상 위에 그려진다.</summary>
+        private void OnClickCardPortrait()
+        {
+            if (currentPlayer == null) return;
+
+            if (playerDetailUIController == null)
+            {
+                Debug.LogWarning("[PlayerManagementUIController] playerDetailUIController가 바인딩되지 않아 " +
+                    "상세 창을 열 수 없습니다. 'KBO Manager/Setup/Auto-Connect Player Management UI'를 다시 실행하십시오.");
+                return;
+            }
+
+            UIManager.Instance?.ShowScreen(ScreenType.Inventory);
+            playerDetailUIController.Show(currentPlayer);
         }
 
         /// <summary>[스킬 변경] 타일 OnClick. InventoryUIController.OnClickSkillChange()(TASK-138)와
