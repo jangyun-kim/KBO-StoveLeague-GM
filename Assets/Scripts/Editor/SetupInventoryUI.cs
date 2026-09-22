@@ -85,6 +85,20 @@ namespace KBOManager.EditorTools
     /// TASK-145/146에서 `PlayerManagementUIController`/`EnhanceUIController`로 완전히 이관되어 중복이었
     /// 으므로(카드 클릭 시 애초에 이 패널이 아니라 선수 관리 허브가 뜬다) 새 패널에는 다시 만들지
     /// 않았다 - 새 패널은 순수 "정보 열람" 전용이다(명령서 4항 범위와 일치).
+    ///
+    /// [TASK-KBO-150, 진입 흐름 역전] 기획자 의도에 따라 카드 클릭 진입 순서를 "인벤토리 → 허브 →
+    /// 상세창"에서 "인벤토리 → 상세창 → 허브"로 뒤집었다 - 이 파일이 조립하는 `DetailPanel` 하단에
+    /// [선수 관리] 버튼을 신설해 `PlayerDetailUIController.playerManagementButton`/
+    /// `playerManagementUIController`에 바인딩한다. 씬에 `PlayerManagementUIController`가 아직 없으면
+    /// (`Auto-Connect Player Management UI`를 이 메뉴보다 먼저 실행한 적이 없으면) TASK-146/148이 확립한
+    /// "메뉴 실행 순서 의존성 제거" 패턴 그대로 `SetupPlayerManagementUI.AutoConnectPlayerManagementUI()`를
+    /// 직접 연쇄 호출한다. **상호 순환 호출 안전성**: `SetupPlayerManagementUI.cs`도 TASK-148부터 이미
+    /// `PlayerDetailUIController`가 없으면 이 파일의 `AutoConnectInventoryUI()`를 연쇄 호출한다 - 언뜻
+    /// 무한 재귀처럼 보이지만, 이 메서드가 그 연쇄 호출 지점(`FindOrCreateDetailPanel()` 이후)에 도달할
+    /// 때는 `PlayerDetailUIController` 컴포넌트가 이미 이 호출 스택 안에서 생성 완료된 뒤이므로,
+    /// `SetupPlayerManagementUI`가 (설령 이 호출이 그쪽에서 왔더라도) 자신의 `PlayerDetailUIController`
+    /// 탐색에서 그 값을 바로 찾아내 다시 이 파일로 되돌아오지 않는다 - 양쪽 모두 "내 쪽 핵심 컴포넌트를
+    /// 먼저 만든 뒤에만 상대를 조회/연쇄 호출"하는 순서를 지키는 한 재귀는 정확히 1회 왕복에서 끝난다.
     /// </summary>
     public static class SetupInventoryUI
     {
@@ -119,6 +133,7 @@ namespace KBOManager.EditorTools
         private const string SkillListTextName = "SkillListText";
         private const string HotColdGridName = "HotColdGrid";
         private const string DetailCloseButtonName = "DetailCloseButton";
+        private const string PlayerManagementButtonName = "PlayerManagementButton";
 
         [MenuItem("KBO Manager/Setup/Auto-Connect Inventory UI")]
         public static void AutoConnectInventoryUI()
@@ -501,14 +516,46 @@ namespace KBOManager.EditorTools
 
             var detailCloseButton = FindOrCreateCloseButton(panelObject.transform, DetailCloseButtonName, 64f);
 
+            // [TASK-KBO-150, 명령서 4항] 4탭 콘텐츠 하단 여백(y 0~0.08, 위 contentAnchorMin.y=0.08과
+            // 겹치지 않는 자리)에 큼직한 [선수 관리] 액션 버튼을 신설한다.
+            var playerManagementButton = FindOrCreateButton(panelObject.transform, PlayerManagementButtonName,
+                "선수 관리", new Vector2(0.20f, 0.01f), new Vector2(0.80f, 0.075f));
+
             var controller = panelObject.GetComponent<PlayerDetailUIController>();
             if (controller == null) controller = panelObject.AddComponent<PlayerDetailUIController>();
+
+            // [TASK-KBO-150, CRITICAL] [선수 관리] 버튼이 열어야 할 `PlayerManagementUIController`를
+            // 찾는다 - 못 찾으면(=Auto-Connect Player Management UI를 아직 실행한 적이 없으면) TASK-146/148이
+            // 확립한 패턴 그대로 직접 연쇄 호출해 스스로 만든다(메뉴 실행 순서 의존성 제거). 순환 호출
+            // 안전성은 클래스 요약 참고 - controller(PlayerDetailUIController)가 이미 위에서 생성 완료된
+            // 뒤라 안전하다.
+            var playerManagementUIController = Object.FindAnyObjectByType<PlayerManagementUIController>(FindObjectsInactive.Include);
+            if (playerManagementUIController == null)
+            {
+                Debug.LogWarning("[SetupInventoryUI] 씬에서 PlayerManagementUIController를 찾지 못해 " +
+                    "'KBO Manager/Setup/Auto-Connect Player Management UI'를 자동으로 먼저 실행합니다.");
+                SetupPlayerManagementUI.AutoConnectPlayerManagementUI();
+                playerManagementUIController = Object.FindAnyObjectByType<PlayerManagementUIController>(FindObjectsInactive.Include);
+            }
 
             BindDetailController(controller, previewCard, nameText, teamGradeText,
                 statsTabButton, specialFormTabButton, hotColdTabButton, skillTabButton,
                 statsPanel.gameObject, specialFormPanel.gameObject, hotColdPanel.gameObject, skillPanel.gameObject,
-                reinforceText, awakenText, statRowTexts, skillListText, detailCloseButton);
+                reinforceText, awakenText, statRowTexts, skillListText,
+                playerManagementButton, playerManagementUIController, detailCloseButton);
             EditorUtility.SetDirty(controller);
+
+            bool playerManagementBound = playerManagementButton != null && playerManagementUIController != null;
+            if (playerManagementBound)
+            {
+                Debug.Log("[SetupInventoryUI] [선수 관리] 버튼 바인딩 성공 - playerManagementButton -> " +
+                    "PlayerDetailUIController.playerManagementUIController -> PlayerManagementUIController 연결 확인.");
+            }
+            else
+            {
+                Debug.LogError("[SetupInventoryUI] [선수 관리] 버튼 바인딩 실패 - playerManagementUIController가 " +
+                    "여전히 null입니다. 'Auto-Connect Player Management UI'가 오류 없이 끝났는지 확인하십시오.");
+            }
 
             return controller;
         }
@@ -741,12 +788,15 @@ namespace KBOManager.EditorTools
             serialized.ApplyModifiedProperties();
         }
 
-        /// <summary>[TASK-KBO-147] 신규 `PlayerDetailUIController`(탭 UI)의 전체 필드를 배선한다.</summary>
+        /// <summary>[TASK-KBO-147, TASK-KBO-150 확장] 신규 `PlayerDetailUIController`(탭 UI)의 전체
+        /// 필드를 배선한다 - TASK-150에서 [선수 관리] 버튼(`playerManagementButton`)과 그 대상
+        /// 컨트롤러(`playerManagementUIController`) 두 필드가 추가됐다.</summary>
         private static void BindDetailController(PlayerDetailUIController controller,
             PlayerCardUI previewCard, Text nameText, Text teamGradeText,
             Button statsTabButton, Button specialFormTabButton, Button hotColdTabButton, Button skillTabButton,
             GameObject statsContentPanel, GameObject specialFormContentPanel, GameObject hotColdContentPanel, GameObject skillContentPanel,
-            Text reinforceText, Text awakenText, Text[] statRowTexts, Text skillListText, Button closeButton)
+            Text reinforceText, Text awakenText, Text[] statRowTexts, Text skillListText,
+            Button playerManagementButton, PlayerManagementUIController playerManagementUIController, Button closeButton)
         {
             var serialized = new SerializedObject(controller);
 
@@ -777,6 +827,10 @@ namespace KBOManager.EditorTools
             }
 
             serialized.FindProperty("skillListText").objectReferenceValue = skillListText;
+
+            if (playerManagementButton != null) serialized.FindProperty("playerManagementButton").objectReferenceValue = playerManagementButton;
+            if (playerManagementUIController != null) serialized.FindProperty("playerManagementUIController").objectReferenceValue = playerManagementUIController;
+
             serialized.FindProperty("closeButton").objectReferenceValue = closeButton;
 
             serialized.ApplyModifiedProperties();

@@ -9,29 +9,34 @@ namespace KBOManager.Controllers
 {
     /// <summary>
     /// GameManager.Instance.Inventory 전체를 PlayerCardUI 목록으로 그리는 인벤토리 메인 허브. 카드를
-    /// 클릭하면 `PlayerManagementUIController`(선수 관리 허브, TASK-145)를 띄운다. 카드 목록은
+    /// 클릭하면 `PlayerDetailUIController`(4탭 상세 창, TASK-147)를 띄운다. 카드 목록은
     /// CardPoolManager로 재사용한다.
     ///
     /// [TASK-KBO-145] 카드 클릭 시 뜨던 "기존의 단순 팝업"(강화하기/각성하기/스킬 변경 버튼 3개만
     /// 나열하던 구 상세 패널)을 폐기하고 `PlayerManagementUIController`(격자형 선수 관리 허브)를 대신
-    /// 띄운다 - `SpawnCard()`의 클릭 리스너가 `OpenPlayerManagement()`를 호출한다.
+    /// 띄웠다 - 이 흐름은 TASK-150이 다시 뒤집었다(아래 참고).
     ///
     /// [TASK-KBO-147, 전면 개편] 구 상세 패널(`detailPanelRoot` 및 그 하위 텍스트 나열형 구성 -
     /// `detailReinforceText`/`detailAwakenText`/`detailSkillsText`/`enhanceButton`/`awakenButton`/
     /// `skillChangeButton` 등)을 명령서 지시대로 완전히 폐기했다 - 씬에서 해당 GameObject 전부를
     /// DestroyImmediate로 제거하고, 탭 UI(기본 스탯/특이폼·페이스/핫·콜드존/스킬)를 갖춘 신규
-    /// `PlayerDetailUIController`로 교체했다(`SetupInventoryUI.cs` 참고). 구 상세 패널이 담당하던
-    /// [강화하기]/[각성하기]/[스킬 변경] 기능은 이미 TASK-145/146에서 `PlayerManagementUIController`/
-    /// `EnhanceUIController`로 완전히 이관되어 중복이었으므로(사용자가 카드를 클릭하면 애초에 구
-    /// 상세 패널이 아니라 선수 관리 허브가 뜬다 - 위 TASK-145 항목 참고), 새 상세 패널은 순수 "정보
-    /// 열람"(스탯/스킬 등) 전용으로 좁혀 재설계했고 그 두 버튼/로직은 이관과 함께 자연히 제거됐다.
-    /// `ShowDetail()`/`CloseDetail()`은 이제 `playerDetailUIController`에 얇게 위임만 한다.
+    /// `PlayerDetailUIController`로 교체했다(`SetupInventoryUI.cs` 참고). `ShowDetail()`/`CloseDetail()`은
+    /// `playerDetailUIController`에 얇게 위임만 한다.
+    ///
+    /// [TASK-KBO-150, 진입 흐름 역전] 기획자 의도에 따라 "인벤토리 → 허브 → 상세창"이던 진입 순서를
+    /// "인벤토리 → 상세창 → 허브"로 뒤집었다 - `SpawnCard()`의 클릭 리스너가 이제 `OpenPlayerDetail()`을
+    /// 호출해 1차로 `PlayerDetailUIController.Show()`(=`ShowDetail()`)를 연다. 허브로 가는 경로는
+    /// 상세 창 하단의 [선수 관리] 버튼(`PlayerDetailUIController.playerManagementButton`, TASK-150)으로
+    /// 옮겨졌다 - TASK-148이 만든 "허브 상단 초상화 클릭 → 상세창"(뒤로 가기 성격) 로직은 명령서 5항
+    /// 지시대로 그대로 남겨 뒀다. `playerManagementUIController` 필드는 `playerDetailUIController`가
+    /// 비어 있는 구형 씬을 위한 폴백으로만 남는다(우선순위 역전, 필드 자체는 유지 - `SetupPlayerManagementUI.cs`가
+    /// 여전히 이 필드에 바인딩하므로 삭제하면 그 에디터 스크립트가 깨진다).
     /// </summary>
     public class InventoryUIController : MonoBehaviour
     {
         [Header("References")]
-        [Tooltip("[TASK-KBO-145] 카드 클릭 시 뜨는 신규 '선수 관리 허브'. 비어 있으면(구형 씬 - Setup " +
-                 "메뉴 재실행 전) 기존 ShowDetail() 팝업으로 자동 폴백한다.")]
+        [Tooltip("[TASK-KBO-150] playerDetailUIController가 비어 있을 때(구형 씬)만 쓰는 폴백 - " +
+                 "정상 흐름에서는 카드 클릭이 상세 창을 직접 연다.")]
         [SerializeField] private PlayerManagementUIController playerManagementUIController;
 
         [Header("Card List")]
@@ -42,8 +47,7 @@ namespace KBOManager.Controllers
         [SerializeField] private PlayerCardUI cardPrefab;
 
         [Header("Detail Panel (TASK-KBO-147 - 탭 UI 전면 개편)")]
-        [Tooltip("[TASK-KBO-147] 구 텍스트 나열형 DetailPanel을 대체하는 신규 탭 UI 컨트롤러. " +
-                 "playerManagementUIController가 비어 있을 때의 폴백 경로(OpenPlayerManagement() 참고)에서만 열린다.")]
+        [Tooltip("[TASK-KBO-150] 카드 클릭 시 1차로 여는 4탭 상세 창(구 텍스트 나열형 DetailPanel 대체).")]
         [SerializeField] private PlayerDetailUIController playerDetailUIController;
 
         [Header("Close Buttons")]
@@ -116,24 +120,30 @@ namespace KBOManager.Controllers
                 // 풀링된 카드는 같은 Button 인스턴스가 재사용되므로, 이전 대여에서 붙은 리스너(다른 player를
                 // 가리키는 클로저)가 쌓이지 않도록 먼저 전부 제거한 뒤 새로 연결한다.
                 button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(() => OpenPlayerManagement(player));
+                button.onClick.AddListener(() => OpenPlayerDetail(player));
             }
 
             spawnedCards.Add(card);
         }
 
-        /// <summary>[TASK-KBO-145] 카드 클릭 진입점. 신규 선수 관리 허브가 배선되어 있으면 그쪽을 띄우고,
-        /// 아직 배선 전(구형 씬)이면 신규 상세 패널(TASK-KBO-147)로 폴백해 클릭이 조용히 무시되는 것을
-        /// 막는다.</summary>
-        private void OpenPlayerManagement(Player player)
+        /// <summary>[TASK-KBO-150, 진입 흐름 역전] 카드 클릭 진입점. 이제 4탭 상세 창이 1차 목적지다 -
+        /// `playerDetailUIController`가 배선되어 있으면 그쪽을 열고, 아직 배선 전(구형 씬)이면 선수 관리
+        /// 허브로 폴백해 클릭이 조용히 무시되는 것을 막는다(TASK-145가 확립한 폴백 관례를 방향만
+        /// 뒤집어 재사용).</summary>
+        private void OpenPlayerDetail(Player player)
         {
-            if (playerManagementUIController != null)
+            if (playerDetailUIController != null)
+            {
+                ShowDetail(player);
+            }
+            else if (playerManagementUIController != null)
             {
                 playerManagementUIController.Show(player);
             }
             else
             {
-                ShowDetail(player);
+                Debug.LogWarning("[InventoryUIController] playerDetailUIController/playerManagementUIController " +
+                    "모두 바인딩되지 않아 카드 클릭에 반응할 수 없습니다.");
             }
         }
 

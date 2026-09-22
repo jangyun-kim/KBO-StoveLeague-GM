@@ -21,6 +21,16 @@ namespace KBOManager.Controllers
     /// 5종, 투수: 구위/구속/변화/제구/체력 5종)를 보여준다 - 레퍼런스 이미지의 "인내"/"주루" 같은
     /// 우리 모델에 없는 이름을 억지로 만들어 채우지 않았다(명령서 5항 "무리하게 백엔드를 창조하지 말 것"과
     /// 동일한 취지).
+    ///
+    /// [TASK-KBO-150] 기획 흐름 역전 - 이제 인벤토리 카드 클릭 시 허브가 아니라 이 상세 창이 1차로
+    /// 열린다(`InventoryUIController.OpenPlayerDetail()` 참고). 대신 이 패널 하단에 [선수 관리] 버튼
+    /// (`playerManagementButton`)을 신설해, 클릭하면 `PlayerManagementUIController.Show(currentPlayer)`를
+    /// 호출해 허브로 넘어간다 - 명령서는 `UIManager.Instance.ShowScreen(ScreenType.PlayerManagementHub)`를
+    /// 예시로 들었으나, 그 원시 호출만으로는 허브의 `currentPlayer`(타겟 카드 미리보기 등)가 갱신되지
+    /// 않는다 - `PlayerManagementUIController.Show()`가 내부에서 그 `ShowScreen()` 호출까지 이미 포함하고
+    /// 있으므로(TASK-145) 이 메서드를 직접 호출하는 쪽이 명령서 의도(허브로 정상 진입)에 더 정확히
+    /// 부합한다. TASK-148이 만든 "허브 상단 초상화 클릭 → 이 상세 창" 역방향 경로(뒤로 가기)는 명령서
+    /// 5항 지시대로 전혀 건드리지 않았다.
     /// </summary>
     public class PlayerDetailUIController : MonoBehaviour
     {
@@ -58,6 +68,12 @@ namespace KBOManager.Controllers
         [Header("[스킬] 탭 내용")]
         [SerializeField] private Text skillListText;
 
+        [Header("Action (TASK-KBO-150)")]
+        [Tooltip("[선수 관리] 버튼 - 클릭하면 선수 관리 허브로 넘어간다.")]
+        [SerializeField] private Button playerManagementButton;
+        [Tooltip("[선수 관리] 버튼이 여는 허브 컨트롤러 참조.")]
+        [SerializeField] private PlayerManagementUIController playerManagementUIController;
+
         [Header("닫기")]
         [SerializeField] private Button closeButton;
 
@@ -76,6 +92,7 @@ namespace KBOManager.Controllers
             if (specialFormTabButton != null) specialFormTabButton.onClick.AddListener(() => SelectTab(Tab.SpecialForm));
             if (hotColdTabButton != null) hotColdTabButton.onClick.AddListener(() => SelectTab(Tab.HotCold));
             if (skillTabButton != null) skillTabButton.onClick.AddListener(() => SelectTab(Tab.Skill));
+            if (playerManagementButton != null) playerManagementButton.onClick.AddListener(OnClickPlayerManagement);
             if (closeButton != null) closeButton.onClick.AddListener(HandleCloseClicked);
 
             Hide();
@@ -115,6 +132,28 @@ namespace KBOManager.Controllers
         {
             Hide();
             OnClosed?.Invoke();
+        }
+
+        /// <summary>[TASK-KBO-150] [선수 관리] 버튼 OnClick. 허브의 `Show()`를 직접 호출한다 - 그
+        /// 메서드가 `currentPlayer` 갱신과 `UIManager.ShowScreen(ScreenType.PlayerManagementHub)` 호출을
+        /// 모두 포함하고 있어(TASK-145), 원시 `ShowScreen()` 호출만으로는 놓치는 허브 쪽 데이터 갱신까지
+        /// 함께 보장된다. `PlayerManagementHubPanel`은 `Canvas` 바로 아래(다른 화면들과 동일한 최상위
+        /// `ScreenType`)에 있어 이 상세 창(`InventoryPanel`의 자식)이 활성 상태이든 아니든 `ShowScreen()`
+        /// 만으로 정상적으로 화면 최상단에 나타난다 - TASK-148에서 확인된 "자식이 비활성 부모 밑에 있어
+        /// 안 보이는" 문제가 이 방향(상세창 → 허브)에는 애초에 발생하지 않는다(허브는 상세 창의 자식이
+        /// 아니라 완전히 별개의 최상위 화면).</summary>
+        private void OnClickPlayerManagement()
+        {
+            if (currentPlayer == null) return;
+
+            if (playerManagementUIController == null)
+            {
+                Debug.LogWarning("[PlayerDetailUIController] playerManagementUIController가 바인딩되지 않아 " +
+                    "선수 관리 허브를 열 수 없습니다. 'KBO Manager/Setup/Auto-Connect Inventory UI'를 다시 실행하십시오.");
+                return;
+            }
+
+            playerManagementUIController.Show(currentPlayer);
         }
 
         /// <summary>[명령서 4항] 탭 버튼 클릭 시 해당 탭의 ContentPanel만 SetActive(true)하고 나머지
