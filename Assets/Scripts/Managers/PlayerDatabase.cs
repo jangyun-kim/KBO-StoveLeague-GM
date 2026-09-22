@@ -20,6 +20,17 @@ namespace KBOManager.Managers
     /// AllTemplates/GetTemplateById()가 호출되더라도(같은 GameObject에 붙은 다른 컴포넌트의 Awake()가
     /// 먼저 실행되는 등 Unity 컴포넌트 실행 순서 불확실성) 지연 초기화로 안전하게 채운다.
     /// 실제 유저 소유 카드(Models.Player 인스턴스)는 CreatePlayerInstance()로 템플릿을 참조해 발급한다.
+    ///
+    /// [TASK-KBO-153] DCL-057/DCL-124가 공지해 온 "cards.csv 미조인" 갭을 해소했다 - players.csv(선수
+    /// 물리 데이터 SSOT)는 그대로 두고, cards.csv(카드별 등급 변형)를 추가로 파싱해 조인한다.
+    /// players.csv 한 줄당 만들어지던 "기본 템플릿"을 그대로 두는 대신, cards.csv에 그 player_id로
+    /// 등록된 카드가 있으면 그 카드 각각(등급별로 별도 row)을 `TemplateId=card_id`인 새 PlayerTemplate으로
+    /// 대체 발급한다(물리 데이터는 기본 템플릿에서 복제) - 이제 `TemplateId`가 "카드 고유 ID"라는
+    /// PlayerTemplate.cs 최초 설계 의도(TASK-082 주석 "예: GG_KOOJASOOK_2024")를 실제로 만족한다.
+    /// cards.csv에 아직 등록되지 않은 선수(현재 샘플 데이터는 11명 중 2명만 카드가 있다)는 안전
+    /// 마이그레이션으로 기존 방식(TemplateId=player_id, Grade=SEASON 기본값) 그대로 남긴다 - 명령서
+    /// 6항 "NullReference 없이 하위 호환"을 이렇게 만족한다(cards.csv 자체가 없어도 완전히 예전과
+    /// 동일하게 동작한다).
     /// </summary>
     public class PlayerDatabase : MonoBehaviour
     {
@@ -30,6 +41,14 @@ namespace KBOManager.Managers
         // 헤더: player_id,team_id,name,year,position,pa_ip,z_contact,z_eye,z_power,z_speed,z_def,z_stamina,active,
         // z_stuff,z_control,z_movement ([TASK-KBO-088] 기존 13컬럼 뒤에 투수 전용 Z-score 3종을 추가한 16컬럼)
         private const int ExpectedColumnCount = 16;
+
+        // [TASK-KBO-153] 헤더: card_id,player_id,grade_id,grade_name,base_ovr,salary_cost,max_enhance,
+        // max_awaken,is_droppable (9컬럼). 이번 작업은 card_id(카드 고유 ID)/player_id(FK)/grade만
+        // 조인 대상으로 삼는다 - base_ovr/salary_cost/max_enhance/max_awaken/is_droppable은 강화·샐러리
+        // 시스템(UpgradeManager/Player.CalculateSalaryCost)과 얽혀 있어 "기존 강화 시스템 1mm도 건드리지
+        // 말 것"(명령서 5항)의 범위를 넘어선다 - 이번엔 파싱하지 않고 후속 과제로 남긴다.
+        private const string CardsResourcePath = "Data/cards";
+        private const int ExpectedCardColumnCount = 9;
 
         /// <summary>
         /// [TASK-KBO-085/086] CSV의 team_id(예: "TEM_001")를 Team enum으로 매핑하는 표. team_id 값이
@@ -107,34 +126,70 @@ namespace KBOManager.Managers
         /// 남긴다. [TASK-KBO-085] GameManager 등 외부에서 더 이상 직접 호출하지 않으므로 private로 좁혔다 -
         /// Awake()의 자체 호출과 EnsureInitialized()의 지연 초기화 호출만 이 메서드에 접근한다.
         ///
-        /// [TASK-KBO-082 범위 제외, TASK-KBO-085에서도 계속 제외] cards.csv(등급/샐러리/강화 상한 등 카드
-        /// 변형 데이터)는 조인하지 않는다 - 여기서 생성되는 템플릿의 Grade는 기본값(Grade.SEASON = 0)으로
-        /// 남는다. [TASK-KBO-088] z_contact 등 9종 Z-score → BatterStats/PitcherStats(정수) 변환은
-        /// ParseCsv() 내부에서 ConvertZScoreToStat()으로 실제 구현되었다(docs/11_data_dictionary.md D절
-        /// 확정 공식).
+        /// [TASK-KBO-153] cards.csv 조인이 이제 여기서 이루어진다(아래 ParseCardsCsv() 참고) - players.csv
+        /// 파싱(ParsePlayersCsv())은 "기본 템플릿"만 만들 뿐, 최종 `templates`에 무엇이 들어갈지는
+        /// cards.csv 조인 결과에 달렸다. [TASK-KBO-088] z_contact 등 9종 Z-score → BatterStats/
+        /// PitcherStats(정수) 변환은 ParsePlayersCsv() 내부에서 ConvertZScoreToStat()으로 실제
+        /// 구현되었다(docs/11_data_dictionary.md D절 확정 공식).
         /// </summary>
         private void Initialize()
         {
             if (isInitialized) return;
             isInitialized = true;
 
-            var csvAsset = Resources.Load<TextAsset>(ResourcePath);
-            if (csvAsset == null)
+            var playersCsvAsset = Resources.Load<TextAsset>(ResourcePath);
+            if (playersCsvAsset == null)
             {
                 Debug.LogError($"[PlayerDatabase] '{ResourcePath}' TextAsset을 Resources에서 찾지 못했습니다. " +
                     "선수 데이터베이스가 빈 상태로 시작합니다(스카우트 발급이 실패할 수 있습니다).");
                 return;
             }
 
-            ParseCsv(csvAsset.text);
+            var baseTemplates = ParsePlayersCsv(playersCsvAsset.text);
+
+            // [TASK-KBO-153, 명령서 6항 - 안전 마이그레이션] cards.csv가 아직 없어도(리소스 미존재)
+            // 예전과 완전히 동일하게 동작해야 한다 - 카드 조인을 건너뛰고 기본 템플릿을 전부 그대로
+            // 등록한다(cards.csv 부재는 NullReference가 아니라 Warning으로만 남긴다).
+            var cardsCsvAsset = Resources.Load<TextAsset>(CardsResourcePath);
+            var playerIdsWithCards = cardsCsvAsset != null
+                ? ParseCardsCsv(cardsCsvAsset.text, baseTemplates)
+                : new HashSet<string>();
+
+            if (cardsCsvAsset == null)
+            {
+                Debug.LogWarning($"[PlayerDatabase] '{CardsResourcePath}' TextAsset을 찾지 못해 " +
+                    "카드별 등급 조인 없이 선수당 기본(SEASON) 템플릿 1장씩만 등록합니다.");
+            }
+
+            int fallbackCount = 0;
+            foreach (var pair in baseTemplates)
+            {
+                if (playerIdsWithCards.Contains(pair.Key)) continue; // 카드 조인으로 이미 대체된 선수는 제외
+
+                templates[pair.Key] = pair.Value; // TemplateId=player_id, Grade=SEASON 기본값 그대로 유지
+                fallbackCount++;
+            }
+
+            if (fallbackCount > 0)
+            {
+                Debug.Log($"[PlayerDatabase] cards.csv에 등록되지 않은 선수 {fallbackCount}명은 기본(SEASON) " +
+                    "템플릿으로 폴백 등록했습니다.");
+            }
+
+            Debug.Log($"[PlayerDatabase] 최종 템플릿 {templates.Count}개 등록 완료 " +
+                $"(선수 {baseTemplates.Count}명 중 카드 조인 {playerIdsWithCards.Count}명 / 폴백 {fallbackCount}명).");
         }
 
         /// <summary>\n(또는 \r\n) 기준으로 줄을 나누고 첫 줄(헤더)은 건너뛴다. 컬럼 수가 부족한 줄이나
         /// 형변환에 실패한 줄은 그 한 줄만 Warning 후 건너뛰고 다음 줄을 계속 읽는다(명령서 6/7항 - 잘못된
-        /// 한 줄 때문에 전체 로드가 죽지 않도록 방어).</summary>
-        private void ParseCsv(string csvText)
+        /// 한 줄 때문에 전체 로드가 죽지 않도록 방어).
+        /// [TASK-KBO-153] 반환값은 `templates`에 바로 쓰지 않는 "기본 템플릿" 딕셔너리다(player_id 키) -
+        /// 이 시점의 Grade는 항상 SEASON 기본값이며, 최종 등록 여부/Grade 재정의는 Initialize()가
+        /// cards.csv 조인 결과를 보고 결정한다.</summary>
+        private Dictionary<string, PlayerTemplate> ParsePlayersCsv(string csvText)
         {
-            if (string.IsNullOrEmpty(csvText)) return;
+            var baseTemplates = new Dictionary<string, PlayerTemplate>();
+            if (string.IsNullOrEmpty(csvText)) return baseTemplates;
 
             var lines = csvText.Replace("\r\n", "\n").Split('\n');
             int loadedCount = 0;
@@ -169,8 +224,10 @@ namespace KBOManager.Managers
                     bool isPitcher = IsPitcherPosition(position);
 
                     var template = ScriptableObject.CreateInstance<PlayerTemplate>();
-                    // TemplateId/RealPlayerId 둘 다 player_id로 채운다 - cards.csv(카드 등급 변형)를 아직
-                    // 조인하지 않는 이번 태스크 범위에서는 "선수 1명 = 카드 1장"이라 두 식별자가 같다.
+                    // [TASK-KBO-153] 이 시점의 TemplateId/RealPlayerId는 둘 다 player_id다 - 이 템플릿은
+                    // 아직 "기본(물리 데이터) 템플릿"일 뿐이다. cards.csv에 이 player_id로 등록된 카드가
+                    // 있으면 Initialize()가 ParseCardsCsv() 결과로 이 항목을 등급별 카드 템플릿(들)로
+                    // 대체하고, 없는 선수만 이 기본 템플릿이 그대로 최종 등록된다(폴백).
                     template.TemplateId = playerId;
                     template.RealPlayerId = playerId;
                     template.PlayerName = name;
@@ -214,7 +271,7 @@ namespace KBOManager.Managers
                             ConvertZScoreToStat(zDef));
                     }
 
-                    templates[playerId] = template;
+                    baseTemplates[playerId] = template;
                     loadedCount++;
                 }
                 catch (Exception ex)
@@ -224,7 +281,110 @@ namespace KBOManager.Managers
                 }
             }
 
-            Debug.Log($"[PlayerDatabase] players.csv에서 템플릿 {loadedCount}개를 로드했습니다.");
+            Debug.Log($"[PlayerDatabase] players.csv에서 기본 템플릿 {loadedCount}개를 로드했습니다.");
+            return baseTemplates;
+        }
+
+        /// <summary>[TASK-KBO-153] cards.csv를 파싱해 player_id별로 등급 변형 카드를 만들어 `templates`에
+        /// 직접 등록한다. 헤더: card_id,player_id,grade_id,grade_name,base_ovr,salary_cost,max_enhance,
+        /// max_awaken,is_droppable - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)만 쓴다.
+        /// 반환값은 "카드가 최소 1장이라도 등록된 player_id 집합"이다 - Initialize()가 이 집합에 없는
+        /// player_id만 기본(SEASON) 템플릿으로 폴백 등록한다. 알 수 없는 player_id를 참조하는 카드
+        /// 행이나 형변환 실패 행은 그 한 줄만 Warning 후 건너뛴다(players.csv와 동일한 방어 관례,
+        /// 명령서 6/7항).</summary>
+        private HashSet<string> ParseCardsCsv(string csvText, Dictionary<string, PlayerTemplate> baseTemplates)
+        {
+            var playerIdsWithCards = new HashSet<string>();
+            if (string.IsNullOrEmpty(csvText)) return playerIdsWithCards;
+
+            var lines = csvText.Replace("\r\n", "\n").Split('\n');
+            int loadedCount = 0;
+
+            for (int i = 1; i < lines.Length; i++) // 0번째 줄(헤더)은 스킵
+            {
+                string line = lines[i].Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+
+                var columns = line.Split(',');
+                if (columns.Length < ExpectedCardColumnCount)
+                {
+                    Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄의 컬럼 수가 부족해 건너뜁니다" +
+                        $"({columns.Length}/{ExpectedCardColumnCount}): '{line}'");
+                    continue;
+                }
+
+                try
+                {
+                    string cardId = columns[0].Trim();
+                    string playerId = columns[1].Trim();
+                    string gradeIdRaw = columns[2].Trim();
+                    string gradeName = columns[3].Trim();
+
+                    if (!baseTemplates.TryGetValue(playerId, out var baseTemplate))
+                    {
+                        Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄이 존재하지 않는 " +
+                            $"player_id '{playerId}'를 참조해 건너뜁니다: '{line}'");
+                        continue;
+                    }
+
+                    // grade_name(문자열)을 우선 시도하고, 실패하면 grade_id(정수, Grade enum과 동일한
+                    // 서열 - 04_card_grade_policy.md/TASK-032-IMPLEMENT)로 폴백, 그마저 실패하면 SEASON.
+                    Grade grade;
+                    if (!Enum.TryParse(gradeName, out grade))
+                    {
+                        if (int.TryParse(gradeIdRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var gradeIdInt) &&
+                            Enum.IsDefined(typeof(Grade), gradeIdInt))
+                        {
+                            grade = (Grade)gradeIdInt;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄의 등급 값을 해석하지 " +
+                                $"못해 SEASON으로 대체합니다(grade_id='{gradeIdRaw}', grade_name='{gradeName}'): '{line}'");
+                            grade = Grade.SEASON;
+                        }
+                    }
+
+                    var cardTemplate = CloneBaseTemplate(baseTemplate);
+                    cardTemplate.TemplateId = cardId;      // [TASK-KBO-153] 이제부터 TemplateId = 카드 고유 ID
+                    cardTemplate.RealPlayerId = playerId;  // 동일 선수 판정(각성 재료 등)은 그대로 player_id 기준
+                    cardTemplate.Grade = grade;
+
+                    templates[cardId] = cardTemplate;
+                    playerIdsWithCards.Add(playerId);
+                    loadedCount++;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄 파싱에 실패해 건너뜁니다: " +
+                        $"'{line}' ({ex.Message})");
+                    continue;
+                }
+            }
+
+            Debug.Log($"[PlayerDatabase] cards.csv에서 카드 템플릿 {loadedCount}개를 로드했습니다 " +
+                $"(선수 {playerIdsWithCards.Count}명 커버).");
+            return playerIdsWithCards;
+        }
+
+        /// <summary>[TASK-KBO-153] 기본 템플릿(물리 데이터)의 필드를 새 ScriptableObject 인스턴스로
+        /// 복제한다. Identity(TemplateId/RealPlayerId)와 Grade는 호출부(ParseCardsCsv)가 카드별로 다시
+        /// 채울 것이므로 여기서는 복제하지 않는다.</summary>
+        private static PlayerTemplate CloneBaseTemplate(PlayerTemplate source)
+        {
+            var clone = ScriptableObject.CreateInstance<PlayerTemplate>();
+            clone.PlayerName = source.PlayerName;
+            clone.SeasonYear = source.SeasonYear;
+            clone.Team = source.Team;
+            clone.IsPitcher = source.IsPitcher;
+            clone.BatterPosition = source.BatterPosition;
+            clone.PitcherRole = source.PitcherRole;
+            clone.BatterStats = source.BatterStats;
+            clone.PitcherStats = source.PitcherStats;
+            clone.Cost = source.Cost;
+            clone.PresetSkillTier = source.PresetSkillTier;
+            clone.PresetSkillName = source.PresetSkillName;
+            return clone;
         }
 
         /// <summary>[TASK-KBO-088] docs/11_data_dictionary.md D절 확정 공식. 평균(Z=0)을 50점에, 표준편차
@@ -267,8 +427,10 @@ namespace KBOManager.Managers
             _ => BatterPosition.DesignatedHitter,
         };
 
-        /// <summary>TemplateId(=players.csv의 player_id)로 원본 템플릿을 조회한다. [TASK-KBO-085] 접근
-        /// 시점에 아직 초기화되지 않았다면 지연 초기화한다.</summary>
+        /// <summary>TemplateId로 원본 템플릿을 조회한다. [TASK-KBO-153] cards.csv에 등록된 선수는
+        /// TemplateId가 카드 고유 ID(cards.csv의 card_id, 예: "CRD_0001")이고, 아직 등록되지 않은 선수는
+        /// 기존 방식대로 player_id다(안전 마이그레이션 폴백). [TASK-KBO-085] 접근 시점에 아직
+        /// 초기화되지 않았다면 지연 초기화한다.</summary>
         public PlayerTemplate GetTemplateById(string templateId)
         {
             EnsureInitialized();

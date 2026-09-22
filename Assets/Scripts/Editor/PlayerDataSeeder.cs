@@ -57,8 +57,9 @@ namespace KBOManager.EditorTools
             }
         }
 
-        // 명령서 4항이 지정한 타자 7명. PaIp(타석수)는 OVR 계산에 관여하지 않는(원문 확인 - ParseCsv()가
-        // columns[5]를 전혀 읽지 않음) 참고용 수치라 포지션 비중에 맞춰 임의로 채웠다.
+        // 명령서 4항이 지정한 타자 7명. PaIp(타석수)는 OVR 계산에 관여하지 않는(원문 확인 - PlayerDatabase.
+        // ParsePlayersCsv()가 columns[5]를 전혀 읽지 않음, TASK-KBO-153에서 개명) 참고용 수치라 포지션
+        // 비중에 맞춰 임의로 채웠다.
         private static readonly PlayerSeed[] Batters =
         {
             new PlayerSeed("PLY_0001", "구자욱", "RF", 82, 500),
