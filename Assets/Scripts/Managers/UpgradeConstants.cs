@@ -8,10 +8,11 @@ namespace KBOManager.Managers
     /// 신설. 사용자 GDD 지시에 따라 등급별 요구/제공 경험치를 이 파일 한 곳에 하드코딩해 두어(명령서 6항)
     /// 향후 수치를 쉽게 조절할 수 있도록 한다 - 모든 값은 임시 밸런스 값이다.
     ///
-    /// 등급 순서는 `Player.cs`(`GradeBaseCostFor`)와 `Types.cs`의 `Grade` enum 정수값(SEASON=0 ~
-    /// DYNASTY=7)이 이미 합의하고 있는 "파워 서열"을 그대로 따른다(`(int)Grade`를 순위로 직접 사용) -
-    /// `ScoutUIController.GradeRank`(단순 "최고급 뽑기 연출" 임계값 판정용, GOLDEN_GLOVE/SIGNATURE 순서가
-    /// 이와 다름)는 이 파일과 무관한 별개 용도라 참고하지 않았다.
+    /// 등급 순서는 `Player.cs`(`GradeBaseCostFor`)와 `Types.cs`의 `Grade` enum 정수값(TASK-KBO-155
+    /// 재배치 이후 LIVE_NORMAL=1 ~ DYNASTY=8)이 이미 합의하고 있는 "파워 서열"을 그대로 따른다
+    /// (`(int)Grade`를 순위로 직접 사용) - `ScoutUIController.GradeRank`(단순 "최고급 뽑기 연출"
+    /// 임계값 판정용, GOLDEN_GLOVE/SIGNATURE 순서가 이와 다름)는 이 파일과 무관한 별개 용도라
+    /// 참고하지 않았다.
     /// </summary>
     public static class UpgradeConstants
     {
@@ -19,15 +20,17 @@ namespace KBOManager.Managers
         /// [Required EXP] 타겟 카드가 "0강 -&gt; 1강"으로 올라가는 데 필요한 기본 경험치(등급별 차등).
         /// 사용자 지시 예시(라이브 에픽=1000, 시그니처=2000)를 정확히 반영했고, 나머지 등급은 파워
         /// 서열에 맞춰 단조 증가하도록 임시로 채웠다 - 밸런스 확정 전까지의 하드코딩 값(TODO).
+        /// [TASK-KBO-155] SEASON 삭제(사용자 직접 지시)로 항목을 제거했고, 신설 RETIRED_NUMBER는
+        /// TITLE_HOLDER(1700)와 SIGNATURE(2000) 사이 값(1850)으로 단조 증가 규칙을 유지했다.
         /// </summary>
         public static readonly Dictionary<Grade, int> RequiredExpBaseByGrade =
             new Dictionary<Grade, int>
             {
-                { Grade.SEASON, 700 },
                 { Grade.LIVE_NORMAL, 850 },
                 { Grade.LIVE_EPIC, 1000 },      // 사용자 지시 예시값
                 { Grade.ALLSTAR, 1350 },
                 { Grade.TITLE_HOLDER, 1700 },
+                { Grade.RETIRED_NUMBER, 1850 }, // [TASK-KBO-155 신설]
                 { Grade.SIGNATURE, 2000 },      // 사용자 지시 예시값
                 { Grade.GOLDEN_GLOVE, 2300 },
                 { Grade.DYNASTY, 2800 },

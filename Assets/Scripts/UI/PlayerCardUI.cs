@@ -224,6 +224,7 @@ namespace KBOManager.UI
             StarType.GOLD => new Color(1f, 0.84f, 0f),            // 골든 글러브
             StarType.PLATINUM => new Color(0.90f, 0.92f, 0.95f), // 시그니처(플래티넘)
             StarType.TEAM_COLOR => GetTeamColor(team),            // 왕조
+            StarType.BLACK => new Color(0.10f, 0.10f, 0.10f),     // [TASK-KBO-155 신설] 영구결번 - 실제 KBO 구단들의 영구결번 현수막 관례(검정 바탕)를 참고
             _ => Color.white
         };
 

@@ -28,7 +28,7 @@ namespace KBOManager.Managers
     /// 대체 발급한다(물리 데이터는 기본 템플릿에서 복제) - 이제 `TemplateId`가 "카드 고유 ID"라는
     /// PlayerTemplate.cs 최초 설계 의도(TASK-082 주석 "예: GG_KOOJASOOK_2024")를 실제로 만족한다.
     /// cards.csv에 아직 등록되지 않은 선수는 안전 마이그레이션으로 기존 방식(TemplateId=player_id,
-    /// Grade=SEASON 기본값) 그대로 남긴다 - 명령서 6항 "NullReference 없이 하위 호환"을 이렇게
+    /// Grade=LIVE_NORMAL 기본값) 그대로 남긴다 - 명령서 6항 "NullReference 없이 하위 호환"을 이렇게
     /// 만족한다(카드 CSV 자체가 하나도 없어도 완전히 예전과 동일하게 동작한다).
     ///
     /// [TASK-KBO-154] 카드 데이터가 단일 cards.csv 한 장에서 구단별 cards_{TEAM}.csv 10장으로
@@ -179,7 +179,7 @@ namespace KBOManager.Managers
             if (cardsCsvAssets.Length == 0)
             {
                 Debug.LogWarning($"[PlayerDatabase] '{CardsResourceFolder}' 폴더에서 '{CardsFilePrefix}*' 카드 " +
-                    "CSV를 하나도 찾지 못해 카드별 등급 조인 없이 선수당 기본(SEASON) 템플릿 1장씩만 등록합니다.");
+                    "CSV를 하나도 찾지 못해 카드별 등급 조인 없이 선수당 기본(LIVE_NORMAL) 템플릿 1장씩만 등록합니다.");
             }
 
             int fallbackCount = 0;
@@ -187,13 +187,13 @@ namespace KBOManager.Managers
             {
                 if (playerIdsWithCards.Contains(pair.Key)) continue; // 카드 조인으로 이미 대체된 선수는 제외
 
-                templates[pair.Key] = pair.Value; // TemplateId=player_id, Grade=SEASON 기본값 그대로 유지
+                templates[pair.Key] = pair.Value; // TemplateId=player_id, Grade=LIVE_NORMAL 기본값 그대로 유지
                 fallbackCount++;
             }
 
             if (fallbackCount > 0)
             {
-                Debug.Log($"[PlayerDatabase] cards_*.csv에 등록되지 않은 선수 {fallbackCount}명은 기본(SEASON) " +
+                Debug.Log($"[PlayerDatabase] cards_*.csv에 등록되지 않은 선수 {fallbackCount}명은 기본(LIVE_NORMAL) " +
                     "템플릿으로 폴백 등록했습니다.");
             }
 
@@ -206,7 +206,7 @@ namespace KBOManager.Managers
         /// 형변환에 실패한 줄은 그 한 줄만 Warning 후 건너뛰고 다음 줄을 계속 읽는다(명령서 6/7항 - 잘못된
         /// 한 줄 때문에 전체 로드가 죽지 않도록 방어).
         /// [TASK-KBO-153] 반환값은 `templates`에 바로 쓰지 않는 "기본 템플릿" 딕셔너리다(player_id 키) -
-        /// 이 시점의 Grade는 항상 SEASON 기본값이며, 최종 등록 여부/Grade 재정의는 Initialize()가
+        /// 이 시점의 Grade는 항상 LIVE_NORMAL 기본값이며, 최종 등록 여부/Grade 재정의는 Initialize()가
         /// cards.csv 조인 결과를 보고 결정한다.</summary>
         private Dictionary<string, PlayerTemplate> ParsePlayersCsv(string csvText)
         {
@@ -256,6 +256,10 @@ namespace KBOManager.Managers
                     template.SeasonYear = year;
                     template.Team = team;
                     template.IsPitcher = isPitcher;
+                    // [TASK-KBO-155] SEASON 삭제 이전에는 이 필드를 비워 둬도 C# enum 기본값(정수 0)이
+                    // 곧 SEASON이라 우연히 맞았다 - 이제 0번 값에 대응하는 명명된 등급이 없으므로, 카드
+                    // 폴백(cards_*.csv 미등록 선수)이 실제로 유효한 등급을 갖도록 명시적으로 대입한다.
+                    template.Grade = Grade.LIVE_NORMAL;
 
                     // [TASK-KBO-088] docs/11_data_dictionary.md D절 확정 공식을 적용해 6종 공통 Z-score +
                     // 투수 전용 3종(z_stuff/z_control/z_movement, columns[13..15])을 1~100 정수 스탯으로
@@ -313,7 +317,7 @@ namespace KBOManager.Managers
         /// 추가) - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)/year만 쓴다. 여러 파일에서
         /// 반복 호출되므로(Initialize() 참고) `templates`/`playerIdsWithCards`는 매 호출마다 누적된다.
         /// 반환값은 "이 파일에서 카드가 최소 1장이라도 등록된 player_id 집합"이다 - Initialize()가 전체
-        /// 파일의 반환값을 합집합한 뒤, 그 안에 없는 player_id만 기본(SEASON) 템플릿으로 폴백 등록한다.
+        /// 파일의 반환값을 합집합한 뒤, 그 안에 없는 player_id만 기본(LIVE_NORMAL) 템플릿으로 폴백 등록한다.
         /// 알 수 없는 player_id를 참조하는 카드 행이나 형변환 실패 행은 그 한 줄만 Warning 후 건너뛴다
         /// (players.csv와 동일한 방어 관례, 명령서 6/7항).</summary>
         private HashSet<string> ParseCardsCsv(string csvText, Dictionary<string, PlayerTemplate> baseTemplates)
@@ -352,7 +356,8 @@ namespace KBOManager.Managers
                     }
 
                     // grade_name(문자열)을 우선 시도하고, 실패하면 grade_id(정수, Grade enum과 동일한
-                    // 서열 - 04_card_grade_policy.md/TASK-032-IMPLEMENT)로 폴백, 그마저 실패하면 SEASON.
+                    // 서열 - 04_card_grade_policy.md/TASK-032-IMPLEMENT)로 폴백, 그마저 실패하면
+                    // [TASK-KBO-155] LIVE_NORMAL(SEASON 삭제로 새로운 기본/floor 등급이 됨).
                     Grade grade;
                     if (!Enum.TryParse(gradeName, out grade))
                     {
@@ -364,8 +369,8 @@ namespace KBOManager.Managers
                         else
                         {
                             Debug.LogWarning($"[PlayerDatabase] cards_*.csv {i + 1}번째 줄의 등급 값을 해석하지 " +
-                                $"못해 SEASON으로 대체합니다(grade_id='{gradeIdRaw}', grade_name='{gradeName}'): '{line}'");
-                            grade = Grade.SEASON;
+                                $"못해 LIVE_NORMAL로 대체합니다(grade_id='{gradeIdRaw}', grade_name='{gradeName}'): '{line}'");
+                            grade = Grade.LIVE_NORMAL;
                         }
                     }
 

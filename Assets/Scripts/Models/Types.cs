@@ -86,37 +86,48 @@ namespace KBOManager.Models
     }
 
     /// <summary>
-    /// 선수 명함(카드) 등급. GDD v4.0/04_card_grade_policy.md 확정 서열(SEASON=0 ~ DYNASTY=7)과
-    /// 정수값을 완전히 일치시킨다(TASK-KBO-032-IMPLEMENT). 이렇게 하면 (int)Grade 캐스팅 값이 곧
-    /// 등급의 랭크(희귀도)가 되어, ScoutManager.RollGradeAtLeast()의 등급 대소 비교(&gt;=)가 별도의
-    /// 랭크 테이블 없이도 안전하게 성립한다.
+    /// 선수 명함(카드) 등급. GDD v4.0/04_card_grade_policy.md 확정 서열과 정수값을 완전히
+    /// 일치시킨다(TASK-KBO-032-IMPLEMENT). 이렇게 하면 (int)Grade 캐스팅 값이 곧 등급의 랭크
+    /// (희귀도)가 되어, ScoutManager.RollGradeAtLeast()의 등급 대소 비교(&gt;=)와
+    /// UpgradeConstants.GetMaterialExp()의 rankDelta 계산이 별도의 랭크 테이블 없이도 안전하게
+    /// 성립한다.
     ///
     /// [TASK-KBO-032 사전 조사 결과] SaveManager는 Grade 자체를 JSON에 저장하지 않는다(유저 카드는
     /// TemplateId로 PlayerTemplate 원본을 다시 찾아 붙이는 구조) - 따라서 이 정수값 재배치는 기존 JSON
-    /// 세이브 파일을 깨뜨리지 않는다(TASK-KBO-031 당시의 "세이브 호환을 위해 SEASON=7 고정" 판단은
-    /// 이 조사로 전제가 사라져 철회됨).
+    /// 세이브 파일을 깨뜨리지 않는다.
     ///
-    /// [Inspector 직렬화 주의] 단, Grade가 [SerializeField]로 노출된 곳(PlayerTemplate.Grade,
-    /// ScoutManager.gradeDropRates, ShopUIController의 guaranteedMinimumGrade/premiumTenPullMinimumGrade,
-    /// SeasonRewardManager의 championGuaranteedGrade/lastPlaceGuaranteedGrade)은 유니티가 정수값으로
-    /// 직렬화하므로, 이 재배치 이전에 씬/프리팹/.asset에 이미 값을 지정해 둔 로컬 작업이 있다면 그
-    /// Inspector 값이 엉뚱한 등급을 가리키게 될 수 있다 - 재배치 후 반드시 각 Inspector 값을 다시
-    /// 확인/재지정할 것.
+    /// [TASK-KBO-155, 사용자 직접 지시 - 등급 체계 재설계] `SEASON`을 전면 삭제하고(0번 값은 영구
+    /// 결번 처리 - 재사용하지 않는다), "역대 우승 주역" `DYNASTY`와 성격이 비슷한 신규 등급
+    /// `RETIRED_NUMBER`(영구결번)를 `TITLE_HOLDER`와 `SIGNATURE` 사이(랭크상 그 중간 성능)에
+    /// 끼워 넣었다 - "(int)Grade = 랭크"라는 위 핵심 불변식을 지키려면 `SIGNATURE`/`GOLDEN_GLOVE`/
+    /// `DYNASTY`의 정수값을 부득이 한 칸씩 밀어야 했다(단순히 맨 끝에 추가하면 `RETIRED_NUMBER`가
+    /// `DYNASTY`보다도 랭크가 높아지는 모순이 생긴다).
+    ///
+    /// [Inspector 직렬화 주의, 재확인 필요] Grade가 [SerializeField]로 노출된 곳
+    /// (`ScoutManager.gradeDropRates`, `SeasonRewardManager`의 `championGuaranteedGrade`/
+    /// `lastPlaceGuaranteedGrade`)은 유니티가 정수값으로 직렬화하므로, 이 재배치 이전에 씬/프리팹에
+    /// 이미 값을 지정해 둔 로컬 작업이 있다면 그 Inspector 값이 엉뚱한 등급을 가리키게 될 수 있다 -
+    /// 재배치 후 반드시 각 Inspector 값을 다시 확인/재지정할 것(`ShopUIController`는 더 이상 Grade
+    /// 필드를 갖고 있지 않아 목록에서 제외했다 - 과거 리팩토링으로 없어진 필드를 이 주석만 남아 있던
+    /// 것을 이번에 발견해 정정).
     /// </summary>
     public enum Grade
     {
-        SEASON = 0,         // 시즌 카드 (기본/무등급, 강화만 가능/각성 불가)
         LIVE_NORMAL = 1,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
         LIVE_EPIC = 2,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
         ALLSTAR = 3,        // 올스타 (보라 4성)
         TITLE_HOLDER = 4,   // 타이틀 홀더 (실버 5성)
-        SIGNATURE = 5,      // 시그니처 (플래티넘 6성)
-        GOLDEN_GLOVE = 6,   // 골든 글러브 (골드 5성)
-        DYNASTY = 7         // 왕조 (구단색 6성)
+        RETIRED_NUMBER = 5, // [TASK-KBO-155 신설] 영구결번 (검정 5성 - TITLE_HOLDER~SIGNATURE 중간 성능)
+        SIGNATURE = 6,      // 시그니처 (플래티넘 6성)
+        GOLDEN_GLOVE = 7,   // 골든 글러브 (골드 5성)
+        DYNASTY = 8         // 왕조 (구단색 6성)
     }
 
     /// <summary>
     /// 등급에 대응하는 카드의 특수 별(성급) 시각화 타입.
+    /// [TASK-KBO-155] `BLACK`을 끝에 추가했다(영구결번 전용 - 실제 KBO 구단들이 영구결번 현수막을
+    /// 검은 바탕에 금색 글씨로 게시하는 관례를 참고). Grade와 달리 이 enum은 정수 랭크로 쓰이지
+    /// 않고 색상 매핑 전용이라, 기존 값 순서를 건드리지 않고 끝에만 추가해도 안전하다.
     /// </summary>
     public enum StarType
     {
@@ -125,7 +136,8 @@ namespace KBOManager.Models
         SILVER,     // TITLE_HOLDER
         GOLD,       // GOLDEN_GLOVE
         PLATINUM,   // SIGNATURE
-        TEAM_COLOR  // DYNASTY
+        TEAM_COLOR, // DYNASTY
+        BLACK       // RETIRED_NUMBER (영구결번)
     }
 
     /// <summary>

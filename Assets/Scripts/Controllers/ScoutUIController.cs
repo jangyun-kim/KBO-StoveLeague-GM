@@ -121,15 +121,19 @@ namespace KBOManager.Controllers
         }
 
         // GDD 2절 등급 서열(숫자가 클수록 상위 등급). "최고급"의 기준(SIGNATURE 이상)을 여기서 정한다.
+        // [TASK-KBO-155] SEASON 삭제로 시작 랭크가 사라졌고, 신설 RETIRED_NUMBER(영구결번)를
+        // TITLE_HOLDER 다음(GOLDEN_GLOVE보다 한 단계 아래)에 끼워 넣었다 - 이 표는 컴파일 타임
+        // 상수라 Unity Inspector 직렬화 위험이 없어(Types.cs Grade enum과 달리) 자유롭게 재배치했다.
         private static readonly Dictionary<Grade, int> GradeRank = new Dictionary<Grade, int>
         {
             { Grade.LIVE_NORMAL, 0 },
             { Grade.LIVE_EPIC, 1 },
             { Grade.ALLSTAR, 2 },
             { Grade.TITLE_HOLDER, 3 },
-            { Grade.GOLDEN_GLOVE, 4 },
-            { Grade.SIGNATURE, 5 },
-            { Grade.DYNASTY, 6 },
+            { Grade.RETIRED_NUMBER, 4 },
+            { Grade.GOLDEN_GLOVE, 5 },
+            { Grade.SIGNATURE, 6 },
+            { Grade.DYNASTY, 7 },
         };
         private const Grade TopPullThreshold = Grade.SIGNATURE;
 

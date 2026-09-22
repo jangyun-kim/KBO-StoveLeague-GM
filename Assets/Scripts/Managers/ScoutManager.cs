@@ -41,14 +41,16 @@ namespace KBOManager.Managers
         [SerializeField] private int premiumCost = 1;
 
         [Header("Grade Drop Rates (총합 100%)")]
-        [Tooltip("v0.1 확정 스펙(04_card_grade_policy.md): 활성 등급 3종(SEASON/LIVE_NORMAL/LIVE_EPIC)만 뽑힌다. " +
-                 "ALLSTAR 이상은 v0.5/v2.0에서 활성화 예정이라 이 표에서 제외했다.")]
+        [Tooltip("[TASK-KBO-155, 사용자 직접 지시] SEASON 등급이 전면 삭제되어 활성 등급 2종" +
+                 "(LIVE_NORMAL/LIVE_EPIC)만 뽑힌다. 기존 SEASON 70%는 LIVE_NORMAL로 흡수해 " +
+                 "비율(LIVE_NORMAL:LIVE_EPIC=25:5=5:1)을 유지한 채 재분배했다. " +
+                 "ALLSTAR 이상은 v0.5/v2.0에서 활성화 예정이라 이 표에서 제외했다. " +
+                 "[Inspector 재확인 필요] 이 필드가 씬에 값이 저장돼 있다면 라이브 에디터에서 직접 재설정할 것.")]
         [SerializeField]
         private List<GradeDropRate> gradeDropRates = new List<GradeDropRate>
         {
-            new GradeDropRate { Grade = Grade.SEASON, RatePercent = 70f },
-            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = 25f },
-            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 5f },
+            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = 83.33f },
+            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 16.67f },
         };
 
         // [TASK-KBO-144] 프리미엄/픽업 영입(시그니처·타이틀 홀더)이 "타겟 등급 100% 확정"으로
@@ -330,9 +332,8 @@ namespace KBOManager.Managers
         {
             switch (grade)
             {
-                // SEASON은 LIVE_NORMAL과 동일하게 취급한다 - 둘 다 각성 불가(Player.CanAwaken 제외 목록)에
-                // 속하는 "기본/무과금 베이스" 등급이라는 점이 cards.csv 샘플(max_awaken=0)과도 일치한다.
-                case Grade.SEASON:
+                // [TASK-KBO-155, 사용자 직접 지시] SEASON 삭제 - LIVE_NORMAL이 유일한 "기본/무과금
+                // 베이스" 등급이 되었다(둘 다 각성 불가, Player.CanAwaken 제외 목록 참고).
                 case Grade.LIVE_NORMAL:
                     player.CurrentStarType = StarType.NORMAL;
                     player.StarLevel = UnityEngine.Random.Range(1, 4); // 일반 1~3성 무작위
@@ -347,6 +348,10 @@ namespace KBOManager.Managers
                     break;
                 case Grade.TITLE_HOLDER:
                     player.CurrentStarType = StarType.SILVER;
+                    player.StarLevel = 5;
+                    break;
+                case Grade.RETIRED_NUMBER: // [TASK-KBO-155 신설] TITLE_HOLDER/GOLDEN_GLOVE와 동일한 5성, 검정 컬러로 구분
+                    player.CurrentStarType = StarType.BLACK;
                     player.StarLevel = 5;
                     break;
                 case Grade.GOLDEN_GLOVE:

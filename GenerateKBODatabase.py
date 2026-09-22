@@ -63,25 +63,28 @@ MAX_YEAR = 2026
 # ---------------------------------------------------------------------------
 # 2. 카드 등급(Grade) 메타데이터
 # ---------------------------------------------------------------------------
-# 명령서 3항이 지정한 시즌 구성(SEASON 제외 7종) 중 DYNASTY는 아래 "왕조 필수 로스터" 전용이다 -
-# 일반 확률 풀에서는 절대 뽑히지 않는다(왕조=역대 우승 주역이라는 설정을 코드로도 지킨다).
+# [TASK-KBO-155, 사용자 직접 지시] SEASON 전면 삭제, RETIRED_NUMBER(영구결번) 신설을 반영했다 -
+# DYNASTY와 RETIRED_NUMBER는 아래 "필수 로스터" 전용이라 일반 확률 풀에서는 절대 뽑히지 않는다
+# (역대 우승 주역/영구결번이라는 설정을 코드로도 지킨다 - RETIRED_NUMBER의 실제 후보 명단은 다음
+# 단계(실제 선수 데이터 리서치)에서 채워질 예정이라 이 스크립트는 아직 후보를 만들지 않는다).
 # base_ovr 범위와 salary_cost/max_enhance/max_awaken/is_droppable은 docs/04_card_grade_policy.md
 # (등급 서열)와 Models/Player.cs(MaxReinforceLevel=10/MaxAwakenLevel=10, CanAwaken 규칙)에 맞춰
 # 이번 스크립트가 직접 정의했다 - PM 문서에 정확한 수치가 없어 자체 설계한 값이라는 점을 DCL에
 # 명시했다.
 GRADE_META = {
-    "LIVE_NORMAL":  {"code": "LN",   "ovr": (55, 68), "salary": 12, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
-    "LIVE_EPIC":    {"code": "EPIC", "ovr": (65, 76), "salary": 18, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
-    "ALLSTAR":      {"code": "AS",   "ovr": (74, 83), "salary": 24, "max_enhance": 10, "max_awaken": 10, "droppable": "TRUE"},
-    "TITLE_HOLDER": {"code": "TH",   "ovr": (80, 87), "salary": 30, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
-    "GOLDEN_GLOVE": {"code": "GG",   "ovr": (83, 90), "salary": 35, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
-    "SIGNATURE":    {"code": "SIG",  "ovr": (87, 94), "salary": 40, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
-    "DYNASTY":      {"code": "DYN",  "ovr": (92, 99), "salary": 50, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "LIVE_NORMAL":    {"code": "LN",   "ovr": (55, 68), "salary": 12, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
+    "LIVE_EPIC":      {"code": "EPIC", "ovr": (65, 76), "salary": 18, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
+    "ALLSTAR":        {"code": "AS",   "ovr": (74, 83), "salary": 24, "max_enhance": 10, "max_awaken": 10, "droppable": "TRUE"},
+    "TITLE_HOLDER":   {"code": "TH",   "ovr": (80, 87), "salary": 30, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "RETIRED_NUMBER": {"code": "RN",   "ovr": (85, 91), "salary": 33, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "GOLDEN_GLOVE":   {"code": "GG",   "ovr": (83, 90), "salary": 35, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "SIGNATURE":      {"code": "SIG",  "ovr": (87, 94), "salary": 40, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "DYNASTY":        {"code": "DYN",  "ovr": (92, 99), "salary": 50, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
 }
-# Types.cs의 Grade enum 정수값(SEASON=0 ~ DYNASTY=7)과 동일한 서열.
+# Types.cs의 Grade enum 정수값(TASK-KBO-155 재배치 이후 LIVE_NORMAL=1 ~ DYNASTY=8)과 동일한 서열.
 GRADE_ID = {
-    "SEASON": 0, "LIVE_NORMAL": 1, "LIVE_EPIC": 2, "ALLSTAR": 3,
-    "TITLE_HOLDER": 4, "SIGNATURE": 5, "GOLDEN_GLOVE": 6, "DYNASTY": 7,
+    "LIVE_NORMAL": 1, "LIVE_EPIC": 2, "ALLSTAR": 3, "TITLE_HOLDER": 4,
+    "RETIRED_NUMBER": 5, "SIGNATURE": 6, "GOLDEN_GLOVE": 7, "DYNASTY": 8,
 }
 
 # 일반 확률 풀(DYNASTY 제외) - 누적 100%.

@@ -101,19 +101,20 @@ namespace KBOManager.Models
             CurrentStamina = Mathf.Min(MaxStamina, CurrentStamina + amount);
         }
 
-        /// <summary>SEASON / LIVE_NORMAL / LIVE_EPIC 등급은 강화만 가능하고 각성은 불가하다.</summary>
+        /// <summary>[TASK-KBO-155] SEASON 등급 삭제(사용자 직접 지시) - LIVE_NORMAL / LIVE_EPIC
+        /// 등급만 강화 전용(각성 불가)으로 남는다. RETIRED_NUMBER(영구결번)는 TITLE_HOLDER/SIGNATURE와
+        /// 같은 상위 등급 취급이라 각성 가능 목록에서 제외하지 않는다.</summary>
         public bool CanAwaken => Template != null
-            && Template.Grade != Grade.SEASON
             && Template.Grade != Grade.LIVE_NORMAL
             && Template.Grade != Grade.LIVE_EPIC;
 
         private static StarType DefaultStarTypeFor(Grade grade) => grade switch
         {
-            Grade.SEASON => StarType.NORMAL,
             Grade.LIVE_NORMAL => StarType.NORMAL,
             Grade.LIVE_EPIC => StarType.NORMAL,
             Grade.ALLSTAR => StarType.PURPLE,
             Grade.TITLE_HOLDER => StarType.SILVER,
+            Grade.RETIRED_NUMBER => StarType.BLACK, // [TASK-KBO-155 신설]
             Grade.GOLDEN_GLOVE => StarType.GOLD,
             Grade.SIGNATURE => StarType.PLATINUM,
             Grade.DYNASTY => StarType.TEAM_COLOR,
@@ -126,11 +127,11 @@ namespace KBOManager.Models
         /// </summary>
         private static int DefaultStarLevelFor(Grade grade) => grade switch
         {
-            Grade.SEASON => MinStarLevel,
             Grade.LIVE_NORMAL => MinStarLevel,
             Grade.LIVE_EPIC => 4,
             Grade.ALLSTAR => 4,
             Grade.TITLE_HOLDER => 5,
+            Grade.RETIRED_NUMBER => 5, // [TASK-KBO-155 신설] TITLE_HOLDER와 동일한 5성 - 최상위(6성)보다는 한 단계 아래
             Grade.GOLDEN_GLOVE => 5,
             Grade.SIGNATURE => MaxStarLevel,
             Grade.DYNASTY => MaxStarLevel,
@@ -216,11 +217,11 @@ namespace KBOManager.Models
         // 정수값(ordinal) 배정과는 무관하다.
         private static float GradeBaseCostFor(Grade grade) => grade switch
         {
-            Grade.SEASON => 5f,
             Grade.LIVE_NORMAL => 5f,
             Grade.LIVE_EPIC => 8f,
             Grade.ALLSTAR => 12f,
             Grade.TITLE_HOLDER => 15f,
+            Grade.RETIRED_NUMBER => 18f, // [TASK-KBO-155 신설] TITLE_HOLDER(15)와 SIGNATURE(20) 중간값
             Grade.SIGNATURE => 20f,
             Grade.GOLDEN_GLOVE => 25f,
             Grade.DYNASTY => 35f,
