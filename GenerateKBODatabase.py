@@ -486,8 +486,76 @@ GOLDEN_GLOVE_HISTORY = {
            ("강정호", "KIWOOM"), ("나성범", "NC"), ("손아섭", "LOTTE"), ("최형우", "SAMSUNG"), ("이승엽", "SAMSUNG")],
     2013: [("손승락", "KIWOOM"), ("강민호", "LOTTE"), ("박병호", "KIWOOM"), ("정근우", "HANWHA"), ("최정", "SSG"),
            ("강정호", "KIWOOM"), ("박용택", "LG"), ("손아섭", "LOTTE"), ("최형우", "SAMSUNG"), ("이병규", "LG")],
+    # [TASK-KBO-162, 사용자 직접 지시 "2024년 이전 시즌으로 확장"] 1986~2012년(10구단 체제 이전 -
+    # KT 창단은 2013년이라 이 구간엔 존재하지 않는다) 골든글러브 27개 시즌을 추가했다. 옛 구단명은
+    # 실제 프랜차이즈 승계 관계에 따라 현재 토큰으로 매핑했다(해태→KIA는 기존 관례와 동일) -
+    # MBC 청룡→LG(1990년 LG그룹 인수), OB 베어스→DOOSAN(1999년 두산그룹으로 개칭), 빙그레
+    # 이글스→HANWHA(1994년 개칭), 태평양 돌핀스/현대 유니콘스→KIWOOM(태평양→현대→우리/서울
+    # 히어로즈→넥센→키움으로 이어지는 프랜차이즈 계보), 쌍방울 레이더스→SSG(1999년 해체 후
+    # 2000년 SK가 그 자리를 승계 - 일반적으로 통용되는 계보 취급, 다만 OB/MBC만큼 명확한 소유권
+    # 승계는 아니라는 점을 밝혀 둔다).
+    2012: [("장원삼", "SAMSUNG"), ("강민호", "LOTTE"), ("박병호", "KIWOOM"), ("서건창", "KIWOOM"), ("최정", "SSG"),
+           ("강정호", "KIWOOM"), ("박용택", "LG"), ("손아섭", "LOTTE"), ("이용규", "KIA"), ("이승엽", "SAMSUNG")],
+    2011: [("윤석민", "KIA"), ("강민호", "LOTTE"), ("이대호", "LOTTE"), ("안치홍", "KIA"), ("최정", "SSG"),
+           ("이대수", "HANWHA"), ("손아섭", "LOTTE"), ("이용규", "KIA"), ("최형우", "SAMSUNG"), ("홍성흔", "LOTTE")],
+    2010: [("류현진", "HANWHA"), ("조인성", "LG"), ("최준석", "DOOSAN"), ("조성환", "LOTTE"), ("이대호", "LOTTE"),
+           ("강정호", "KIWOOM"), ("김강민", "SSG"), ("김현수", "DOOSAN"), ("이종욱", "DOOSAN"), ("홍성흔", "LOTTE")],
+    2009: [("로페즈", "KIA"), ("김상훈", "KIA"), ("최희섭", "KIA"), ("정근우", "SSG"), ("김상현", "KIA"),
+           ("손시헌", "DOOSAN"), ("김현수", "DOOSAN"), ("박용택", "LG"), ("이택근", "KIWOOM"), ("홍성흔", "LOTTE")],
+    2008: [("김광현", "SSG"), ("강민호", "LOTTE"), ("김태균", "HANWHA"), ("조성환", "LOTTE"), ("김동주", "DOOSAN"),
+           ("박기혁", "LOTTE"), ("가르시아", "LOTTE"), ("김현수", "DOOSAN"), ("이종욱", "DOOSAN"), ("홍성흔", "LOTTE")],
+    2007: [("리오스", "DOOSAN"), ("박경완", "SSG"), ("이대호", "LOTTE"), ("고영민", "DOOSAN"), ("김동주", "DOOSAN"),
+           ("박진만", "SAMSUNG"), ("심정수", "SAMSUNG"), ("이대형", "LG"), ("이종욱", "DOOSAN"), ("양준혁", "SAMSUNG")],
+    2006: [("류현진", "HANWHA"), ("진갑용", "SAMSUNG"), ("이대호", "LOTTE"), ("정근우", "SSG"), ("이범호", "HANWHA"),
+           ("박진만", "SAMSUNG"), ("박한이", "SAMSUNG"), ("이용규", "KIA"), ("이택근", "KIWOOM"), ("양준혁", "SAMSUNG")],
+    2005: [("손민한", "LOTTE"), ("진갑용", "SAMSUNG"), ("김태균", "HANWHA"), ("안경현", "DOOSAN"), ("이범호", "HANWHA"),
+           ("손시헌", "DOOSAN"), ("데이비스", "HANWHA"), ("서튼", "KIWOOM"), ("이병규", "LG"), ("김재현", "SSG")],
+    2004: [("배영수", "SAMSUNG"), ("홍성흔", "DOOSAN"), ("양준혁", "SAMSUNG"), ("박종호", "SAMSUNG"), ("김한수", "SAMSUNG"),
+           ("박진만", "SAMSUNG"), ("박한이", "SAMSUNG"), ("브룸바", "KIWOOM"), ("이병규", "LG"), ("이진영", "SSG"), ("김기태", "SSG")],
+    2003: [("정민태", "KIWOOM"), ("김동수", "KIWOOM"), ("이승엽", "SAMSUNG"), ("안경현", "DOOSAN"), ("김한수", "SAMSUNG"),
+           ("홍세완", "KIA"), ("심정수", "KIWOOM"), ("양준혁", "SAMSUNG"), ("이종범", "KIA"), ("김동주", "DOOSAN")],
+    2002: [("송진우", "HANWHA"), ("진갑용", "SAMSUNG"), ("이승엽", "SAMSUNG"), ("김종국", "KIA"), ("김한수", "SAMSUNG"),
+           ("브리또", "SAMSUNG"), ("송지만", "HANWHA"), ("심정수", "KIWOOM"), ("이종범", "KIA"), ("마해영", "SAMSUNG")],
+    2001: [("신윤호", "LG"), ("홍성흔", "DOOSAN"), ("이승엽", "SAMSUNG"), ("안경현", "DOOSAN"), ("김한수", "SAMSUNG"),
+           ("박진만", "KIWOOM"), ("심재학", "DOOSAN"), ("이병규", "LG"), ("정수근", "DOOSAN"), ("양준혁", "LG")],
+    2000: [("임선동", "KIWOOM"), ("박경완", "KIWOOM"), ("이승엽", "SAMSUNG"), ("박종호", "KIWOOM"), ("김동주", "DOOSAN"),
+           ("박진만", "KIWOOM"), ("박재홍", "KIWOOM"), ("송지만", "HANWHA"), ("이병규", "LG"), ("우즈", "DOOSAN")],
+    1999: [("정민태", "KIWOOM"), ("김동수", "SAMSUNG"), ("이승엽", "SAMSUNG"), ("박정태", "LOTTE"), ("김한수", "SAMSUNG"),
+           ("류지현", "LG"), ("이병규", "LG"), ("정수근", "DOOSAN"), ("호세", "LOTTE"), ("로마이어", "HANWHA")],
+    1998: [("정민태", "KIWOOM"), ("박경완", "KIWOOM"), ("이승엽", "SAMSUNG"), ("박정태", "LOTTE"), ("김한수", "SAMSUNG"),
+           ("류지현", "LG"), ("김재현", "LG"), ("박재홍", "KIWOOM"), ("전준호", "KIWOOM"), ("양준혁", "SAMSUNG")],
+    1997: [("이대진", "KIA"), ("김동수", "LG"), ("이승엽", "SAMSUNG"), ("최태원", "SSG"), ("홍현우", "KIA"),
+           ("이종범", "KIA"), ("박재홍", "KIWOOM"), ("양준혁", "SAMSUNG"), ("이병규", "LG"), ("박재용", "KIA")],
+    1996: [("구대성", "HANWHA"), ("박경완", "SSG"), ("김경기", "KIWOOM"), ("박정태", "LOTTE"), ("홍현우", "KIA"),
+           ("이종범", "KIA"), ("김응국", "LOTTE"), ("박재홍", "KIWOOM"), ("양준혁", "SAMSUNG"), ("박재용", "KIA")],
+    1995: [("이상훈", "LG"), ("김동수", "LG"), ("장종훈", "HANWHA"), ("이명수", "DOOSAN"), ("홍현우", "KIA"),
+           ("김민호", "DOOSAN"), ("김광림", "SSG"), ("김상호", "DOOSAN"), ("전준호", "LOTTE"), ("김형석", "DOOSAN")],
+    1994: [("정명원", "KIWOOM"), ("김동수", "LG"), ("서용빈", "LG"), ("박종호", "LG"), ("한대화", "LG"),
+           ("이종범", "KIA"), ("김재현", "LG"), ("박노준", "SSG"), ("윤덕규", "KIWOOM"), ("김기태", "SSG")],
+    1993: [("선동열", "KIA"), ("김동수", "LG"), ("김성래", "SAMSUNG"), ("강기웅", "SAMSUNG"), ("한대화", "LG"),
+           ("이종범", "KIA"), ("김광림", "SSG"), ("이순철", "KIA"), ("전준호", "LOTTE"), ("김기태", "SSG")],
+    1992: [("염종석", "LOTTE"), ("장채근", "KIA"), ("장종훈", "HANWHA"), ("박정태", "LOTTE"), ("송구홍", "LG"),
+           ("박계원", "LOTTE"), ("김응국", "LOTTE"), ("이순철", "KIA"), ("이정훈", "HANWHA"), ("김기태", "SSG")],
+    1991: [("선동열", "KIA"), ("장채근", "KIA"), ("김성한", "KIA"), ("박정태", "LOTTE"), ("한대화", "KIA"),
+           ("류중일", "SAMSUNG"), ("이순철", "KIA"), ("이정훈", "HANWHA"), ("이호성", "KIA"), ("장종훈", "HANWHA")],
+    1990: [("선동열", "KIA"), ("김동수", "LG"), ("김상훈", "LG"), ("강기웅", "SAMSUNG"), ("한대화", "KIA"),
+           ("장종훈", "HANWHA"), ("이강돈", "HANWHA"), ("이정훈", "HANWHA"), ("이호성", "KIA"), ("박승호", "SAMSUNG")],
+    1989: [("선동열", "KIA"), ("유승안", "HANWHA"), ("김성한", "KIA"), ("강기웅", "SAMSUNG"), ("한대화", "KIA"),
+           ("김재박", "LG"), ("고원부", "HANWHA"), ("김일권", "KIWOOM"), ("이강돈", "HANWHA"), ("박철우", "KIA")],
+    1988: [("선동열", "KIA"), ("장채근", "KIA"), ("김성한", "KIA"), ("김성래", "SAMSUNG"), ("한대화", "KIA"),
+           ("장종훈", "HANWHA"), ("이강돈", "HANWHA"), ("이순철", "KIA"), ("이정훈", "HANWHA"), ("김용철", "LOTTE")],
+    1987: [("김시진", "SAMSUNG"), ("이만수", "SAMSUNG"), ("김성한", "KIA"), ("김성래", "SAMSUNG"), ("한대화", "KIA"),
+           ("류중일", "SAMSUNG"), ("김종모", "KIA"), ("이광은", "LG"), ("장효조", "SAMSUNG"), ("유승안", "HANWHA")],
+    1986: [("선동열", "KIA"), ("이만수", "SAMSUNG"), ("김성한", "KIA"), ("김성래", "SAMSUNG"), ("한대화", "KIA"),
+           ("김재박", "LG"), ("김종모", "KIA"), ("이광은", "LG"), ("장효조", "SAMSUNG"), ("김봉연", "KIA")],
 }
-GG_POSITION_SLOTS = ["SP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+
+def _gg_position_for_index(i):
+    # [TASK-KBO-162] 2004년처럼 외야수가 4명으로 집계된 해(원본 위키 표의 드문 예외)에도 안전하게
+    # 동작하도록, 고정 zip 대신 인덱스 기반으로 포지션을 매긴다 - 10번째를 넘는 인덱스는 전부 DH로
+    # 폴백한다(신규 인물 생성 시의 기본값일 뿐이므로 실제 게임 데이터 정확도에 영향 없음).
+    base = ["SP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+    return base[i] if i < len(base) else "DH"
 
 def _resolve_historical(name, team_token, is_pitcher, position):
     # 이름만으로 조회한다(이 표의 선수는 전부 유일하게 식별되는 실존 인물이라 동명이인 위험이
@@ -503,7 +571,8 @@ def _resolve_historical(name, team_token, is_pitcher, position):
 
 golden_glove_cards_to_issue = []  # (rec, year, team_token) - 7-D 절에서 make_card_row로 발급
 for year in sorted(GOLDEN_GLOVE_HISTORY.keys(), reverse=True):  # 최신 연도부터 처리 -> 신규 인물의 기본 소속이 최근 팀이 된다
-    for (name, team_token), position in zip(GOLDEN_GLOVE_HISTORY[year], GG_POSITION_SLOTS):
+    for i, (name, team_token) in enumerate(GOLDEN_GLOVE_HISTORY[year]):
+        position = _gg_position_for_index(i)
         is_pitcher = position == "SP"
         rec = _resolve_historical(name, team_token, is_pitcher, position)
         golden_glove_cards_to_issue.append((rec, year, team_token))
@@ -569,6 +638,52 @@ for year in sorted(TITLE_HOLDER_HISTORY.keys(), reverse=True):
         position = "SP" if is_pitcher else "DH"  # 신규 등록 시에만 쓰이는 기본값(기존 인물은 무시됨)
         rec = _resolve_historical(name, team_token, is_pitcher, position)
         title_holder_cards_to_issue.append((rec, year, team_token))
+
+# ---------------------------------------------------------------------------
+# 5-H. [TASK-KBO-163, 사용자 직접 지시 "RETIRED_NUMBER는 전체 반영"] KBO 영구결번 전체를
+# 위키백과 "KBO 리그 영구 결번 목록" 실시간 조회(2026-09-22)로 확인해 반영한다 - 이 문서
+# 작성 시점 기준 18명 전원(1986년 김영신부터 2025년 오승환까지)이며, 추후 새로 영구결번이
+# 지정되면 이 목록에 추가하면 된다. 연도는 "영구결번 지정 연도"를 카드 연도로 삼았다(그 해에
+# 구단이 이 선수의 커리어 전체를 기려 번호를 걸었다는 실제 사실이 발생한 시점). 옛 구단명은
+# GOLDEN_GLOVE_HISTORY와 동일한 프랜차이즈 승계 매핑을 따른다(해태→KIA, OB→DOOSAN, SK→SSG).
+RETIRED_NUMBER_HISTORY = [
+    ("이종범", "KIA", 2012),
+    ("이병규", "LG", 2017),
+    ("양준혁", "SAMSUNG", 2010),
+    ("이대호", "LOTTE", 2022),
+    ("최동원", "LOTTE", 2011),
+    ("선동열", "KIA", 1996),
+    ("박철순", "DOOSAN", 2002),
+    ("송진우", "HANWHA", 2009),
+    ("이만수", "SAMSUNG", 2004),
+    ("정민철", "HANWHA", 2009),
+    ("박경완", "SSG", 2014),
+    ("박용택", "LG", 2022),
+    ("장종훈", "HANWHA", 2005),
+    ("이승엽", "SAMSUNG", 2017),
+    ("김용수", "LG", 1999),
+    ("김태균", "HANWHA", 2021),
+    ("김영신", "DOOSAN", 1986),
+    ("오승환", "SAMSUNG", 2025),
+]
+
+# 이 중 5명(최동원/박철순/정민철/김용수/김영신)은 이번이 첫 등장이라 실제로 신규 등록되므로
+# 투타/포지션을 정확히 확인해 뒀다(WebSearch로 김영신이 포수였음을 재확인 - 통상 영구결번
+# 투수로 오인하기 쉬운 이름이라 직접 조사하지 않았다면 잘못 등록할 뻔했다). 나머지는 이미
+# GOLDEN_GLOVE_HISTORY 등에 등록돼 있어 아래 값은 무시된다.
+RETIRED_NUMBER_NEW_PLAYER_INFO = {
+    "최동원": (True, "SP"),
+    "박철순": (True, "SP"),
+    "정민철": (True, "SP"),
+    "김용수": (True, "CP"),
+    "김영신": (False, "C"),
+}
+
+retired_number_cards_to_issue = []  # (rec, year, team_token) - 7-F 절에서 make_card_row로 발급
+for name, team_token, year in RETIRED_NUMBER_HISTORY:
+    is_pitcher, position = RETIRED_NUMBER_NEW_PLAYER_INFO.get(name, (False, "DH"))
+    rec = _resolve_historical(name, team_token, is_pitcher, position)
+    retired_number_cards_to_issue.append((rec, year, team_token))
 
 # ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
@@ -675,7 +790,7 @@ for rec in real_2026_records:
     roster_2026_card_count += 1
 
 # ---------------------------------------------------------------------------
-# 7-D. [TASK-KBO-159] 2013~2024 골든글러브 수상 카드를 100% 확정 발급한다 - 연도별 실제 소속
+# 7-D. [TASK-KBO-159/162] 1986~2024 골든글러브 수상 카드를 100% 확정 발급한다 - 연도별 실제 소속
 # 구단으로 발급하므로(`team_token_override`) 같은 선수라도 해에 따라 다른 cards_{TEAM}.csv에
 # 카드가 나뉘어 들어갈 수 있다(예: 최형우는 삼성/KIA 양쪽 파일에, 양의지는 두산/NC 양쪽 파일에).
 gg_history_card_count = 0
@@ -693,6 +808,14 @@ title_history_card_count = 0
 for rec, year, team_token in title_holder_cards_to_issue:
     cards_by_team[team_token].append(make_card_row(rec, year, "TITLE_HOLDER", team_token_override=team_token))
     title_history_card_count += 1
+
+# ---------------------------------------------------------------------------
+# 7-F. [TASK-KBO-163] 영구결번 18명 전원에게 RETIRED_NUMBER 카드를 100% 확정 발급한다 - 카드
+# 연도는 그 선수의 번호가 실제로 걸린(영구결번 지정) 연도다.
+retired_number_card_count = 0
+for rec, year, team_token in retired_number_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "RETIRED_NUMBER", team_token_override=team_token))
+    retired_number_card_count += 1
 
 # ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
@@ -779,8 +902,9 @@ print(f"총 카드 수(전 구단 합계): {total_cards}장")
 print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장")
 print(f"  - 실제 인물로 등록된 누적 총원(2025 수상 + 역대 골든글러브 등): {len(real_player_records)}명")
 print(f"  - 이 중 2026년 실제 현역 로스터 LIVE_NORMAL 카드: {roster_2026_card_count}장 ({len(real_2026_records)}명, 감독/코치 제외)")
-print(f"  - 이 중 2013~2024 골든글러브 확정 카드: {gg_history_card_count}장 ({len(GOLDEN_GLOVE_HISTORY)}개 시즌 x 10명)")
+print(f"  - 이 중 1986~2024 골든글러브 확정 카드: {gg_history_card_count}장 ({len(GOLDEN_GLOVE_HISTORY)}개 시즌, 2004년만 11명)")
 print(f"  - 이 중 2013~2024 개인 타이틀 확정 카드: {title_history_card_count}장 (다관왕은 연도당 1장으로 통합)")
+print(f"  - 이 중 영구결번(RETIRED_NUMBER) 확정 카드: {retired_number_card_count}장 ({len(RETIRED_NUMBER_HISTORY)}명 전원, 1986~2025)")
 print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
