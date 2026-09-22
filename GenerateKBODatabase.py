@@ -166,7 +166,7 @@ SYNTHETIC_PLAYERS_PER_TEAM = 400
 class PlayerRecord:
     __slots__ = ("player_id", "team_token", "team_id", "team_enum", "name", "is_pitcher",
                  "position", "career_start", "career_end", "z_value", "pa_ip", "is_dynasty_member",
-                 "dynasty_years")
+                 "dynasty_years", "skip_random_cards")
 
 player_records = []
 _player_seq = 0
@@ -177,7 +177,8 @@ def next_player_id():
     return f"PLY_{_player_seq:06d}"
 
 def add_player(team_token, team_id, team_enum, name, is_pitcher, position,
-                career_start, career_end, is_dynasty_member=False, dynasty_years=None):
+                career_start, career_end, is_dynasty_member=False, dynasty_years=None,
+                skip_random_cards=False):
     rec = PlayerRecord()
     rec.player_id = next_player_id()
     rec.team_token = team_token
@@ -197,6 +198,9 @@ def add_player(team_token, team_id, team_enum, name, is_pitcher, position,
         (random.randint(30, 70) if is_pitcher else random.randint(200, 600))
     rec.is_dynasty_member = is_dynasty_member
     rec.dynasty_years = dynasty_years
+    # [TASK-KBO-156] 실제 검증된 선수(아래 "리서치 2단계" 절)는 확률 기반 무작위 카드를 받지
+    # 않는다 - 실제 수상 이력만으로 정확히 구성된 카드만 갖는다(가짜 카드가 섞이는 것을 방지).
+    rec.skip_random_cards = skip_random_cards
     player_records.append(rec)
     return rec
 
@@ -224,6 +228,67 @@ for team_id, team_enum, team_token in TEAMS:
         career_end = min(MAX_YEAR, career_start + random.randint(3, 20))
         add_player(team_token, team_id, team_enum, make_player_name(), is_pitcher, position,
                    career_start, career_end)
+
+# ---------------------------------------------------------------------------
+# 5-B. [TASK-KBO-156] 리서치 2단계(사용자 지시 "최근 시즌부터 단계적으로") - 실제 2025시즌
+# KBO 개인 타이틀/골든글러브 수상자를 실제 인물로 반영한다. statiz.co.kr/koreabaseball.com
+# 실시간 조회(WebFetch/WebSearch, 2026-09-22 기준)로 확인한 사실만 담았다 - 확인하지 못한
+# 나머지 타이틀 부문(최다안타/득점/출루율/장타율/세이브/홀드/승률왕 등)은 추측으로 채우지 않고
+# 다음 조사 회차로 미룬다(완료 보고서 참고). team_token은 "수상 당시" 소속 구단이다 - 이후
+# 트레이드로 소속이 바뀌었더라도 카드 자체는 그 시즌 그 구단 소속으로 발급되는 것이 실제 스포츠
+# 카드 관행과 일치한다(2026-09-22 기준 최신 로스터와 다를 수 있음).
+REAL_PLAYERS_2025 = [
+    # (이름, team_token, team_id, team_enum, is_pitcher, position, z_value 근사치)
+    ("디아즈", "SAMSUNG", "TEM_002", "Samsung", False, "1B", 2.6),   # 50홈런/158타점, 타자 3관왕
+    ("양의지", "DOOSAN", "TEM_004", "Doosan", False, "C", 2.3),      # 타율왕, 포수 최초 복수 타율왕
+    ("박해민", "LG", "TEM_003", "LG", False, "CF", 2.0),             # 도루왕(7년 만에 탈환)
+    ("폰세", "HANWHA", "TEM_008", "Hanwha", True, "SP", 2.8),        # 다승/평균자책점(1.89)/탈삼진(252) 투수 4관왕, MVP
+    ("신민재", "LG", "TEM_003", "LG", False, "2B", 1.8),             # 골든글러브 2루수
+    ("송성문", "KIWOOM", "TEM_010", "Kiwoom", False, "3B", 1.8),     # 골든글러브 3루수
+    ("김주원", "NC", "TEM_009", "NC", False, "SS", 1.8),             # 골든글러브 유격수
+    ("안현민", "KT", "TEM_005", "KT", False, "RF", 1.9),             # 골든글러브 외야수, 신인왕
+    ("구자욱", "SAMSUNG", "TEM_002", "Samsung", False, "RF", 1.9),   # 골든글러브 외야수
+    ("레이예스", "LOTTE", "TEM_007", "Lotte", False, "LF", 1.8),     # 골든글러브 외야수(빅터 레예스)
+]
+
+# 등급 = 그 선수가 실제로 받은 상. TITLE_HOLDER는 세부 부문(홈런왕/타율왕 등)을 카드 스키마가
+# 아직 구분하지 않으므로(TASK-KBO-155 범위 밖) "그 해 타이틀 홀더였다"는 사실만 카드 1장으로
+# 반영한다. 한 선수가 같은 해에 TITLE_HOLDER와 GOLDEN_GLOVE를 모두 받았으면 카드 2장을 받는다
+# (실제 카드 수집 게임처럼 같은 해 다른 상 = 다른 카드 SKU).
+REAL_AWARDS_2025 = {
+    "디아즈": ["TITLE_HOLDER", "GOLDEN_GLOVE"],
+    "양의지": ["TITLE_HOLDER", "GOLDEN_GLOVE"],
+    "박해민": ["TITLE_HOLDER"],
+    "폰세": ["TITLE_HOLDER", "GOLDEN_GLOVE"],
+    "신민재": ["GOLDEN_GLOVE"],
+    "송성문": ["GOLDEN_GLOVE"],
+    "김주원": ["GOLDEN_GLOVE"],
+    "안현민": ["GOLDEN_GLOVE"],
+    "구자욱": ["GOLDEN_GLOVE"],
+    "레이예스": ["GOLDEN_GLOVE"],
+}
+
+real_player_records = {}
+for name, team_token, team_id, team_enum, is_pitcher, position, z_value in REAL_PLAYERS_2025:
+    # 최형우처럼 이미 왕조 로스터로 등록된 실존 인물이면 새 player_id를 또 만들지 않고 기존
+    # 레코드를 재사용한다(동일 인물은 RealPlayerId/PlayerId가 하나여야 각성 재료 판정이 맞다).
+    existing = next((r for r in player_records if r.name == name and r.team_token == team_token), None)
+    if existing is not None:
+        rec = existing
+        rec.skip_random_cards = True  # 왕조 로스터는 원래 이 값이 False였으므로 명시적으로 덮어쓴다.
+    else:
+        rec = add_player(team_token, team_id, team_enum, name, is_pitcher, position,
+                          2015, MAX_YEAR, skip_random_cards=True)
+        rec.z_value = z_value
+    real_player_records[name] = rec
+
+# [TASK-KBO-155 신설 - 사용자 직접 지시] 최형우는 왕조(2011~2014) 로스터에도 있지만, 2025년
+# 골든글러브(지명타자) 수상은 별개의 실제 사실이라 별도로 반영한다.
+existing_choi = next((r for r in player_records if r.name == "최형우" and r.team_token == "SAMSUNG"), None)
+if existing_choi is not None:
+    existing_choi.skip_random_cards = True
+    real_player_records["최형우"] = existing_choi
+    REAL_AWARDS_2025["최형우"] = ["GOLDEN_GLOVE"]
 
 # ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
@@ -280,6 +345,11 @@ for rec in player_records:
             cards_by_team[rec.team_token].append(make_card_row(rec, year, "DYNASTY"))
             issued_year_grade.add((year, "DYNASTY"))
 
+    # [TASK-KBO-156] 실제 검증된 선수는 확률 기반 무작위 카드를 받지 않는다 - 왕조 카드(위에서
+    # 이미 발급됨)는 그대로 유지하고, 아래 "실제 수상 카드" 절에서 검증된 카드만 별도로 받는다.
+    if rec.skip_random_cards:
+        continue
+
     # 왕조 구간 밖(또는 왕조 로스터가 아닌 선수)의 일반 카드 - 확률적으로 여러 장.
     card_count = random.randint(MIN_CARDS_PER_PLAYER, MAX_CARDS_PER_PLAYER)
     span = max(1, rec.career_end - rec.career_start + 1)
@@ -295,6 +365,18 @@ for rec in player_records:
             continue  # 동일 (연도, 등급) 카드 중복 방지(간단한 디듀프, 충돌 시 그냥 건너뜀)
         issued_year_grade.add(key)
         cards_by_team[rec.team_token].append(make_card_row(rec, year, grade))
+
+# ---------------------------------------------------------------------------
+# 7-B. [TASK-KBO-156] 실제 검증된 2025시즌 수상 카드 생성 - 확률(roll_grade)이 아니라 REAL_AWARDS_2025에
+# 적어 둔 사실 그대로 100% 확정 발급한다(왕조 카드와 동일한 "확정 발급" 취급).
+# ---------------------------------------------------------------------------
+REAL_AWARD_YEAR = 2025
+real_card_count = 0
+for name, grades in REAL_AWARDS_2025.items():
+    rec = real_player_records[name]
+    for grade in grades:
+        cards_by_team[rec.team_token].append(make_card_row(rec, REAL_AWARD_YEAR, grade))
+        real_card_count += 1
 
 # ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
@@ -378,6 +460,7 @@ for _, _, team_token in TEAMS:
     team_player_count = sum(1 for r in player_records if r.team_token == team_token)
     print(f"  - {team_token}: 선수 {team_player_count}명, 카드 {len(cards_by_team[team_token])}장")
 print(f"총 카드 수(전 구단 합계): {total_cards}장")
+print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장 ({len(real_player_records)}명)")
 print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
