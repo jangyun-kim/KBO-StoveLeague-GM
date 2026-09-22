@@ -422,6 +422,64 @@ for team_token, groups in ROSTER_2026.items():
         real_2026_records.append(_resolve(raw_name, True, PITCHER_CYCLE[idx % len(PITCHER_CYCLE)]))
 
 # ---------------------------------------------------------------------------
+# 5-F. [TASK-KBO-159, 사용자 직접 지시 "2024년 이전 시즌으로 확장"] 2013~2024년(10구단 체제
+# 확립 이후) KBO 골든글러브 수상자 전체를 실제 인물로 반영한다.
+# `koreabaseball.com/Player/Awards/GoldenGlove.aspx` 실시간 조회(2026-09-22)로 확인한 사실 -
+# 매년 정확히 10명(투수/포수/1루/2루/3루/유격/외야x3/지명타자)이며 12개 시즌 × 10명 = 120건
+# 전부 실명이다. 과거 팀 명칭(넥센 히어로즈->키움, SK 와이번스->SSG)은 동일 프랜차이즈의 연속
+# 정체성으로 보고 현재 team_token으로 매핑했다(해태->KIA와 동일한 기존 관례, DCL-126 참고).
+# 선수가 연도별로 실제 다른 구단에 있었던 경우(예: 최형우는 삼성<->KIA를 오갔고, 양의지는
+# 두산<->NC를 오갔다 - 둘 다 실제 FA/트레이드 이력)에도 인물 자체(RealPlayerId)는 하나로
+# 유지하고, 카드만 `make_card_row(..., team_token_override=...)`로 그 해의 실제 소속을 반영한다.
+# 포지션 순서 고정: P, C, 1B, 2B, 3B, SS, OF, OF, OF, DH.
+GOLDEN_GLOVE_HISTORY = {
+    2024: [("하트", "NC"), ("강민호", "SAMSUNG"), ("오스틴", "LG"), ("김혜성", "KIWOOM"), ("김도영", "KIA"),
+           ("박찬호", "KIA"), ("구자욱", "SAMSUNG"), ("레이예스", "LOTTE"), ("로하스", "KT"), ("최형우", "KIA")],
+    2023: [("페디", "NC"), ("양의지", "DOOSAN"), ("오스틴", "LG"), ("김혜성", "KIWOOM"), ("노시환", "HANWHA"),
+           ("오지환", "LG"), ("구자욱", "SAMSUNG"), ("박건우", "NC"), ("홍창기", "LG"), ("손아섭", "NC")],
+    2022: [("안우진", "KIWOOM"), ("양의지", "DOOSAN"), ("박병호", "KT"), ("김혜성", "KIWOOM"), ("최정", "SSG"),
+           ("오지환", "LG"), ("나성범", "KIA"), ("이정후", "KIWOOM"), ("피렐라", "SAMSUNG"), ("이대호", "LOTTE")],
+    2021: [("미란다", "DOOSAN"), ("강민호", "SAMSUNG"), ("강백호", "KT"), ("정은원", "HANWHA"), ("최정", "SSG"),
+           ("김혜성", "KIWOOM"), ("구자욱", "SAMSUNG"), ("이정후", "KIWOOM"), ("홍창기", "LG"), ("양의지", "NC")],
+    2020: [("알칸타라", "DOOSAN"), ("양의지", "NC"), ("강백호", "KT"), ("박민우", "NC"), ("황재균", "KT"),
+           ("김하성", "KIWOOM"), ("김현수", "LG"), ("로하스", "KT"), ("이정후", "KIWOOM"), ("최형우", "KIA")],
+    2019: [("린드블럼", "DOOSAN"), ("양의지", "NC"), ("박병호", "KIWOOM"), ("박민우", "NC"), ("최정", "SSG"),
+           ("김하성", "KIWOOM"), ("로하스", "KT"), ("샌즈", "KIWOOM"), ("이정후", "KIWOOM"), ("페르난데스", "DOOSAN")],
+    2018: [("린드블럼", "DOOSAN"), ("양의지", "DOOSAN"), ("박병호", "KIWOOM"), ("안치홍", "KIA"), ("허경민", "DOOSAN"),
+           ("김하성", "KIWOOM"), ("김재환", "DOOSAN"), ("이정후", "KIWOOM"), ("전준우", "LOTTE"), ("이대호", "LOTTE")],
+    2017: [("양현종", "KIA"), ("강민호", "SAMSUNG"), ("이대호", "LOTTE"), ("안치홍", "KIA"), ("최정", "SSG"),
+           ("김선빈", "KIA"), ("버나디나", "KIA"), ("손아섭", "LOTTE"), ("최형우", "KIA"), ("박용택", "LG")],
+    2016: [("니퍼트", "DOOSAN"), ("양의지", "DOOSAN"), ("테임즈", "NC"), ("서건창", "KIWOOM"), ("최정", "SSG"),
+           ("김재호", "DOOSAN"), ("김재환", "DOOSAN"), ("김주찬", "KIA"), ("최형우", "KIA"), ("김태균", "HANWHA")],
+    2015: [("해커", "NC"), ("양의지", "DOOSAN"), ("테임즈", "NC"), ("나바로", "SAMSUNG"), ("박석민", "NC"),
+           ("김재호", "DOOSAN"), ("김현수", "DOOSAN"), ("나성범", "NC"), ("유한준", "KT"), ("이승엽", "SAMSUNG")],
+    2014: [("밴헤켄", "KIWOOM"), ("양의지", "DOOSAN"), ("박병호", "KIWOOM"), ("서건창", "KIWOOM"), ("박석민", "SAMSUNG"),
+           ("강정호", "KIWOOM"), ("나성범", "NC"), ("손아섭", "LOTTE"), ("최형우", "SAMSUNG"), ("이승엽", "SAMSUNG")],
+    2013: [("손승락", "KIWOOM"), ("강민호", "LOTTE"), ("박병호", "KIWOOM"), ("정근우", "HANWHA"), ("최정", "SSG"),
+           ("강정호", "KIWOOM"), ("박용택", "LG"), ("손아섭", "LOTTE"), ("최형우", "SAMSUNG"), ("이병규", "LG")],
+}
+GG_POSITION_SLOTS = ["SP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+
+def _resolve_historical(name, team_token, is_pitcher, position):
+    # 이름만으로 조회한다(이 표의 선수는 전부 유일하게 식별되는 실존 인물이라 동명이인 위험이
+    # 없다) - 연도마다 소속이 달라도 인물 자체(RealPlayerId)는 하나로 유지한다.
+    existing = real_player_records.get(name)
+    if existing is not None:
+        existing.skip_random_cards = True
+        return existing
+    team_id, team_enum = TEAM_LOOKUP_2026[team_token]
+    rec = add_player(team_token, team_id, team_enum, name, is_pitcher, position, 2010, MAX_YEAR, skip_random_cards=True)
+    real_player_records[name] = rec
+    return rec
+
+golden_glove_cards_to_issue = []  # (rec, year, team_token) - 7-D 절에서 make_card_row로 발급
+for year in sorted(GOLDEN_GLOVE_HISTORY.keys(), reverse=True):  # 최신 연도부터 처리 -> 신규 인물의 기본 소속이 최근 팀이 된다
+    for (name, team_token), position in zip(GOLDEN_GLOVE_HISTORY[year], GG_POSITION_SLOTS):
+        is_pitcher = position == "SP"
+        rec = _resolve_historical(name, team_token, is_pitcher, position)
+        golden_glove_cards_to_issue.append((rec, year, team_token))
+
+# ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
 # ---------------------------------------------------------------------------
 PLAYERS_HEADER = [
@@ -454,10 +512,15 @@ CARDS_HEADER = [
 MIN_CARDS_PER_PLAYER = 2
 MAX_CARDS_PER_PLAYER = 12
 
-def make_card_row(rec, year, grade):
+def make_card_row(rec, year, grade, team_token_override=None):
+    # [TASK-KBO-159] team_token_override - 실제 선수는 이적/FA로 해마다 소속이 달라질 수 있다
+    # (예: 최형우 삼성<->KIA, 양의지 두산<->NC) - 그 해의 실제 소속을 카드 ID/파일 배치에
+    # 반영하기 위한 인자다. 기본 템플릿(rec.team_token, rec.team_id)은 그대로 두고 카드 한 장
+    # 단위로만 다른 구단을 표시할 수 있다.
+    team_token = team_token_override or rec.team_token
     meta = GRADE_META[grade]
     ovr_lo, ovr_hi = meta["ovr"]
-    card_id = f"{rec.team_token}_{year}_{rec.player_id}_{meta['code']}"
+    card_id = f"{team_token}_{year}_{rec.player_id}_{meta['code']}"
     return [
         card_id, rec.player_id, GRADE_ID[grade], grade,
         random.randint(ovr_lo, ovr_hi), meta["salary"], meta["max_enhance"],
@@ -519,6 +582,15 @@ roster_2026_card_count = 0
 for rec in real_2026_records:
     cards_by_team[rec.team_token].append(make_card_row(rec, MAX_YEAR, "LIVE_NORMAL"))
     roster_2026_card_count += 1
+
+# ---------------------------------------------------------------------------
+# 7-D. [TASK-KBO-159] 2013~2024 골든글러브 수상 카드를 100% 확정 발급한다 - 연도별 실제 소속
+# 구단으로 발급하므로(`team_token_override`) 같은 선수라도 해에 따라 다른 cards_{TEAM}.csv에
+# 카드가 나뉘어 들어갈 수 있다(예: 최형우는 삼성/KIA 양쪽 파일에, 양의지는 두산/NC 양쪽 파일에).
+gg_history_card_count = 0
+for rec, year, team_token in golden_glove_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "GOLDEN_GLOVE", team_token_override=team_token))
+    gg_history_card_count += 1
 
 # ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
@@ -602,8 +674,10 @@ for _, _, team_token in TEAMS:
     team_player_count = sum(1 for r in player_records if r.team_token == team_token)
     print(f"  - {team_token}: 선수 {team_player_count}명, 카드 {len(cards_by_team[team_token])}장")
 print(f"총 카드 수(전 구단 합계): {total_cards}장")
-print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장 ({len(real_player_records)}명)")
+print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장")
+print(f"  - 실제 인물로 등록된 누적 총원(2025 수상 + 역대 골든글러브 등): {len(real_player_records)}명")
 print(f"  - 이 중 2026년 실제 현역 로스터 LIVE_NORMAL 카드: {roster_2026_card_count}장 ({len(real_2026_records)}명, 감독/코치 제외)")
+print(f"  - 이 중 2013~2024 골든글러브 확정 카드: {gg_history_card_count}장 ({len(GOLDEN_GLOVE_HISTORY)}개 시즌 x 10명)")
 print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
