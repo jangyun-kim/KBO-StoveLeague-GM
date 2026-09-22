@@ -27,10 +27,17 @@ namespace KBOManager.Managers
     /// 등록된 카드가 있으면 그 카드 각각(등급별로 별도 row)을 `TemplateId=card_id`인 새 PlayerTemplate으로
     /// 대체 발급한다(물리 데이터는 기본 템플릿에서 복제) - 이제 `TemplateId`가 "카드 고유 ID"라는
     /// PlayerTemplate.cs 최초 설계 의도(TASK-082 주석 "예: GG_KOOJASOOK_2024")를 실제로 만족한다.
-    /// cards.csv에 아직 등록되지 않은 선수(현재 샘플 데이터는 11명 중 2명만 카드가 있다)는 안전
-    /// 마이그레이션으로 기존 방식(TemplateId=player_id, Grade=SEASON 기본값) 그대로 남긴다 - 명령서
-    /// 6항 "NullReference 없이 하위 호환"을 이렇게 만족한다(cards.csv 자체가 없어도 완전히 예전과
-    /// 동일하게 동작한다).
+    /// cards.csv에 아직 등록되지 않은 선수는 안전 마이그레이션으로 기존 방식(TemplateId=player_id,
+    /// Grade=SEASON 기본값) 그대로 남긴다 - 명령서 6항 "NullReference 없이 하위 호환"을 이렇게
+    /// 만족한다(카드 CSV 자체가 하나도 없어도 완전히 예전과 동일하게 동작한다).
+    ///
+    /// [TASK-KBO-154] 카드 데이터가 단일 cards.csv 한 장에서 구단별 cards_{TEAM}.csv 10장으로
+    /// 분할됐다(`GenerateKBODatabase.py`가 생성, 1986~2026년 방대한 카드 풀). 조인 로직은
+    /// `Resources.LoadAll&lt;TextAsset&gt;("Data")`로 "Data" 폴더의 모든 TextAsset을 가져와 이름이
+    /// `cards_`로 시작하는 파일만 순회하며 `ParseCardsCsv()`를 반복 호출·누적하는 방식으로
+    /// 개편했다(파일 목록을 하드코딩하지 않아 구단이 늘어도 코드 수정이 필요 없다). 카드 CSV
+    /// 스키마에도 `year`(카드가 실제로 발급된 시즌 연도) 컬럼이 10번째로 추가되어, 같은 선수의
+    /// 카드라도 연도별로 `PlayerTemplate.SeasonYear`가 달라진다.
     /// </summary>
     public class PlayerDatabase : MonoBehaviour
     {
@@ -43,12 +50,20 @@ namespace KBOManager.Managers
         private const int ExpectedColumnCount = 16;
 
         // [TASK-KBO-153] 헤더: card_id,player_id,grade_id,grade_name,base_ovr,salary_cost,max_enhance,
-        // max_awaken,is_droppable (9컬럼). 이번 작업은 card_id(카드 고유 ID)/player_id(FK)/grade만
-        // 조인 대상으로 삼는다 - base_ovr/salary_cost/max_enhance/max_awaken/is_droppable은 강화·샐러리
-        // 시스템(UpgradeManager/Player.CalculateSalaryCost)과 얽혀 있어 "기존 강화 시스템 1mm도 건드리지
-        // 말 것"(명령서 5항)의 범위를 넘어선다 - 이번엔 파싱하지 않고 후속 과제로 남긴다.
-        private const string CardsResourcePath = "Data/cards";
-        private const int ExpectedCardColumnCount = 9;
+        // max_awaken,is_droppable,year (10컬럼 - year는 TASK-KBO-154에서 추가됨). 이번 조인은
+        // card_id(카드 고유 ID)/player_id(FK)/grade/year만 대상으로 삼는다 - base_ovr/salary_cost/
+        // max_enhance/max_awaken/is_droppable은 강화·샐러리 시스템(UpgradeManager/
+        // Player.CalculateSalaryCost)과 얽혀 있어 "기존 강화 시스템 1mm도 건드리지 말 것"(TASK-153
+        // 명령서 5항)의 범위를 넘어선다 - 이번엔 파싱하지 않고 후속 과제로 남긴다.
+        //
+        // [TASK-KBO-154] 카드 데이터가 단일 cards.csv에서 구단별 cards_{TEAM}.csv 10개로 분할됐다
+        // (GenerateKBODatabase.py가 생성). `Resources.LoadAll&lt;TextAsset&gt;(CardsResourceFolder)`로
+        // "Data" 폴더의 모든 TextAsset을 가져온 뒤 이름이 `CardsFilePrefix`로 시작하는 것만 골라
+        // 순회 파싱한다 - players.csv/cheerleaders.csv 등 같은 폴더의 다른 CSV는 이름이 그
+        // 접두사로 시작하지 않아 자동으로 제외된다.
+        private const string CardsResourceFolder = "Data";
+        private const string CardsFilePrefix = "cards_";
+        private const int ExpectedCardColumnCount = 10;
 
         /// <summary>
         /// [TASK-KBO-085/086] CSV의 team_id(예: "TEM_001")를 Team enum으로 매핑하는 표. team_id 값이
@@ -147,18 +162,24 @@ namespace KBOManager.Managers
 
             var baseTemplates = ParsePlayersCsv(playersCsvAsset.text);
 
-            // [TASK-KBO-153, 명령서 6항 - 안전 마이그레이션] cards.csv가 아직 없어도(리소스 미존재)
+            // [TASK-KBO-154, 명령서 6항 - 안전 마이그레이션] cards_*.csv가 한 장도 없어도(리소스 미존재)
             // 예전과 완전히 동일하게 동작해야 한다 - 카드 조인을 건너뛰고 기본 템플릿을 전부 그대로
-            // 등록한다(cards.csv 부재는 NullReference가 아니라 Warning으로만 남긴다).
-            var cardsCsvAsset = Resources.Load<TextAsset>(CardsResourcePath);
-            var playerIdsWithCards = cardsCsvAsset != null
-                ? ParseCardsCsv(cardsCsvAsset.text, baseTemplates)
-                : new HashSet<string>();
+            // 등록한다(부재는 NullReference가 아니라 Warning으로만 남긴다).
+            var cardsCsvAssets = Resources.LoadAll<TextAsset>(CardsResourceFolder)
+                .Where(a => a != null && a.name.StartsWith(CardsFilePrefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(a => a.name, StringComparer.OrdinalIgnoreCase) // 결정론적 로드 순서(로그 재현성)
+                .ToArray();
 
-            if (cardsCsvAsset == null)
+            var playerIdsWithCards = new HashSet<string>();
+            foreach (var asset in cardsCsvAssets)
             {
-                Debug.LogWarning($"[PlayerDatabase] '{CardsResourcePath}' TextAsset을 찾지 못해 " +
-                    "카드별 등급 조인 없이 선수당 기본(SEASON) 템플릿 1장씩만 등록합니다.");
+                playerIdsWithCards.UnionWith(ParseCardsCsv(asset.text, baseTemplates));
+            }
+
+            if (cardsCsvAssets.Length == 0)
+            {
+                Debug.LogWarning($"[PlayerDatabase] '{CardsResourceFolder}' 폴더에서 '{CardsFilePrefix}*' 카드 " +
+                    "CSV를 하나도 찾지 못해 카드별 등급 조인 없이 선수당 기본(SEASON) 템플릿 1장씩만 등록합니다.");
             }
 
             int fallbackCount = 0;
@@ -172,11 +193,12 @@ namespace KBOManager.Managers
 
             if (fallbackCount > 0)
             {
-                Debug.Log($"[PlayerDatabase] cards.csv에 등록되지 않은 선수 {fallbackCount}명은 기본(SEASON) " +
+                Debug.Log($"[PlayerDatabase] cards_*.csv에 등록되지 않은 선수 {fallbackCount}명은 기본(SEASON) " +
                     "템플릿으로 폴백 등록했습니다.");
             }
 
-            Debug.Log($"[PlayerDatabase] 최종 템플릿 {templates.Count}개 등록 완료 " +
+            Debug.Log($"[PlayerDatabase] 카드 CSV {cardsCsvAssets.Length}개 파일 병합 파싱 완료. " +
+                $"최종 템플릿 {templates.Count}개 등록 완료 " +
                 $"(선수 {baseTemplates.Count}명 중 카드 조인 {playerIdsWithCards.Count}명 / 폴백 {fallbackCount}명).");
         }
 
@@ -285,13 +307,15 @@ namespace KBOManager.Managers
             return baseTemplates;
         }
 
-        /// <summary>[TASK-KBO-153] cards.csv를 파싱해 player_id별로 등급 변형 카드를 만들어 `templates`에
-        /// 직접 등록한다. 헤더: card_id,player_id,grade_id,grade_name,base_ovr,salary_cost,max_enhance,
-        /// max_awaken,is_droppable - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)만 쓴다.
-        /// 반환값은 "카드가 최소 1장이라도 등록된 player_id 집합"이다 - Initialize()가 이 집합에 없는
-        /// player_id만 기본(SEASON) 템플릿으로 폴백 등록한다. 알 수 없는 player_id를 참조하는 카드
-        /// 행이나 형변환 실패 행은 그 한 줄만 Warning 후 건너뛴다(players.csv와 동일한 방어 관례,
-        /// 명령서 6/7항).</summary>
+        /// <summary>[TASK-KBO-153, TASK-KBO-154] cards_{TEAM}.csv 한 장을 파싱해 player_id별로 등급
+        /// 변형 카드를 만들어 `templates`에 직접 등록한다. 헤더: card_id,player_id,grade_id,grade_name,
+        /// base_ovr,salary_cost,max_enhance,max_awaken,is_droppable,year(10컬럼, TASK-154에서 year
+        /// 추가) - 이번 조인에는 card_id/player_id/grade_name(또는 grade_id)/year만 쓴다. 여러 파일에서
+        /// 반복 호출되므로(Initialize() 참고) `templates`/`playerIdsWithCards`는 매 호출마다 누적된다.
+        /// 반환값은 "이 파일에서 카드가 최소 1장이라도 등록된 player_id 집합"이다 - Initialize()가 전체
+        /// 파일의 반환값을 합집합한 뒤, 그 안에 없는 player_id만 기본(SEASON) 템플릿으로 폴백 등록한다.
+        /// 알 수 없는 player_id를 참조하는 카드 행이나 형변환 실패 행은 그 한 줄만 Warning 후 건너뛴다
+        /// (players.csv와 동일한 방어 관례, 명령서 6/7항).</summary>
         private HashSet<string> ParseCardsCsv(string csvText, Dictionary<string, PlayerTemplate> baseTemplates)
         {
             var playerIdsWithCards = new HashSet<string>();
@@ -308,7 +332,7 @@ namespace KBOManager.Managers
                 var columns = line.Split(',');
                 if (columns.Length < ExpectedCardColumnCount)
                 {
-                    Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄의 컬럼 수가 부족해 건너뜁니다" +
+                    Debug.LogWarning($"[PlayerDatabase] cards_*.csv {i + 1}번째 줄의 컬럼 수가 부족해 건너뜁니다" +
                         $"({columns.Length}/{ExpectedCardColumnCount}): '{line}'");
                     continue;
                 }
@@ -322,7 +346,7 @@ namespace KBOManager.Managers
 
                     if (!baseTemplates.TryGetValue(playerId, out var baseTemplate))
                     {
-                        Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄이 존재하지 않는 " +
+                        Debug.LogWarning($"[PlayerDatabase] cards_*.csv {i + 1}번째 줄이 존재하지 않는 " +
                             $"player_id '{playerId}'를 참조해 건너뜁니다: '{line}'");
                         continue;
                     }
@@ -339,16 +363,24 @@ namespace KBOManager.Managers
                         }
                         else
                         {
-                            Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄의 등급 값을 해석하지 " +
+                            Debug.LogWarning($"[PlayerDatabase] cards_*.csv {i + 1}번째 줄의 등급 값을 해석하지 " +
                                 $"못해 SEASON으로 대체합니다(grade_id='{gradeIdRaw}', grade_name='{gradeName}'): '{line}'");
                             grade = Grade.SEASON;
                         }
                     }
 
+                    // [TASK-KBO-154] year(10번째 컬럼, index 9) - 이 카드가 실제로 발급된 시즌 연도.
+                    // 파싱에 실패해도 그 값만 기본 템플릿의 SeasonYear로 안전하게 폴백한다(행 전체를
+                    // 스킵하지 않음 - 명령서 7항).
+                    int year = int.TryParse(columns[9].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedYear)
+                        ? parsedYear
+                        : baseTemplate.SeasonYear;
+
                     var cardTemplate = CloneBaseTemplate(baseTemplate);
                     cardTemplate.TemplateId = cardId;      // [TASK-KBO-153] 이제부터 TemplateId = 카드 고유 ID
                     cardTemplate.RealPlayerId = playerId;  // 동일 선수 판정(각성 재료 등)은 그대로 player_id 기준
                     cardTemplate.Grade = grade;
+                    cardTemplate.SeasonYear = year;        // [TASK-KBO-154] 카드별 실제 연도로 재정의
 
                     templates[cardId] = cardTemplate;
                     playerIdsWithCards.Add(playerId);
@@ -356,13 +388,13 @@ namespace KBOManager.Managers
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[PlayerDatabase] cards.csv {i + 1}번째 줄 파싱에 실패해 건너뜁니다: " +
+                    Debug.LogWarning($"[PlayerDatabase] cards_*.csv {i + 1}번째 줄 파싱에 실패해 건너뜁니다: " +
                         $"'{line}' ({ex.Message})");
                     continue;
                 }
             }
 
-            Debug.Log($"[PlayerDatabase] cards.csv에서 카드 템플릿 {loadedCount}개를 로드했습니다 " +
+            Debug.Log($"[PlayerDatabase] cards_*.csv 파일 1개에서 카드 템플릿 {loadedCount}개를 로드했습니다 " +
                 $"(선수 {playerIdsWithCards.Count}명 커버).");
             return playerIdsWithCards;
         }
