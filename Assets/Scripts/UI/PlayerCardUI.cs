@@ -44,6 +44,9 @@ namespace KBOManager.UI
     /// `SAMSUNG_2026_PLY_004038_SIG.png`처럼 Sprite Mode가 "Multiple"으로 임포트되고 서브 스프라이트명이
     /// 파일명과 다른 리소스는 `Resources.Load&lt;Sprite&gt;`가 타입 불일치로 조용히 null을 반환한다 -
     /// `LoadSprite()`가 `Resources.LoadAll&lt;Sprite&gt;` 폴백으로 이를 구제한다(아래 참고).
+    ///
+    /// [TASK-KBO-171] DYNASTY(왕조) 등급 전용 배경에 구단별 분기를 추가했다 - `BG_{code}_{TeamToken}`이
+    /// 있으면 그것을, 없으면 기존처럼 `BG_{code}` 공통 배경을 쓴다. `LoadGradeBackground()` 참고.
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
@@ -145,7 +148,7 @@ namespace KBOManager.UI
             SetupStamina(player);
             SetupCondition(player.CurrentCondition);
             SetupPortrait(player);
-            SetupGradeDesign(player.Template.Grade);
+            SetupGradeDesign(player.Template.Grade, player.Template.Team);
         }
 
         /// <summary>[TASK-KBO-147, TASK-KBO-153 키 변경, TASK-KBO-169 경로 개편] `Resources/Portraits/
@@ -224,8 +227,16 @@ namespace KBOManager.UI
         /// frameImage(배경)는 리소스가 없으면 sprite를 건드리지 않고(defaultFrameSprite로 복원) 기존
         /// 색상 틴트(Setup()이 이미 대입한 gradeColor)만으로 표시한다 - 디자인 리소스가 아직 없는
         /// 등급도 크래시나 시각적 결손 없이 예전과 동일하게 보인다. frameOverlayImage(테두리)는 원래
-        /// 이번 작업으로 신설된 요소라 지킬 기본값이 없으므로 있으면 켜고 없으면 끈다.</summary>
-        private void SetupGradeDesign(Grade grade)
+        /// 이번 작업으로 신설된 요소라 지킬 기본값이 없으므로 있으면 켜고 없으면 끈다.
+        ///
+        /// [TASK-KBO-171] DYNASTY(왕조) 등급은 구단마다 다른 왕조 서사를 갖고 있어("왕조" 서사가
+        /// 구단 공통이 아니라 삼성/해태 등 구단별로 다르다) 등급 공통 배경 하나로는 맞지 않는다 -
+        /// `BG_{code}_{TeamToken}`(예: `BG_DYN_SAMSUNG`)을 우선 찾고, 해당 구단 전용 아트가 아직
+        /// 없으면(대부분의 팀이 그럴 것) `BG_{code}`(구단 무관 공통 왕조 배경)로 자연스럽게 폴백한다.
+        /// `TeamToken`은 `Team.ToString().ToUpperInvariant()`로 만든다 - `GenerateKBODatabase.py`의
+        /// `TEAMS` 토큰(card_id에 실제로 박히는 값, 예: "SAMSUNG"/"KIWOOM"/"LOTTE")과 대소문자까지
+        /// 정확히 일치한다(다른 구단은 enum 이름 자체가 이미 대문자와 동일 - KIA/LG/KT/SSG/NC).</summary>
+        private void SetupGradeDesign(Grade grade, Team team)
         {
             string code = GetGradeCode(grade);
 
@@ -237,7 +248,7 @@ namespace KBOManager.UI
                     defaultFrameSpriteCaptured = true;
                 }
 
-                Sprite bg = LoadSprite($"{CardDesignResourceFolder}/BG_{code}");
+                Sprite bg = LoadGradeBackground(code, grade, team);
                 if (bg != null)
                 {
                     frameImage.sprite = bg;
@@ -255,6 +266,22 @@ namespace KBOManager.UI
                 frameOverlayImage.sprite = frame;
                 frameOverlayImage.gameObject.SetActive(frame != null);
             }
+        }
+
+        /// <summary>[TASK-KBO-171] `grade`가 DYNASTY일 때만 구단별 전용 배경(`BG_{code}_{TeamToken}`)을
+        /// 우선 시도하고, 그 외 모든 등급은 기존과 동일하게 `BG_{code}` 공통 배경만 찾는다 - 왕조가 아닌
+        /// 등급까지 `_{TeamToken}` 접미사를 찾아보면 불필요한 `Resources.Load` 실패 시도가 매 Setup()마다
+        /// 늘어나므로, 실제로 구단별 분기가 필요한 DYNASTY에만 한정했다.</summary>
+        private Sprite LoadGradeBackground(string code, Grade grade, Team team)
+        {
+            if (grade == Grade.DYNASTY)
+            {
+                string teamToken = team.ToString().ToUpperInvariant();
+                Sprite teamBg = LoadSprite($"{CardDesignResourceFolder}/BG_{code}_{teamToken}");
+                if (teamBg != null) return teamBg;
+            }
+
+            return LoadSprite($"{CardDesignResourceFolder}/BG_{code}");
         }
 
         /// <summary>[TASK-KBO-168] Grade -&gt; CardDesigns 리소스 파일명 코드. GenerateKBODatabase.py의
