@@ -32,12 +32,17 @@ namespace KBOManager.UI
     /// 그대로 따랐다. cards.csv에 아직 등록되지 않은 선수(현재 11명 중 2명만 등록됨, PlayerDatabase.cs
     /// 참고)는 폴백으로 `TemplateId=player_id`가 쓰여 여전히 등급 구분 없는 사진 1장을 공유한다 -
     /// cards.csv에 해당 선수의 카드 데이터를 추가하는 즉시(코드 수정 없이) 해소된다.
+    ///
+    /// [TASK-KBO-169, 경로 개편] 2만 6천 장 규모라 한 폴더에 다 몰아넣지 않고 `{TemplateId}`의 앞 두
+    /// `_` 조각(Team/Year)으로 중첩 폴더를 나눈다 - 최종 경로는 `Assets/Resources/Portraits/{Team}/
+    /// {Year}/{TemplateId}.png`(예: `Portraits/SAMSUNG/2024/SAMSUNG_2024_PLY_004038_SIG.png`).
+    /// `BuildPortraitResourcePath()` 참고.
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
-        /// <summary>[TASK-KBO-147, TASK-KBO-153] 초상화 리소스 폴더 규칙. PM이 이 폴더에
-        /// "{TemplateId}.png"(cards.csv 등록 선수는 카드 ID 기준 예: "CRD_0001.png", 미등록 선수는
-        /// player_id 기준 예: "PLY_0003.png")만 넣으면 별도 코드 수정 없이 즉시 연동된다.</summary>
+        /// <summary>[TASK-KBO-147, TASK-KBO-153, TASK-KBO-169 경로 개편] 초상화 리소스 폴더 루트.
+        /// 실제 로딩 경로는 이 상수 하나가 아니라 `BuildPortraitResourcePath()`가 만드는
+        /// "{이 상수}/{Team}/{Year}/{TemplateId}"(중첩 폴더) 전체다 - 클래스 요약 참고.</summary>
         public const string PortraitResourceFolder = "Portraits";
 
         /// <summary>[TASK-KBO-168] 등급별 전용 배경(BG_{code})/테두리(Frame_{code}) 이미지 폴더 규칙.
@@ -136,36 +141,57 @@ namespace KBOManager.UI
             SetupGradeDesign(player.Template.Grade);
         }
 
-        /// <summary>[TASK-KBO-147, TASK-KBO-153 키 변경] `Resources/Portraits/{TemplateId}`에서
-        /// 초상화를 동적으로 불러와 `portraitImage`에 대입한다 - 클래스 요약 참고. `TemplateId`는 이제
-        /// `PlayerDatabase`의 cards.csv 조인 결과로 카드 고유 ID(card_id)다(선수당 카드가 아직 없으면
-        /// player_id로 폴백). 없으면 `fallbackPortraitSprite`로 폴백한다 - 풀링 재사용 시 이전 선수의
-        /// 초상화가 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
+        /// <summary>[TASK-KBO-147, TASK-KBO-153 키 변경, TASK-KBO-169 경로 개편] `Resources/Portraits/
+        /// {Team}/{Year}/{TemplateId}`에서 초상화를 동적으로 불러와 `portraitImage`에 대입한다 - 2만
+        /// 6천 장 규모의 이미지가 한 폴더에 몰리지 않도록 카드 ID 자체에서 구단/연도를 뽑아 중첩
+        /// 폴더로 나눠 찾는다(`BuildPortraitResourcePath()` 참고). `TemplateId`는 `PlayerDatabase`의
+        /// cards.csv 조인 결과로 카드 고유 ID(card_id, 예: "SAMSUNG_2024_PLY_004038_SIG")다(선수당
+        /// 카드가 아직 없으면 player_id로 폴백 - 이 경우 중첩 경로가 실제 폴더와 안 맞을 수 있지만,
+        /// 그래도 `Resources.Load`가 null을 반환할 뿐 크래시하지 않고 `fallbackPortraitSprite`로 안전하게
+        /// 폴백한다). 없으면 `fallbackPortraitSprite`로 폴백한다 - 풀링 재사용 시 이전 선수의 초상화가
+        /// 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
         private void SetupPortrait(Player player)
         {
             string templateId = player.Template.TemplateId;
+            string portraitPath = BuildPortraitResourcePath(templateId);
 
             if (portraitImage != null)
             {
-                Sprite portrait = !string.IsNullOrEmpty(templateId)
-                    ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}")
-                    : null;
+                Sprite portrait = portraitPath != null ? Resources.Load<Sprite>(portraitPath) : null;
 
                 portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
                 portraitImage.enabled = portraitImage.sprite != null;
             }
 
-            // [TASK-KBO-168] 배경 인물(듀얼 샷) - {TemplateId}_BG 이미지가 있을 때만 켠다. 풀링 재사용 시
-            // 이전 선수의 투샷이 남지 않도록 없는 경우도 명시적으로 꺼준다(portraitImage와 동일 관례).
+            // [TASK-KBO-168, TASK-KBO-169 경로 개편] 배경 인물(듀얼 샷) - {TemplateId}_BG 이미지가 있을
+            // 때만 켠다. 풀링 재사용 시 이전 선수의 투샷이 남지 않도록 없는 경우도 명시적으로 꺼준다
+            // (portraitImage와 동일 관례).
             if (portraitBGImage != null)
             {
-                Sprite portraitBG = !string.IsNullOrEmpty(templateId)
-                    ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}_BG")
-                    : null;
+                Sprite portraitBG = portraitPath != null ? Resources.Load<Sprite>($"{portraitPath}_BG") : null;
 
                 portraitBGImage.sprite = portraitBG;
                 portraitBGImage.gameObject.SetActive(portraitBG != null);
             }
+        }
+
+        /// <summary>[TASK-KBO-169] card_id 형식 `{Team}_{Year}_{PlayerID}_{SeasonCode}`(예:
+        /// "SAMSUNG_2024_PLY_004038_SIG")의 앞 두 `_` 구분 조각(Team/Year)만 뽑아 중첩 리소스 경로
+        /// `Portraits/{Team}/{Year}/{templateId}`를 만든다. `PlayerID` 자체도 "PLY_004038"처럼
+        /// `_`를 포함하지만 항상 3번째 조각부터 시작하므로 앞 두 조각만 취하면 된다. 형식이 다른
+        /// (예: 카드 미등록 선수의 `player_id` 단독 폴백, "PLY_004038") 값은 조각 수가 2개뿐이라도
+        /// 그대로 최선을 다해 경로를 구성한다 - 실제 폴더와 안 맞으면 Resources.Load가 null을
+        /// 반환할 뿐이라 SetupPortrait()의 폴백 로직이 그대로 안전하게 처리한다.</summary>
+        private static string BuildPortraitResourcePath(string templateId)
+        {
+            if (string.IsNullOrEmpty(templateId)) return null;
+
+            var parts = templateId.Split('_');
+            if (parts.Length < 2) return null;
+
+            string team = parts[0];
+            string year = parts[1];
+            return $"{PortraitResourceFolder}/{team}/{year}/{templateId}";
         }
 
         /// <summary>[TASK-KBO-168] 등급별 전용 배경/테두리를 Resources/CardDesigns/에서 불러온다.
