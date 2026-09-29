@@ -40,6 +40,11 @@ namespace KBOManager.UI
         /// player_id 기준 예: "PLY_0003.png")만 넣으면 별도 코드 수정 없이 즉시 연동된다.</summary>
         public const string PortraitResourceFolder = "Portraits";
 
+        /// <summary>[TASK-KBO-168] 등급별 전용 배경(BG_{code})/테두리(Frame_{code}) 이미지 폴더 규칙.
+        /// {code}는 GetGradeCode(Grade)가 반환하는 등급 영문 코드(예: SIG, GG, DYN - cards_*.csv
+        /// card_id 접미사와 동일한 표기를 그대로 재사용했다).</summary>
+        public const string CardDesignResourceFolder = "CardDesigns";
+
         [Header("Text")]
         [SerializeField] private Text nameText;
         [SerializeField] private Text teamText;
@@ -54,10 +59,18 @@ namespace KBOManager.UI
                  "비워두면 스프라이트가 비워진 채로 표시된다(투명/흰 박스 - 크래시는 아니지만 시각적으로 " +
                  "어색하므로 실제 사용 시 반드시 채워 넣을 것을 권장).")]
         [SerializeField] private Sprite fallbackPortraitSprite;
+        [Tooltip("[TASK-KBO-168] 배경 인물(듀얼 샷) 이미지. Resources/Portraits/{TemplateId}_BG가 있을 " +
+                 "때만 활성화되어 표시된다. 비워두면 듀얼 포트레이트 기능 자체를 생략한다(기존 카드 프리팹 " +
+                 "호환 - 필드가 없어도 크래시하지 않음).")]
+        [SerializeField] private Image portraitBGImage;
 
         [Header("Grade Visual")]
-        [Tooltip("카드 배경 또는 테두리 이미지. 등급(StarType)에 따라 색이 바뀐다.")]
+        [Tooltip("카드 배경 또는 테두리 이미지. 등급(StarType)에 따라 색이 바뀐다. [TASK-KBO-168] " +
+                 "Resources/CardDesigns/BG_{등급코드}가 있으면 그 스프라이트로, 없으면 기존 색상 틴트로 표시된다.")]
         [SerializeField] private Image frameImage;
+        [Tooltip("[TASK-KBO-168] 등급별 전용 테두리 오버레이. Resources/CardDesigns/Frame_{등급코드}가 " +
+                 "있을 때만 활성화되어 표시된다. 비워두면 생략한다.")]
+        [SerializeField] private Image frameOverlayImage;
         [Tooltip("1~6성을 표시할 별 아이콘 6개. 인덱스 0=1성 ... 5=6성.")]
         [SerializeField] private Image[] starIcons;
         [SerializeField] private Color inactiveStarColor = new Color(0.35f, 0.35f, 0.35f, 1f);
@@ -89,6 +102,12 @@ namespace KBOManager.UI
         public Player BoundPlayer { get; private set; }
         public bool IsSelected { get; private set; }
 
+        /// <summary>[TASK-KBO-168] frameImage에 원래(디자인 리소스 도입 전) 지정돼 있던 sprite를 1회만
+        /// 캐싱해 둔다 - 카드 풀링으로 이 컴포넌트가 재사용될 때, 이전 선수는 CardDesigns 아트가 있었고
+        /// 새 선수는 없는 경우에도 이전 아트가 stale하게 남지 않고 이 기본값으로 정확히 되돌아간다.</summary>
+        private Sprite defaultFrameSprite;
+        private bool defaultFrameSpriteCaptured;
+
         /// <summary>카드에 표시할 선수를 지정한다. player나 Template이 없으면 카드를 비워 표시한다.
         /// 선택 표시는 항상 false로 초기화되므로, 필요하면 Setup() 이후에 SetSelected()를 다시 호출한다.</summary>
         public void Setup(Player player)
@@ -114,6 +133,7 @@ namespace KBOManager.UI
             SetupStamina(player);
             SetupCondition(player.CurrentCondition);
             SetupPortrait(player);
+            SetupGradeDesign(player.Template.Grade);
         }
 
         /// <summary>[TASK-KBO-147, TASK-KBO-153 키 변경] `Resources/Portraits/{TemplateId}`에서
@@ -123,16 +143,83 @@ namespace KBOManager.UI
         /// 초상화가 남아 있는 사고를 막기 위해 매번 두 경우 모두 명시적으로 대입한다.</summary>
         private void SetupPortrait(Player player)
         {
-            if (portraitImage == null) return;
-
             string templateId = player.Template.TemplateId;
-            Sprite portrait = !string.IsNullOrEmpty(templateId)
-                ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}")
-                : null;
 
-            portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
-            portraitImage.enabled = portraitImage.sprite != null;
+            if (portraitImage != null)
+            {
+                Sprite portrait = !string.IsNullOrEmpty(templateId)
+                    ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}")
+                    : null;
+
+                portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
+                portraitImage.enabled = portraitImage.sprite != null;
+            }
+
+            // [TASK-KBO-168] 배경 인물(듀얼 샷) - {TemplateId}_BG 이미지가 있을 때만 켠다. 풀링 재사용 시
+            // 이전 선수의 투샷이 남지 않도록 없는 경우도 명시적으로 꺼준다(portraitImage와 동일 관례).
+            if (portraitBGImage != null)
+            {
+                Sprite portraitBG = !string.IsNullOrEmpty(templateId)
+                    ? Resources.Load<Sprite>($"{PortraitResourceFolder}/{templateId}_BG")
+                    : null;
+
+                portraitBGImage.sprite = portraitBG;
+                portraitBGImage.gameObject.SetActive(portraitBG != null);
+            }
         }
+
+        /// <summary>[TASK-KBO-168] 등급별 전용 배경/테두리를 Resources/CardDesigns/에서 불러온다.
+        /// frameImage(배경)는 리소스가 없으면 sprite를 건드리지 않고(defaultFrameSprite로 복원) 기존
+        /// 색상 틴트(Setup()이 이미 대입한 gradeColor)만으로 표시한다 - 디자인 리소스가 아직 없는
+        /// 등급도 크래시나 시각적 결손 없이 예전과 동일하게 보인다. frameOverlayImage(테두리)는 원래
+        /// 이번 작업으로 신설된 요소라 지킬 기본값이 없으므로 있으면 켜고 없으면 끈다.</summary>
+        private void SetupGradeDesign(Grade grade)
+        {
+            string code = GetGradeCode(grade);
+
+            if (frameImage != null)
+            {
+                if (!defaultFrameSpriteCaptured)
+                {
+                    defaultFrameSprite = frameImage.sprite;
+                    defaultFrameSpriteCaptured = true;
+                }
+
+                Sprite bg = Resources.Load<Sprite>($"{CardDesignResourceFolder}/BG_{code}");
+                if (bg != null)
+                {
+                    frameImage.sprite = bg;
+                    frameImage.color = Color.white; // 커스텀 아트가 등급 틴트로 물들지 않도록.
+                }
+                else
+                {
+                    frameImage.sprite = defaultFrameSprite; // 풀링 재사용 시 이전 등급의 아트가 남지 않도록 복원.
+                }
+            }
+
+            if (frameOverlayImage != null)
+            {
+                Sprite frame = Resources.Load<Sprite>($"{CardDesignResourceFolder}/Frame_{code}");
+                frameOverlayImage.sprite = frame;
+                frameOverlayImage.gameObject.SetActive(frame != null);
+            }
+        }
+
+        /// <summary>[TASK-KBO-168] Grade -&gt; CardDesigns 리소스 파일명 코드. GenerateKBODatabase.py의
+        /// GRADE_META[grade]["code"]/cards_*.csv card_id 접미사와 동일한 표기로 맞췄다(예: "..._SIG",
+        /// "..._GG") - 아트 담당자가 카드 ID를 보고 그대로 대응되는 디자인 파일명을 유추할 수 있게 한다.</summary>
+        private static string GetGradeCode(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => "LN",
+            Grade.LIVE_EPIC => "EPIC",
+            Grade.ALLSTAR => "AS",
+            Grade.TITLE_HOLDER => "TH",
+            Grade.RETIRED_NUMBER => "RN",
+            Grade.GOLDEN_GLOVE => "GG",
+            Grade.SIGNATURE => "SIG",
+            Grade.DYNASTY => "DYN",
+            _ => "LN",
+        };
 
         /// <summary>빈 카드로 되돌린다 (풀링/재사용 시 사용).</summary>
         public void Clear()
@@ -142,7 +229,12 @@ namespace KBOManager.UI
             if (teamText != null) teamText.text = "";
             if (positionText != null) positionText.text = "";
             if (ovrText != null) ovrText.text = "";
-            if (frameImage != null) frameImage.color = Color.white;
+            if (frameImage != null)
+            {
+                frameImage.color = Color.white;
+                // [TASK-KBO-168] 풀링 재사용 전 이전 등급의 CardDesigns 배경 아트가 남지 않도록 복원.
+                if (defaultFrameSpriteCaptured) frameImage.sprite = defaultFrameSprite;
+            }
             SetupStars(0, Color.white);
             if (staminaBarRoot != null) staminaBarRoot.SetActive(false);
             SetupCondition(PlayerCondition.Normal);
@@ -152,6 +244,19 @@ namespace KBOManager.UI
             {
                 portraitImage.sprite = fallbackPortraitSprite;
                 portraitImage.enabled = fallbackPortraitSprite != null;
+            }
+
+            // [TASK-KBO-168] 빈 카드는 듀얼 샷 배경/등급 테두리도 없어야 하므로 둘 다 끈다.
+            if (portraitBGImage != null)
+            {
+                portraitBGImage.sprite = null;
+                portraitBGImage.gameObject.SetActive(false);
+            }
+
+            if (frameOverlayImage != null)
+            {
+                frameOverlayImage.sprite = null;
+                frameOverlayImage.gameObject.SetActive(false);
             }
         }
 

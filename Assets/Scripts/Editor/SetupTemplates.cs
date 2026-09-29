@@ -40,6 +40,8 @@ namespace KBOManager.EditorTools
         private const string TemplatesHolderName = "_Templates";
         private const string PlayerCardTemplateName = "PlayerCardTemplate";
         private const string PortraitName = "Portrait";
+        private const string PortraitBGName = "PortraitBG";
+        private const string FrameOverlayName = "FrameOverlay";
 
         [MenuItem("KBO Manager/Setup/Fix Player Card Template Color")]
         public static void FixPlayerCardTemplateColor()
@@ -148,6 +150,140 @@ namespace KBOManager.EditorTools
             {
                 Debug.LogError("[SetupTemplates] Portrait 바인딩 실패 - portraitImage가 여전히 다른 값입니다.");
             }
+        }
+
+        /// <summary>
+        /// [TASK-KBO-168] `PlayerCardTemplate`에 4단 레이어(배경/배경인물(듀얼샷)/메인인물/등급테두리)를
+        /// 완성하기 위해 `PortraitBG`(배경 인물)와 `FrameOverlay`(등급별 테두리) `Image` 자식을 없으면
+        /// 새로 만들고, `PlayerCardUI.portraitBGImage`/`frameOverlayImage`에 바인딩한다.
+        ///
+        /// [Z-Order] 유니티는 부모(카드 루트 자신의 `frameImage`)를 먼저 그리고, 그 다음 자식들을
+        /// sibling index 순서(작은 값부터)로 그린다. 명령서가 요구한 순서를 그대로 sibling index로
+        /// 강제한다: `PortraitBG`(0, 맨 뒤) → `Portrait`(1, TASK-KBO-151이 이미 만들어 둔 것을 재사용) →
+        /// `FrameOverlay`(2, 맨 앞) → 그 뒤의 기존 자식들(NameText/TeamText/별 아이콘 등, 전혀 손대지
+        /// 않음 - `SetSiblingIndex`는 지정한 인덱스보다 뒤에 있던 요소들을 밀어낼 뿐 순서를 바꾸지 않는다).
+        /// 여러 번 실행해도 안전(idempotent) - 이미 존재하는 두 자식을 찾으면 위치만 다시 강제한다.
+        /// </summary>
+        [MenuItem("KBO Manager/Setup/Setup Dual Portrait And Grade Frame Layers")]
+        public static void SetupDualPortraitAndGradeFrameLayers()
+        {
+            var canvas = Object.FindAnyObjectByType<Canvas>(FindObjectsInactive.Include);
+            if (canvas == null)
+            {
+                Debug.LogError("[SetupTemplates] 씬에서 Canvas를 찾지 못했습니다.");
+                return;
+            }
+
+            var holderTransform = canvas.transform.Find(TemplatesHolderName);
+            var templateTransform = holderTransform != null ? holderTransform.Find(PlayerCardTemplateName) : null;
+            if (templateTransform == null)
+            {
+                Debug.LogWarning($"[SetupTemplates] '{TemplatesHolderName}/{PlayerCardTemplateName}'를 찾지 못했습니다. " +
+                    "먼저 'KBO Manager/Setup/Auto-Connect Scout UI'를 실행해 카드 템플릿을 생성하십시오.");
+                return;
+            }
+
+            var cardUI = templateTransform.GetComponent<PlayerCardUI>();
+            if (cardUI == null)
+            {
+                Debug.LogError($"[SetupTemplates] '{PlayerCardTemplateName}'에 PlayerCardUI 컴포넌트가 없습니다 - " +
+                    "씬 상태를 확인하십시오.");
+                return;
+            }
+
+            // [명령서 3-1항] Portrait가 아직 없는 프로젝트 상태(TASK-151 메뉴 미실행)도 안전하게
+            // 지원하기 위해 여기서도 찾거나 만든다 - PortraitBG/FrameOverlay와 함께 한 번에 정리된다.
+            var portraitImage = FindOrCreatePortraitImage(templateTransform);
+            var portraitBGImage = FindOrCreatePortraitBGImage(templateTransform);
+            var frameOverlayImage = FindOrCreateFrameOverlayImage(templateTransform);
+
+            portraitBGImage.transform.SetSiblingIndex(0);
+            portraitImage.transform.SetSiblingIndex(1);
+            frameOverlayImage.transform.SetSiblingIndex(2);
+
+            var serializedCard = new SerializedObject(cardUI);
+            serializedCard.FindProperty("portraitBGImage").objectReferenceValue = portraitBGImage;
+            serializedCard.FindProperty("frameOverlayImage").objectReferenceValue = frameOverlayImage;
+            serializedCard.ApplyModifiedProperties();
+            EditorUtility.SetDirty(cardUI);
+
+            var scene = canvas.gameObject.scene;
+            if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
+
+            Debug.Log($"[SetupTemplates] '{PlayerCardTemplateName}'에 PortraitBG/FrameOverlay 4단 레이어 " +
+                "추가 및 바인딩 성공 - 이 템플릿을 복제하는 모든 화면에 즉시 반영됩니다. " +
+                "Resources/Portraits/{TemplateId}_BG, Resources/CardDesigns/BG_{등급코드}·Frame_{등급코드} " +
+                "리소스가 아직 없으면 해당 레이어는 자동으로 비활성 상태로 숨어 있습니다(정상 동작).");
+        }
+
+        /// <summary>`cardTransform`(PlayerCardTemplate) 바로 아래에 `PortraitBG`(배경 인물, 듀얼 샷)
+        /// `Image`를 찾거나 만든다. `Portrait`와 동일하게 카드 전체를 꽉 채운다 - 실제 표시 여부/앞뒤
+        /// 순서는 `SetupDualPortraitAndGradeFrameLayers()`가 sibling index로 강제한다.</summary>
+        private static Image FindOrCreatePortraitBGImage(Transform cardTransform)
+        {
+            var existing = cardTransform.Find(PortraitBGName);
+            GameObject portraitBGObject;
+            if (existing != null)
+            {
+                portraitBGObject = existing.gameObject;
+            }
+            else
+            {
+                portraitBGObject = new GameObject(PortraitBGName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(portraitBGObject, $"Create {PortraitBGName}");
+                portraitBGObject.transform.SetParent(cardTransform, false);
+            }
+
+            var rect = (RectTransform)portraitBGObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            if (!portraitBGObject.TryGetComponent<Image>(out var image))
+            {
+                image = portraitBGObject.AddComponent<Image>();
+            }
+            image.color = Color.white;
+            image.raycastTarget = false;
+            image.preserveAspect = false;
+
+            return image;
+        }
+
+        /// <summary>`cardTransform`(PlayerCardTemplate) 바로 아래에 `FrameOverlay`(등급별 테두리)
+        /// `Image`를 찾거나 만든다. 카드 전체를 꽉 채우는 오버레이이며, `PlayerCardUI.SetupGradeDesign()`이
+        /// 매칭되는 `CardDesigns/Frame_{등급코드}` 리소스가 있을 때만 활성화한다.</summary>
+        private static Image FindOrCreateFrameOverlayImage(Transform cardTransform)
+        {
+            var existing = cardTransform.Find(FrameOverlayName);
+            GameObject frameOverlayObject;
+            if (existing != null)
+            {
+                frameOverlayObject = existing.gameObject;
+            }
+            else
+            {
+                frameOverlayObject = new GameObject(FrameOverlayName, typeof(RectTransform), typeof(Image));
+                Undo.RegisterCreatedObjectUndo(frameOverlayObject, $"Create {FrameOverlayName}");
+                frameOverlayObject.transform.SetParent(cardTransform, false);
+            }
+
+            var rect = (RectTransform)frameOverlayObject.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            if (!frameOverlayObject.TryGetComponent<Image>(out var image))
+            {
+                image = frameOverlayObject.AddComponent<Image>();
+            }
+            image.color = Color.white;
+            image.raycastTarget = false;
+            image.preserveAspect = false;
+
+            return image;
         }
 
         /// <summary>`cardTransform`(PlayerCardTemplate) 바로 아래에 `Portrait` `Image`를 찾거나 만든다.
