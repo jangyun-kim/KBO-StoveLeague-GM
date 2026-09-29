@@ -1021,6 +1021,35 @@ for rec, year, team_token in allstar_cards_to_issue:
     allstar_card_count += 1
 
 # ---------------------------------------------------------------------------
+# 7-I. [TASK-KBO-168, 강제 주입 - PM 직접 지시] 김상엽'95(골든글러브)·구자욱'26(시그니처) 확정
+# 카드 발급. 김상엽은 기존 GOLDEN_GLOVE_HISTORY/REAL_PLAYERS_2025/ROSTER_2026/왕조 로스터
+# 어디에도 없는 신규 실존 인물이라 새 player_id가 필요하지만, 일반 add_player()를 쓰면 그 호출이
+# 소비하는 random.gauss/randint 2회가 이 시점 이전(섹션 6/7 시작 전)에 끼어들어 이후 모든 선수의
+# 카드 난수 시퀀스가 통째로 밀린다(실제로 한 번 이렇게 했다가 10개 구단 카드 CSV가 전부
+# 달라지는 것을 확인하고 되돌렸다) - 그래서 add_player()를 거치지 않고 random을 전혀 쓰지 않는
+# 간단한 객체를 만들어 players_rows/cards_by_team에 직접 append한다(이 시점은 이미 모든
+# make_card_row() 호출 - base_ovr 추첨 포함 - 뒤라 여기서 추가로 소비하는 random은 이후 아무
+# 코드에도 영향을 주지 않는다). player_id는 정상 시퀀스(next_player_id())가 절대 도달하지 않는
+# 고정값(PLY_900001)을 써서 충돌을 피했다.
+class _ForcedPlayer:
+    pass
+
+kim_sangyeop = _ForcedPlayer()
+kim_sangyeop.player_id = "PLY_900001"
+kim_sangyeop.team_token = "SAMSUNG"
+players_rows.append([
+    kim_sangyeop.player_id, "TEM_002", "김상엽", 1990, "SP", 170,
+    "0.000", "0.000", "0.000", "1.700", "0.000", "1.700", "FALSE",
+    "1.700", "1.700", "1.700",
+])
+
+forced_card_count = 0
+cards_by_team["SAMSUNG"].append(make_card_row(kim_sangyeop, 1995, "GOLDEN_GLOVE"))
+forced_card_count += 1
+cards_by_team["SAMSUNG"].append(make_card_row(real_player_records["구자욱"], 2026, "SIGNATURE"))
+forced_card_count += 1
+
+# ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (7컬럼 - CheerleaderCatalog.cs 실제 파서 스키마)
 # ---------------------------------------------------------------------------
 CHEERLEADERS_HEADER = [
@@ -1029,37 +1058,55 @@ CHEERLEADERS_HEADER = [
 ]
 
 # docs/16_shop_and_gacha_policy.md 2절에 PM이 이미 확정한 등급별 수치표를 그대로 가져다 썼다
-# (스크립트가 임의로 지어낸 값이 아니다).
+# (스크립트가 임의로 지어낸 값이 아니다). SEASON_LIMITED(TASK-KBO-168)은 당시 문서에는 없었으나
+# Cheerleader.cs의 CheerleaderGrade enum에는 이미 6번 값으로 존재했다 - 같은 문서 2절 표를
+# 그대로 가져다 썼다(+5/1.20/1.25/4).
 CHEER_GRADE_META = {
-    "LIVE_NORMAL": {"buff": 1, "clutch": 1.00, "economic": 1.05, "sentiment": 0},
-    "LIVE_EPIC":   {"buff": 2, "clutch": 1.05, "economic": 1.10, "sentiment": 1},
-    "ICON":        {"buff": 3, "clutch": 1.10, "economic": 1.15, "sentiment": 2},
-    "LEGEND":      {"buff": 4, "clutch": 1.15, "economic": 1.20, "sentiment": 3},
+    "LIVE_NORMAL":    {"buff": 1, "clutch": 1.00, "economic": 1.05, "sentiment": 0},
+    "LIVE_EPIC":      {"buff": 2, "clutch": 1.05, "economic": 1.10, "sentiment": 1},
+    "ICON":           {"buff": 3, "clutch": 1.10, "economic": 1.15, "sentiment": 2},
+    "LEGEND":         {"buff": 4, "clutch": 1.15, "economic": 1.20, "sentiment": 3},
+    "SEASON_LIMITED": {"buff": 5, "clutch": 1.20, "economic": 1.25, "sentiment": 4},
 }
-CHEER_SURNAMES = ["이", "김", "박", "최", "정", "한", "윤", "강", "임", "송"]
-CHEER_GIVEN = [
-    "수진", "한나", "기량", "지현", "서연", "하윤", "지우", "은서", "예린", "다혜",
-    "소율", "채원", "유나", "가은", "민서",
-]
-_used_cheer_names = set()
 
-def make_cheer_name():
-    for _ in range(50):
-        name = random.choice(CHEER_SURNAMES) + random.choice(CHEER_GIVEN)
-        if name not in _used_cheer_names:
-            _used_cheer_names.add(name)
-            return name
-    return random.choice(CHEER_SURNAMES) + random.choice(CHEER_GIVEN)
+# [TASK-KBO-168, 사용자 직접 지시] Cheerleader 모델에는 Team/Year 필드가 없어(위 [사실 정정] 참고,
+# 원래 명령서 ID 규칙도 팀/연도 접두사 없는 플랫 순번 "CHR_0001"을 그대로 요구했다) 실제 소속
+# 구단은 카탈로그 스키마상 의미가 없다 - 아래 이름들은 각 구단 소속으로 조사된 실제 치어리더이되,
+# 최종 카탈로그는 팀 구분 없는 단일 목록이다. 조사 출처는 namu.wiki 각 구단 "치어리더" 문서
+# (WebFetch 조회, 2026-09-29) - 위키 특성상 편집 오류/최신성 지연 가능성이 있어 최종 반영 전
+# 공식 구단 홈페이지 재대조를 권장한다(완료 보고서에도 명시).
+# 등급 배정 기준: PM 지시("2013~2025 과거 활동 -> ICON/LEGEND/SEASON_LIMITED", "2026~현재 소속 ->
+# LIVE_NORMAL/LIVE_EPIC")에 따라, 조사된 활동 시기가 과거(주로 2025년 이전 종료) 인물은 그 안에서
+# 최장수/최상징적 인물일수록 SEASON_LIMITED > LEGEND > ICON 순으로, 2026년 현재도 소속 중인
+# 인물은 팀장급일수록 LIVE_EPIC, 그 외는 LIVE_NORMAL로 배정했다.
+REAL_CHEERLEADERS_BY_GRADE = {
+    "SEASON_LIMITED": [  # 과거(2013~2025) 최장수/최상징적 인물
+        "한나더", "노숙희", "남궁혜미", "강산하", "김한슬",
+        "배수현", "박기량", "김연정", "이주희", "이엄지",
+    ],
+    "LEGEND": [  # 과거(2013~2025) 팀장급 상징적 인물
+        "최미진", "이수진", "정다혜", "김다정", "정유민",
+        "오지연", "조지훈", "하지원", "윤요안나", "김소윤",
+    ],
+    "ICON": [  # 과거(2013~2025) 활동 확인 인물
+        "원민주", "이연주", "이나경", "김진아", "최석화", "신수인",
+    ],
+    "LIVE_EPIC": [  # 2026년 현재 소속, 팀장급
+        "유세리", "박소영", "차영현", "서현숙", "신세희",
+        "김도아", "목나경", "감서윤", "김수현", "용경아",
+    ],
+    "LIVE_NORMAL": [  # 2026년 현재 소속
+        "박성은", "천소윤", "임혜진", "이금주",
+        "김현영", "박담비", "전은비", "강지유", "정차연",
+    ],
+}
 
 cheerleaders_rows = []
-# [사실 정정] Cheerleader 모델(Models/Cheerleader.cs)에는 Year 필드가 없다 - "연도별로 생성"
-# 요구사항은 연도마다 별도의 카탈로그 항목을 만드는 방식으로 물량을 충족하되, 그 연도는
-# CatalogId에만 흔적으로 남을 뿐 게임 로직에는 쓰이지 않는다(기존에도 쓰인 적 없음, 이 스크립트가
-# 새로 만든 한계가 아니다).
-for year in range(MIN_YEAR, MAX_YEAR + 1):
-    for grade, meta in CHEER_GRADE_META.items():
-        catalog_id = f"CHR_{year}_{grade}"
-        name = make_cheer_name()
+_cheer_seq = 0
+for grade, meta in CHEER_GRADE_META.items():
+    for name in REAL_CHEERLEADERS_BY_GRADE[grade]:
+        _cheer_seq += 1
+        catalog_id = f"CHR_{_cheer_seq:04d}"
         cheerleaders_rows.append([
             catalog_id, name, grade, meta["buff"], meta["economic"], meta["clutch"], meta["sentiment"],
         ])
@@ -1110,7 +1157,8 @@ print(f"  - 이 중 2013~2024 개인 타이틀 확정 카드: {title_history_car
 print(f"  - 이 중 영구결번(RETIRED_NUMBER) 확정 카드: {retired_number_card_count}장 ({len(RETIRED_NUMBER_HISTORY)}명 전원, 1986~2025)")
 print(f"  - 이 중 시그니처(SIGNATURE) 확정 카드: {signature_card_count}장 (KBO 레전드 40인 전원)")
 print(f"  - 이 중 올스타(ALLSTAR) 확정 카드: {allstar_card_count}장 (2014~2025 BEST 12, 감독 추천 후보 제외)")
-print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개")
+print(f"  - 이 중 강제 주입 카드(김상엽'95 GG, 구자욱'26 SIG): {forced_card_count}장")
+print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}개 (실제 치어리더 실명 기반, namu.wiki 조사)")
 print(f"players.csv 총 줄 수(헤더 포함): {len(players_rows) + 1}")
 print(f"cards_*.csv 총 줄 수 합계(헤더 10개 포함): {total_cards + 10}")
 print(f"cheerleaders.csv 총 줄 수(헤더 포함): {len(cheerleaders_rows) + 1}")

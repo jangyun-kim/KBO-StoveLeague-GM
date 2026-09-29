@@ -41,3 +41,6 @@ ExportedObj/
 ## Environment / secrets
 *.env
 .env.*
+
+## Office temp lock files (e.g. ~$cheerleaders.csv)
+~$*
