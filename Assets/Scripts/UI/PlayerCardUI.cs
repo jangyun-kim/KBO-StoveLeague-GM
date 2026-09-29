@@ -37,6 +37,13 @@ namespace KBOManager.UI
     /// `_` 조각(Team/Year)으로 중첩 폴더를 나눈다 - 최종 경로는 `Assets/Resources/Portraits/{Team}/
     /// {Year}/{TemplateId}.png`(예: `Portraits/SAMSUNG/2024/SAMSUNG_2024_PLY_004038_SIG.png`).
     /// `BuildPortraitResourcePath()` 참고.
+    ///
+    /// [TASK-KBO-170, 렌더링 검수] 실사 에셋으로 검증한 결과 두 가지 실제 결함을 발견해 고쳤다: (1)
+    /// TASK-169가 로딩 코드만 중첩 경로로 바꾸고 기존/신규 초상화 파일은 옮기지 않아 `Resources.Load`가
+    /// 전부 null을 반환하고 있었다(에셋을 실제 `{Team}/{Year}/` 하위로 이동 - 코드 변경 아님). (2)
+    /// `SAMSUNG_2026_PLY_004038_SIG.png`처럼 Sprite Mode가 "Multiple"으로 임포트되고 서브 스프라이트명이
+    /// 파일명과 다른 리소스는 `Resources.Load&lt;Sprite&gt;`가 타입 불일치로 조용히 null을 반환한다 -
+    /// `LoadSprite()`가 `Resources.LoadAll&lt;Sprite&gt;` 폴백으로 이를 구제한다(아래 참고).
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
@@ -157,7 +164,7 @@ namespace KBOManager.UI
 
             if (portraitImage != null)
             {
-                Sprite portrait = portraitPath != null ? Resources.Load<Sprite>(portraitPath) : null;
+                Sprite portrait = portraitPath != null ? LoadSprite(portraitPath) : null;
 
                 portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
                 portraitImage.enabled = portraitImage.sprite != null;
@@ -168,11 +175,30 @@ namespace KBOManager.UI
             // (portraitImage와 동일 관례).
             if (portraitBGImage != null)
             {
-                Sprite portraitBG = portraitPath != null ? Resources.Load<Sprite>($"{portraitPath}_BG") : null;
+                Sprite portraitBG = portraitPath != null ? LoadSprite($"{portraitPath}_BG") : null;
 
                 portraitBGImage.sprite = portraitBG;
                 portraitBGImage.gameObject.SetActive(portraitBG != null);
             }
+        }
+
+        /// <summary>[TASK-KBO-170, 렌더링 검수] `Resources.Load&lt;Sprite&gt;(path)`는 텍스처의 Sprite Mode가
+        /// "Single"일 때만 동작한다 - 원본이 포토샵 스프라이트시트 슬라이스 잔재로 "Multiple"로 임포트되고
+        /// 서브 스프라이트 이름이 파일명과 다르면(실사 검증 중 `SAMSUNG_2026_PLY_004038_SIG.png`에서 실제로
+        /// 발견 - 서브 스프라이트명이 "구자욱'24_signature_AWAY_0"), `Resources.Load&lt;Sprite&gt;`가 조용히
+        /// null을 반환해 카드에 초상화가 영원히 뜨지 않는다(크래시는 없지만 풀백만 보임 - 원인 파악이 매우
+        /// 어려운 버그). 이런 임포트 상태의 에셋도 안전하게 구제하기 위해, 1차 로드가 실패하면
+        /// `Resources.LoadAll&lt;Sprite&gt;`로 해당 경로의 서브 스프라이트를 모두 훑어 첫 번째를 사용한다 -
+        /// 아트 담당자가 매번 Sprite Mode를 Single로 재설정하지 않아도 되는 방어 코드다.</summary>
+        private static Sprite LoadSprite(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            Sprite sprite = Resources.Load<Sprite>(path);
+            if (sprite != null) return sprite;
+
+            Sprite[] subSprites = Resources.LoadAll<Sprite>(path);
+            return subSprites.Length > 0 ? subSprites[0] : null;
         }
 
         /// <summary>[TASK-KBO-169] card_id 형식 `{Team}_{Year}_{PlayerID}_{SeasonCode}`(예:
@@ -211,7 +237,7 @@ namespace KBOManager.UI
                     defaultFrameSpriteCaptured = true;
                 }
 
-                Sprite bg = Resources.Load<Sprite>($"{CardDesignResourceFolder}/BG_{code}");
+                Sprite bg = LoadSprite($"{CardDesignResourceFolder}/BG_{code}");
                 if (bg != null)
                 {
                     frameImage.sprite = bg;
@@ -225,7 +251,7 @@ namespace KBOManager.UI
 
             if (frameOverlayImage != null)
             {
-                Sprite frame = Resources.Load<Sprite>($"{CardDesignResourceFolder}/Frame_{code}");
+                Sprite frame = LoadSprite($"{CardDesignResourceFolder}/Frame_{code}");
                 frameOverlayImage.sprite = frame;
                 frameOverlayImage.gameObject.SetActive(frame != null);
             }

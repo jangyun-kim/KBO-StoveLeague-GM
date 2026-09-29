@@ -43,6 +43,26 @@ namespace KBOManager.EditorTools
         private const string PortraitBGName = "PortraitBG";
         private const string FrameOverlayName = "FrameOverlay";
 
+        /// <summary>
+        /// [TASK-KBO-170, 배치 실행용] 메뉴는 에디터 GUI에서 사람이 클릭해야 실행되므로, 에디터를 열지
+        /// 않고 `Unity.exe -batchmode -executeMethod`로 씬에 4단 레이어/가독성 보강을 일괄 적용하기 위한
+        /// 진입점이다. 대상 씬을 직접 열고 -&gt; `SetupDualPortraitAndGradeFrameLayers()`를 실행하고 -&gt;
+        /// 씬을 저장하고 종료한다(대화형 메뉴들과 달리 `MarkSceneDirty`만으로는 배치 프로세스 종료 시
+        /// 디스크에 반영되지 않으므로 `EditorSceneManager.SaveScene`을 명시적으로 호출).
+        /// </summary>
+        public static void RunBatchRenderPolish()
+        {
+            const string scenePath = "Assets/Scenes/SampleScene.unity";
+            var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+
+            SetupDualPortraitAndGradeFrameLayers();
+
+            bool saved = EditorSceneManager.SaveScene(scene);
+            Debug.Log(saved
+                ? "[SetupTemplates] RunBatchRenderPolish 완료 - 씬 저장 성공."
+                : "[SetupTemplates] RunBatchRenderPolish 완료했으나 씬 저장 실패.");
+        }
+
         [MenuItem("KBO Manager/Setup/Fix Player Card Template Color")]
         public static void FixPlayerCardTemplateColor()
         {
@@ -207,13 +227,54 @@ namespace KBOManager.EditorTools
             serializedCard.ApplyModifiedProperties();
             EditorUtility.SetDirty(cardUI);
 
+            // [TASK-KBO-170] 화려한 프레임/인물 사진 위에 텍스트가 올라가는 레이아웃이 이제 실제로
+            // 완성됐으니, 같은 타이밍에 텍스트 가독성도 함께 보장한다(아래 EnsureCardTextReadability 참고).
+            int readabilityCount = EnsureCardTextReadability(templateTransform);
+
             var scene = canvas.gameObject.scene;
             if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
 
             Debug.Log($"[SetupTemplates] '{PlayerCardTemplateName}'에 PortraitBG/FrameOverlay 4단 레이어 " +
-                "추가 및 바인딩 성공 - 이 템플릿을 복제하는 모든 화면에 즉시 반영됩니다. " +
+                "추가 및 바인딩 성공, Text {readabilityCount}개에 Outline/Shadow 가독성 보강 완료 - " +
+                "이 템플릿을 복제하는 모든 화면에 즉시 반영됩니다. " +
                 "Resources/Portraits/{TemplateId}_BG, Resources/CardDesigns/BG_{등급코드}·Frame_{등급코드} " +
                 "리소스가 아직 없으면 해당 레이어는 자동으로 비활성 상태로 숨어 있습니다(정상 동작).");
+        }
+
+        /// <summary>
+        /// [TASK-KBO-170, 텍스트 가독성 강화] `cardTransform` 하위 모든 `Text`(이름/구단/포지션/OVR)에
+        /// 흰색 `Outline` + 검은색 `Shadow`를 추가/보정한다. `FixPlayerCardTemplateColor()`가 텍스트
+        /// 색상을 검정으로 고정해 두었는데(TASK-119), TASK-168 이후 카드 배경이 단색 틴트가 아니라 실제
+        /// 선수 사진/디자인 프레임(`CardDesigns/BG_*`, `Portrait`)으로 바뀌면서 어두운 사진/프레임
+        /// 위에서는 검은 글씨가 그대로 묻혀 버릴 수 있다 - 흰색 외곽선을 둘러 밝은 배경/어두운 배경
+        /// 양쪽 모두에서 대비가 확보되도록 한다(그림자는 반대로 밝은 배경 위에서의 입체감/가독성을 보강).
+        /// 여러 번 실행해도 안전(idempotent) - 이미 있는 컴포넌트는 값만 재보정한다.
+        /// </summary>
+        private static int EnsureCardTextReadability(Transform cardTransform)
+        {
+            var texts = cardTransform.GetComponentsInChildren<Text>(true);
+            foreach (var text in texts)
+            {
+                if (!text.TryGetComponent<Outline>(out var outline))
+                {
+                    outline = text.gameObject.AddComponent<Outline>();
+                }
+                outline.effectColor = new Color(1f, 1f, 1f, 0.85f);
+                outline.effectDistance = new Vector2(1.2f, -1.2f);
+                outline.useGraphicAlpha = true;
+
+                if (!text.TryGetComponent<Shadow>(out var shadow))
+                {
+                    shadow = text.gameObject.AddComponent<Shadow>();
+                }
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.6f);
+                shadow.effectDistance = new Vector2(1f, -1f);
+                shadow.useGraphicAlpha = true;
+
+                EditorUtility.SetDirty(text);
+            }
+
+            return texts.Length;
         }
 
         /// <summary>`cardTransform`(PlayerCardTemplate) 바로 아래에 `PortraitBG`(배경 인물, 듀얼 샷)
