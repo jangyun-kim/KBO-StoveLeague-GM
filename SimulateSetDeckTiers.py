@@ -11,9 +11,9 @@
 성장 단계 인원도 "그 단계 이상" 누적으로 해석한다(TASK-KBO-172와 동일 - 04 문서 8-1절).
 """
 
-# CardGrowthRules.cs와 동일 (TASK-KBO-173)
+# CardGrowthRules.cs와 동일 (TASK-KBO-173, RN은 TASK-KBO-174 확정)
 BASE = {"LIVE": 4, "AS": 4, "FRA": 3, "TH": 3, "RN": 2, "GG": 2, "SIG": 1, "DYN": 1}
-TRANSCEND = {"LIVE", "GG", "SIG", "DYN"}
+TRANSCEND = {"LIVE", "GG", "SIG", "DYN", "RN"}  # [TASK-KBO-174] RN 초월 가능(2 -> 6)
 STAGE_LEVEL = {"명함": 0, "3각": 3, "6각": 6, "9각": 9, "초월": 10}
 
 # SetDeckBuffTable 중 대상 전원 효과(구간: 가산값) - 모든 능력치 / 타자 전 스탯 / 투수 전 스탯

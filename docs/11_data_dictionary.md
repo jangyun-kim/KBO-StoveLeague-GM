@@ -83,11 +83,11 @@ DCL-055 당시 확인된 실제 인덱스와 완전히 동일하게 유지, 신�
 - `player_id` (String): 외래키 (players.csv 참조)
 - `grade_id` (Int): 0(시즌)~7(왕조) Enum 값 - `Assets/Scripts/Models/Types.cs`의 `Grade` enum 정수값과
   정확히 일치하도록 설계되어, 브릿지 구현 시 별도 매핑표 없이 그대로 캐스팅할 수 있다.
-- `base_ovr` (Int): 공식에 의해 산출된 해당 카드의 명함 초기 OVR (Clamp 40~99)
+- `base_ovr` (Int): 해당 카드의 명함 기본 OVR. **[TASK-KBO-174]** = 선수 기본 OVR(z×15+50) + 등급 보정(LIVE_NORMAL 0 / LIVE_EPIC 1 / AS 3 / FRA 4 / TH 5 / GG 7 / SIG·DYN·RN 10), 1~120 클램프. `PlayerDatabase`가 카드 세부 스탯을 이 값에 맞춰 균등 이동해 실전에 반영한다.
 - `salary_cost` (Int): **[TASK-KBO-173]** 등급 기본(명함) 개인 세트덱 스코어 = 카드 Salary(LIVE/AS 4, FRA/TH 3, RN/GG 2, SIG/DYN 1). 샐러리 캡은 폐기됐고 `CardGrowthRules.BaseSetDeckScore()`와 반드시 일치해야 한다(`PlayerDatabase` 로드 시 불일치 경고).
 - **[TASK-KBO-172 갱신]** 실제 `cards_{TEAM}.csv`의 `grade_id`는 `LIVE_NORMAL=1 ~ DYNASTY=9`(FRANCHISE=4 삽입 후 서열)이며,
-  `max_awaken`은 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY) 10(=초월), 9각 한계 등급(ALLSTAR/FRANCHISE/
-  TITLE_HOLDER/RETIRED_NUMBER) 9다 - 런타임 한계는 `CardGrowthRules.MaxAwakenLevelFor()`가 같은 값을 코드로 보장한다
+  `max_awaken`은 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY/RETIRED_NUMBER[TASK-174]) 10(=초월), 9각 한계 등급(ALLSTAR/FRANCHISE/
+  TITLE_HOLDER) 9다 - 런타임 한계는 `CardGrowthRules.MaxAwakenLevelFor()`가 같은 값을 코드로 보장한다
   (`docs/04_card_grade_policy.md` 4절).
 - `max_enhance` / `max_awaken` (Int): 강화/각성 상한 - 현재 코드(`Player.MaxReinforceLevel`/
   `Player.MaxAwakenLevel`)는 이 값을 상수(둘 다 10)로 고정하고 있으며, CSV 컬럼값을 실제로 읽어오는 로직은

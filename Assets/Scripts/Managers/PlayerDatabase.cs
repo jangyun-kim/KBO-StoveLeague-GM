@@ -366,6 +366,7 @@ namespace KBOManager.Managers
             var lines = csvText.Replace("\r\n", "\n").Split('\n');
             int loadedCount = 0;
             int salaryMismatchCount = 0; // [TASK-KBO-173]
+            int baseOvrMismatchCount = 0; // [TASK-KBO-174]
 
             for (int i = 1; i < lines.Length; i++) // 0번째 줄(헤더)은 스킵
             {
@@ -427,6 +428,20 @@ namespace KBOManager.Managers
                     cardTemplate.SeasonYear = year;        // [TASK-KBO-154] 카드별 실제 연도로 재정의
                     cardTemplate.Team = cardTeam;          // [TASK-KBO-160] 카드가 실제로 발급된 구단(파일 기준)으로 강제 - 이적/FA 선수의 과거 소속 정확도 보장
 
+                    // [TASK-KBO-174, 등급별 실전 능력치 연동] base_ovr(5번째 컬럼)를 카드의 실제 기본 OVR로 만든다 -
+                    // players.csv에서 온 선수 기본 스탯 전 항목을 (base_ovr - 선수 기본 OVR)만큼 균등 이동하므로
+                    // cardTemplate.GetBaseOverall() == base_ovr가 되고, 이 값이 라인업 OVR/경기 세부 스탯에 그대로 쓰인다.
+                    // base_ovr는 GenerateKBODatabase.py가 "선수 기본 OVR + 등급 보정(CardGrowthRules.GradeOvrBonus)"으로
+                    // 생성하므로 같은 선수의 카드 서열이 항상 LIVE < AS < FRA <= TH < GG < SIG = DYN = RN이다.
+                    // 해석 불가 시 등급 보정만 적용한다.
+                    int baseOverall = baseTemplate.GetBaseOverall();
+                    int gradeBonus = CardGrowthRules.GradeOvrBonus(grade);
+                    int statShift = int.TryParse(columns[4].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var baseOvr)
+                        ? baseOvr - baseOverall
+                        : gradeBonus;
+                    if (Math.Abs(statShift - gradeBonus) > 1) baseOvrMismatchCount++; // 생성 스크립트와 C# 환산 차이(반올림 1 이내 허용)
+                    ApplyStatShift(cardTemplate, statShift);
+
                     templates[cardId] = cardTemplate;
                     playerIdsWithCards.Add(playerId);
                     loadedCount++;
@@ -449,12 +464,32 @@ namespace KBOManager.Managers
 
             Debug.Log($"[PlayerDatabase] cards_*.csv 파일 1개에서 카드 템플릿 {loadedCount}개를 로드했습니다 " +
                 $"(선수 {playerIdsWithCards.Count}명 커버).");
+            if (baseOvrMismatchCount > 0)
+            {
+                Debug.LogWarning($"[PlayerDatabase] base_ovr가 '선수 기본 OVR + 등급 보정'과 2 이상 다른 카드 {baseOvrMismatchCount}장 - " +
+                    "GenerateKBODatabase.py GRADE_OVR_BONUS와 CardGrowthRules.GradeOvrBonus가 어긋났는지 확인하세요(TASK-KBO-174).");
+            }
             if (salaryMismatchCount > 0)
             {
                 Debug.LogWarning($"[PlayerDatabase] salary_cost가 등급 기본 세트덱 스코어(CardGrowthRules)와 다른 카드 " +
                     $"{salaryMismatchCount}장 - GenerateKBODatabase.py를 재실행해 CSV를 재생성하세요(TASK-KBO-173 Salary 일원화).");
             }
             return playerIdsWithCards;
+        }
+
+        /// <summary>[TASK-KBO-174] 카드 세부 스탯 전 항목(타자 5 / 투수 5)을 shift만큼 균등 이동한다(최소 1).
+        /// 균등 이동이라 선수 고유의 스탯 분포(파워형/정확형 등)는 그대로 유지된다.</summary>
+        private static void ApplyStatShift(PlayerTemplate template, int shift)
+        {
+            if (shift == 0) return;
+            var b = template.BatterStats;
+            template.BatterStats = new BatterStats(
+                Mathf.Max(1, b.Power + shift), Mathf.Max(1, b.Contact + shift), Mathf.Max(1, b.Discipline + shift),
+                Mathf.Max(1, b.Speed + shift), Mathf.Max(1, b.Defense + shift));
+            var pi = template.PitcherStats;
+            template.PitcherStats = new PitcherStats(
+                Mathf.Max(1, pi.Stuff + shift), Mathf.Max(1, pi.Velocity + shift), Mathf.Max(1, pi.Movement + shift),
+                Mathf.Max(1, pi.Control + shift), Mathf.Max(1, pi.Stamina + shift));
         }
 
         /// <summary>[TASK-KBO-153] 기본 템플릿(물리 데이터)의 필드를 새 ScriptableObject 인스턴스로

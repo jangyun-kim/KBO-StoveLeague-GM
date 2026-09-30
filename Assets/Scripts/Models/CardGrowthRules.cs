@@ -15,14 +15,18 @@ namespace KBOManager.Models
     /// 27인 최대 목표 200P(1인 평균 7.4)에서 종결 카드(DYN/GG/SIG)만으로 도배하면 핵심 버프 구간에 닿지 못하게
     /// 하는 것이 목적이다(왕조 13 + 골글 13 + 시그 1 풀초월 = 148P).
     ///   LIVE(LIVE_NORMAL/LIVE_EPIC) 4 → 초월 8 | ALLSTAR 4 → 9각 7 | FRANCHISE 3 → 9각 6
-    ///   TITLE_HOLDER 3 → 9각 6 | RETIRED_NUMBER 2 → 9각 5(잠정) | GOLDEN_GLOVE 2 → 초월 6
-    ///   SIGNATURE 1 → 초월 5 | DYNASTY 1 → 초월 5
-    ///   RETIRED_NUMBER는 규격 미정이라 "성능 TH~SIG 사이 → 스코어도 TH(3)~SIG(1) 사이"라는 역전 원칙으로 2를
-    ///   잠정 적용한다(DCL-144 결정 필요 항목).
+    ///   TITLE_HOLDER 3 → 9각 6 | GOLDEN_GLOVE 2 → 초월 6 | SIGNATURE 1 → 초월 5 | DYNASTY 1 → 초월 5
+    ///   RETIRED_NUMBER 2 → 초월 6 [TASK-KBO-174 확정] - 실전 성능은 SIG/DYN과 같은 최상위 종결급이면서
+    ///   세트덱 스코어는 SIG/DYN보다 +1 높은 "구단 성골 우대"(Core Captain). 구단별 1~4명뿐이라 도배 불가.
     ///
     /// [TASK-KBO-173 Salary 일원화] 이 기본 스코어가 곧 카드의 "Salary"다 - cards_*.csv의 salary_cost 컬럼은
     /// BaseSetDeckScore()와 같은 값으로 생성되며, 별도 샐러리 캡(구 Player.CalculateSalaryCost / RosterManager
     /// EnforceSalaryCap)은 폐기됐다. 도배 방지는 이 역전 스코어 + 27인 세트덱 편성 규칙이 전담한다.
+    ///
+    /// [TASK-KBO-174 실전 능력치 연동] GradeOvrBonus() - 같은 선수의 카드는 등급에 따라 기본 OVR이
+    /// LIVE_NORMAL(+0) < LIVE_EPIC(+1) < ALLSTAR(+3) < FRANCHISE(+4) ≤ TITLE_HOLDER(+5) < GOLDEN_GLOVE(+7)
+    /// < SIGNATURE = DYNASTY = RETIRED_NUMBER(+10)만큼 높다. cards_*.csv의 base_ovr = 선수 기본 OVR + 이 보정이며,
+    /// PlayerDatabase가 카드 세부 스탯을 base_ovr에 맞춰 이동시킨다.
     /// </summary>
     public static class CardGrowthRules
     {
@@ -35,7 +39,8 @@ namespace KBOManager.Models
         /// <summary>세트덱 스코어가 +1씩 오르는 각성 단계(3·6·9각). 초월은 별도(+1, 초월 가능 등급만).</summary>
         public static readonly int[] ScoreAwakenSteps = { 3, 6, 9 };
 
-        /// <summary>9각에 도달한 LIVE/SIGNATURE/GOLDEN_GLOVE/DYNASTY만 초월 가능(PDF 원문).</summary>
+        /// <summary>9각에 도달한 LIVE/SIGNATURE/GOLDEN_GLOVE/DYNASTY(PDF 원문) + RETIRED_NUMBER([TASK-KBO-174]
+        /// 최상위 종결 등급 격상)만 초월 가능. ALLSTAR/FRANCHISE/TITLE_HOLDER는 9각 한계.</summary>
         public static bool CanTranscend(Grade grade) => grade switch
         {
             Grade.LIVE_NORMAL => true,
@@ -43,6 +48,7 @@ namespace KBOManager.Models
             Grade.GOLDEN_GLOVE => true,
             Grade.SIGNATURE => true,
             Grade.DYNASTY => true,
+            Grade.RETIRED_NUMBER => true,
             _ => false
         };
 
@@ -60,7 +66,7 @@ namespace KBOManager.Models
             Grade.ALLSTAR => 4,
             Grade.FRANCHISE => 3,
             Grade.TITLE_HOLDER => 3,
-            Grade.RETIRED_NUMBER => 2, // 잠정(규격 미정) - 역전 원칙상 TH(3)와 SIG(1) 사이
+            Grade.RETIRED_NUMBER => 2, // [TASK-KBO-174 확정] 2 → 초월 6(SIG/DYN보다 +1, 구단 성골 우대)
             Grade.GOLDEN_GLOVE => 2,
             Grade.SIGNATURE => 1,
             Grade.DYNASTY => 1,
@@ -104,6 +110,31 @@ namespace KBOManager.Models
         /// </summary>
         public static int MaxStatGrowthFor(Grade grade, int maxReinforceLevel) =>
             IsLive(grade) ? maxReinforceLevel + NineStageAwakenCap : int.MaxValue;
+
+        /// <summary>[TASK-KBO-174] 등급별 실전 기본 OVR 보정(같은 선수 기준). GenerateKBODatabase.py GRADE_OVR_BONUS와
+        /// 반드시 일치해야 한다 - 카드 CSV의 base_ovr가 없거나 해석 불가일 때 PlayerDatabase가 이 값으로 폴백한다.</summary>
+        public static int GradeOvrBonus(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 0,
+            Grade.LIVE_EPIC => 1,
+            Grade.ALLSTAR => 3,
+            Grade.FRANCHISE => 4,
+            Grade.TITLE_HOLDER => 5,
+            Grade.GOLDEN_GLOVE => 7,
+            Grade.SIGNATURE => 10,
+            Grade.DYNASTY => 10,
+            Grade.RETIRED_NUMBER => 10,
+            _ => 0
+        };
+
+        /// <summary>
+        /// [TASK-KBO-174 LIVE 각성/초월 비용 완화] 각성 재료 1장이 주는 각성 포인트(초월 = 10포인트).
+        /// 완전히 같은 카드 사본: LIVE 5 / 그 외 3. 같은 선수의 같은 등급 다른 카드: LIVE 2 / 그 외 1.
+        /// → LIVE 초월 = 같은 카드 사본 2장, 상위 등급 초월/9각 = 사본 4장/3장. 무과금이 연간 LIVE 약 10장을
+        /// 초월(사본 약 20장)해 185~190P 구간에 닿도록 하는 설계값이다(docs/04 11절).
+        /// </summary>
+        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isIdenticalCard) =>
+            IsLive(targetGrade) ? (isIdenticalCard ? 5 : 2) : (isIdenticalCard ? 3 : 1);
 
         /// <summary>UI 표기용 각성 단계 문자열("명함", "5각", "초월").</summary>
         public static string AwakenLabel(Grade grade, int awakenLevel)

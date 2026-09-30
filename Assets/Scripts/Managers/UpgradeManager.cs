@@ -79,7 +79,9 @@ namespace KBOManager.Managers
         /// <summary>
         /// 재료 카드 목록으로 각성을 시도한다.
         /// - [TASK-KBO-172] 전 등급 각성 가능(LIVE 포함). 한계는 등급별 - 9각 한계 등급(ALLSTAR/FRANCHISE/
-        ///   TITLE_HOLDER/RETIRED_NUMBER)은 9각, 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY)은 초월(10).
+        ///   TITLE_HOLDER)은 9각, 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY/[TASK-174] RETIRED_NUMBER)은 초월(10).
+        /// - [TASK-KBO-174] 재료당 포인트는 CardGrowthRules.AwakenPointsPerMaterial - LIVE는 완화(동일 카드 +5 / 같은 등급 +2),
+        ///   그 외 등급은 기존 값(동일 카드 +3 / 같은 등급 +1).
         /// - 재료는 RealPlayerId가 target과 완전히 일치해야 유효한 재료로 인정된다.
         /// - 완전히 동일한 템플릿(카드 종류)이면 +3각, 같은 등급의 다른 템플릿(동일 선수)이면 +1각을 부여한다.
         /// 소모된 재료를 인벤토리에서 제거하는 것은 호출부 책임이다.
@@ -101,11 +103,11 @@ namespace KBOManager.Managers
 
                 if (material.Template == target.Template)
                 {
-                    gainedPoints += 3; // 완벽히 동일한 카드
+                    gainedPoints += CardGrowthRules.AwakenPointsPerMaterial(target.Template.Grade, true); // 완벽히 동일한 카드
                 }
                 else if (material.Template.Grade == target.Template.Grade)
                 {
-                    gainedPoints += 1; // 같은 등급의 다른 종류(카드) 동일 선수
+                    gainedPoints += CardGrowthRules.AwakenPointsPerMaterial(target.Template.Grade, false); // 같은 등급 다른 카드(동일 선수)
                 }
                 // 등급이 다른 동일 선수 카드는 GDD에 명시되지 않아 각성 재료로 인정하지 않음
             }

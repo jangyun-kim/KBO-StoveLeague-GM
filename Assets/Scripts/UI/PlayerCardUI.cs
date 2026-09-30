@@ -301,7 +301,7 @@ namespace KBOManager.UI
             Grade.ALLSTAR => "AS",
             Grade.FRANCHISE => "FRA", // [TASK-KBO-172 신설]
             Grade.TITLE_HOLDER => "TH",
-            Grade.RETIRED_NUMBER => "RN",
+            Grade.RETIRED_NUMBER => "RN", // [TASK-KBO-174 확인] CardDesigns/BG_RN, Frame_RN - 아트 부재 시 StarType.BLACK 틴트
             Grade.GOLDEN_GLOVE => "GG",
             Grade.SIGNATURE => "SIG",
             Grade.DYNASTY => "DYN",

@@ -124,7 +124,7 @@ namespace KBOManager.Models
         ALLSTAR = 3,        // 올스타 (보라 4성, 9각 한계)
         FRANCHISE = 4,      // [TASK-KBO-172 신설] 프랜차이즈 (브론즈 5성, 9각 한계) - 무관 구단 핵심 주전/필승조/수비형
         TITLE_HOLDER = 5,   // 타이틀 홀더 (실버 5성, 9각 한계)
-        RETIRED_NUMBER = 6, // [TASK-KBO-155 신설] 영구결번 (검정 5성 - TITLE_HOLDER~SIGNATURE 중간 성능, 9각 한계)
+        RETIRED_NUMBER = 6, // [TASK-KBO-155 신설] 영구결번 (검정 5성, [TASK-KBO-174] 실전 성능 SIG/DYN 동급 최상위 + 초월 가능)
         SIGNATURE = 7,      // 시그니처 (플래티넘 6성, 초월 가능)
         GOLDEN_GLOVE = 8,   // 골든 글러브 (골드 5성, 초월 가능)
         DYNASTY = 9         // 왕조 (구단색 6성, 초월 가능)

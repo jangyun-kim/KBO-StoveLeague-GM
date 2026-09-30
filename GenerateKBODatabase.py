@@ -76,7 +76,7 @@ MAX_YEAR = 2026
 # 명시했다.
 # [TASK-KBO-172] max_awaken = 각성 한계. 각성은 1~9각 + 초월(내부 값 10)로 개편됐다(기획 고도화 자료.pdf
 # "기존 10각을 초월로 명칭 변경"). 초월 가능 등급(LIVE_NORMAL/LIVE_EPIC/GOLDEN_GLOVE/SIGNATURE/DYNASTY)은
-# 10, 9각 한계 등급(ALLSTAR/FRANCHISE/TITLE_HOLDER/RETIRED_NUMBER)은 9다 - C# SetDeckRules.MaxAwakenLevelFor()와
+# 10, 9각 한계 등급(ALLSTAR/FRANCHISE/TITLE_HOLDER)은 9다 - [TASK-KBO-174] RETIRED_NUMBER는 초월 가능(10)으로 격상 - C# SetDeckRules.MaxAwakenLevelFor()와
 # 반드시 일치해야 한다. LIVE는 이전(0 = 각성 불가)과 달리 초월까지 성장 가능하지만, 실전 OVR은
 # ALLSTAR 9각 동급으로 상한이 걸린다(Player.cs의 LIVE 성장 상한 참고).
 # FRANCHISE(프랜차이즈, TASK-KBO-172 신설)는 ALLSTAR와 TITLE_HOLDER 사이의 중상위~상위 등급이다.
@@ -86,7 +86,7 @@ GRADE_META = {
     "ALLSTAR":        {"code": "AS",   "ovr": (74, 83), "salary": 24, "max_enhance": 10, "max_awaken": 9,  "droppable": "TRUE"},
     "FRANCHISE":      {"code": "FRA",  "ovr": (78, 86), "salary": 27, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
     "TITLE_HOLDER":   {"code": "TH",   "ovr": (80, 87), "salary": 30, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
-    "RETIRED_NUMBER": {"code": "RN",   "ovr": (85, 91), "salary": 33, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
+    "RETIRED_NUMBER": {"code": "RN",   "ovr": (85, 91), "salary": 33, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "GOLDEN_GLOVE":   {"code": "GG",   "ovr": (83, 90), "salary": 35, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "SIGNATURE":      {"code": "SIG",  "ovr": (87, 94), "salary": 40, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "DYNASTY":        {"code": "DYN",  "ovr": (92, 99), "salary": 50, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
@@ -96,7 +96,7 @@ GRADE_META = {
 # PlayerDatabase가 경고). 위 GRADE_META의 salary 값(구 샐러리 12~50)은 아래 루프가 이 값으로 덮어쓴다.
 SETDECK_BASE_SCORE = {
     "LIVE_NORMAL": 4, "LIVE_EPIC": 4, "ALLSTAR": 4, "FRANCHISE": 3, "TITLE_HOLDER": 3,
-    "RETIRED_NUMBER": 2,  # 잠정(규격 미정) - 역전 원칙상 TH(3)와 SIG(1) 사이
+    "RETIRED_NUMBER": 2,  # [TASK-KBO-174 확정] 기본 2 -> 초월 6(초월 +4) - 구단 성골 우대
     "GOLDEN_GLOVE": 2, "SIGNATURE": 1, "DYNASTY": 1,
 }
 for _grade, _meta in GRADE_META.items():
@@ -110,7 +110,7 @@ GRADE_ID = {
 }
 
 # [TASK-KBO-172] 기존 난수 스트림(random.seed(20260922))을 1바이트도 흔들지 않기 위해, 이번 작업에서
-# 새로 생기는 선수 등록/카드 발급(FRANCHISE, TITLE_HOLDER 1986~2012 확장, DYNASTY 24장, SIGNATURE
+# 새로 생기는 선수 등록/카드 발급(FRANCHISE, TITLE_HOLDER 1986~2012 확장, DYNASTY 25장(TASK-174), SIGNATURE
 # 쿼터 보강)은 전부 이 전용 RNG만 쓴다 - 그래야 기존 선수 ID(예: 구자욱 PLY_004038 초상화 매핑)와
 # 기존 카드 base_ovr가 그대로 보존된다.
 rng172 = random.Random(20261001)
@@ -160,7 +160,7 @@ DYNASTY_ROSTERS = {
 }
 # [TASK-KBO-172] 위 DYNASTY_ROSTERS는 이제 "왕조 시기 실존 인물 등록 순서"만 담당한다(선수 ID 시퀀스
 # PLY_000001~ 보존 - 여기서 인원을 빼거나 넣으면 이후 모든 player_id가 밀려 구자욱 초상화 매핑이 깨진다).
-# 실제 DYNASTY 카드 발급은 아래 DYNASTY_CARDS(1인 1연도 정예 24장)만 따른다 - 이전의 "왕조 구간 4개
+# 실제 DYNASTY 카드 발급은 아래 DYNASTY_CARDS(1인 1연도 정예 25장 - 삼성 13 + 해태 12, TASK-174)만 따른다 - 이전의 "왕조 구간 4개
 # 연도 전부 발급(29명 x 4 = 116장)" 방식은 같은 선수의 DYN이 4장씩 겹쳐 DB 충돌을 일으켜 폐기했다.
 # 사용자 확정 명단(명령서 STEP 3-4) 그대로이며, 타 구단은 DYNASTY가 없다.
 # (이름, team_token, 대표 연도, is_pitcher, 신규 등록 시 포지션)
@@ -173,13 +173,16 @@ DYNASTY_CARDS = [
     ("심창민", "SAMSUNG", 2013, True, "RP"), ("권오준", "SAMSUNG", 2012, True, "RP"),
     ("정현욱", "SAMSUNG", 2011, True, "RP"), ("안지만", "SAMSUNG", 2014, True, "RP"),
     ("윤성환", "SAMSUNG", 2014, True, "SP"),
-    # 해태(KIA) 1986~1989 (11인)
+    # 해태(KIA) 1986~1989 (12인 = 타선 7 + 투수 5) - [TASK-KBO-174] 역사 고증 교정. 이종범(1993년 입단이라
+    # 1986~1989 왕조 시대에 없음)·송유석·김상진을 빼고 김봉연·박철우·이강철·차동철을 넣었다. 네 명 모두
+    # 이미 등록된 인물(왕조 시기 로스터/1989 골든글러브)이라 신규 player_id가 생기지 않는다.
     ("김성한", "KIA", 1988, False, "1B"), ("장채근", "KIA", 1988, False, "C"),
-    ("이종범", "KIA", 1989, False, "SS"), ("한대화", "KIA", 1989, False, "3B"),
-    ("김종모", "KIA", 1986, False, "RF"), ("이순철", "KIA", 1988, False, "CF"),
+    ("한대화", "KIA", 1989, False, "3B"), ("김종모", "KIA", 1986, False, "RF"),
+    ("김봉연", "KIA", 1986, False, "DH"), ("이순철", "KIA", 1988, False, "CF"),
+    ("박철우", "KIA", 1989, False, "DH"),
     ("선동열", "KIA", 1986, True, "SP"), ("김정수", "KIA", 1987, True, "SP"),
-    ("송유석", "KIA", 1986, True, "RP"), ("문희수", "KIA", 1988, True, "SP"),
-    ("김상진", "KIA", 1989, True, "SP"),
+    ("이강철", "KIA", 1989, True, "SP"), ("문희수", "KIA", 1988, True, "SP"),
+    ("차동철", "KIA", 1987, True, "RP"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -700,30 +703,31 @@ for year in sorted(TITLE_HOLDER_HISTORY.keys(), reverse=True):
 
 # ---------------------------------------------------------------------------
 # 5-H. [TASK-KBO-163, 사용자 직접 지시 "RETIRED_NUMBER는 전체 반영"] KBO 영구결번 전체를
-# 위키백과 "KBO 리그 영구 결번 목록" 실시간 조회(2026-09-22)로 확인해 반영한다 - 이 문서
-# 작성 시점 기준 18명 전원(1986년 김영신부터 2025년 오승환까지)이며, 추후 새로 영구결번이
-# 지정되면 이 목록에 추가하면 된다. 연도는 "영구결번 지정 연도"를 카드 연도로 삼았다(그 해에
-# 구단이 이 선수의 커리어 전체를 기려 번호를 걸었다는 실제 사실이 발생한 시점). 옛 구단명은
-# GOLDEN_GLOVE_HISTORY와 동일한 프랜차이즈 승계 매핑을 따른다(해태→KIA, OB→DOOSAN, SK→SSG).
+# 위키백과 "KBO 리그 영구 결번 목록" 실시간 조회(2026-09-22)로 확인해 반영한다 - 18명 전원(1986년
+# 김영신부터 2025년 오승환까지). 옛 구단명은 GOLDEN_GLOVE_HISTORY와 동일한 프랜차이즈 승계 매핑.
+# [TASK-KBO-174] 카드 연도를 "영구결번 지정 연도"(대부분 은퇴 이후라 실제 활약 시즌이 아님)에서 "그 구단
+# 대표 커리어 하이 시즌"으로 바꿨다(1인·구단당 1장). 가능한 한 이 스크립트의 실제 수상 기록(타이틀/골든
+# 글러브)으로 교차검증되는 시즌을 골랐고, SIGNATURE와 같은 해는 피했다(박철순·김영신은 대안 시즌이 없어
+# 예외). 주석의 "(TH)"/"(GG)"는 교차검증 근거.
 RETIRED_NUMBER_HISTORY = [
-    ("이종범", "KIA", 2012),
-    ("이병규", "LG", 2017),
-    ("양준혁", "SAMSUNG", 2010),
-    ("이대호", "LOTTE", 2022),
-    ("최동원", "LOTTE", 2011),
-    ("선동열", "KIA", 1996),
-    ("박철순", "DOOSAN", 2002),
-    ("송진우", "HANWHA", 2009),
-    ("이만수", "SAMSUNG", 2004),
-    ("정민철", "HANWHA", 2009),
-    ("박경완", "SSG", 2014),
-    ("박용택", "LG", 2022),
-    ("장종훈", "HANWHA", 2005),
-    ("이승엽", "SAMSUNG", 2017),
-    ("김용수", "LG", 1999),
-    ("김태균", "HANWHA", 2021),
-    ("김영신", "DOOSAN", 1986),
-    ("오승환", "SAMSUNG", 2025),
+    ("이종범", "KIA", 1993),      # 데뷔 시즌 해태 우승·한국시리즈 MVP, 득점(TH) - SIG는 1994
+    ("이병규", "LG", 2005),       # 타율·최다안타(TH) - SIG는 1999
+    ("양준혁", "SAMSUNG", 1998),  # 타율·최다안타(TH) - SIG는 1996
+    ("이대호", "LOTTE", 2010),    # 타격 7관왕(TH)
+    ("최동원", "LOTTE", 1987),    # 탈삼진(TH) - SIG는 1984
+    ("선동열", "KIA", 1993),      # 평균자책점 0.78(TH) - SIG/DYN은 1986
+    ("박철순", "DOOSAN", 1982),   # 22승 무패 - 대안 시즌 없음(SIG와 같은 해)
+    ("송진우", "HANWHA", 2002),   # 골든글러브 투수(GG) - SIG는 2009
+    ("이만수", "SAMSUNG", 1987),  # 타점(TH)·골든글러브(GG) - SIG는 1984
+    ("정민철", "HANWHA", 1994),   # 평균자책점·탈삼진(TH) - SIG는 1999
+    ("박경완", "SSG", 2004),      # 홈런왕(TH, SK) - SIG는 2007
+    ("박용택", "LG", 2005),       # 득점·도루(TH) - SIG는 2009
+    ("장종훈", "HANWHA", 1991),   # 홈런·타점·득점·장타율(TH), 시즌 MVP - SIG는 1992
+    ("이승엽", "SAMSUNG", 1999),  # 54홈런(TH) - SIG는 2003
+    ("김용수", "LG", 1989),       # 세이브(TH, MBC) - SIG는 1990
+    ("김태균", "HANWHA", 2012),   # 타율·출루율(TH) - SIG는 2008
+    ("김영신", "DOOSAN", 1986),   # OB 포수, 1985~1986 활동 - 대안 시즌 없음
+    ("오승환", "SAMSUNG", 2012),  # 세이브(TH) - SIG 2006, DYN 2011
 ]
 
 # 이 중 5명(최동원/박철순/정민철/김용수/김영신)은 이번이 첫 등장이라 실제로 신규 등록되므로
@@ -1081,8 +1085,8 @@ for name, team_token, year in SIGNATURE_QUOTA_ADDITIONS:
     rec = _resolve_historical(name, team_token, True, "CP", rng=rng172, mark_existing_skip=False)  # 전원 기존 등록 인물(신규 생성 없음)
     signature_quota_cards_to_issue.append((rec, year, team_token))
 
-# (3) DYNASTY 1인 1연도 정예 24장(명령서 STEP 3-4). 명단에서 처음 등장하는 인물(심창민/정현욱/송유석/
-# 김상진 등)만 신규 등록된다.
+# (3) DYNASTY 1인 1연도 정예 25장(TASK-172 STEP 3-4, TASK-174 해태 12인 교정). 명단에서 처음 등장하는 인물(심창민/정현욱/
+# 권오준은 TH로 먼저 등록)만 신규 등록된다.
 dynasty_cards_to_issue = []
 for name, team_token, year, is_pitcher, position in DYNASTY_CARDS:
     rec = _resolve_historical(name, team_token, is_pitcher, position, rng=rng172, mark_existing_skip=False,
@@ -1122,6 +1126,26 @@ CARDS_HEADER = [
 MIN_CARDS_PER_PLAYER = 2
 MAX_CARDS_PER_PLAYER = 12
 
+# [TASK-KBO-174, 실전 능력치 연동] base_ovr = 그 선수의 기본 OVR(players.csv z값 -> PlayerDatabase.
+# ConvertZScoreToStat과 같은 z*15+50 환산) + 등급 보정. 결정론이라 "동일 선수 기준" 등급 서열
+# LIVE_NORMAL < LIVE_EPIC < ALLSTAR < FRANCHISE <= TITLE_HOLDER < GOLDEN_GLOVE < SIGNATURE = DYNASTY = RETIRED_NUMBER
+# 가 항상 보장된다(예전 등급별 무작위 범위는 범위가 서로 겹쳐 같은 선수의 TH가 GG보다 높게 나올 수 있었다).
+# C# CardGrowthRules.GradeOvrBonus()와 반드시 일치해야 한다. 런타임(PlayerDatabase)은 카드 세부 스탯을
+# (base_ovr - 선수 기본 OVR)만큼 균등 이동시켜 카드 OVR = base_ovr로 맞춘다.
+GRADE_OVR_BONUS = {
+    "LIVE_NORMAL": 0, "LIVE_EPIC": 1, "ALLSTAR": 3, "FRANCHISE": 4, "TITLE_HOLDER": 5,
+    "GOLDEN_GLOVE": 7, "SIGNATURE": 10, "DYNASTY": 10, "RETIRED_NUMBER": 10,
+}
+BASE_OVR_MIN, BASE_OVR_MAX = 1, 120  # 상단 클램프가 등급 서열을 깨지 않도록 넉넉하게(최고 선수 약 92 + 10)
+
+
+def player_base_overall(rec):
+    """PlayerDatabase.ConvertZScoreToStat(z) = clamp(round(z*15+50), 1, 100) - players.csv에 쓰인 3자리 z 기준.
+    한 선수의 주요 스탯 z가 전부 같은 값이라 기본 OVR = 이 환산값 하나다."""
+    z = float(f"{rec.z_value:.3f}")
+    return max(1, min(100, round(z * 15 + 50)))
+
+
 def make_card_row(rec, year, grade, team_token_override=None, rng=random):
     # [TASK-KBO-159] team_token_override - 실제 선수는 이적/FA로 해마다 소속이 달라질 수 있다
     # (예: 최형우 삼성<->KIA, 양의지 두산<->NC) - 그 해의 실제 소속을 카드 ID/파일 배치에
@@ -1131,9 +1155,13 @@ def make_card_row(rec, year, grade, team_token_override=None, rng=random):
     meta = GRADE_META[grade]
     ovr_lo, ovr_hi = meta["ovr"]
     card_id = f"{team_token}_{year}_{rec.player_id}_{meta['code']}"
+    # [TASK-KBO-174] 예전 base_ovr 난수(등급별 범위 randint)는 값은 버리고 호출만 유지한다 - 이 소비를 빼면
+    # 뒤따르는 카드들의 연도/등급 추첨이 전부 밀려 기존 카드 ID가 바뀐다(스트림 보존 전용).
+    rng.randint(ovr_lo, ovr_hi)
+    base_ovr = max(BASE_OVR_MIN, min(BASE_OVR_MAX, player_base_overall(rec) + GRADE_OVR_BONUS[grade]))
     return [
         card_id, rec.player_id, GRADE_ID[grade], grade,
-        rng.randint(ovr_lo, ovr_hi), meta["salary"], meta["max_enhance"],
+        base_ovr, meta["salary"], meta["max_enhance"],
         meta["max_awaken"], meta["droppable"], year,
     ]
 
@@ -1143,7 +1171,7 @@ for rec in player_records:
     issued_year_grade = set()
 
     # [TASK-KBO-172] 예전에는 여기서 왕조 구간 4개 연도 전부 DYNASTY를 발급했다(1인 4장). 이제 DYNASTY는
-    # 섹션 7-J의 DYNASTY_CARDS(1인 1연도 24장)만 발급한다. 다만 예전 발급이 소비하던 base_ovr 난수
+    # 섹션 7-J의 DYNASTY_CARDS(1인 1연도 25장)만 발급한다. 다만 예전 발급이 소비하던 base_ovr 난수
     # (연도당 randint 1회)는 그대로 소비해 버린다 - 이걸 빼면 뒤따르는 가상 선수 수만 장의 카드
     # 연도/등급/OVR이 통째로 밀려 기존 DB와의 비교 검증이 불가능해지기 때문이다(스트림 보존 전용).
     if rec.is_dynasty_member:
@@ -1260,6 +1288,7 @@ class _ForcedPlayer:
 kim_sangyeop = _ForcedPlayer()
 kim_sangyeop.player_id = "PLY_900001"
 kim_sangyeop.team_token = "SAMSUNG"
+kim_sangyeop.z_value = 1.7  # [TASK-KBO-174] base_ovr 계산용 - 아래 players.csv 행의 z(1.700)와 동일
 players_rows.append([
     kim_sangyeop.player_id, "TEM_002", "김상엽", 1990, "SP", 170,
     "0.000", "0.000", "0.000", "1.700", "0.000", "1.700", "FALSE",
@@ -1288,7 +1317,7 @@ for rec_or_alias, year, team_token in title_holder_1986_2012_to_issue:
 for rec, year, team_token in signature_quota_cards_to_issue:
     cards_by_team[team_token].append(make_card_row(rec, year, "SIGNATURE", team_token_override=team_token, rng=rng172))
 
-# (3) DYNASTY 1인 1연도 24장
+# (3) DYNASTY 1인 1연도 25장
 dynasty_card_count = 0
 for rec, year, team_token in dynasty_cards_to_issue:
     cards_by_team[team_token].append(make_card_row(rec, year, "DYNASTY", team_token_override=team_token, rng=rng172))
@@ -1430,64 +1459,60 @@ CHEER_LIVE_2026 = {
     "KIWOOM": ["용경아", "송민교", "강수경", "정차연", "홍예빈", "차예나", "서예은", "최혜린", "이채원"],
 }
 
-# 2) CHEER_ICON_LEGEND: 역대 ICON/LEGEND 로스터. (이름, 소속구단, 활동시작연도, 활동종료연도,
-#    [그 구간 매 연도마다 부여할 티어 리스트]) - 같은 인물이 팀을 옮긴 경우 여러 튜플로 나뉘며,
-#    연도 구간은 서로 겹치지 않도록 기획자가 이미 정리해 전달했다(이 스크립트는 그 전제를 신뢰하되,
-#    혹시 겹치면 아래 생성 루프가 중복 CatalogId를 즉시 예외로 터뜨려 조용히 데이터가 깨지는 것을
-#    막는다).
+# 2) CHEER_ICON_LEGEND: 역대 ICON/LEGEND 로스터. [TASK-KBO-174, 사용자 확정본 그대로] 활동 구간의 매 연도를
+#    전개하던 방식을 폐지하고 이력당 대표 1개 연도(rep_year)로만 생성한다. 형식: (이름, 소속구단, 대표 연도,
+#    활동 구간 표기(참고용 문자열 - 생성에는 쓰지 않음), [티어 리스트]).
 CHEER_ICON_LEGEND = [
-    # 1세대
-    ("배수현", "SSG", 2003, 2026, ["ICON"]),
-    ("노숙희", "SAMSUNG", 2000, 2012, ["ICON", "LEGEND"]),
-    ("이미경", "NC", 2012, 2014, ["ICON", "LEGEND"]),
-    ("강보경", "HANWHA", 2009, 2013, ["ICON", "LEGEND"]),
-    # 2세대
-    ("박기량", "LOTTE", 2009, 2022, ["ICON", "LEGEND"]),
-    ("박기량", "DOOSAN", 2024, 2026, ["ICON"]),
-    ("김연정", "NC", 2013, 2016, ["ICON", "LEGEND"]),
-    ("김연정", "HANWHA", 2009, 2011, ["ICON"]),
-    ("김연정", "HANWHA", 2017, 2026, ["ICON"]),
-    ("남궁혜미", "LG", 2012, 2020, ["ICON"]),
-    ("금보아", "HANWHA", 2011, 2015, ["ICON"]),
-    ("이엄지", "KIWOOM", 2019, 2022, ["ICON"]),
-    ("이연주", "SAMSUNG", 2012, 2018, ["ICON"]),
-    ("이수진", "SAMSUNG", 2013, 2024, ["ICON", "LEGEND"]),
-    ("이수진", "SSG", 2025, 2026, ["ICON"]),
-    ("김한나", "KIWOOM", 2017, 2019, ["ICON"]),
-    ("김한나", "KIA", 2020, 2025, ["ICON"]),
-    ("김진아", "LOTTE", 2014, 2015, ["ICON"]),
-    ("김진아", "KT", 2017, 2026, ["ICON"]),
-    # 3세대
-    ("김한슬", "KT", 2015, 2026, ["ICON"]),
-    ("서현숙", "DOOSAN", 2016, 2026, ["ICON", "LEGEND"]),
-    ("이아영", "KIA", 2020, 2021, ["ICON", "LEGEND"]),
-    ("이아영", "NC", 2022, 2023, ["ICON"]),
-    ("이나경", "DOOSAN", 2017, 2023, ["ICON", "LEGEND"]),
-    ("안지현", "KIWOOM", 2017, 2018, ["ICON", "LEGEND"]),
-    ("안지현", "LOTTE", 2019, 2022, ["ICON"]),
-    ("안지현", "SSG", 2025, 2026, ["ICON"]),
-    ("이주희", "NC", 2018, 2021, ["ICON", "LEGEND"]),
-    ("이주희", "NC", 2025, 2026, ["ICON", "LEGEND"]),
-    ("김이서", "LG", 2023, 2024, ["ICON"]),
-    ("이하윤", "HANWHA", 2017, 2020, ["ICON"]),
-    ("하지원", "HANWHA", 2023, 2026, ["ICON", "LEGEND"]),
-    ("하지원", "LG", 2018, 2021, ["ICON"]),
-    ("고정현", "SAMSUNG", 2019, 2023, ["ICON"]),
-    ("이다혜", "KIA", 2019, 2022, ["ICON", "LEGEND"]),
-    ("차영현", "LG", 2018, 2026, ["ICON"]),
-    ("신세희", "KT", 2020, 2026, ["ICON"]),
-    ("목나경", "LOTTE", 2024, 2026, ["ICON"]),
-    ("유세리", "KIA", 2024, 2026, ["ICON"]),
-    # 4세대
-    ("박소영", "SAMSUNG", 2025, 2026, ["ICON"]),
-    ("우수한", "HANWHA", 2023, 2026, ["ICON"]),
-    ("정희정", "DOOSAN", 2020, 2024, ["ICON"]),
-    ("정희정", "KT", 2025, 2026, ["ICON"]),
-    ("이연진", "SSG", 2024, 2026, ["ICON"]),
-    ("이주은", "KIA", 2024, 2024, ["ICON", "LEGEND"]),
-    ("유세빈", "SAMSUNG", 2026, 2026, ["ICON"]),
-    ("천소윤", "SAMSUNG", 2026, 2026, ["ICON"]),
-    ("용경아", "KIWOOM", 2025, 2026, ["ICON"]),
+    # 1세대 (4건)
+    ("배수현", "SSG", 2022, "2003~", ["ICON"]),
+    ("노숙희", "SAMSUNG", 2011, "2000~2012", ["ICON", "LEGEND"]),
+    ("이미경", "NC", 2014, "2012~2014", ["ICON", "LEGEND"]),
+    ("강보경", "HANWHA", 2012, "2009~2013", ["ICON", "LEGEND"]),
+    # 2세대 (14건)
+    ("박기량", "LOTTE", 2012, "2009~2022", ["ICON", "LEGEND"]),
+    ("박기량", "DOOSAN", 2024, "2024~", ["ICON"]),
+    ("김연정", "NC", 2016, "2013~2016", ["ICON", "LEGEND"]),
+    ("김연정", "HANWHA", 2018, "2009~2011/2017~", ["ICON"]),
+    ("남궁혜미", "LG", 2013, "2012~2020", ["ICON"]),
+    ("금보아", "HANWHA", 2015, "2011~2015", ["ICON"]),
+    ("이엄지", "KIWOOM", 2019, "2019~2022", ["ICON"]),
+    ("이연주", "SAMSUNG", 2014, "2012~2018", ["ICON"]),
+    ("이수진", "SAMSUNG", 2024, "2013~2024", ["ICON", "LEGEND"]),
+    ("이수진", "SSG", 2025, "2025~", ["ICON"]),
+    ("김한나", "KIWOOM", 2019, "2017~2019", ["ICON"]),
+    ("김한나", "KIA", 2024, "2020~2025", ["ICON"]),
+    ("김진아", "LOTTE", 2014, "2014~2015", ["ICON"]),
+    ("김진아", "KT", 2021, "2017~", ["ICON"]),
+    # 3세대 (19건)
+    ("김한슬", "KT", 2021, "2015~", ["ICON"]),
+    ("서현숙", "DOOSAN", 2019, "2016~", ["ICON", "LEGEND"]),
+    ("이아영", "KIA", 2020, "2020~2021", ["ICON", "LEGEND"]),
+    ("이아영", "NC", 2023, "2022~2023", ["ICON"]),
+    ("이나경", "DOOSAN", 2019, "2017~2023", ["ICON", "LEGEND"]),
+    ("안지현", "KIWOOM", 2018, "2017~2018", ["ICON", "LEGEND"]),
+    ("안지현", "LOTTE", 2019, "2019~2022", ["ICON"]),
+    ("안지현", "SSG", 2025, "2025~", ["ICON"]),
+    ("이주희", "NC", 2020, "2018~2021/2025~", ["ICON", "LEGEND"]),
+    ("김이서", "LG", 2023, "2023~2024", ["ICON"]),
+    ("이하윤", "HANWHA", 2018, "2017~2020", ["ICON"]),
+    ("하지원", "HANWHA", 2024, "2023~", ["ICON", "LEGEND"]),
+    ("하지원", "LG", 2019, "2018~2021", ["ICON"]),
+    ("고정현", "SAMSUNG", 2021, "2019~2023", ["ICON"]),
+    ("이다혜", "KIA", 2022, "2019~2022", ["ICON", "LEGEND"]),
+    ("차영현", "LG", 2023, "2018~", ["ICON"]),
+    ("신세희", "KT", 2021, "2020~", ["ICON"]),
+    ("목나경", "LOTTE", 2024, "2024~", ["ICON"]),
+    ("유세리", "KIA", 2024, "2024~", ["ICON"]),
+    # 4세대 (9건)
+    ("박소영", "SAMSUNG", 2025, "2025~", ["ICON"]),
+    ("우수한", "HANWHA", 2024, "2023~", ["ICON"]),
+    ("정희정", "DOOSAN", 2021, "2020~2024", ["ICON"]),
+    ("정희정", "KT", 2025, "2025~", ["ICON"]),
+    ("이연진", "SSG", 2024, "2024~", ["ICON"]),
+    ("이주은", "KIA", 2024, "2024", ["ICON", "LEGEND"]),
+    ("유세빈", "SAMSUNG", 2026, "2026~", ["ICON"]),
+    ("천소윤", "SAMSUNG", 2026, "2026~", ["ICON"]),
+    ("용경아", "KIWOOM", 2025, "2025~", ["ICON"]),
 ]
 
 cheerleaders_rows = []
@@ -1525,12 +1550,10 @@ for _team, _names in CHEER_LIVE_2026.items():
     for _name in _names:
         _add_cheer_row(_name, _team, 2026, "LIVE", "LIVE_NORMAL")
 
-# 2) 역대 ICON/LEGEND 풀 - 활동 구간의 매 연도 x 지정된 각 티어로 1장씩(예: 2013~2024, 12년 구간에
-#    ["ICON", "LEGEND"] 2개 티어면 ICON 12장 + LEGEND 12장 = 24장).
-for _name, _team, _start_year, _end_year, _tiers in CHEER_ICON_LEGEND:
-    for _year in range(_start_year, _end_year + 1):
-        for _tier in _tiers:
-            _add_cheer_row(_name, _team, _year, _tier, _tier)
+# 2) 역대 ICON/LEGEND 풀 - [TASK-KBO-174] 이력당 대표 연도 1개 x 지정된 각 티어로 1장씩.
+for _name, _team, _rep_year, _active_range, _tiers in CHEER_ICON_LEGEND:
+    for _tier in _tiers:
+        _add_cheer_row(_name, _team, _rep_year, _tier, _tier)
 
 # ---------------------------------------------------------------------------
 # 9. 파일 출력 (utf-8-sig - 명령서 6항, 엑셀/유니티 한글 깨짐 방지)
