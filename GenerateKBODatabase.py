@@ -31,6 +31,7 @@
 import csv
 import os
 import random
+from collections import Counter
 
 random.seed(20260922)  # 재현 가능한 결과(재실행해도 동일 DB) - 명령서에 시드 요구는 없으나 디버깅 편의상 고정.
 
@@ -38,7 +39,9 @@ random.seed(20260922)  # 재현 가능한 결과(재실행해도 동일 DB) - �
 # 0. 경로
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "Assets", "Resources", "Data")
+# [TASK-KBO-172] 환경 변수 KBO_DB_OUTPUT_DIR로 출력 경로를 바꿀 수 있다(기본값은 기존과 동일) -
+# 실제 Data 폴더를 덮어쓰기 전에 임시 폴더로 생성해 기존 CSV와 diff 검증하기 위함.
+OUTPUT_DIR = os.environ.get("KBO_DB_OUTPUT_DIR") or os.path.join(SCRIPT_DIR, "Assets", "Resources", "Data")
 
 # ---------------------------------------------------------------------------
 # 1. 구단 정의 - PlayerDatabase.cs의 TeamIdMapping과 정확히 1:1 대응시킨다.
@@ -71,21 +74,35 @@ MAX_YEAR = 2026
 # (등급 서열)와 Models/Player.cs(MaxReinforceLevel=10/MaxAwakenLevel=10, CanAwaken 규칙)에 맞춰
 # 이번 스크립트가 직접 정의했다 - PM 문서에 정확한 수치가 없어 자체 설계한 값이라는 점을 DCL에
 # 명시했다.
+# [TASK-KBO-172] max_awaken = 각성 한계. 각성은 1~9각 + 초월(내부 값 10)로 개편됐다(기획 고도화 자료.pdf
+# "기존 10각을 초월로 명칭 변경"). 초월 가능 등급(LIVE_NORMAL/LIVE_EPIC/GOLDEN_GLOVE/SIGNATURE/DYNASTY)은
+# 10, 9각 한계 등급(ALLSTAR/FRANCHISE/TITLE_HOLDER/RETIRED_NUMBER)은 9다 - C# SetDeckRules.MaxAwakenLevelFor()와
+# 반드시 일치해야 한다. LIVE는 이전(0 = 각성 불가)과 달리 초월까지 성장 가능하지만, 실전 OVR은
+# ALLSTAR 9각 동급으로 상한이 걸린다(Player.cs의 LIVE 성장 상한 참고).
+# FRANCHISE(프랜차이즈, TASK-KBO-172 신설)는 ALLSTAR와 TITLE_HOLDER 사이의 중상위~상위 등급이다.
 GRADE_META = {
-    "LIVE_NORMAL":    {"code": "LN",   "ovr": (55, 68), "salary": 12, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
-    "LIVE_EPIC":      {"code": "EPIC", "ovr": (65, 76), "salary": 18, "max_enhance": 10, "max_awaken": 0,  "droppable": "TRUE"},
-    "ALLSTAR":        {"code": "AS",   "ovr": (74, 83), "salary": 24, "max_enhance": 10, "max_awaken": 10, "droppable": "TRUE"},
-    "TITLE_HOLDER":   {"code": "TH",   "ovr": (80, 87), "salary": 30, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
-    "RETIRED_NUMBER": {"code": "RN",   "ovr": (85, 91), "salary": 33, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
+    "LIVE_NORMAL":    {"code": "LN",   "ovr": (55, 68), "salary": 12, "max_enhance": 10, "max_awaken": 10, "droppable": "TRUE"},
+    "LIVE_EPIC":      {"code": "EPIC", "ovr": (65, 76), "salary": 18, "max_enhance": 10, "max_awaken": 10, "droppable": "TRUE"},
+    "ALLSTAR":        {"code": "AS",   "ovr": (74, 83), "salary": 24, "max_enhance": 10, "max_awaken": 9,  "droppable": "TRUE"},
+    "FRANCHISE":      {"code": "FRA",  "ovr": (78, 86), "salary": 27, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
+    "TITLE_HOLDER":   {"code": "TH",   "ovr": (80, 87), "salary": 30, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
+    "RETIRED_NUMBER": {"code": "RN",   "ovr": (85, 91), "salary": 33, "max_enhance": 10, "max_awaken": 9,  "droppable": "FALSE"},
     "GOLDEN_GLOVE":   {"code": "GG",   "ovr": (83, 90), "salary": 35, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "SIGNATURE":      {"code": "SIG",  "ovr": (87, 94), "salary": 40, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "DYNASTY":        {"code": "DYN",  "ovr": (92, 99), "salary": 50, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
 }
-# Types.cs의 Grade enum 정수값(TASK-KBO-155 재배치 이후 LIVE_NORMAL=1 ~ DYNASTY=8)과 동일한 서열.
+# Types.cs의 Grade enum 정수값과 동일한 서열. [TASK-KBO-172] FRANCHISE(4)를 ALLSTAR와 TITLE_HOLDER
+# 사이에 끼워 넣으며 TITLE_HOLDER 이상이 한 칸씩 밀렸다(LIVE_NORMAL=1 ~ DYNASTY=9).
 GRADE_ID = {
-    "LIVE_NORMAL": 1, "LIVE_EPIC": 2, "ALLSTAR": 3, "TITLE_HOLDER": 4,
-    "RETIRED_NUMBER": 5, "SIGNATURE": 6, "GOLDEN_GLOVE": 7, "DYNASTY": 8,
+    "LIVE_NORMAL": 1, "LIVE_EPIC": 2, "ALLSTAR": 3, "FRANCHISE": 4, "TITLE_HOLDER": 5,
+    "RETIRED_NUMBER": 6, "SIGNATURE": 7, "GOLDEN_GLOVE": 8, "DYNASTY": 9,
 }
+
+# [TASK-KBO-172] 기존 난수 스트림(random.seed(20260922))을 1바이트도 흔들지 않기 위해, 이번 작업에서
+# 새로 생기는 선수 등록/카드 발급(FRANCHISE, TITLE_HOLDER 1986~2012 확장, DYNASTY 24장, SIGNATURE
+# 쿼터 보강)은 전부 이 전용 RNG만 쓴다 - 그래야 기존 선수 ID(예: 구자욱 PLY_004038 초상화 매핑)와
+# 기존 카드 base_ovr가 그대로 보존된다.
+rng172 = random.Random(20261001)
 
 # 일반 확률 풀(DYNASTY 제외) - 누적 100%.
 RANDOM_GRADE_WEIGHTS = [
@@ -130,6 +147,29 @@ DYNASTY_ROSTERS = {
         ],
     },
 }
+# [TASK-KBO-172] 위 DYNASTY_ROSTERS는 이제 "왕조 시기 실존 인물 등록 순서"만 담당한다(선수 ID 시퀀스
+# PLY_000001~ 보존 - 여기서 인원을 빼거나 넣으면 이후 모든 player_id가 밀려 구자욱 초상화 매핑이 깨진다).
+# 실제 DYNASTY 카드 발급은 아래 DYNASTY_CARDS(1인 1연도 정예 24장)만 따른다 - 이전의 "왕조 구간 4개
+# 연도 전부 발급(29명 x 4 = 116장)" 방식은 같은 선수의 DYN이 4장씩 겹쳐 DB 충돌을 일으켜 폐기했다.
+# 사용자 확정 명단(명령서 STEP 3-4) 그대로이며, 타 구단은 DYNASTY가 없다.
+# (이름, team_token, 대표 연도, is_pitcher, 신규 등록 시 포지션)
+DYNASTY_CARDS = [
+    # 삼성 2011~2014 (13인)
+    ("최형우", "SAMSUNG", 2014, False, "LF"), ("박석민", "SAMSUNG", 2014, False, "3B"),
+    ("김상수", "SAMSUNG", 2014, False, "SS"), ("박해민", "SAMSUNG", 2014, False, "CF"),
+    ("채태인", "SAMSUNG", 2013, False, "1B"), ("야마이코 나바로", "SAMSUNG", 2014, False, "2B"),
+    ("오승환", "SAMSUNG", 2011, True, "CP"), ("차우찬", "SAMSUNG", 2011, True, "SP"),
+    ("심창민", "SAMSUNG", 2013, True, "RP"), ("권오준", "SAMSUNG", 2012, True, "RP"),
+    ("정현욱", "SAMSUNG", 2011, True, "RP"), ("안지만", "SAMSUNG", 2014, True, "RP"),
+    ("윤성환", "SAMSUNG", 2014, True, "SP"),
+    # 해태(KIA) 1986~1989 (11인)
+    ("김성한", "KIA", 1988, False, "1B"), ("장채근", "KIA", 1988, False, "C"),
+    ("이종범", "KIA", 1989, False, "SS"), ("한대화", "KIA", 1989, False, "3B"),
+    ("김종모", "KIA", 1986, False, "RF"), ("이순철", "KIA", 1988, False, "CF"),
+    ("선동열", "KIA", 1986, True, "SP"), ("김정수", "KIA", 1987, True, "SP"),
+    ("송유석", "KIA", 1986, True, "RP"), ("문희수", "KIA", 1988, True, "SP"),
+    ("김상진", "KIA", 1989, True, "SP"),
+]
 
 # ---------------------------------------------------------------------------
 # 4. 가상 선수 이름 생성기(그 외 로스터 물량용) - 조합형이라 실존 인물 특정과 무관하다.
@@ -178,7 +218,8 @@ def next_player_id():
 
 def add_player(team_token, team_id, team_enum, name, is_pitcher, position,
                 career_start, career_end, is_dynasty_member=False, dynasty_years=None,
-                skip_random_cards=False):
+                skip_random_cards=False, rng=random):
+    # [TASK-KBO-172] rng - TASK-172 신규 등록 인물은 rng172를 넘겨 기존 전역 난수 스트림을 보존한다.
     rec = PlayerRecord()
     rec.player_id = next_player_id()
     rec.team_token = team_token
@@ -193,9 +234,9 @@ def add_player(team_token, team_id, team_enum, name, is_pitcher, position,
     # 반복해 채웠다(예: 구자욱 행 전부 2.133) - 이번 대량 생성은 선수마다 "재능치" 하나를 뽑아
     # 6개 컬럼에 소폭의 독립 잡음을 더해 반복하는 방식으로 그 관례를 자연스럽게 확장했다(완전히
     # 같은 값을 반복하는 것보다 게임 데이터로서 약간 더 자연스럽고, 컬럼 의미 자체는 그대로다).
-    rec.z_value = random.gauss(1.0, 0.6)
-    rec.pa_ip = random.randint(80, 180) if is_pitcher and position == "SP" else \
-        (random.randint(30, 70) if is_pitcher else random.randint(200, 600))
+    rec.z_value = rng.gauss(1.0, 0.6)
+    rec.pa_ip = rng.randint(80, 180) if is_pitcher and position == "SP" else \
+        (rng.randint(30, 70) if is_pitcher else rng.randint(200, 600))
     rec.is_dynasty_member = is_dynasty_member
     rec.dynasty_years = dynasty_years
     # [TASK-KBO-156] 실제 검증된 선수(아래 "리서치 2단계" 절)는 확률 기반 무작위 카드를 받지
@@ -557,15 +598,22 @@ def _gg_position_for_index(i):
     base = ["SP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
     return base[i] if i < len(base) else "DH"
 
-def _resolve_historical(name, team_token, is_pitcher, position):
+def _resolve_historical(name, team_token, is_pitcher, position, rng=random, career=(2010, MAX_YEAR),
+                        mark_existing_skip=True):
     # 이름만으로 조회한다(이 표의 선수는 전부 유일하게 식별되는 실존 인물이라 동명이인 위험이
     # 없다) - 연도마다 소속이 달라도 인물 자체(RealPlayerId)는 하나로 유지한다.
+    # [TASK-KBO-172] rng/career - TASK-172 신규 인물은 rng172와 실제 활동 연도 근사치를 넘긴다.
+    # mark_existing_skip=False - 이미 등록된 인물의 skip_random_cards를 건드리지 않는다. TASK-172 조회가
+    # 이 플래그를 켜면 그 인물(예: 왕조 로스터의 서정환/문희수)의 확률 카드가 사라지며 전역 난수 스트림이
+    # 밀려 기존 카드 수만 장이 전부 바뀌므로, 기존 DB 보존을 위해 끈다.
     existing = real_player_records.get(name)
     if existing is not None:
-        existing.skip_random_cards = True
+        if mark_existing_skip:
+            existing.skip_random_cards = True
         return existing
     team_id, team_enum = TEAM_LOOKUP_2026[team_token]
-    rec = add_player(team_token, team_id, team_enum, name, is_pitcher, position, 2010, MAX_YEAR, skip_random_cards=True)
+    rec = add_player(team_token, team_id, team_enum, name, is_pitcher, position, career[0], career[1],
+                     skip_random_cards=True, rng=rng)
     real_player_records[name] = rec
     return rec
 
@@ -875,6 +923,162 @@ for year in sorted(ALLSTAR_HISTORY.keys(), reverse=True):
             allstar_cards_to_issue.append((rec, year, team_token))
 
 # ---------------------------------------------------------------------------
+# 5-K. [TASK-KBO-172] 시즌 카드 체제 개편 - 이 절에서 새로 등록되는 인물은 전부 rng172를 쓰고 기존
+# 등록(섹션 5~5-J) 뒤에 덧붙기만 하므로, 기존 player_id 시퀀스(구자욱 PLY_004038 등)는 그대로다.
+# ---------------------------------------------------------------------------
+
+# (1) TITLE_HOLDER 1986~2012 확장(명령서 STEP 3-2 "2013년 이후 제한 해제"). 나무위키 "KBO 리그/역대
+# 타이틀홀더/타자·투수" 실시간 조회(2026-10-01)로 확보한 타자 8부문(타율/최다안타/홈런/타점/득점/도루/
+# 출루율/장타율) + 투수 6부문(다승/평균자책점/탈삼진/세이브/홀드[2000년 신설]/승률) 수상자다. 옛 구단명은
+# GOLDEN_GLOVE_HISTORY와 같은 프랜차이즈 승계 매핑(해태->KIA, MBC->LG, OB->DOOSAN, 빙그레->HANWHA,
+# 청보/태평양/현대/넥센->KIWOOM, 쌍방울/SK->SSG)을 따른다. 이름 표기는 기존 등록 표기와 맞췄다
+# (타이론 우즈->"우즈", 펠릭스 호세->"호세", 제이 데이비스->"데이비스"). 공동 수상은 모두 발급하고,
+# 한 해 다관왕은 기존 2013~2024 규칙과 동일하게 연도당 1장으로 축약한다.
+# 형식: (이름, team_token, 부문) - 부문은 신규 등록 시 투타/포지션 판정에만 쓰인다.
+_TH_PITCHING = {"다승", "평균자책점", "탈삼진", "세이브", "홀드", "승률"}
+TITLE_HOLDER_HISTORY_1986_2012 = {
+    1986: [("장효조", "SAMSUNG", "타율"), ("이광은", "LG", "안타"), ("김봉연", "KIA", "홈런"), ("김재박", "LG", "득점"),
+           ("서정환", "KIA", "도루"), ("선동열", "KIA", "다승"), ("김용수", "LG", "세이브"), ("최일언", "DOOSAN", "승률")],
+    1987: [("장효조", "SAMSUNG", "타율"), ("이정훈", "HANWHA", "안타"), ("김성래", "SAMSUNG", "홈런"), ("이만수", "SAMSUNG", "타점"),
+           ("이광은", "LG", "득점"), ("이해창", "KIWOOM", "도루"), ("김시진", "SAMSUNG", "다승"), ("선동열", "KIA", "평균자책점"),
+           ("최동원", "LOTTE", "탈삼진"), ("김용수", "LG", "세이브")],
+    1988: [("김상훈", "LG", "타율"), ("김성한", "KIA", "홈런"), ("이순철", "KIA", "득점"), ("김성래", "SAMSUNG", "출루율"),
+           ("윤학길", "LOTTE", "다승"), ("선동열", "KIA", "평균자책점"), ("이상군", "HANWHA", "세이브"), ("윤석환", "DOOSAN", "승률")],
+    1989: [("고원부", "HANWHA", "타율"), ("이강돈", "HANWHA", "안타"), ("김성한", "KIA", "홈런"), ("유승안", "HANWHA", "타점"),
+           ("김일권", "KIWOOM", "도루"), ("한대화", "KIA", "출루율"), ("선동열", "KIA", "다승"), ("김용수", "LG", "세이브")],
+    1990: [("한대화", "KIA", "타율"), ("이강돈", "HANWHA", "안타"), ("장종훈", "HANWHA", "홈런"), ("김일권", "KIWOOM", "도루"),
+           ("선동열", "KIA", "다승"), ("송진우", "HANWHA", "세이브")],
+    1991: [("이정훈", "HANWHA", "타율"), ("장종훈", "HANWHA", "홈런"), ("이순철", "KIA", "도루"), ("장효조", "LOTTE", "출루율"),
+           ("선동열", "KIA", "다승"), ("조규제", "SSG", "세이브")],
+    1992: [("이정훈", "HANWHA", "타율"), ("이순철", "KIA", "안타"), ("장종훈", "HANWHA", "홈런"), ("김기태", "SSG", "출루율"),
+           ("송진우", "HANWHA", "다승"), ("염종석", "LOTTE", "평균자책점"), ("이강철", "KIA", "탈삼진"), ("오봉옥", "SAMSUNG", "승률")],
+    1993: [("양준혁", "SAMSUNG", "타율"), ("김형석", "DOOSAN", "안타"), ("김성래", "SAMSUNG", "홈런"), ("이종범", "KIA", "득점"),
+           ("전준호", "LOTTE", "도루"), ("조계현", "KIA", "다승"), ("선동열", "KIA", "평균자책점"), ("김상엽", "SAMSUNG", "탈삼진"),
+           ("정민철", "HANWHA", "승률")],
+    1994: [("이종범", "KIA", "타율"), ("김기태", "SSG", "홈런"), ("양준혁", "SAMSUNG", "타점"), ("이상훈", "LG", "다승"),
+           ("조계현", "KIA", "다승"), ("정민철", "HANWHA", "평균자책점"), ("정명원", "KIWOOM", "세이브"), ("김홍집", "KIWOOM", "승률")],
+    1995: [("김광림", "SSG", "타율"), ("최태원", "SSG", "안타"), ("김상호", "DOOSAN", "홈런"), ("전준호", "LOTTE", "득점"),
+           ("장종훈", "HANWHA", "출루율"), ("이상훈", "LG", "다승"), ("조계현", "KIA", "평균자책점"), ("이대진", "KIA", "탈삼진"),
+           ("선동열", "KIA", "세이브")],
+    1996: [("양준혁", "SAMSUNG", "타율"), ("박재홍", "KIWOOM", "홈런"), ("이종범", "KIA", "득점"), ("홍현우", "KIA", "출루율"),
+           ("구대성", "HANWHA", "다승"), ("주형광", "LOTTE", "다승"), ("정명원", "KIWOOM", "세이브")],
+    1997: [("김기태", "SSG", "타율"), ("이승엽", "SAMSUNG", "홈런"), ("이종범", "KIA", "득점"), ("김현욱", "SSG", "다승"),
+           ("정민철", "HANWHA", "탈삼진"), ("이상훈", "LG", "세이브")],
+    1998: [("양준혁", "SAMSUNG", "타율"), ("우즈", "DOOSAN", "홈런"), ("이승엽", "SAMSUNG", "득점"), ("정수근", "DOOSAN", "도루"),
+           ("김용수", "LG", "다승"), ("정명원", "KIWOOM", "평균자책점"), ("이대진", "KIA", "탈삼진"), ("임창용", "KIA", "세이브"),
+           ("김수경", "KIWOOM", "승률")],
+    1999: [("마해영", "LOTTE", "타율"), ("이병규", "LG", "안타"), ("이승엽", "SAMSUNG", "홈런"), ("정수근", "DOOSAN", "도루"),
+           ("정민태", "KIWOOM", "다승"), ("임창용", "SAMSUNG", "평균자책점"), ("김수경", "KIWOOM", "탈삼진"), ("문동환", "LOTTE", "승률")],
+    2000: [("박종호", "KIWOOM", "타율"), ("이병규", "LG", "안타"), ("장원진", "DOOSAN", "안타"), ("박경완", "KIWOOM", "홈런"),
+           ("박재홍", "KIWOOM", "타점"), ("이승엽", "SAMSUNG", "득점"), ("정수근", "DOOSAN", "도루"), ("장성호", "KIA", "출루율"),
+           ("송지만", "HANWHA", "장타율"), ("김수경", "KIWOOM", "다승"), ("임선동", "KIWOOM", "다승"), ("정민태", "KIWOOM", "다승"),
+           ("구대성", "HANWHA", "평균자책점"), ("진필중", "DOOSAN", "세이브"), ("조웅천", "KIWOOM", "홀드"), ("송진우", "HANWHA", "승률")],
+    2001: [("양준혁", "LG", "타율"), ("이병규", "LG", "안타"), ("이승엽", "SAMSUNG", "홈런"), ("우즈", "DOOSAN", "타점"),
+           ("정수근", "DOOSAN", "도루"), ("호세", "LOTTE", "출루율"), ("손민한", "LOTTE", "다승"), ("신윤호", "LG", "다승"),
+           ("박석진", "LOTTE", "평균자책점"), ("에르난데스", "SSG", "탈삼진"), ("진필중", "DOOSAN", "세이브"), ("차명주", "DOOSAN", "홀드")],
+    2002: [("장성호", "KIA", "타율"), ("마해영", "SAMSUNG", "안타"), ("이승엽", "SAMSUNG", "홈런"), ("김종국", "KIA", "도루"),
+           ("키퍼", "KIA", "다승"), ("엘비라", "SAMSUNG", "평균자책점"), ("김진우", "KIA", "탈삼진"), ("진필중", "DOOSAN", "세이브"),
+           ("차명주", "DOOSAN", "홀드"), ("김현욱", "SAMSUNG", "승률")],
+    2003: [("김동주", "DOOSAN", "타율"), ("박한이", "SAMSUNG", "안타"), ("이승엽", "SAMSUNG", "홈런"), ("이종범", "KIA", "도루"),
+           ("심정수", "KIWOOM", "출루율"), ("정민태", "KIWOOM", "다승"), ("바워스", "KIWOOM", "평균자책점"), ("이승호", "LG", "탈삼진"),
+           ("이상훈", "LG", "세이브"), ("조웅천", "SSG", "세이브"), ("이상열", "KIWOOM", "홀드"), ("차명주", "DOOSAN", "홀드")],
+    2004: [("브룸바", "KIWOOM", "타율"), ("홍성흔", "DOOSAN", "안타"), ("박경완", "SSG", "홈런"), ("이호준", "SSG", "타점"),
+           ("이종범", "KIA", "득점"), ("전준호", "KIWOOM", "도루"), ("레스", "DOOSAN", "다승"), ("리오스", "KIA", "다승"),
+           ("박명환", "DOOSAN", "평균자책점"), ("임창용", "SAMSUNG", "세이브"), ("임경완", "LOTTE", "홀드"), ("배영수", "SAMSUNG", "승률")],
+    2005: [("이병규", "LG", "타율"), ("서튼", "KIWOOM", "홈런"), ("박용택", "LG", "득점"), ("데이비스", "HANWHA", "득점"),
+           ("김재현", "SSG", "출루율"), ("손민한", "LOTTE", "다승"), ("리오스", "DOOSAN", "탈삼진"), ("배영수", "SAMSUNG", "탈삼진"),
+           ("정재훈", "DOOSAN", "세이브"), ("이재우", "DOOSAN", "홀드"), ("오승환", "SAMSUNG", "승률")],
+    2006: [("이대호", "LOTTE", "타율"), ("이용규", "KIA", "안타"), ("박한이", "SAMSUNG", "득점"), ("이종욱", "DOOSAN", "도루"),
+           ("양준혁", "SAMSUNG", "출루율"), ("류현진", "HANWHA", "다승"), ("오승환", "SAMSUNG", "세이브"), ("권오준", "SAMSUNG", "홀드"),
+           ("전준호(투수)", "KIWOOM", "승률")],  # 현대 투수 전준호 - 도루왕 외야수 전준호와 동명이인(김상수(투수) 관례)
+    2007: [("이현곤", "KIA", "타율"), ("심정수", "SAMSUNG", "홈런"), ("고영민", "DOOSAN", "득점"), ("이대형", "LG", "도루"),
+           ("김동주", "DOOSAN", "출루율"), ("이대호", "LOTTE", "장타율"), ("리오스", "DOOSAN", "다승"), ("류현진", "HANWHA", "탈삼진"),
+           ("오승환", "SAMSUNG", "세이브"), ("류택현", "LG", "홀드")],
+    2008: [("김현수", "DOOSAN", "타율"), ("김태균", "HANWHA", "홈런"), ("가르시아", "LOTTE", "타점"), ("이종욱", "DOOSAN", "득점"),
+           ("이대형", "LG", "도루"), ("김광현", "SSG", "다승"), ("윤석민", "KIA", "평균자책점"), ("오승환", "SAMSUNG", "세이브"),
+           ("정우람", "SSG", "홀드"), ("채병용", "SSG", "승률")],
+    2009: [("박용택", "LG", "타율"), ("김현수", "DOOSAN", "안타"), ("김상현", "KIA", "홈런"), ("정근우", "SSG", "득점"),
+           ("최희섭", "KIA", "득점"), ("이대형", "LG", "도루"), ("페타지니", "LG", "출루율"), ("로페즈", "KIA", "다승"),
+           ("윤성환", "SAMSUNG", "다승"), ("조정훈", "LOTTE", "다승"), ("김광현", "SSG", "평균자책점"), ("류현진", "HANWHA", "탈삼진"),
+           ("이용찬", "DOOSAN", "세이브"), ("애킨스", "LOTTE", "세이브"), ("권혁", "SAMSUNG", "홀드")],
+    2010: [("이대호", "LOTTE", "타율"), ("이대형", "LG", "도루"), ("김광현", "SSG", "다승"), ("류현진", "HANWHA", "평균자책점"),
+           ("손승락", "KIWOOM", "세이브"), ("정재훈", "DOOSAN", "홀드"), ("차우찬", "SAMSUNG", "승률")],
+    2011: [("이대호", "LOTTE", "타율"), ("최형우", "SAMSUNG", "홈런"), ("전준우", "LOTTE", "득점"), ("오재원", "DOOSAN", "도루"),
+           ("윤석민", "KIA", "다승"), ("오승환", "SAMSUNG", "세이브"), ("정우람", "SSG", "홀드")],
+    2012: [("김태균", "HANWHA", "타율"), ("손아섭", "LOTTE", "안타"), ("박병호", "KIWOOM", "홈런"), ("이용규", "KIA", "득점"),
+           ("장원삼", "SAMSUNG", "다승"), ("나이트", "KIWOOM", "평균자책점"), ("류현진", "HANWHA", "탈삼진"), ("오승환", "SAMSUNG", "세이브"),
+           ("박희수", "SSG", "홀드"), ("탈보트", "SAMSUNG", "승률")],
+}
+# 김상엽은 TASK-KBO-168 강제 주입 인물(PLY_900001, 섹션 7-I)이라 여기서 새 인물로 만들지 않고 발급
+# 단계에서 그 고정 레코드에 붙인다(동일 인물 중복 생성 방지).
+_TH_FORCED_ALIAS = {"김상엽"}
+
+
+def _th_new_player_position(category):
+    if category == "세이브":
+        return True, "CP"
+    if category == "홀드":
+        return True, "RP"
+    if category in _TH_PITCHING:
+        return True, "SP"
+    return False, "DH"
+
+
+title_holder_1986_2012_to_issue = []  # (rec 또는 alias 이름, year, team_token)
+for year in sorted(TITLE_HOLDER_HISTORY_1986_2012.keys()):
+    seen_this_year = set()
+    for name, team_token, category in TITLE_HOLDER_HISTORY_1986_2012[year]:
+        if name in seen_this_year:
+            continue
+        seen_this_year.add(name)
+        if name in _TH_FORCED_ALIAS:
+            title_holder_1986_2012_to_issue.append((name, year, team_token))
+            continue
+        is_pitcher, position = _th_new_player_position(category)
+        rec = _resolve_historical(name, team_token, is_pitcher, position, rng=rng172, mark_existing_skip=False,
+                                  career=(max(MIN_YEAR, year - 6), min(MAX_YEAR, year + 8)))
+        title_holder_1986_2012_to_issue.append((rec, year, team_token))
+
+# (2) SIGNATURE 선정 기준 정립(명령서 STEP 3-3). 기준: (a) 동일 선수는 구단별로 커리어 하이 최대
+# SIGNATURE_MAX_YEARS_PER_PLAYER_TEAM(2)개 연도, (b) 구단 쿼터 - 10개 구단 모두 최소
+# SIGNATURE_MIN_PER_TEAM(3)장, 그중 투수/야수 각 1장 이상, (c) 리그 전체 불펜(RP/CP) SIGNATURE
+# 최소 SIGNATURE_MIN_BULLPEN(5)장. 레전드 40인 원 목록만으로는 NC/KT가 0장, SSG가 투수 0장이라
+# (b)(c)를 채우지 못해, 이 스크립트에 이미 실제 수상 기록(골든글러브/타이틀)으로 교차검증되는 시즌만
+# 골라 보강했다 - 각 줄 주석이 그 근거다. 검증은 아래 _validate_signature_quota()가 수행한다.
+SIGNATURE_MAX_YEARS_PER_PLAYER_TEAM = 2
+SIGNATURE_MIN_PER_TEAM = 3
+SIGNATURE_MIN_BULLPEN = 5
+# 불펜(RP/CP) 보직으로 SIGNATURE를 받은 시즌 - 등록 포지션(골든글러브 투수 슬롯은 일괄 "SP")으로는
+# 보직을 판별할 수 없어 명시한다. (이름, 연도)
+SIGNATURE_BULLPEN_SEASONS = {
+    ("김용수", 1990), ("임창용", 2015), ("박영현", 2024), ("손승락", 2013), ("정우람", 2018), ("오승환", 2006),
+}
+SIGNATURE_QUOTA_ADDITIONS = [
+    ("테임즈", "NC", 2015),    # 2015 골든글러브 1루수 + 타이틀(NC), KBO 최초 40-40
+    ("페디", "NC", 2023),      # 2023 골든글러브 투수 + 타이틀(NC), 투수 트리플크라운
+    ("양의지", "NC", 2020),    # 2020 골든글러브 포수(NC), NC 창단 첫 통합우승 주역
+    ("로하스", "KT", 2020),    # 2020 골든글러브 외야수 + 타이틀(KT), 시즌 MVP
+    ("강백호", "KT", 2021),    # 2021 골든글러브 1루수(KT), KT 창단 첫 통합우승
+    ("박영현", "KT", 2024),    # 2024 타이틀(세이브, KT) - 불펜 쿼터
+    ("김광현", "SSG", 2008),   # 2008 골든글러브 투수 + 타이틀(다승/탈삼진, SK) - SSG 투수 쿼터
+    ("손승락", "KIWOOM", 2013),  # 2013 골든글러브 투수 + 타이틀(세이브, 넥센) - 불펜 쿼터
+    ("정우람", "HANWHA", 2018),  # 2018 타이틀(세이브, 한화) - 불펜 쿼터
+    ("오승환", "SAMSUNG", 2006),  # 2006 타이틀(세이브 47, 당시 아시아 신기록) - 불펜 쿼터
+]
+signature_quota_cards_to_issue = []
+for name, team_token, year in SIGNATURE_QUOTA_ADDITIONS:
+    rec = _resolve_historical(name, team_token, True, "CP", rng=rng172, mark_existing_skip=False)  # 전원 기존 등록 인물(신규 생성 없음)
+    signature_quota_cards_to_issue.append((rec, year, team_token))
+
+# (3) DYNASTY 1인 1연도 정예 24장(명령서 STEP 3-4). 명단에서 처음 등장하는 인물(심창민/정현욱/송유석/
+# 김상진 등)만 신규 등록된다.
+dynasty_cards_to_issue = []
+for name, team_token, year, is_pitcher, position in DYNASTY_CARDS:
+    rec = _resolve_historical(name, team_token, is_pitcher, position, rng=rng172, mark_existing_skip=False,
+                              career=(max(MIN_YEAR, year - 6), min(MAX_YEAR, year + 8)))
+    dynasty_cards_to_issue.append((rec, year, team_token))
+
+# ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
 # ---------------------------------------------------------------------------
 PLAYERS_HEADER = [
@@ -907,7 +1111,7 @@ CARDS_HEADER = [
 MIN_CARDS_PER_PLAYER = 2
 MAX_CARDS_PER_PLAYER = 12
 
-def make_card_row(rec, year, grade, team_token_override=None):
+def make_card_row(rec, year, grade, team_token_override=None, rng=random):
     # [TASK-KBO-159] team_token_override - 실제 선수는 이적/FA로 해마다 소속이 달라질 수 있다
     # (예: 최형우 삼성<->KIA, 양의지 두산<->NC) - 그 해의 실제 소속을 카드 ID/파일 배치에
     # 반영하기 위한 인자다. 기본 템플릿(rec.team_token, rec.team_id)은 그대로 두고 카드 한 장
@@ -918,7 +1122,7 @@ def make_card_row(rec, year, grade, team_token_override=None):
     card_id = f"{team_token}_{year}_{rec.player_id}_{meta['code']}"
     return [
         card_id, rec.player_id, GRADE_ID[grade], grade,
-        random.randint(ovr_lo, ovr_hi), meta["salary"], meta["max_enhance"],
+        rng.randint(ovr_lo, ovr_hi), meta["salary"], meta["max_enhance"],
         meta["max_awaken"], meta["droppable"], year,
     ]
 
@@ -927,11 +1131,14 @@ cards_by_team = {token: [] for _, _, token in TEAMS}
 for rec in player_records:
     issued_year_grade = set()
 
-    # 왕조 필수 로스터: 지정된 왕조 연도 구간은 100% DYNASTY 카드로 확정 생성(명령서 3항).
+    # [TASK-KBO-172] 예전에는 여기서 왕조 구간 4개 연도 전부 DYNASTY를 발급했다(1인 4장). 이제 DYNASTY는
+    # 섹션 7-J의 DYNASTY_CARDS(1인 1연도 24장)만 발급한다. 다만 예전 발급이 소비하던 base_ovr 난수
+    # (연도당 randint 1회)는 그대로 소비해 버린다 - 이걸 빼면 뒤따르는 가상 선수 수만 장의 카드
+    # 연도/등급/OVR이 통째로 밀려 기존 DB와의 비교 검증이 불가능해지기 때문이다(스트림 보존 전용).
     if rec.is_dynasty_member:
         dyn_start, dyn_end = rec.dynasty_years
         for year in range(dyn_start, dyn_end + 1):
-            cards_by_team[rec.team_token].append(make_card_row(rec, year, "DYNASTY"))
+            random.randint(*GRADE_META["DYNASTY"]["ovr"])  # 스트림 보존용 소비(발급하지 않음)
             issued_year_grade.add((year, "DYNASTY"))
 
     # [TASK-KBO-156] 실제 검증된 선수는 확률 기반 무작위 카드를 받지 않는다 - 왕조 카드(위에서
@@ -953,6 +1160,11 @@ for rec in player_records:
         if key in issued_year_grade:
             continue  # 동일 (연도, 등급) 카드 중복 방지(간단한 디듀프, 충돌 시 그냥 건너뜀)
         issued_year_grade.add(key)
+        # [TASK-KBO-172] SIGNATURE 선정 기준 "동일 선수 구단별 커리어 하이 최대 2개 연도" - 확률 풀이 3번째
+        # 이상 SIGNATURE를 뽑으면 발급하지 않는다(base_ovr 난수는 스트림 보존을 위해 그대로 소비).
+        if grade == "SIGNATURE" and sum(1 for (_, g) in issued_year_grade if g == "SIGNATURE") > 2:
+            random.randint(*GRADE_META[grade]["ovr"])
+            continue
         cards_by_team[rec.team_token].append(make_card_row(rec, year, grade))
 
 # ---------------------------------------------------------------------------
@@ -1048,6 +1260,116 @@ cards_by_team["SAMSUNG"].append(make_card_row(kim_sangyeop, 1995, "GOLDEN_GLOVE"
 forced_card_count += 1
 cards_by_team["SAMSUNG"].append(make_card_row(real_player_records["구자욱"], 2026, "SIGNATURE"))
 forced_card_count += 1
+
+# ---------------------------------------------------------------------------
+# 7-J. [TASK-KBO-172] 시즌 카드 체제 개편분 발급 - 모든 난수는 rng172(기존 스트림 비간섭).
+# ---------------------------------------------------------------------------
+_legacy_card_id_counts = Counter(row[0] for rows in cards_by_team.values() for row in rows)
+
+# (1) TITLE_HOLDER 1986~2012
+title_1986_2012_card_count = 0
+for rec_or_alias, year, team_token in title_holder_1986_2012_to_issue:
+    rec = kim_sangyeop if rec_or_alias == "김상엽" else rec_or_alias
+    cards_by_team[team_token].append(make_card_row(rec, year, "TITLE_HOLDER", team_token_override=team_token, rng=rng172))
+    title_1986_2012_card_count += 1
+
+# (2) SIGNATURE 쿼터 보강
+for rec, year, team_token in signature_quota_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "SIGNATURE", team_token_override=team_token, rng=rng172))
+
+# (3) DYNASTY 1인 1연도 24장
+dynasty_card_count = 0
+for rec, year, team_token in dynasty_cards_to_issue:
+    cards_by_team[team_token].append(make_card_row(rec, year, "DYNASTY", team_token_override=team_token, rng=rng172))
+    dynasty_card_count += 1
+
+# (4) FRANCHISE(프랜차이즈) 신설 1986~2026(명령서 STEP 3-1). "무관이지만 구단 핵심 주전" - 27인 세트덱
+# 로스터의 포지션 사각지대(필승조 불펜 RP x2, 마무리 CP x1, 수비형 포수 C x1, 수비형 내야수 SS/2B x1)를
+# 구단-연도마다 5장씩 채운다. 선발 규칙:
+#   - 후보: 그 해 그 구단에서 커리어가 이어지는 "가상 로스터" 선수만(실존 인물은 연도별 실제 소속/보직을
+#     이 스크립트가 검증할 수 없어 사실과 다른 카드가 생기는 것을 막기 위해 제외).
+#   - 무관 조건: 그 해 ALLSTAR 이상(FRANCHISE 제외) 카드를 하나라도 받은 선수는 제외.
+#   - 우선순위: 재능치(z_value) 내림차순(=구단 핵심 주전), 동일 선수는 최대 FRANCHISE_MAX_PER_PLAYER(2)장.
+#   - 구단 창단 연도 존중: NC 2013(1군), KT 2015(1군), SSG 1991(쌍방울 1군 - 승계 매핑 기준).
+FRANCHISE_SLOTS = [("RP",), ("RP",), ("CP",), ("C",), ("SS", "2B")]
+FRANCHISE_MAX_PER_PLAYER = 2
+FRANCHISE_TEAM_FIRST_YEAR = {"NC": 2013, "KT": 2015, "SSG": 1991}
+_AWARD_GRADES = {"ALLSTAR", "TITLE_HOLDER", "RETIRED_NUMBER", "SIGNATURE", "GOLDEN_GLOVE", "DYNASTY"}
+_awarded_player_years = set()
+for _rows in cards_by_team.values():
+    for _row in _rows:
+        if _row[3] in _AWARD_GRADES:
+            _awarded_player_years.add((_row[1], _row[9]))
+_real_ids = {r.player_id for r in real_player_records.values()}
+_synthetic_by_team = {}
+for rec in player_records:
+    if rec.player_id in _real_ids or rec.is_dynasty_member or rec.skip_random_cards:
+        continue
+    _synthetic_by_team.setdefault(rec.team_token, []).append(rec)
+for _team_token in _synthetic_by_team:
+    _synthetic_by_team[_team_token].sort(key=lambda r: (-r.z_value, r.player_id))
+
+franchise_card_count = 0
+_franchise_per_player = {}
+for _, _, team_token in TEAMS:
+    first_year = FRANCHISE_TEAM_FIRST_YEAR.get(team_token, MIN_YEAR)
+    for year in range(first_year, MAX_YEAR + 1):
+        picked_this_year = set()
+        for slot_positions in FRANCHISE_SLOTS:
+            for rec in _synthetic_by_team.get(team_token, []):
+                if rec.position not in slot_positions or rec.player_id in picked_this_year:
+                    continue
+                if not (rec.career_start <= year <= rec.career_end):
+                    continue
+                if (rec.player_id, year) in _awarded_player_years:
+                    continue
+                if _franchise_per_player.get(rec.player_id, 0) >= FRANCHISE_MAX_PER_PLAYER:
+                    continue
+                cards_by_team[team_token].append(make_card_row(rec, year, "FRANCHISE", rng=rng172))
+                picked_this_year.add(rec.player_id)
+                _franchise_per_player[rec.player_id] = _franchise_per_player.get(rec.player_id, 0) + 1
+                franchise_card_count += 1
+                break
+
+# (5) 발급 결과 무결성 검증 - 카드 ID 중복, SIGNATURE 선정 기준, DYNASTY 1인 1장.
+_card_id_counts = Counter(row[0] for rows in cards_by_team.values() for row in rows)
+_dupe_ids = {cid for cid, n in _card_id_counts.items() if n > _legacy_card_id_counts.get(cid, 1)}
+_legacy_dupe_ids = sorted(cid for cid, n in _legacy_card_id_counts.items() if n > 1)
+if _legacy_dupe_ids:
+    # TASK-172 이전부터 있던 중복(2026 로스터 동명이인 처리 한계 - 김태훈/이승현). 이번 범위 밖이라 경고만 한다.
+    print(f"[경고] TASK-172 이전부터 존재하던 중복 card_id {len(_legacy_dupe_ids)}건: {_legacy_dupe_ids}")
+if _dupe_ids:
+    raise ValueError(f"[TASK-KBO-172] 중복 card_id 발생: {sorted(_dupe_ids)[:10]}")
+
+_player_is_pitcher = {r.player_id: r.is_pitcher for r in player_records}
+_player_is_pitcher[kim_sangyeop.player_id] = True
+_sig_rows = [(team, row) for team, rows in cards_by_team.items() for row in rows if row[3] == "SIGNATURE"]
+_sig_per_player_team = {}
+for team, row in _sig_rows:
+    _sig_per_player_team[(row[1], team)] = _sig_per_player_team.get((row[1], team), 0) + 1
+_sig_violations = [k for k, v in _sig_per_player_team.items() if v > SIGNATURE_MAX_YEARS_PER_PLAYER_TEAM]
+# 쿼터(b)(c)는 실존 인물 큐레이션 SIGNATURE에만 적용한다 - 확률 풀이 가상 선수에게 주는 SIGNATURE는
+# 쿼터 계산에서 제외(가상 선수 물량이 쿼터를 "자동 충족"시켜 검증이 무의미해지는 것을 막는다).
+_real_ids_with_forced = _real_ids | {kim_sangyeop.player_id}
+_curated_sig_rows = [(team, row) for team, row in _sig_rows if row[1] in _real_ids_with_forced]
+signature_quota_report = {}
+for _, _, team_token in TEAMS:
+    team_rows = [row for team, row in _curated_sig_rows if team == team_token]
+    pitchers = sum(1 for row in team_rows if _player_is_pitcher.get(row[1]))
+    signature_quota_report[team_token] = (len(team_rows), pitchers, len(team_rows) - pitchers)
+    if len(team_rows) < SIGNATURE_MIN_PER_TEAM or pitchers < 1 or len(team_rows) - pitchers < 1:
+        _sig_violations.append(("TEAM_QUOTA", team_token, signature_quota_report[team_token]))
+_player_name = {r.player_id: r.name for r in player_records}
+signature_bullpen_count = sum(1 for _, row in _curated_sig_rows
+                              if (_player_name.get(row[1]), int(row[9])) in SIGNATURE_BULLPEN_SEASONS)
+if signature_bullpen_count < SIGNATURE_MIN_BULLPEN:
+    _sig_violations.append(("BULLPEN_QUOTA", signature_bullpen_count))
+if _sig_violations:
+    raise ValueError(f"[TASK-KBO-172] SIGNATURE 선정 기준 위반: {_sig_violations}")
+
+_dyn_players = [row[1] for rows in cards_by_team.values() for row in rows if row[3] == "DYNASTY"]
+if len(_dyn_players) != len(DYNASTY_CARDS) or len(set(_dyn_players)) != len(_dyn_players):
+    raise ValueError(f"[TASK-KBO-172] DYNASTY 1인 1연도 규칙 위반: {len(_dyn_players)}장 / 고유 {len(set(_dyn_players))}명")
 
 # ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (CheerleaderCatalog.cs 실제 파서 스키마 7컬럼 + TASK-KBO-171 v4.0
@@ -1246,6 +1568,13 @@ print(f"  - 이 중 영구결번(RETIRED_NUMBER) 확정 카드: {retired_number_
 print(f"  - 이 중 시그니처(SIGNATURE) 확정 카드: {signature_card_count}장 (KBO 레전드 40인 전원)")
 print(f"  - 이 중 올스타(ALLSTAR) 확정 카드: {allstar_card_count}장 (2014~2025 BEST 12, 감독 추천 후보 제외)")
 print(f"  - 이 중 강제 주입 카드(김상엽'95 GG, 구자욱'26 SIG): {forced_card_count}장")
+print(f"  - [TASK-172] 1986~2012 개인 타이틀 확정 카드: {title_1986_2012_card_count}장 (TITLE_HOLDER 전 연도 확대)")
+print(f"  - [TASK-172] SIGNATURE 쿼터 보강 카드: {len(signature_quota_cards_to_issue)}장, 실존 불펜 SIG {signature_bullpen_count}장")
+print(f"  - [TASK-172] 실존 인물 SIGNATURE 구단별 (전체/투수/야수): {signature_quota_report}")
+print(f"  - [TASK-172] DYNASTY 1인 1연도 정예 카드: {dynasty_card_count}장")
+print(f"  - [TASK-172] FRANCHISE 신설 카드: {franchise_card_count}장 (구단-연도당 RP2/CP1/C1/SS·2B1)")
+_grade_totals = Counter(row[3] for rows in cards_by_team.values() for row in rows)
+print(f"  - [TASK-172] 등급별 총계: {dict(sorted(_grade_totals.items(), key=lambda kv: GRADE_ID[kv[0]]))}")
 
 _cheer_grade_counts = {}
 _cheer_unique_names = set()

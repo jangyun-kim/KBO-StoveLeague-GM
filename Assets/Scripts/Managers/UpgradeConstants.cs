@@ -9,7 +9,7 @@ namespace KBOManager.Managers
     /// 향후 수치를 쉽게 조절할 수 있도록 한다 - 모든 값은 임시 밸런스 값이다.
     ///
     /// 등급 순서는 `Player.cs`(`GradeBaseCostFor`)와 `Types.cs`의 `Grade` enum 정수값(TASK-KBO-155
-    /// 재배치 이후 LIVE_NORMAL=1 ~ DYNASTY=8)이 이미 합의하고 있는 "파워 서열"을 그대로 따른다
+    /// 재배치 이후, [TASK-KBO-172] FRANCHISE 삽입으로 LIVE_NORMAL=1 ~ DYNASTY=9)이 이미 합의하고 있는 "파워 서열"을 그대로 따른다
     /// (`(int)Grade`를 순위로 직접 사용) - `ScoutUIController.GradeRank`(단순 "최고급 뽑기 연출"
     /// 임계값 판정용, GOLDEN_GLOVE/SIGNATURE 순서가 이와 다름)는 이 파일과 무관한 별개 용도라
     /// 참고하지 않았다.
@@ -29,6 +29,7 @@ namespace KBOManager.Managers
                 { Grade.LIVE_NORMAL, 850 },
                 { Grade.LIVE_EPIC, 1000 },      // 사용자 지시 예시값
                 { Grade.ALLSTAR, 1350 },
+                { Grade.FRANCHISE, 1500 },      // [TASK-KBO-172 신설] ALLSTAR~TITLE_HOLDER 단조 증가 유지
                 { Grade.TITLE_HOLDER, 1700 },
                 { Grade.RETIRED_NUMBER, 1850 }, // [TASK-KBO-155 신설]
                 { Grade.SIGNATURE, 2000 },      // 사용자 지시 예시값

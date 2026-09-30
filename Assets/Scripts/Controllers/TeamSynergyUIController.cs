@@ -47,11 +47,10 @@ namespace KBOManager.Controllers
             // 동일한 변환: Team.None(온보딩 이전 등 미지정 상태)이면 null을 넘겨 "로스터 내 최다 구단
             // 기준" 경로를 그대로 태운다.
             string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
-            int synergy = GameManager.CalculateSynergy(gm.Roster.ToList(), favoriteTeamName);
+            var setDeck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favoriteTeamName, gm.SetDeckSelection);
 
-            // [TASK-KBO-166] 왕조 세트덱 보너스가 가산되며 합계가 +12 고정이 아니게 됐다(+12/+15/+27
-            // 조합 가능) - 하드코딩 문구 대신 실제 값을 그대로 표시한다.
-            setDeckText.text = synergy > 0 ? $"활성화 (+{synergy} OVR)" : "미활성화";
+            // [TASK-KBO-172] 27인 세트덱 스코어 체계 - "현재 스코어 / 모든 능력치 누적 / 다음 목표 단계"를 한 줄로.
+            setDeckText.text = SetDeckUIText.Summary(setDeck);
         }
 
         private void RefreshCheerleaderText(GameManager gm)

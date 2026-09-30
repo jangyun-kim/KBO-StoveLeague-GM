@@ -333,7 +333,7 @@ namespace KBOManager.Managers
             switch (grade)
             {
                 // [TASK-KBO-155, 사용자 직접 지시] SEASON 삭제 - LIVE_NORMAL이 유일한 "기본/무과금
-                // 베이스" 등급이 되었다(둘 다 각성 불가, Player.CanAwaken 제외 목록 참고).
+                // 베이스" 등급이 되었다([TASK-KBO-172] 이제 LIVE도 각성/초월 가능 - CardGrowthRules 참고).
                 case Grade.LIVE_NORMAL:
                     player.CurrentStarType = StarType.NORMAL;
                     player.StarLevel = UnityEngine.Random.Range(1, 4); // 일반 1~3성 무작위
@@ -345,6 +345,10 @@ namespace KBOManager.Managers
                 case Grade.ALLSTAR:
                     player.CurrentStarType = StarType.PURPLE;
                     player.StarLevel = 4;
+                    break;
+                case Grade.FRANCHISE: // [TASK-KBO-172 신설] 5성 브론즈
+                    player.CurrentStarType = StarType.BRONZE;
+                    player.StarLevel = 5;
                     break;
                 case Grade.TITLE_HOLDER:
                     player.CurrentStarType = StarType.SILVER;

@@ -1,0 +1,416 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KBOManager.Data;
+
+namespace KBOManager.Models
+{
+    /// <summary>[TASK-KBO-172] 세트덱 버프가 적용되는 대상 그룹(기획 고도화 자료.pdf "버프 구간 상세").</summary>
+    public enum SetDeckTarget
+    {
+        AllPlayers,            // 모든 능력치(타자/투수 전원)
+        AllBatters,            // 타자 전원
+        AllPitchers,           // 투수 전원
+        SelectedYearBatters,   // 연도 선택 타자(카드 SeasonYear == 선택 연도)
+        SelectedYearPitchers,  // 연도 선택 투수
+        InfieldCatcherBatters, // 내야/포수(1B/2B/3B/SS/C)
+        OutfieldDhBatters,     // 외야/지명(LF/CF/RF/DH)
+        TopOrderBatters,       // 상위 타선 1·2번
+        CleanupBatters,        // 중심 타선 3·4·5번
+        LowerOrderBatters,     // 하위 타선 6·7·8·9번
+        StartingPitchers,      // 선발 투수
+        BullpenPitchers        // 불펜(중계/마무리)
+    }
+
+    /// <summary>[TASK-KBO-172] 버프 대상 세부 능력치. PDF 용어 매핑: 정확=Contact, 선구/인내=Discipline(게임에
+    /// 인내 스탯이 따로 없어 선구로 통합), 주루/주력=Speed, 수비=Defense, 구위=Stuff, 구속=Velocity,
+    /// 변화=Movement, 제구=Control, 지구력=Stamina. 투수의 "수비"는 대응 스탯이 없어 무시한다.</summary>
+    [Flags]
+    public enum SetDeckStat
+    {
+        None = 0,
+        Power = 1 << 0,
+        Contact = 1 << 1,
+        Discipline = 1 << 2,
+        Speed = 1 << 3,
+        Defense = 1 << 4,
+        Stuff = 1 << 5,
+        Velocity = 1 << 6,
+        Movement = 1 << 7,
+        Control = 1 << 8,
+        Stamina = 1 << 9,
+        AllBatter = Power | Contact | Discipline | Speed | Defense,
+        AllPitcher = Stuff | Velocity | Movement | Control | Stamina,
+        All = AllBatter | AllPitcher
+    }
+
+    /// <summary>[TASK-KBO-172] 유저 목표 단계(핵심 버프 구간). docs/04_card_grade_policy.md 7절 참고.</summary>
+    public enum SetDeckMilestone
+    {
+        None,
+        MinimumGoal, // 1차 목표 150P - PDF "최소 목표 스코어"
+        Core,        // 2차 목표 185P/190P - PDF "핵심 버프 효과"
+        Final        // 최종 목표 200P - PDF 11.4 "최종 엔드 콘텐츠"
+    }
+
+    public sealed class SetDeckEffect
+    {
+        public readonly SetDeckTarget Target;
+        public readonly SetDeckStat Stats;
+        public readonly int Amount;
+        public readonly string Label;
+
+        public SetDeckEffect(SetDeckTarget target, SetDeckStat stats, int amount, string label)
+        {
+            Target = target;
+            Stats = stats;
+            Amount = amount;
+            Label = label;
+        }
+
+        public bool IsAllPlayersFlat => Target == SetDeckTarget.AllPlayers && Stats == SetDeckStat.All;
+    }
+
+    public sealed class SetDeckBracket
+    {
+        public readonly int Threshold;
+        public readonly SetDeckEffect OptionA;
+        /// <summary>선택형 구간의 두 번째 선택지(PDF의 "OR"). 고정 구간이면 null.</summary>
+        public readonly SetDeckEffect OptionB;
+        public readonly SetDeckMilestone Milestone;
+
+        public SetDeckBracket(int threshold, SetDeckEffect optionA, SetDeckEffect optionB = null,
+            SetDeckMilestone milestone = SetDeckMilestone.None)
+        {
+            Threshold = threshold;
+            OptionA = optionA;
+            OptionB = optionB;
+            Milestone = milestone;
+        }
+
+        public bool IsSelectable => OptionB != null;
+
+        public SetDeckEffect Resolve(SetDeckSelection selection) =>
+            IsSelectable && selection != null && selection.UsesOptionB(Threshold) ? OptionB : OptionA;
+    }
+
+    /// <summary>
+    /// [TASK-KBO-172] 27인 세트덱 스코어 버프 구간표 - docs/기획 고도화 자료.pdf "주요 목표 및 버프 구간"을
+    /// 한 줄도 빠짐없이 옮겼다(30P~200P, 27개 구간, 누적 적용). 구간 도달 시 자동 적용되며, "OR" 구간은
+    /// 유저가 A/B 중 하나를 선택한다(SetDeckSelection, 기본값 A).
+    /// </summary>
+    public static class SetDeckBuffTable
+    {
+        public const int MinimumGoalScore = 150;
+        public const int FinalGoalScore = 200;
+        public static readonly int[] CoreMilestoneScores = { 185, 190 };
+
+        private static SetDeckEffect E(SetDeckTarget t, SetDeckStat s, int n, string label) => new SetDeckEffect(t, s, n, label);
+
+        private const SetDeckStat ContactSpeedDefense = SetDeckStat.Contact | SetDeckStat.Speed | SetDeckStat.Defense;
+        private const SetDeckStat PowerDiscipline = SetDeckStat.Power | SetDeckStat.Discipline;
+        private const SetDeckStat ControlStuffStamina = SetDeckStat.Control | SetDeckStat.Stuff | SetDeckStat.Stamina;
+
+        public static readonly IReadOnlyList<SetDeckBracket> Brackets = new List<SetDeckBracket>
+        {
+            new SetDeckBracket(30, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(40, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(50, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(60, E(SetDeckTarget.AllBatters, SetDeckStat.AllBatter, 1, "타자 모든 능력치 +1")),
+            new SetDeckBracket(70, E(SetDeckTarget.AllPitchers, SetDeckStat.AllPitcher, 1, "투수 모든 능력치 +1")),
+            new SetDeckBracket(80,
+                E(SetDeckTarget.SelectedYearBatters, SetDeckStat.Power | SetDeckStat.Contact, 3, "연도 선택 타자 파워/정확 +3"),
+                E(SetDeckTarget.SelectedYearPitchers, SetDeckStat.Stuff | SetDeckStat.Control, 3, "연도 선택 투수 구위/제구 +3")),
+            new SetDeckBracket(90, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 2, "모든 능력치 +2")),
+            new SetDeckBracket(100,
+                E(SetDeckTarget.InfieldCatcherBatters, SetDeckStat.Discipline | SetDeckStat.Defense, 2, "내야/포수 인내·수비 +2"),
+                E(SetDeckTarget.OutfieldDhBatters, SetDeckStat.Discipline | SetDeckStat.Speed, 2, "외야/지명 선구·주루 +2")),
+            new SetDeckBracket(105, E(SetDeckTarget.AllPitchers, SetDeckStat.AllPitcher, 1, "투수 모든 능력치 +1")),
+            new SetDeckBracket(110, E(SetDeckTarget.AllBatters, SetDeckStat.AllBatter, 1, "타자 모든 능력치 +1")),
+            new SetDeckBracket(115,
+                E(SetDeckTarget.CleanupBatters, ContactSpeedDefense, 2, "중심 타선(3~5번) 정확/주루/수비 +2"),
+                E(SetDeckTarget.StartingPitchers, ControlStuffStamina, 1, "선발 투수 제구/구위/지구력 +1")),
+            new SetDeckBracket(120,
+                E(SetDeckTarget.CleanupBatters, SetDeckStat.AllBatter, 2, "중심 타선(3~5번) 모든 능력치 +2"),
+                E(SetDeckTarget.StartingPitchers, SetDeckStat.AllPitcher, 1, "선발 투수 모든 능력치 +1")),
+            new SetDeckBracket(125, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(130, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(135,
+                E(SetDeckTarget.LowerOrderBatters, ContactSpeedDefense, 2, "하위 타선(6~9번) 정확/주루/수비 +2"),
+                E(SetDeckTarget.BullpenPitchers, ControlStuffStamina, 2, "불펜 제구/구위/지구력 +2")),
+            new SetDeckBracket(140,
+                E(SetDeckTarget.LowerOrderBatters, SetDeckStat.AllBatter, 1, "하위 타선(6~9번) 모든 능력치 +1"),
+                E(SetDeckTarget.BullpenPitchers, SetDeckStat.AllPitcher, 1, "불펜 모든 능력치 +1")),
+            new SetDeckBracket(145, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(150,
+                E(SetDeckTarget.TopOrderBatters, ContactSpeedDefense, 2, "상위 타선(1·2번) 정확/주루/수비 +2"),
+                E(SetDeckTarget.StartingPitchers, ControlStuffStamina, 1, "선발 투수 제구/구위/지구력 +1"),
+                SetDeckMilestone.MinimumGoal),
+            new SetDeckBracket(155,
+                E(SetDeckTarget.TopOrderBatters, PowerDiscipline, 2, "상위 타선(1·2번) 파워/선구/인내 +2"),
+                E(SetDeckTarget.StartingPitchers, SetDeckStat.Velocity | SetDeckStat.Movement, 1, "선발 투수 구속/변화/수비 +1")),
+            new SetDeckBracket(160, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(165, E(SetDeckTarget.AllBatters, ContactSpeedDefense, 1, "타자 정확/주루/수비 +1")),
+            new SetDeckBracket(170, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(175, E(SetDeckTarget.AllBatters, PowerDiscipline, 1, "타자 파워/선구/인내 +1")),
+            new SetDeckBracket(180, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 2, "모든 능력치 +2")),
+            new SetDeckBracket(185,
+                E(SetDeckTarget.SelectedYearBatters, SetDeckStat.AllBatter, 1, "선택 연도 타자 모든 능력치 +1"),
+                E(SetDeckTarget.TopOrderBatters, SetDeckStat.Power | SetDeckStat.Speed, 2, "상위 타선(1·2번) 파워/주력 +2"),
+                SetDeckMilestone.Core),
+            new SetDeckBracket(190,
+                E(SetDeckTarget.StartingPitchers, SetDeckStat.Stuff | SetDeckStat.Stamina, 1, "선발 투수 구위/지구력 +1"),
+                E(SetDeckTarget.SelectedYearPitchers, SetDeckStat.AllPitcher, 1, "선택 연도 투수 모든 능력치 +1"),
+                SetDeckMilestone.Core),
+            new SetDeckBracket(195, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 1, "모든 능력치 +1")),
+            new SetDeckBracket(200, E(SetDeckTarget.AllPlayers, SetDeckStat.All, 3, "모든 능력치 +3"),
+                milestone: SetDeckMilestone.Final),
+        };
+
+        public static IEnumerable<SetDeckBracket> ReachedBrackets(int score) => Brackets.Where(b => score >= b.Threshold);
+
+        public static SetDeckBracket NextBracket(int score) => Brackets.FirstOrDefault(b => score < b.Threshold);
+
+        /// <summary>다음 "목표 단계"(150 -> 185 -> 190 -> 200). 모두 달성했으면 null.</summary>
+        public static SetDeckBracket NextMilestone(int score) =>
+            Brackets.FirstOrDefault(b => b.Milestone != SetDeckMilestone.None && score < b.Threshold);
+    }
+
+    /// <summary>[TASK-KBO-172] 유저가 고른 선택형 구간(OR) 옵션과 "연도 선택" 대상 연도. 기본값은 전 구간 A안,
+    /// 선택 연도 미지정(null)이면 세트덱 안에서 카드가 가장 많은 연도를 자동 선택한다.</summary>
+    [Serializable]
+    public sealed class SetDeckSelection
+    {
+        public List<int> OptionBThresholds = new List<int>();
+        public int SelectedYear; // 0 = 자동
+
+        public bool UsesOptionB(int threshold) => OptionBThresholds != null && OptionBThresholds.Contains(threshold);
+    }
+
+    /// <summary>[TASK-KBO-172] 경기에 주입되는 세트덱 버프 프로필. "모든 능력치"(AllPlayers) 균등 가산은
+    /// TeamPowerModifiers.SynergyBuff로 따로 전달되므로(이중 가산 방지) 여기엔 그 외 대상/부분 스탯 효과만 담는다.</summary>
+    public sealed class SetDeckBuffProfile
+    {
+        public static readonly SetDeckBuffProfile Empty = new SetDeckBuffProfile(new List<SetDeckEffect>(), 0);
+
+        private readonly List<SetDeckEffect> effects;
+        public int SelectedYear { get; }
+        public IReadOnlyList<SetDeckEffect> Effects => effects;
+
+        public SetDeckBuffProfile(List<SetDeckEffect> effects, int selectedYear)
+        {
+            this.effects = effects ?? new List<SetDeckEffect>();
+            SelectedYear = selectedYear;
+        }
+
+        /// <summary>battingOrderSlot: 1~9(타순), 0이면 타순 미상(타순 조건부 효과 미적용).</summary>
+        public BatterStats GetBatterBonus(Player batter, int battingOrderSlot)
+        {
+            var bonus = new BatterStats(0, 0, 0, 0, 0);
+            if (batter?.Template == null || batter.Template.IsPitcher) return bonus;
+
+            foreach (var effect in effects)
+            {
+                if (!AppliesToBatter(effect.Target, batter.Template, battingOrderSlot)) continue;
+                bonus = bonus + new BatterStats(
+                    Pick(effect, SetDeckStat.Power), Pick(effect, SetDeckStat.Contact), Pick(effect, SetDeckStat.Discipline),
+                    Pick(effect, SetDeckStat.Speed), Pick(effect, SetDeckStat.Defense));
+            }
+            return bonus;
+        }
+
+        public PitcherStats GetPitcherBonus(Player pitcher)
+        {
+            var bonus = new PitcherStats(0, 0, 0, 0, 0);
+            if (pitcher?.Template == null || !pitcher.Template.IsPitcher) return bonus;
+
+            foreach (var effect in effects)
+            {
+                if (!AppliesToPitcher(effect.Target, pitcher.Template)) continue;
+                bonus = bonus + new PitcherStats(
+                    Pick(effect, SetDeckStat.Stuff), Pick(effect, SetDeckStat.Velocity), Pick(effect, SetDeckStat.Movement),
+                    Pick(effect, SetDeckStat.Control), Pick(effect, SetDeckStat.Stamina));
+            }
+            return bonus;
+        }
+
+        private static int Pick(SetDeckEffect effect, SetDeckStat stat) => (effect.Stats & stat) != 0 ? effect.Amount : 0;
+
+        private bool AppliesToBatter(SetDeckTarget target, PlayerTemplate t, int slot)
+        {
+            switch (target)
+            {
+                case SetDeckTarget.AllPlayers:
+                case SetDeckTarget.AllBatters: return true;
+                case SetDeckTarget.SelectedYearBatters: return SelectedYear != 0 && t.SeasonYear == SelectedYear;
+                case SetDeckTarget.InfieldCatcherBatters: return IsInfieldOrCatcher(t.BatterPosition);
+                case SetDeckTarget.OutfieldDhBatters: return !IsInfieldOrCatcher(t.BatterPosition);
+                case SetDeckTarget.TopOrderBatters: return slot >= 1 && slot <= 2;
+                case SetDeckTarget.CleanupBatters: return slot >= 3 && slot <= 5;
+                case SetDeckTarget.LowerOrderBatters: return slot >= 6 && slot <= 9;
+                default: return false;
+            }
+        }
+
+        private bool AppliesToPitcher(SetDeckTarget target, PlayerTemplate t)
+        {
+            switch (target)
+            {
+                case SetDeckTarget.AllPlayers:
+                case SetDeckTarget.AllPitchers: return true;
+                case SetDeckTarget.SelectedYearPitchers: return SelectedYear != 0 && t.SeasonYear == SelectedYear;
+                case SetDeckTarget.StartingPitchers: return t.PitcherRole == PitcherRole.StartingPitcher;
+                case SetDeckTarget.BullpenPitchers: return t.PitcherRole != PitcherRole.StartingPitcher;
+                default: return false;
+            }
+        }
+
+        private static bool IsInfieldOrCatcher(BatterPosition position) =>
+            position == BatterPosition.Catcher || position == BatterPosition.FirstBase || position == BatterPosition.SecondBase ||
+            position == BatterPosition.ThirdBase || position == BatterPosition.ShortStop;
+    }
+
+    public sealed class SetDeckResult
+    {
+        public static readonly SetDeckResult Empty = new SetDeckResult();
+
+        public int Score;
+        public Team DeckTeam = Team.None;
+        public List<Player> SlotPlayers = new List<Player>();     // 세트덱 27인(주전 타자 9 + 후보 타자 6 + 선발 5 + 불펜 7)
+        public List<Player> CountedPlayers = new List<Player>();  // 실제 스코어에 합산된 카드
+        public bool IsDynastyActive;                              // 단일 구단 조건 충족 여부(DYNASTY 스코어 적용)
+        public int SelectedYear;
+        public List<SetDeckBracket> ReachedBrackets = new List<SetDeckBracket>();
+        public SetDeckBracket NextBracket;
+        public SetDeckBracket NextMilestone;
+        /// <summary>"모든 능력치" 누적 합(타자/투수 공통 균등 가산) - TeamPowerModifiers.SynergyBuff와 팀 OVR 표시에 쓰인다.</summary>
+        public int AllPlayersFlatBuff;
+        public SetDeckBuffProfile Profile = SetDeckBuffProfile.Empty;
+
+        public bool IsMinimumGoalMet => Score >= SetDeckBuffTable.MinimumGoalScore;
+        public bool IsFinalGoalMet => Score >= SetDeckBuffTable.FinalGoalScore;
+    }
+
+    /// <summary>
+    /// [TASK-KBO-172] 27인 세트덱 스코어 계산기. 규칙(docs/04_card_grade_policy.md 6절):
+    /// 1) 세트덱 27인 = 주전 타자 9(포지션별 최고 OVR) + 후보 타자 6 + 선발 투수 5 + 중계/마무리 7(각 OVR 순).
+    /// 2) 기준 구단(favoriteTeam, 미지정이면 로스터 최다 구단) 소속 카드만 스코어에 합산한다(자팀 선수 필수).
+    ///    예외: GOLDEN_GLOVE는 소속 구단 무관 합산.
+    /// 3) DYNASTY는 "단일 구단" 세트덱일 때만 합산한다 - 27인 중 GOLDEN_GLOVE를 제외한 다른 구단 카드가
+    ///    한 장이라도 있으면 DYNASTY 스코어는 0(PDF: "다른 구단 선수가 있을 경우 미적용").
+    /// 4) 카드 스코어 = CardGrowthRules.SetDeckScoreFor(등급, 각성).
+    /// </summary>
+    public static class SetDeckEvaluator
+    {
+        public const int StarterBatterSlots = 9;
+        public const int BenchBatterSlots = 6;
+        public const int StartingPitcherSlots = 5;
+        public const int BullpenSlots = 7;
+        public const int TotalSlots = StarterBatterSlots + BenchBatterSlots + StartingPitcherSlots + BullpenSlots; // 27
+
+        public static List<Player> SelectSlots(IEnumerable<Player> roster)
+        {
+            var valid = (roster ?? Enumerable.Empty<Player>()).Where(p => p?.Template != null).Distinct().ToList();
+            var batters = valid.Where(p => !p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
+            var pitchers = valid.Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
+
+            var starters = new List<Player>();
+            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
+            {
+                var pick = batters.FirstOrDefault(p => p.Template.BatterPosition == position && !starters.Contains(p));
+                if (pick != null) starters.Add(pick);
+            }
+            var bench = batters.Except(starters).Take(BenchBatterSlots);
+            var sp = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).Take(StartingPitcherSlots);
+            var bullpen = pitchers.Where(p => p.Template.PitcherRole != PitcherRole.StartingPitcher).Take(BullpenSlots);
+
+            return starters.Concat(bench).Concat(sp).Concat(bullpen).ToList();
+        }
+
+        public static Team ResolveDeckTeam(IEnumerable<Player> slots, string favoriteTeam)
+        {
+            if (!string.IsNullOrEmpty(favoriteTeam) && Enum.TryParse(favoriteTeam, out Team parsed) && parsed != Team.None)
+            {
+                return parsed;
+            }
+
+            return slots.Where(p => p.Template.Team != Team.None)
+                .GroupBy(p => p.Template.Team)
+                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
+                .Select(g => g.Key)
+                .DefaultIfEmpty(Team.None)
+                .First();
+        }
+
+        public static SetDeckResult Evaluate(IEnumerable<Player> roster, string favoriteTeam = null, SetDeckSelection selection = null)
+        {
+            var slots = SelectSlots(roster);
+            if (slots.Count == 0) return SetDeckResult.Empty;
+
+            var result = new SetDeckResult { SlotPlayers = slots };
+            result.DeckTeam = ResolveDeckTeam(slots, favoriteTeam);
+            if (result.DeckTeam == Team.None) return result;
+
+            result.IsDynastyActive = slots.All(p =>
+                p.Template.Team == result.DeckTeam || p.Template.Grade == Grade.GOLDEN_GLOVE);
+
+            foreach (var player in slots)
+            {
+                var grade = player.Template.Grade;
+                bool counts = grade == Grade.GOLDEN_GLOVE || player.Template.Team == result.DeckTeam;
+                if (grade == Grade.DYNASTY && !result.IsDynastyActive) counts = false;
+                if (!counts) continue;
+
+                result.Score += player.SetDeckScore;
+                result.CountedPlayers.Add(player);
+            }
+
+            result.SelectedYear = selection != null && selection.SelectedYear != 0
+                ? selection.SelectedYear
+                : result.CountedPlayers.GroupBy(p => p.Template.SeasonYear)
+                    .OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key)
+                    .Select(g => g.Key).DefaultIfEmpty(0).First();
+
+            var profileEffects = new List<SetDeckEffect>();
+            foreach (var bracket in SetDeckBuffTable.ReachedBrackets(result.Score))
+            {
+                result.ReachedBrackets.Add(bracket);
+                var effect = bracket.Resolve(selection);
+                if (effect.IsAllPlayersFlat) result.AllPlayersFlatBuff += effect.Amount;
+                else profileEffects.Add(effect);
+            }
+
+            result.NextBracket = SetDeckBuffTable.NextBracket(result.Score);
+            result.NextMilestone = SetDeckBuffTable.NextMilestone(result.Score);
+            result.Profile = new SetDeckBuffProfile(profileEffects, result.SelectedYear);
+            return result;
+        }
+    }
+}
+
+namespace KBOManager.Models
+{
+    /// <summary>[TASK-KBO-172] 세트덱 상태 한 줄 요약(로스터 게이지/시너지 패널 공용) - "핵심 버프 구간"을
+    /// 다음 목표로 노출해 유저가 150P -> 185P/190P -> 200P 순서로 목표를 잡도록 유도한다.</summary>
+    public static class SetDeckUIText
+    {
+        public static string MilestoneLabel(SetDeckMilestone milestone) => milestone switch
+        {
+            SetDeckMilestone.MinimumGoal => "1차 목표",
+            SetDeckMilestone.Core => "핵심 버프",
+            SetDeckMilestone.Final => "최종 목표",
+            _ => ""
+        };
+
+        public static string Summary(SetDeckResult setDeck)
+        {
+            if (setDeck == null || setDeck.SlotPlayers.Count == 0) return "세트덱 미구성";
+
+            string head = $"세트덱 {setDeck.Score}P (모든 능력치 +{setDeck.AllPlayersFlatBuff}, {setDeck.ReachedBrackets.Count}개 구간)";
+            var next = setDeck.NextMilestone;
+            return next == null
+                ? $"{head} · 최종 목표 달성"
+                : $"{head} · 다음 {MilestoneLabel(next.Milestone)} {next.Threshold}P({next.Threshold - setDeck.Score}P 남음)";
+        }
+    }
+}

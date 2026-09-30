@@ -85,6 +85,10 @@ DCL-055 당시 확인된 실제 인덱스와 완전히 동일하게 유지, 신�
   정확히 일치하도록 설계되어, 브릿지 구현 시 별도 매핑표 없이 그대로 캐스팅할 수 있다.
 - `base_ovr` (Int): 공식에 의해 산출된 해당 카드의 명함 초기 OVR (Clamp 40~99)
 - `salary_cost` (Int): 샐러리캡 소모 비용 계산값
+- **[TASK-KBO-172 갱신]** 실제 `cards_{TEAM}.csv`의 `grade_id`는 `LIVE_NORMAL=1 ~ DYNASTY=9`(FRANCHISE=4 삽입 후 서열)이며,
+  `max_awaken`은 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY) 10(=초월), 9각 한계 등급(ALLSTAR/FRANCHISE/
+  TITLE_HOLDER/RETIRED_NUMBER) 9다 - 런타임 한계는 `CardGrowthRules.MaxAwakenLevelFor()`가 같은 값을 코드로 보장한다
+  (`docs/04_card_grade_policy.md` 4절).
 - `max_enhance` / `max_awaken` (Int): 강화/각성 상한 - 현재 코드(`Player.MaxReinforceLevel`/
   `Player.MaxAwakenLevel`)는 이 값을 상수(둘 다 10)로 고정하고 있으며, CSV 컬럼값을 실제로 읽어오는 로직은
   아직 없다(**[TBD]**, `docs/18_player_schema_policy.md` 4-2절 참고).

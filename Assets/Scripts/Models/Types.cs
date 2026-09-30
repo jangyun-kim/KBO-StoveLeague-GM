@@ -110,17 +110,24 @@ namespace KBOManager.Models
     /// 재배치 후 반드시 각 Inspector 값을 다시 확인/재지정할 것(`ShopUIController`는 더 이상 Grade
     /// 필드를 갖고 있지 않아 목록에서 제외했다 - 과거 리팩토링으로 없어진 필드를 이 주석만 남아 있던
     /// 것을 이번에 발견해 정정).
+    ///
+    /// [TASK-KBO-172, 사용자 직접 지시 - 시즌 카드 체제 개편] 신규 등급 `FRANCHISE`(프랜차이즈)를
+    /// `ALLSTAR`와 `TITLE_HOLDER` 사이(4)에 끼워 넣어 "(int)Grade = 랭크" 불변식을 유지했다 -
+    /// `TITLE_HOLDER`~`DYNASTY`는 한 칸씩 밀렸다(5~9). cards_*.csv는 grade_name(문자열)을 우선 파싱하고
+    /// GenerateKBODatabase.py의 GRADE_ID도 함께 갱신했다. 씬에 직렬화된 Grade 값은
+    /// `ScoutManager.gradeDropRates`(0~2만 사용)뿐이라 이번 재배치의 영향을 받지 않는다(SampleScene.unity 확인).
     /// </summary>
     public enum Grade
     {
-        LIVE_NORMAL = 1,    // 라이브 일반 카드 (1~3성, 강화만 가능/각성 불가)
-        LIVE_EPIC = 2,      // 라이브 에픽 카드 (4성, 강화만 가능/각성 불가)
-        ALLSTAR = 3,        // 올스타 (보라 4성)
-        TITLE_HOLDER = 4,   // 타이틀 홀더 (실버 5성)
-        RETIRED_NUMBER = 5, // [TASK-KBO-155 신설] 영구결번 (검정 5성 - TITLE_HOLDER~SIGNATURE 중간 성능)
-        SIGNATURE = 6,      // 시그니처 (플래티넘 6성)
-        GOLDEN_GLOVE = 7,   // 골든 글러브 (골드 5성)
-        DYNASTY = 8         // 왕조 (구단색 6성)
+        LIVE_NORMAL = 1,    // 라이브 일반 카드 (1~3성, [TASK-KBO-172] 각성+초월 가능 - 실전 OVR은 ALLSTAR 9각 동급 상한)
+        LIVE_EPIC = 2,      // 라이브 에픽 카드 (4성, [TASK-KBO-172] 각성+초월 가능 - 실전 OVR은 ALLSTAR 9각 동급 상한)
+        ALLSTAR = 3,        // 올스타 (보라 4성, 9각 한계)
+        FRANCHISE = 4,      // [TASK-KBO-172 신설] 프랜차이즈 (브론즈 5성, 9각 한계) - 무관 구단 핵심 주전/필승조/수비형
+        TITLE_HOLDER = 5,   // 타이틀 홀더 (실버 5성, 9각 한계)
+        RETIRED_NUMBER = 6, // [TASK-KBO-155 신설] 영구결번 (검정 5성 - TITLE_HOLDER~SIGNATURE 중간 성능, 9각 한계)
+        SIGNATURE = 7,      // 시그니처 (플래티넘 6성, 초월 가능)
+        GOLDEN_GLOVE = 8,   // 골든 글러브 (골드 5성, 초월 가능)
+        DYNASTY = 9         // 왕조 (구단색 6성, 초월 가능)
     }
 
     /// <summary>
@@ -137,7 +144,8 @@ namespace KBOManager.Models
         GOLD,       // GOLDEN_GLOVE
         PLATINUM,   // SIGNATURE
         TEAM_COLOR, // DYNASTY
-        BLACK       // RETIRED_NUMBER (영구결번)
+        BLACK,      // RETIRED_NUMBER (영구결번)
+        BRONZE      // [TASK-KBO-172 신설] FRANCHISE (프랜차이즈) - 끝에만 추가(색상 매핑 전용 enum)
     }
 
     /// <summary>

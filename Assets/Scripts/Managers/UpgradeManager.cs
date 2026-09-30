@@ -78,7 +78,8 @@ namespace KBOManager.Managers
 
         /// <summary>
         /// 재료 카드 목록으로 각성을 시도한다.
-        /// - target이 ALLSTAR 이상 등급(Player.CanAwaken)이어야 한다.
+        /// - [TASK-KBO-172] 전 등급 각성 가능(LIVE 포함). 한계는 등급별 - 9각 한계 등급(ALLSTAR/FRANCHISE/
+        ///   TITLE_HOLDER/RETIRED_NUMBER)은 9각, 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY)은 초월(10).
         /// - 재료는 RealPlayerId가 target과 완전히 일치해야 유효한 재료로 인정된다.
         /// - 완전히 동일한 템플릿(카드 종류)이면 +3각, 같은 등급의 다른 템플릿(동일 선수)이면 +1각을 부여한다.
         /// 소모된 재료를 인벤토리에서 제거하는 것은 호출부 책임이다.
@@ -86,8 +87,9 @@ namespace KBOManager.Managers
         public bool TryAwaken(Player target, List<Player> materialCards)
         {
             if (target == null || target.Template == null) return false;
-            if (!target.CanAwaken) return false; // ALLSTAR 이상 등급 검증
-            if (target.AwakenLevel >= Player.MaxAwakenLevel) return false;
+            if (!target.CanAwaken) return false;
+            int maxAwaken = target.MaxAwakenLevelForGrade; // [TASK-KBO-172] 등급별 9각 한계/초월
+            if (target.AwakenLevel >= maxAwaken) return false;
             if (materialCards == null || materialCards.Count == 0) return false;
 
             int gainedPoints = 0;
@@ -110,7 +112,7 @@ namespace KBOManager.Managers
 
             if (gainedPoints <= 0) return false;
 
-            target.AwakenLevel = Mathf.Min(target.AwakenLevel + gainedPoints, Player.MaxAwakenLevel);
+            target.AwakenLevel = Mathf.Min(target.AwakenLevel + gainedPoints, maxAwaken);
             return true;
         }
     }

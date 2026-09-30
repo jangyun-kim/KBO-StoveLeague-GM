@@ -215,9 +215,9 @@ namespace KBOManager.Controllers
 
             if (awakenText != null)
             {
-                awakenText.text = currentPlayer.CanAwaken
-                    ? $"각성 {currentPlayer.AwakenLevel} / {Player.MaxAwakenLevel}"
-                    : "각성 불가 (LIVE 등급)";
+                // [TASK-KBO-172] 전 등급 각성 가능 - "현재 단계 / 등급 한계(9각 또는 초월)"와 개인 세트덱 스코어를 함께 표기.
+                string limitLabel = currentPlayer.MaxAwakenLevelForGrade >= CardGrowthRules.TranscendLevel ? "초월" : "9각";
+                awakenText.text = $"각성 {currentPlayer.AwakenLabel} / {limitLabel} · 세트덱 {currentPlayer.SetDeckScore}점";
             }
 
             if (statRowTexts == null) return;

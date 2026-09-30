@@ -1,8 +1,8 @@
 ---
 문서명: 구단 전력 보정 정책 (Team Power Policy)
-버전: v0.1
+버전: v0.2
 상태: Active
-최종 수정일: 2026-09-13
+최종 수정일: 2026-10-01
 담당자: 김장윤
 관련 파일: GameManager.cs, MatchEngine.cs, LeagueManager.cs, PlayBallController.cs, PostSeasonManager.cs, Cheerleader.cs, MatchRewardManager.cs
 ---
@@ -24,6 +24,16 @@
 - ③은 `GameManager.CalculateTeamOVR()`과는 별개로, 경기를 시작하는 호출부(`LeagueManager`, `PlayBallController`, `PostSeasonManager`)가 매 경기 직전에 `TeamPowerModifiers`를 구성해 `MatchEngine` 생성자로 주입한다. `MatchEngine`은 이 값을 그대로 세부 스탯에 가산할 뿐, 스스로 계산하지 않는다.
 
 # 3. 세트덱 통폐합 정책
+
+> **[v0.2, TASK-KBO-172 - 이 절의 "15명 이상 +12" 및 "왕조 5명 이상 +15" 규칙은 폐기됨]** 세트덱은 이제 `docs/기획 고도화 자료.pdf`의 **27인 세트덱 스코어 → 30P~200P 버프 구간** 체계로 판정한다(상세 규칙/구간표/과금 영역 검증은 `04_card_grade_policy.md` 5~8절).
+> - **계산**: `GameManager.EvaluateSetDeck(roster, favoriteTeam, selection)` → `Models/SetDeck.cs`의 `SetDeckEvaluator`. 27인(주전 타자 9 + 후보 타자 6 + 선발 5 + 불펜 7)의 개인 스코어(`CardGrowthRules`) 합. 기준 구단 소속 카드만 합산(GOLDEN_GLOVE는 구단 무관), DYNASTY는 GOLDEN_GLOVE 외 타 구단 카드가 없는 단일 구단 덱에서만 합산.
+> - **판정 기준 구단**: 기존과 동일 - 유저는 `FavoriteTeam`(미지정이면 최다 구단), AI는 로스터 최다 구단.
+> - **지표 연결**: `GameManager.CalculateSynergy()`(시그니처 유지)는 도달 구간의 "모든 능력치 +N" 누적합(200P에서 +16)을 반환해 ② 표시 팀 OVR과 `TeamPowerModifiers.SynergyBuff`에 쓰인다. 타자/투수 전용·타순(상위 1~2/중심 3~5/하위 6~9)·선발/불펜·선택 연도·포지션(내야+포수/외야+지명)·부분 스탯 효과는 `TeamPowerModifiers.SetDeckProfile`로 `MatchEngine`에 주입되어 `ResolveEffective*Stats()`의 팀 버프 가산 직후 해당 선수에게만 더해진다(이중 가산 없음). 세 경기 진입부(`LeagueManager`/`PlayBallController`/`PostSeasonManager`)는 `TeamPowerModifiers.FromSetDeck()`으로 구성한다.
+> - **선택형 구간(OR)**: 유저 구단은 `GameManager.SetDeckSelection`(기본 A안, 연도 자동)을 따르고 AI는 항상 A안. 선택 UI와 세이브 저장은 후속 작업.
+> - **UI**: `RosterUIController` 게이지 = 스코어/200P, 글로우 = 1차 목표 150P 달성, 문구 = `SetDeckUIText.Summary()`(현재 스코어·"모든 능력치" 누적·다음 목표 단계). `TeamSynergyUIController`도 같은 문구를 쓴다.
+>
+> 아래는 v0.1 당시의 기록(이력 보존용)이다.
+
 
 - **단일 기준**: 28인 로스터 중 특정 구단 소속 선수가 **15명 이상**이면 **+12**를 가산한다. 15명 미만이면 0.
 - **판정 기준 구단**:

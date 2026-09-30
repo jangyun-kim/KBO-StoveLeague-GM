@@ -47,6 +47,10 @@ namespace KBOManager.UI
     ///
     /// [TASK-KBO-171] DYNASTY(왕조) 등급 전용 배경에 구단별 분기를 추가했다 - `BG_{code}_{TeamToken}`이
     /// 있으면 그것을, 없으면 기존처럼 `BG_{code}` 공통 배경을 쓴다. `LoadGradeBackground()` 참고.
+    ///
+    /// [TASK-KBO-172] 신설 등급 FRANCHISE(코드 `FRA`)를 지원한다 - `CardDesigns/BG_FRA`/`CardDesigns/Frame_FRA`를
+    /// 기존 규칙 그대로 찾고, 배경 아트가 아직 없으면 방사형 그라디언트(중심 #FFE8D6 -> #B87352 -> 가장자리
+    /// #3D2214, 브론즈 톤) 스프라이트를 코드로 1회 생성·캐시해 폴백 배경으로 쓴다(`GetProceduralFallbackBackground()`).
     /// </summary>
     public class PlayerCardUI : MonoBehaviour
     {
@@ -248,7 +252,7 @@ namespace KBOManager.UI
                     defaultFrameSpriteCaptured = true;
                 }
 
-                Sprite bg = LoadGradeBackground(code, grade, team);
+                Sprite bg = LoadGradeBackground(code, grade, team) ?? GetProceduralFallbackBackground(grade);
                 if (bg != null)
                 {
                     frameImage.sprite = bg;
@@ -292,6 +296,7 @@ namespace KBOManager.UI
             Grade.LIVE_NORMAL => "LN",
             Grade.LIVE_EPIC => "EPIC",
             Grade.ALLSTAR => "AS",
+            Grade.FRANCHISE => "FRA", // [TASK-KBO-172 신설]
             Grade.TITLE_HOLDER => "TH",
             Grade.RETIRED_NUMBER => "RN",
             Grade.GOLDEN_GLOVE => "GG",
@@ -299,6 +304,63 @@ namespace KBOManager.UI
             Grade.DYNASTY => "DYN",
             _ => "LN",
         };
+
+        /// <summary>[TASK-KBO-172] 전용 배경 아트(BG_{code})가 없는 등급 중 "지정 폴백 그라디언트"가 있는 등급의
+        /// 방사형 그라디언트 3색(중심/중간/가장자리). 현재는 FRANCHISE만 지정돼 있다(명령서 STEP 3-1:
+        /// Radial #FFE8D6 -> #B87352 -> #3D2214). 그 외 등급은 기존처럼 색상 틴트만 쓴다.</summary>
+        private static bool TryGetFallbackGradient(Grade grade, out Color inner, out Color mid, out Color outer)
+        {
+            if (grade == Grade.FRANCHISE)
+            {
+                inner = new Color32(0xFF, 0xE8, 0xD6, 0xFF);
+                mid = new Color32(0xB8, 0x73, 0x52, 0xFF);
+                outer = new Color32(0x3D, 0x22, 0x14, 0xFF);
+                return true;
+            }
+
+            inner = mid = outer = Color.white;
+            return false;
+        }
+
+        private const int FallbackGradientSize = 256;
+        private static readonly System.Collections.Generic.Dictionary<Grade, Sprite> ProceduralBackgroundCache =
+            new System.Collections.Generic.Dictionary<Grade, Sprite>();
+
+        /// <summary>[TASK-KBO-172] `TryGetFallbackGradient()`에 지정된 등급이면 방사형 그라디언트 스프라이트를
+        /// 한 번만 만들어(정적 캐시) 반환하고, 아니면 null(기존 틴트 경로 유지). 중심(0) -> 중간(0.5) -> 가장자리(1)
+        /// 두 구간을 선형 보간하며, 가장자리 거리는 사각형 모서리까지(√2 반경)를 1로 정규화한다.</summary>
+        private static Sprite GetProceduralFallbackBackground(Grade grade)
+        {
+            if (ProceduralBackgroundCache.TryGetValue(grade, out var cached) && cached != null) return cached;
+            if (!TryGetFallbackGradient(grade, out var inner, out var mid, out var outer)) return null;
+
+            var texture = new Texture2D(FallbackGradientSize, FallbackGradientSize, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                name = $"ProceduralBG_{GetGradeCode(grade)}"
+            };
+            var pixels = new Color[FallbackGradientSize * FallbackGradientSize];
+            float center = (FallbackGradientSize - 1) * 0.5f;
+            float maxDistance = center * Mathf.Sqrt(2f);
+            for (int y = 0; y < FallbackGradientSize; y++)
+            {
+                for (int x = 0; x < FallbackGradientSize; x++)
+                {
+                    float dx = x - center, dy = y - center;
+                    float t = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) / maxDistance);
+                    pixels[y * FallbackGradientSize + x] = t < 0.5f
+                        ? Color.Lerp(inner, mid, t / 0.5f)
+                        : Color.Lerp(mid, outer, (t - 0.5f) / 0.5f);
+                }
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+
+            var sprite = Sprite.Create(texture, new Rect(0, 0, FallbackGradientSize, FallbackGradientSize), new Vector2(0.5f, 0.5f));
+            sprite.name = texture.name;
+            ProceduralBackgroundCache[grade] = sprite;
+            return sprite;
+        }
 
         /// <summary>빈 카드로 되돌린다 (풀링/재사용 시 사용).</summary>
         public void Clear()
@@ -405,6 +467,7 @@ namespace KBOManager.UI
             StarType.NORMAL => new Color(0.75f, 0.75f, 0.75f),   // 라이브 일반/에픽 - 무채색
             StarType.PURPLE => new Color(0.58f, 0.29f, 0.93f),   // 올스타
             StarType.SILVER => new Color(0.78f, 0.80f, 0.84f),   // 타이틀 홀더
+            StarType.BRONZE => new Color32(0xB8, 0x73, 0x52, 0xFF), // [TASK-KBO-172 신설] 프랜차이즈 - 폴백 그라디언트 중간색과 동일
             StarType.GOLD => new Color(1f, 0.84f, 0f),            // 골든 글러브
             StarType.PLATINUM => new Color(0.90f, 0.92f, 0.95f), // 시그니처(플래티넘)
             StarType.TEAM_COLOR => GetTeamColor(team),            // 왕조

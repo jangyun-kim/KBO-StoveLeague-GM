@@ -13,7 +13,9 @@ namespace KBOManager.Models
     public class Player
     {
         public const int MaxReinforceLevel = 10; // 명함(0강) ~ 10강
-        public const int MaxAwakenLevel = 10;    // 1각 ~ 10각
+        // [TASK-KBO-172] 1~9각 + 초월(내부 값 10 = 구 10각). 이 값은 "전 등급 공통 절대 상한"이며, 실제 등급별
+        // 한계(9각 한계 등급 = 9, 초월 가능 등급 = 10)는 MaxAwakenLevelForGrade / CardGrowthRules가 결정한다.
+        public const int MaxAwakenLevel = CardGrowthRules.TranscendLevel;
         public const int MinStarLevel = 1;
         public const int MaxStarLevel = 6;
 
@@ -37,7 +39,7 @@ namespace KBOManager.Models
         // 등급별 제공 경험치(UpgradeConstants.GetMaterialExp())를 여기 누적하고, 요구치
         // (UpgradeConstants.GetRequiredExp())를 넘을 때마다 ReinforceLevel을 올리며 초과분만 이월한다.
         public int ReinforceExp;
-        public int AwakenLevel;        // 0~10각 (ALLSTAR 이상 등급만 유효)
+        public int AwakenLevel;        // 0~9각, 10 = 초월([TASK-KBO-172] 전 등급 각성 가능, 한계는 등급별)
         public int StarLevel;          // 1~6, 뽑기 시 등급에 따라 결정되는 초기 성급. 강화/각성과는 별개 개념
         public StarType CurrentStarType;
 
@@ -101,18 +103,36 @@ namespace KBOManager.Models
             CurrentStamina = Mathf.Min(MaxStamina, CurrentStamina + amount);
         }
 
-        /// <summary>[TASK-KBO-155] SEASON 등급 삭제(사용자 직접 지시) - LIVE_NORMAL / LIVE_EPIC
-        /// 등급만 강화 전용(각성 불가)으로 남는다. RETIRED_NUMBER(영구결번)는 TITLE_HOLDER/SIGNATURE와
-        /// 같은 상위 등급 취급이라 각성 가능 목록에서 제외하지 않는다.</summary>
-        public bool CanAwaken => Template != null
-            && Template.Grade != Grade.LIVE_NORMAL
-            && Template.Grade != Grade.LIVE_EPIC;
+        /// <summary>[TASK-KBO-172] 전 등급 각성 가능 - LIVE_NORMAL/LIVE_EPIC도 이제 3·6·9각을 거쳐 초월까지
+        /// 성장해 세트덱 스코어(최대 8점)를 올리는 "스코어 배터리" 역할을 한다(기획 고도화 자료.pdf). 대신
+        /// LIVE의 실전 성장치는 ALLSTAR 9각 동급으로 상한이 걸린다(GetStatGrowth 참고). 이전 규칙(TASK-155:
+        /// LIVE 각성 불가)은 폐기됐다.</summary>
+        public bool CanAwaken => Template != null;
+
+        /// <summary>[TASK-KBO-172] 이 카드 등급의 각성 한계(9각 한계 = 9, 초월 가능 = 10).</summary>
+        public int MaxAwakenLevelForGrade => Template != null
+            ? CardGrowthRules.MaxAwakenLevelFor(Template.Grade)
+            : CardGrowthRules.NineStageAwakenCap;
+
+        /// <summary>[TASK-KBO-172] 등급 한계로 클램프한 유효 각성 단계(레거시 세이브의 초월 불가 등급 10각 = 9각).</summary>
+        public int EffectiveAwakenLevel => Template != null
+            ? CardGrowthRules.ClampAwaken(Template.Grade, AwakenLevel)
+            : 0;
+
+        public bool IsTranscended => Template != null && CardGrowthRules.IsTranscended(Template.Grade, AwakenLevel);
+
+        /// <summary>[TASK-KBO-172] 이 카드가 세트덱에 기여하는 개인 스코어(등급 기본 + 3·6·9각 + 초월).</summary>
+        public int SetDeckScore => Template != null ? CardGrowthRules.SetDeckScoreFor(Template.Grade, AwakenLevel) : 0;
+
+        /// <summary>UI 표기용 각성 라벨("명함"/"n각"/"초월").</summary>
+        public string AwakenLabel => Template != null ? CardGrowthRules.AwakenLabel(Template.Grade, AwakenLevel) : "명함";
 
         private static StarType DefaultStarTypeFor(Grade grade) => grade switch
         {
             Grade.LIVE_NORMAL => StarType.NORMAL,
             Grade.LIVE_EPIC => StarType.NORMAL,
             Grade.ALLSTAR => StarType.PURPLE,
+            Grade.FRANCHISE => StarType.BRONZE, // [TASK-KBO-172 신설]
             Grade.TITLE_HOLDER => StarType.SILVER,
             Grade.RETIRED_NUMBER => StarType.BLACK, // [TASK-KBO-155 신설]
             Grade.GOLDEN_GLOVE => StarType.GOLD,
@@ -130,6 +150,7 @@ namespace KBOManager.Models
             Grade.LIVE_NORMAL => MinStarLevel,
             Grade.LIVE_EPIC => 4,
             Grade.ALLSTAR => 4,
+            Grade.FRANCHISE => 5, // [TASK-KBO-172 신설] TITLE_HOLDER와 같은 5성(브론즈 컬러로 구분)
             Grade.TITLE_HOLDER => 5,
             Grade.RETIRED_NUMBER => 5, // [TASK-KBO-155 신설] TITLE_HOLDER와 동일한 5성 - 최상위(6성)보다는 한 단계 아래
             Grade.GOLDEN_GLOVE => 5,
@@ -143,6 +164,19 @@ namespace KBOManager.Models
         private const int AwakenPerStatBonus = 1;
 
         /// <summary>
+        /// [TASK-KBO-172] 강화+각성 성장치(세부 스탯 각각에 균등 가산). 각성은 등급 한계로 클램프하고,
+        /// LIVE 등급은 CardGrowthRules.MaxStatGrowthFor()로 ALLSTAR 9각 동급(+19)을 넘지 못하게 자른다 -
+        /// "LIVE는 초월해도 실전 성능은 ALLSTAR 동급 이하" 제약의 실제 구현 지점이다.
+        /// </summary>
+        public int GetStatGrowth()
+        {
+            if (Template == null) return 0;
+            int growth = ReinforceLevel * ReinforcePerStatBonus + EffectiveAwakenLevel * AwakenPerStatBonus;
+            int cap = CardGrowthRules.MaxStatGrowthFor(Template.Grade, MaxReinforceLevel);
+            return growth > cap ? cap : growth;
+        }
+
+        /// <summary>
         /// 강화/각성 성장치가 반영된 타자 세부 스탯. Template이 없거나 투수 카드면 default(0,0,0,0,0)를 반환한다.
         /// 스킬/세트덱 보너스는 매치 컨텍스트(상대방 존재)가 필요해 여기 포함하지 않으며, MatchEngine이 계산 시점에 적용한다.
         /// </summary>
@@ -150,7 +184,7 @@ namespace KBOManager.Models
         {
             if (Template == null || Template.IsPitcher) return default;
 
-            int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
+            int growth = GetStatGrowth();
             // [TASK-KBO-089] operator+(Types.cs, TASK-088)로 5개 필드 전부에 growth를 균등 가산한다 - 이전에는
             // 3-인자 생성자로 재조립하면서 Speed/Defense가 0으로 유실되었다.
             return Template.BatterStats + new BatterStats(growth, growth, growth, growth, growth);
@@ -164,7 +198,7 @@ namespace KBOManager.Models
         {
             if (Template == null || !Template.IsPitcher) return default;
 
-            int growth = ReinforceLevel * ReinforcePerStatBonus + (CanAwaken ? AwakenLevel * AwakenPerStatBonus : 0);
+            int growth = GetStatGrowth();
             // [TASK-KBO-089] operator+(Types.cs, TASK-088)로 5개 필드 전부에 growth를 균등 가산한다 - 이전에는
             // 4-인자 생성자로 재조립하면서 Stamina가 0으로 유실되었다.
             return Template.PitcherStats + new PitcherStats(growth, growth, growth, growth, growth);
@@ -220,6 +254,7 @@ namespace KBOManager.Models
             Grade.LIVE_NORMAL => 5f,
             Grade.LIVE_EPIC => 8f,
             Grade.ALLSTAR => 12f,
+            Grade.FRANCHISE => 13.5f, // [TASK-KBO-172 신설] ALLSTAR(12)와 TITLE_HOLDER(15) 중간값
             Grade.TITLE_HOLDER => 15f,
             Grade.RETIRED_NUMBER => 18f, // [TASK-KBO-155 신설] TITLE_HOLDER(15)와 SIGNATURE(20) 중간값
             Grade.SIGNATURE => 20f,
@@ -241,7 +276,7 @@ namespace KBOManager.Models
             int finalOvr = CalculateOVR(isSetDeckBonusActive, setDeckBonusMultiplier);
             float baseCost = GradeBaseCostFor(Template.Grade);
 
-            return baseCost + (finalOvr - 60) + (AwakenLevel * 1.5f);
+            return baseCost + (finalOvr - 60) + (EffectiveAwakenLevel * 1.5f);
         }
     }
 }

@@ -130,58 +130,38 @@ namespace KBOManager.Controllers
             }
         }
 
-        // [TASK-KBO-038] 15_team_power_policy.md 확정 기준. GameManager.CalculateSynergy()가 쓰는
-        // 값과 동일하나, 이 UI는 "어느 구단이 최다인지"(dominantTeam)까지 표시해야 해서 GroupBy 결과를
-        // 직접 들고 있어야 한다 - 그래서 그 메서드를 호출하는 대신 여기서 독립적으로 계산한다.
-        private const int SetDeckSynergyThreshold = 15;
-        private const int SetDeckSynergyBonus = 12;
-
         /// <summary>
-        /// 현재 로스터를 직접 그룹핑해 최다 구단/인원수를 구하고, 상단 게이지·텍스트·글로우 오브젝트를
-        /// 갱신한다. RefreshRoster()가 호출될 때마다 함께 갱신되므로 별도로 구독할 이벤트가 없다 -
-        /// 로스터가 바뀌는 모든 경로(오토 라인업, 강화/각성 등)가 이미 RefreshRoster()를 거치기 때문이다.
-        /// Team.None(무소속) 선수는 집계 대상에서 제외하며, 로스터가 비어 있으면 0/15·미활성으로 표시한다.
+        /// [TASK-KBO-172 전면 개편] 27인 세트덱 스코어(GameManager.EvaluateSetDeck)로 상단 게이지·텍스트·글로우를
+        /// 갱신한다. 게이지는 최종 목표(200P) 대비 진행률, 텍스트는 기준 구단/스코어/다음 목표 단계, 글로우는
+        /// 1차 목표(최소 목표 스코어 150P) 달성 시 켠다 - 이전의 "동일 구단 15명 이상 +12" 게이지는 폐기됐다.
+        /// RefreshRoster()가 호출될 때마다 함께 갱신되므로 별도로 구독할 이벤트가 없다.
         /// </summary>
         private void RefreshSetDeckStatus()
         {
             if (GameManager.Instance == null) return;
 
-            var validPlayers = GameManager.Instance.Roster
-                .Where(p => p?.Template != null && p.Template.Team != Team.None)
-                .ToList();
+            var gm = GameManager.Instance;
+            string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
+            var setDeck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favoriteTeamName, gm.SetDeckSelection);
 
-            Team dominantTeam = Team.None;
-            int maxTeamCount = 0;
-            if (validPlayers.Count > 0)
-            {
-                var dominantGroup = validPlayers
-                    .GroupBy(p => p.Template.Team)
-                    .OrderByDescending(g => g.Count())
-                    .First();
-                dominantTeam = dominantGroup.Key;
-                maxTeamCount = dominantGroup.Count();
-            }
-
-            bool isBonusActive = maxTeamCount >= SetDeckSynergyThreshold;
-            var themeColor = isBonusActive ? setDeckActiveColor : setDeckInactiveColor;
+            bool isGoalMet = setDeck.IsMinimumGoalMet;
+            var themeColor = isGoalMet ? setDeckActiveColor : setDeckInactiveColor;
 
             if (setDeckStatusText != null)
             {
-                setDeckStatusText.text = isBonusActive
-                    ? $"{dominantTeam} 세트덱 활성화: {maxTeamCount}/{SetDeckSynergyThreshold} (+{SetDeckSynergyBonus} OVR)"
-                    : $"세트덱 미달성: {maxTeamCount}/{SetDeckSynergyThreshold}";
+                setDeckStatusText.text = $"{setDeck.DeckTeam} {SetDeckUIText.Summary(setDeck)}";
                 setDeckStatusText.color = themeColor;
             }
 
             if (setDeckGaugeFillImage != null)
             {
-                setDeckGaugeFillImage.fillAmount = Mathf.Clamp01((float)maxTeamCount / SetDeckSynergyThreshold);
+                setDeckGaugeFillImage.fillAmount = Mathf.Clamp01((float)setDeck.Score / SetDeckBuffTable.FinalGoalScore);
                 setDeckGaugeFillImage.color = themeColor;
             }
 
             if (setDeckActiveGlowRoot != null)
             {
-                setDeckActiveGlowRoot.SetActive(isBonusActive);
+                setDeckActiveGlowRoot.SetActive(isGoalMet);
             }
         }
 

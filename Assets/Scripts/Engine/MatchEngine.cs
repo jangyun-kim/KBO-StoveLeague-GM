@@ -182,14 +182,25 @@ namespace KBOManager.Engine
         public readonly int SynergyBuff;
         public readonly int ConditionBuff;
         public readonly float ClutchMultiplier;
+        /// <summary>[TASK-KBO-172] 세트덱 버프 구간 중 "모든 능력치" 균등 가산(SynergyBuff에 이미 포함) 외의
+        /// 대상 한정 효과(타자/투수 전용, 타순, 선택 연도, 선발/불펜, 부분 스탯). null이면 효과 없음.</summary>
+        public readonly SetDeckBuffProfile SetDeckProfile;
         public int TotalBuff => SynergyBuff + ConditionBuff;
 
-        public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f)
+        public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f,
+            SetDeckBuffProfile setDeckProfile = null)
         {
             SynergyBuff = synergyBuff;
             ConditionBuff = conditionBuff;
             ClutchMultiplier = clutchMultiplier;
+            SetDeckProfile = setDeckProfile;
         }
+
+        /// <summary>[TASK-KBO-172] 세트덱 평가 결과로 보정치를 만든다 - SynergyBuff = "모든 능력치" 누적합,
+        /// SetDeckProfile = 그 외 대상 한정 효과. 세 경기 진입 호출부(LeagueManager/PlayBallController/
+        /// PostSeasonManager)가 공통으로 쓴다.</summary>
+        public static TeamPowerModifiers FromSetDeck(SetDeckResult setDeck, int conditionBuff, float clutchMultiplier) =>
+            new TeamPowerModifiers(setDeck?.AllPlayersFlatBuff ?? 0, conditionBuff, clutchMultiplier, setDeck?.Profile);
 
         /// <summary>버프 없음(0, 0, 1.0f = 클러치 효과 없음). 치어리더/홈 어드밴티지가 없는 호출부
         /// (BatchSimulator 등)가 쓴다.</summary>
@@ -903,7 +914,13 @@ namespace KBOManager.Engine
             // 상대 투수가 보유한 Target=Opponent 스킬(나를 겨냥한 효과) - 조건 판정은 스킬 소유자(투수) 기준
             stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
 
-            stats = AddTeamBuff(stats, GetModifiersFor(batter).TotalBuff);
+            var batterModifiers = GetModifiersFor(batter);
+            stats = AddTeamBuff(stats, batterModifiers.TotalBuff);
+            if (batterModifiers.SetDeckProfile != null)
+            {
+                // [TASK-KBO-172] 세트덱 대상 한정 효과(타순 1~9 기준 상위/중심/하위 타선 등)를 추가 가산한다.
+                stats = AddTeamBuff(stats, batterModifiers.SetDeckProfile.GetBatterBonus(batter, BattingOrderSlotOf(batter)));
+            }
 
             return stats;
         }
@@ -925,7 +942,12 @@ namespace KBOManager.Engine
             stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter, state);
             stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher, state);
 
-            stats = AddTeamBuff(stats, GetModifiersFor(pitcher).TotalBuff);
+            var pitcherModifiers = GetModifiersFor(pitcher);
+            stats = AddTeamBuff(stats, pitcherModifiers.TotalBuff);
+            if (pitcherModifiers.SetDeckProfile != null)
+            {
+                stats = AddTeamBuff(stats, pitcherModifiers.SetDeckProfile.GetPitcherBonus(pitcher)); // [TASK-KBO-172]
+            }
 
             return stats;
         }
@@ -943,6 +965,39 @@ namespace KBOManager.Engine
                 Mathf.Max(MinEffectiveStatValue, buffed.Discipline),
                 Mathf.Max(MinEffectiveStatValue, buffed.Speed),
                 Mathf.Max(MinEffectiveStatValue, buffed.Defense));
+        }
+
+        /// <summary>[TASK-KBO-172] 세트덱 대상 한정 효과처럼 스탯마다 값이 다른 가산 - 균등 가산 버전과 같은
+        /// MinEffectiveStatValue 클램핑을 적용한다.</summary>
+        private static BatterStats AddTeamBuff(BatterStats stats, BatterStats bonus)
+        {
+            var buffed = stats + bonus;
+            return new BatterStats(
+                Mathf.Max(MinEffectiveStatValue, buffed.Power),
+                Mathf.Max(MinEffectiveStatValue, buffed.Contact),
+                Mathf.Max(MinEffectiveStatValue, buffed.Discipline),
+                Mathf.Max(MinEffectiveStatValue, buffed.Speed),
+                Mathf.Max(MinEffectiveStatValue, buffed.Defense));
+        }
+
+        private static PitcherStats AddTeamBuff(PitcherStats stats, PitcherStats bonus)
+        {
+            var buffed = stats + bonus;
+            return new PitcherStats(
+                Mathf.Max(MinEffectiveStatValue, buffed.Stuff),
+                Mathf.Max(MinEffectiveStatValue, buffed.Velocity),
+                Mathf.Max(MinEffectiveStatValue, buffed.Movement),
+                Mathf.Max(MinEffectiveStatValue, buffed.Control),
+                Mathf.Max(MinEffectiveStatValue, buffed.Stamina));
+        }
+
+        /// <summary>[TASK-KBO-172] 타자의 현재 타순(1~9). 대타 교체 시 해당 슬롯을 그대로 이어받는다. 라인업에
+        /// 없으면 0(타순 조건부 세트덱 효과 미적용).</summary>
+        private int BattingOrderSlotOf(Player batter)
+        {
+            int index = homeState?.BattingOrder.IndexOf(batter) ?? -1;
+            if (index < 0) index = awayState?.BattingOrder.IndexOf(batter) ?? -1;
+            return index >= 0 ? index + 1 : 0;
         }
 
         private static PitcherStats AddTeamBuff(PitcherStats stats, int buff)

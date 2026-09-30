@@ -497,73 +497,37 @@ namespace KBOManager.Managers
             return baseOvr + synergy;
         }
 
-        // TASK-KBO-037 확정 수치: 28인 로스터 내 특정(선호 또는 최다) 구단 소속 선수가 이 인원 이상이면
-        // 세트덱 시너지가 발동한다. 유저/AI 공통 기준.
-        private const int TeamSynergyThreshold = 15;
-        private const int TeamSynergyBonus = 12;
-
-        // [TASK-KBO-166, 사용자 직접 지시 - 왕조 세트덱 보너스] 왕조(DYNASTY) 로스터는 삼성 14명/
-        // 해태(KIA) 15명뿐이라 위 TeamSynergyThreshold(15)를 왕조 카드만으로 채우는 것은 삼성 쪽은
-        // 원천적으로 불가능하고 KIA도 전원을 모아야 겨우 턱걸이한다 - 그래서 "왕조 세트덱"은 완전히
-        // 별도의(더 낮은) 임계값과 보너스를 갖는 독립 항목으로 설계했다. 수치는 기획 문서에 확정값이
-        // 없어 이번에 직접 정했다(04_card_grade_policy.md 3절 갱신) - DYNASTY가 "최고 희소성" 등급인
-        // 만큼 일반 세트덱 보너스(+12)보다 살짝 높게 잡았다.
-        private const int DynastySynergyThreshold = 5;
-        private const int DynastySynergyBonus = 15;
+        /// <summary>
+        /// [TASK-KBO-172] 유저 구단의 세트덱 선택형 구간(OR) 옵션과 "연도 선택" 값. 기본값은 전 구간 A안 +
+        /// 연도 자동 선택. UI가 이 객체를 수정하면 다음 경기부터 반영된다(세이브 저장은 후속 작업 - DCL 참고).
+        /// </summary>
+        public SetDeckSelection SetDeckSelection { get; } = new SetDeckSelection();
 
         /// <summary>
-        /// 로스터의 세트덱 시너지 총합(일반 시너지 + 왕조 시너지)을 계산하는 정적 유틸리티 - 유저/AI
-        /// 양쪽에서 공용으로 쓴다.
+        /// [TASK-KBO-172] 27인 세트덱 스코어/버프 구간 판정(docs/04_card_grade_policy.md 6~7절). 유저/AI 공용.
+        /// favoriteTeam(Team.ToString())을 주면 그 구단이 세트덱 기준 구단이 되고, null이면 로스터 최다 구단.
+        /// selection은 선택형 구간 옵션(유저 구단만 GameManager.SetDeckSelection을 넘기고 AI는 null = 기본 A안).
+        /// </summary>
+        public static SetDeckResult EvaluateSetDeck(List<Player> roster, string favoriteTeam = null,
+            SetDeckSelection selection = null)
+        {
+            if (roster == null || roster.Count == 0) return SetDeckResult.Empty;
+            return SetDeckEvaluator.Evaluate(roster, favoriteTeam, selection);
+        }
+
+        /// <summary>
+        /// 로스터의 세트덱 시너지(팀 OVR 가산 + 경기 세부 스탯 균등 가산값)를 계산하는 정적 유틸리티 - 유저/AI 공용.
         ///
-        /// [TASK-KBO-037 통폐합] 그동안 세트덱 판정이 세 갈래로 파편화되어 있었다: (1) MatchEngine.
-        /// EvaluateSetDeckBonus() - 로스터 내 최다 구단 5명 이상이면 세부 스탯에 배율 1.15배 적용(실제
-        /// 경기 판정에 반영됨, 이번에 삭제), (2) GameManager.CheckSetDeckBonus() - 동일 기준(5명, 배율
-        /// 1.15배)이지만 로스터 화면(RosterUIController)의 게이지 표시 전용(경기 판정과 무관, 호출부가
-        /// 있어 이번 작업에서는 보존 - 완료 보고서 F 섹션 참고), (3) 구 GameManager.CalculateTeamSynergy()
-        /// - 15명 기준 +12(유저 전용, AI 미지원). 이 메서드가 (3)을 대체하며 AI까지 포함해 "15명 이상 +12"
-        /// 단일 기준으로 통합한다 - 실제 경기 판정(MatchEngine)에 쓰이는 시너지는 이제 이 메서드의
-        /// 결과값이 유일한 근거다.
-        ///
-        /// favoriteTeam을 지정하면(Team.ToString() 형태의 문자열) 그 구단과 일치하는 인원을 센다(유저
-        /// 경로). 지정하지 않으면(null/빈 문자열) 로스터 내 가장 많은 비중을 차지하는 구단의 인원을
-        /// 센다(AI 경로 - AI는 FavoriteTeam 개념이 없으므로 최다 구단을 기준으로 삼는다). 일치/최다
-        /// 인원이 TeamSynergyThreshold(15) 이상이면 TeamSynergyBonus(+12), 아니면 0을 반환한다.
-        /// 구단 미지정 선수(Template.Team == Team.None)는 두 경로 모두에서 집계 대상에서 제외한다.
-        /// 로스터가 비어 있거나 null이면 0(7항 경계 조건).
-        ///
-        /// [TASK-KBO-166] 여기에 `CalculateDynastySynergy()`의 결과를 더해서 반환한다 - 왕조 시너지는
-        /// favoriteTeam과 무관하게(선호 구단이 무엇이든) "로스터 안에 있는 왕조 카드 중 가장 많이
-        /// 모인 왕조(구단)"를 기준으로 독립 판정하고, 일반 시너지와 가산(스택)된다. TASK-KBO-160이
-        /// 고친 "카드별 실제 발급 구단(Team)" 덕분에 같은 선수의 여러 연도 왕조 카드를 섞어도(예:
-        /// 2011년 카드 + 2013년 카드) 전부 정확히 같은 Team으로 집계된다 - "왕조는 시즌 연도 구분
-        /// 없이 왕조 전체 기간을 아우르는 세트덱 점수를 준다"는 사용자 지시를 그대로 구현한다.
+        /// [TASK-KBO-172 전면 개편] 이전 규칙(TASK-KBO-037 "28인 중 동일 구단 15명 이상 +12" + TASK-KBO-166
+        /// "왕조 카드 5명 이상 +15")을 폐기하고, 기획 고도화 자료.pdf의 "27인 세트덱 스코어 -> 30P~200P 버프
+        /// 구간" 체계로 교체했다. 반환값은 도달한 구간 중 "모든 능력치 +N"(대상 전원·전 스탯) 효과의 누적합이며
+        /// (200P 풀 도달 시 +16), 타자/투수 한정·타순·선택 연도·부분 스탯 효과는 `EvaluateSetDeck().Profile`로
+        /// 경기 엔진(TeamPowerModifiers.SetDeckProfile)에 따로 전달된다 - 이 반환값과 중복 가산되지 않는다.
+        /// 기존 호출부(팀 OVR 표시 등)는 시그니처 그대로 동작한다.
         /// </summary>
         public static int CalculateSynergy(List<Player> roster, string favoriteTeam = null)
         {
-            if (roster == null || roster.Count == 0) return 0;
-
-            var validPlayers = roster.Where(p => p?.Template != null && p.Template.Team != Team.None).ToList();
-            if (validPlayers.Count == 0) return 0;
-
-            int matchingCount = !string.IsNullOrEmpty(favoriteTeam)
-                ? validPlayers.Count(p => p.Template.Team.ToString() == favoriteTeam)
-                : validPlayers.GroupBy(p => p.Template.Team).Select(g => g.Count()).DefaultIfEmpty(0).Max();
-
-            int synergy = matchingCount >= TeamSynergyThreshold ? TeamSynergyBonus : 0;
-            synergy += CalculateDynastySynergy(validPlayers);
-            return synergy;
-        }
-
-        /// <summary>[TASK-KBO-166 신설] `Template.Grade == Grade.DYNASTY`인 카드만 걸러 구단별로 묶고,
-        /// 가장 많이 모인 왕조의 인원이 DynastySynergyThreshold(5) 이상이면 DynastySynergyBonus(+15)를
-        /// 반환한다. 왕조 카드가 하나도 없으면 즉시 0(왕조가 아닌 일반 로스터에는 전혀 영향 없음).</summary>
-        private static int CalculateDynastySynergy(List<Player> validPlayers)
-        {
-            var dynastyCards = validPlayers.Where(p => p.Template.Grade == Grade.DYNASTY).ToList();
-            if (dynastyCards.Count == 0) return 0;
-
-            int maxDynastyCount = dynastyCards.GroupBy(p => p.Template.Team).Select(g => g.Count()).DefaultIfEmpty(0).Max();
-            return maxDynastyCount >= DynastySynergyThreshold ? DynastySynergyBonus : 0;
+            return EvaluateSetDeck(roster, favoriteTeam).AllPlayersFlatBuff;
         }
 
         // ----- 치어리더 경기 조건부 버프 해석 (TASK-KBO-048) -----

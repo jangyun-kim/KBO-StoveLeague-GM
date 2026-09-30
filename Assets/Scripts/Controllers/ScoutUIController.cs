@@ -129,11 +129,12 @@ namespace KBOManager.Controllers
             { Grade.LIVE_NORMAL, 0 },
             { Grade.LIVE_EPIC, 1 },
             { Grade.ALLSTAR, 2 },
-            { Grade.TITLE_HOLDER, 3 },
-            { Grade.RETIRED_NUMBER, 4 },
-            { Grade.GOLDEN_GLOVE, 5 },
-            { Grade.SIGNATURE, 6 },
-            { Grade.DYNASTY, 7 },
+            { Grade.FRANCHISE, 3 }, // [TASK-KBO-172 신설] ALLSTAR~TITLE_HOLDER 사이
+            { Grade.TITLE_HOLDER, 4 },
+            { Grade.RETIRED_NUMBER, 5 },
+            { Grade.GOLDEN_GLOVE, 6 },
+            { Grade.SIGNATURE, 7 },
+            { Grade.DYNASTY, 8 },
         };
         private const Grade TopPullThreshold = Grade.SIGNATURE;
 

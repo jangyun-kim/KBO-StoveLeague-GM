@@ -217,7 +217,9 @@ namespace KBOManager.Managers
                 && GameManager.Instance != null && GameManager.Instance.FavoriteTeam != Team.None;
             string favoriteTeam = isUserTeamWithFavorite ? GameManager.Instance.FavoriteTeam.ToString() : null;
 
-            int synergy = GameManager.CalculateSynergy(roster, favoriteTeam);
+            // [TASK-KBO-172] 27인 세트덱 스코어 -> 버프 구간(30P~200P). 유저 구단만 선택형 구간 옵션을 반영한다.
+            var setDeck = GameManager.EvaluateSetDeck(roster, favoriteTeam,
+                isUserTeam ? GameManager.Instance?.SetDeckSelection : null);
 
             bool isUserTeamHome = isUserTeam && isHome;
             var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
@@ -225,7 +227,7 @@ namespace KBOManager.Managers
                 + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader);
             float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader);
 
-            return new TeamPowerModifiers(synergy, conditionBuff, clutchMultiplier);
+            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, clutchMultiplier);
         }
 
         /// <summary>시리즈가 끝날 때까지 PlayNextSeriesGame()을 반복한다(빠른 진행 편의 메서드).</summary>
