@@ -10,9 +10,19 @@ namespace KBOManager.Models
     /// 초월 불가 등급의 10각은 9각으로 클램프되어 계산된다).
     ///
     /// 개인 세트덱 스코어 = 등급 기본 스코어 + 3각(+1) + 6각(+1) + 9각(+1) + 초월(+1, 초월 가능 등급만).
-    ///   LIVE(LIVE_NORMAL/LIVE_EPIC) 4 → 초월 8 | ALLSTAR 3 → 9각 6 | FRANCHISE 4 → 9각 7
-    ///   TITLE_HOLDER 4 → 9각 7 | GOLDEN_GLOVE 4 → 초월 8 | SIGNATURE 5 → 초월 9 | DYNASTY 5 → 초월 9
-    ///   RETIRED_NUMBER는 명령서/PDF 모두 규격이 없어 TITLE_HOLDER와 동일한 4 → 9각 7을 잠정 적용한다(DCL 기록).
+    ///
+    /// [TASK-KBO-173 역전 밸런스] "카드 성능(OVR)이 높을수록 개인 스코어는 낮게, LIVE는 가장 높게"로 뒤집었다 -
+    /// 27인 최대 목표 200P(1인 평균 7.4)에서 종결 카드(DYN/GG/SIG)만으로 도배하면 핵심 버프 구간에 닿지 못하게
+    /// 하는 것이 목적이다(왕조 13 + 골글 13 + 시그 1 풀초월 = 148P).
+    ///   LIVE(LIVE_NORMAL/LIVE_EPIC) 4 → 초월 8 | ALLSTAR 4 → 9각 7 | FRANCHISE 3 → 9각 6
+    ///   TITLE_HOLDER 3 → 9각 6 | RETIRED_NUMBER 2 → 9각 5(잠정) | GOLDEN_GLOVE 2 → 초월 6
+    ///   SIGNATURE 1 → 초월 5 | DYNASTY 1 → 초월 5
+    ///   RETIRED_NUMBER는 규격 미정이라 "성능 TH~SIG 사이 → 스코어도 TH(3)~SIG(1) 사이"라는 역전 원칙으로 2를
+    ///   잠정 적용한다(DCL-144 결정 필요 항목).
+    ///
+    /// [TASK-KBO-173 Salary 일원화] 이 기본 스코어가 곧 카드의 "Salary"다 - cards_*.csv의 salary_cost 컬럼은
+    /// BaseSetDeckScore()와 같은 값으로 생성되며, 별도 샐러리 캡(구 Player.CalculateSalaryCost / RosterManager
+    /// EnforceSalaryCap)은 폐기됐다. 도배 방지는 이 역전 스코어 + 27인 세트덱 편성 규칙이 전담한다.
     /// </summary>
     public static class CardGrowthRules
     {
@@ -42,18 +52,18 @@ namespace KBOManager.Models
 
         public static bool IsLive(Grade grade) => grade == Grade.LIVE_NORMAL || grade == Grade.LIVE_EPIC;
 
-        /// <summary>등급별 개인 세트덱 기본 스코어(명함, 0각).</summary>
+        /// <summary>등급별 개인 세트덱 기본 스코어(명함, 0각) = 카드 Salary(cards_*.csv salary_cost).</summary>
         public static int BaseSetDeckScore(Grade grade) => grade switch
         {
             Grade.LIVE_NORMAL => 4,
             Grade.LIVE_EPIC => 4,
-            Grade.ALLSTAR => 3,
-            Grade.FRANCHISE => 4,
-            Grade.TITLE_HOLDER => 4,
-            Grade.RETIRED_NUMBER => 4, // 잠정(규격 미정) - TITLE_HOLDER와 동일 취급
-            Grade.GOLDEN_GLOVE => 4,
-            Grade.SIGNATURE => 5,
-            Grade.DYNASTY => 5,
+            Grade.ALLSTAR => 4,
+            Grade.FRANCHISE => 3,
+            Grade.TITLE_HOLDER => 3,
+            Grade.RETIRED_NUMBER => 2, // 잠정(규격 미정) - 역전 원칙상 TH(3)와 SIG(1) 사이
+            Grade.GOLDEN_GLOVE => 2,
+            Grade.SIGNATURE => 1,
+            Grade.DYNASTY => 1,
             _ => 0
         };
 

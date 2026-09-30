@@ -391,7 +391,7 @@ namespace KBOManager.EditorTools
         /// 부착되어 있음)를 탐색해 `RosterManager`가 없으면 `Undo.AddComponent`로 부착하고,
         /// `GameActionController.rosterManager` 필드에 바인딩한다. `RosterManager.cs` 원문을 전수
         /// 검토한 결과 `[SerializeField]` 필드가 단 하나도 없는 완전 무상태(stateless) 매니저임을 확인했다
-        /// - `AutoSetRoster(List&lt;Player&gt; inventory, float salaryCap)`가 인벤토리/캡을 전부 메서드
+        /// - `AutoSetRoster(List&lt;Player&gt; inventory, string favoriteTeam)`(TASK-KBO-173: 샐러리 캡 폐기)가 인벤토리/기준 구단을 전부 메서드
         /// 인자로만 받으므로(정적 상수 `GameManager.RequiredRosterSize`/`RequiredPitcherCount` 참조만 있고
         /// 인스펙터 종속성 없음) AC-03(타 매니저 필드 바인딩)에 해당하는 작업 자체가 존재하지 않는다.
         /// `gameActionController`가 null(직전 단계에서 바인딩 실패)이면 조기 반환한다.

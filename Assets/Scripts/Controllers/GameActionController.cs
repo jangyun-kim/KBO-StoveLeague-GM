@@ -19,7 +19,7 @@ namespace KBOManager.Controllers
     {
         [Header("Auto Roster")]
         [SerializeField] private RosterManager rosterManager;
-        [SerializeField] private int salaryCap = 300;
+        // [TASK-KBO-173] salaryCap 필드/SetSalaryCap() 삭제 - 샐러리 캡이 세트덱 스코어로 일원화됐다(RosterManager 참고).
 
         private Player enhanceTarget;
         // [TASK-KBO-138] 강화 재료가 Item(소모 아이템)에서 Player(보유 선수 카드)로 바뀌었다 - EXP
@@ -95,13 +95,6 @@ namespace KBOManager.Controllers
             awakenMaterials.Clear();
         }
 
-        // ----- Auto Roster 설정 -----
-
-        public void SetSalaryCap(int cap)
-        {
-            salaryCap = cap;
-        }
-
         // ----- 버튼 OnClick 엔드포인트 -----
 
         /// <summary>강화 버튼 OnClick. [TASK-KBO-138] 재료가 Item에서 Player 카드로 바뀌어, 성공 시
@@ -158,10 +151,12 @@ namespace KBOManager.Controllers
         {
             if (rosterManager == null || GameManager.Instance == null) return;
 
-            var newRoster = rosterManager.AutoSetRoster(GameManager.Instance.Inventory.ToList(), salaryCap);
+            var gm = GameManager.Instance;
+            string favoriteTeam = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
+            var newRoster = rosterManager.AutoSetRoster(gm.Inventory.ToList(), favoriteTeam);
             GameManager.Instance.OverwriteRoster(newRoster);
 
-            Debug.Log($"[GameActionController] ExecuteAutoRoster: {newRoster.Count}명 편성 완료 (샐러리 캡 {salaryCap})");
+            Debug.Log($"[GameActionController] ExecuteAutoRoster: {newRoster.Count}명 편성 완료 (세트덱 {GameManager.EvaluateSetDeck(newRoster, favoriteTeam, gm.SetDeckSelection).Score}P)");
             OnRosterChanged?.Invoke();
         }
 

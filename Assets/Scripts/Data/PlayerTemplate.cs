@@ -31,9 +31,9 @@ namespace KBOManager.Data
         public BatterStats BatterStats;
         [Tooltip("IsPitcher == true 일 때만 유효")]
         public PitcherStats PitcherStats;
-        public int Cost;           // [레거시] GDD v3.1 시절 고정 코스트. v4.0부터 실제 샐러리 캡 검증은
-                                    // Player.CalculateSalaryCost()(등급 기본 코스트 + OVR/각성 연동)를 쓴다.
-                                    // 이 필드는 더 이상 RosterManager에서 참조되지 않는다.
+        public int Cost;           // [레거시] GDD v3.1 시절 고정 코스트 - 어떤 로직도 참조하지 않는다.
+                                    // [TASK-KBO-173] 카드 Salary는 개인 세트덱 스코어로 일원화됐다
+                                    // (Player.Salary = CardGrowthRules.BaseSetDeckScore, 샐러리 캡 폐기).
 
         [Header("Skill Preset (선택)")]
         public SkillTier PresetSkillTier;

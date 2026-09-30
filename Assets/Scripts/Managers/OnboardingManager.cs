@@ -33,8 +33,6 @@ namespace KBOManager.Managers
         [SerializeField] private SkillDB skillDB;
         [Tooltip("스타터 팩 지급 직후 오토 라인업에 사용할 RosterManager.")]
         [SerializeField] private RosterManager rosterManager;
-        [Tooltip("오토 라인업 시 적용할 샐러리 캡. GameActionController의 기본값(300)과 동일하게 맞춰 둔다.")]
-        [SerializeField] private int starterPackSalaryCap = 300;
 
         // RosterManager/LeagueManager와 동일한 28인 배분(타자 9선발+6벤치, 투수 5/2/4/1/1)을 그대로
         // 재사용한다 - 세 곳의 배분 규칙이 어긋나면 오토 라인업 결과가 팀마다 달라지는 버그가 생긴다.
@@ -89,7 +87,8 @@ namespace KBOManager.Managers
 
             if (rosterManager != null)
             {
-                var autoRoster = rosterManager.AutoSetRoster(GameManager.Instance.Inventory.ToList(), starterPackSalaryCap);
+                var autoRoster = rosterManager.AutoSetRoster(GameManager.Instance.Inventory.ToList(),
+                    GameManager.Instance.FavoriteTeam != Team.None ? GameManager.Instance.FavoriteTeam.ToString() : null); // [TASK-KBO-173] 샐러리 캡 폐기
                 GameManager.Instance.OverwriteRoster(autoRoster);
             }
             else

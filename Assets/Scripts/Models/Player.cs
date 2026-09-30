@@ -246,37 +246,11 @@ namespace KBOManager.Models
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
         private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;
 
-        // 등급별 기본 코스트. TASK-KBO-031에서 GDD v4.0 확정 수치로 동기화됨(이전 커밋 8e597f9의
-        // 잠정값을 대체). GradeBaseCostFor는 Grade를 "이름"으로 매칭하므로 Types.cs의 Grade enum
-        // 정수값(ordinal) 배정과는 무관하다.
-        private static float GradeBaseCostFor(Grade grade) => grade switch
-        {
-            Grade.LIVE_NORMAL => 5f,
-            Grade.LIVE_EPIC => 8f,
-            Grade.ALLSTAR => 12f,
-            Grade.FRANCHISE => 13.5f, // [TASK-KBO-172 신설] ALLSTAR(12)와 TITLE_HOLDER(15) 중간값
-            Grade.TITLE_HOLDER => 15f,
-            Grade.RETIRED_NUMBER => 18f, // [TASK-KBO-155 신설] TITLE_HOLDER(15)와 SIGNATURE(20) 중간값
-            Grade.SIGNATURE => 20f,
-            Grade.GOLDEN_GLOVE => 25f,
-            Grade.DYNASTY => 35f,
-            _ => 5f
-        };
-
-        /// <summary>
-        /// GDD v4.0 샐러리 캡 코스트 공식: 등급 기본 코스트 + (최종 OVR - 60) + (각성 단계 * 1.5).
-        /// "최종 OVR"은 CalculateOVR()과 동일한 값(강화/세트덱/컨디션 반영)을 그대로 사용한다 - 즉 컨디션이
-        /// 하루 단위로 오르내리면 이 코스트도 함께(±5% 이내로) 미세하게 흔들릴 수 있다는 뜻이다.
-        /// PlayerTemplate.Cost(고정값)를 대체하는 새 공식으로, RosterManager의 샐러리 캡 검증이 이 값을 사용한다.
-        /// </summary>
-        public float CalculateSalaryCost(bool isSetDeckBonusActive = false, float setDeckBonusMultiplier = 1.0f)
-        {
-            if (Template == null) return 0f;
-
-            int finalOvr = CalculateOVR(isSetDeckBonusActive, setDeckBonusMultiplier);
-            float baseCost = GradeBaseCostFor(Template.Grade);
-
-            return baseCost + (finalOvr - 60) + (EffectiveAwakenLevel * 1.5f);
-        }
+        // [TASK-KBO-173, Salary ↔ 세트덱 스코어 일원화] 구 GDD v4.0 샐러리 코스트(GradeBaseCostFor + (최종 OVR - 60)
+        // + 각성 * 1.5)와 CalculateSalaryCost()를 삭제했다. 카드의 "Salary"는 이제 곧 개인 세트덱 스코어다:
+        // Salary(명함 기준, cards_*.csv salary_cost와 동일) = CardGrowthRules.BaseSetDeckScore(),
+        // 현재 기여값 = SetDeckScore(각성/초월 반영). 최상위 카드 도배 방지는 샐러리 캡 대신 역전 스코어
+        // (종결 카드일수록 낮음) + 27인 세트덱 편성 규칙(RosterManager, SetDeckEvaluator)이 맡는다.
+        public int Salary => Template != null ? CardGrowthRules.BaseSetDeckScore(Template.Grade) : 0;
     }
 }

@@ -17,7 +17,8 @@ namespace KBOManager.Broadcast.Data
         public int GradeId;
         public string GradeName;
         public int BaseOvr;
-        public int SalaryCost;
+        // [TASK-KBO-173] salary_cost 컬럼 = 등급 기본 세트덱 스코어(Salary 일원화) - 구 SalaryCost 필드명 변경.
+        public int SetDeckBaseScore;
         public int MaxEnhance;
         public int MaxAwaken;
         public bool IsDroppable;

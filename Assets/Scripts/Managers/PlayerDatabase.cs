@@ -53,7 +53,7 @@ namespace KBOManager.Managers
         // max_awaken,is_droppable,year (10컬럼 - year는 TASK-KBO-154에서 추가됨). 이번 조인은
         // card_id(카드 고유 ID)/player_id(FK)/grade/year만 대상으로 삼는다 - base_ovr/salary_cost/
         // max_enhance/max_awaken/is_droppable은 강화·샐러리 시스템(UpgradeManager/
-        // Player.CalculateSalaryCost)과 얽혀 있어 "기존 강화 시스템 1mm도 건드리지 말 것"(TASK-153
+        // 구 Player.CalculateSalaryCost - TASK-KBO-173에서 삭제)과 얽혀 있어 "기존 강화 시스템 1mm도 건드리지 말 것"(TASK-153
         // 명령서 5항)의 범위를 넘어선다 - 이번엔 파싱하지 않고 후속 과제로 남긴다.
         //
         // [TASK-KBO-154] 카드 데이터가 단일 cards.csv에서 구단별 cards_{TEAM}.csv 10개로 분할됐다
@@ -365,6 +365,7 @@ namespace KBOManager.Managers
 
             var lines = csvText.Replace("\r\n", "\n").Split('\n');
             int loadedCount = 0;
+            int salaryMismatchCount = 0; // [TASK-KBO-173]
 
             for (int i = 1; i < lines.Length; i++) // 0번째 줄(헤더)은 스킵
             {
@@ -429,6 +430,14 @@ namespace KBOManager.Managers
                     templates[cardId] = cardTemplate;
                     playerIdsWithCards.Add(playerId);
                     loadedCount++;
+
+                    // [TASK-KBO-173] salary_cost(6번째 컬럼) = 등급 기본 세트덱 스코어여야 한다(Salary 일원화). 런타임은
+                    // CardGrowthRules를 SSOT로 쓰므로 값 자체는 읽지 않고, 생성 스크립트와 규칙이 어긋났는지만 센다.
+                    if (int.TryParse(columns[5].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var salaryCost) &&
+                        salaryCost != CardGrowthRules.BaseSetDeckScore(grade))
+                    {
+                        salaryMismatchCount++;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -440,6 +449,11 @@ namespace KBOManager.Managers
 
             Debug.Log($"[PlayerDatabase] cards_*.csv 파일 1개에서 카드 템플릿 {loadedCount}개를 로드했습니다 " +
                 $"(선수 {playerIdsWithCards.Count}명 커버).");
+            if (salaryMismatchCount > 0)
+            {
+                Debug.LogWarning($"[PlayerDatabase] salary_cost가 등급 기본 세트덱 스코어(CardGrowthRules)와 다른 카드 " +
+                    $"{salaryMismatchCount}장 - GenerateKBODatabase.py를 재실행해 CSV를 재생성하세요(TASK-KBO-173 Salary 일원화).");
+            }
             return playerIdsWithCards;
         }
 

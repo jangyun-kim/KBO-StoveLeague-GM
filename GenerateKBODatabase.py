@@ -91,6 +91,17 @@ GRADE_META = {
     "SIGNATURE":      {"code": "SIG",  "ovr": (87, 94), "salary": 40, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
     "DYNASTY":        {"code": "DYN",  "ovr": (92, 99), "salary": 50, "max_enhance": 10, "max_awaken": 10, "droppable": "FALSE"},
 }
+# [TASK-KBO-173, Salary ↔ 세트덱 스코어 일원화] salary_cost 컬럼 = 등급 기본(명함) 세트덱 스코어. 역전 밸런스
+# (종결 카드일수록 낮고 LIVE가 가장 높음) - C# CardGrowthRules.BaseSetDeckScore()와 반드시 일치해야 한다(불일치 시
+# PlayerDatabase가 경고). 위 GRADE_META의 salary 값(구 샐러리 12~50)은 아래 루프가 이 값으로 덮어쓴다.
+SETDECK_BASE_SCORE = {
+    "LIVE_NORMAL": 4, "LIVE_EPIC": 4, "ALLSTAR": 4, "FRANCHISE": 3, "TITLE_HOLDER": 3,
+    "RETIRED_NUMBER": 2,  # 잠정(규격 미정) - 역전 원칙상 TH(3)와 SIG(1) 사이
+    "GOLDEN_GLOVE": 2, "SIGNATURE": 1, "DYNASTY": 1,
+}
+for _grade, _meta in GRADE_META.items():
+    _meta["salary"] = SETDECK_BASE_SCORE[_grade]
+
 # Types.cs의 Grade enum 정수값과 동일한 서열. [TASK-KBO-172] FRANCHISE(4)를 ALLSTAR와 TITLE_HOLDER
 # 사이에 끼워 넣으며 TITLE_HOLDER 이상이 한 칸씩 밀렸다(LIVE_NORMAL=1 ~ DYNASTY=9).
 GRADE_ID = {

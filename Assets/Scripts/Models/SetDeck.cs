@@ -342,6 +342,18 @@ namespace KBOManager.Models
                 .First();
         }
 
+        /// <summary>[TASK-KBO-173] 이 카드가 deckTeam 세트덱에 실제로 합산될 개인 스코어 - 자팀 소속 또는
+        /// GOLDEN_GLOVE면 SetDeckScore, 아니면 0. dynastyActive=false면 DYNASTY는 0(단일 구단 조건 미충족).
+        /// RosterManager 오토 라인업의 후보 6인(스코어 배터리) 선발 기준으로도 쓰인다.</summary>
+        public static int ContributionScore(Player player, Team deckTeam, bool dynastyActive = true)
+        {
+            if (player?.Template == null || deckTeam == Team.None) return 0;
+            var grade = player.Template.Grade;
+            bool counts = grade == Grade.GOLDEN_GLOVE || player.Template.Team == deckTeam;
+            if (grade == Grade.DYNASTY && !dynastyActive) counts = false;
+            return counts ? player.SetDeckScore : 0;
+        }
+
         public static SetDeckResult Evaluate(IEnumerable<Player> roster, string favoriteTeam = null, SetDeckSelection selection = null)
         {
             var slots = SelectSlots(roster);
@@ -356,12 +368,11 @@ namespace KBOManager.Models
 
             foreach (var player in slots)
             {
-                var grade = player.Template.Grade;
-                bool counts = grade == Grade.GOLDEN_GLOVE || player.Template.Team == result.DeckTeam;
-                if (grade == Grade.DYNASTY && !result.IsDynastyActive) counts = false;
+                bool counts = player.Template.Grade == Grade.GOLDEN_GLOVE || player.Template.Team == result.DeckTeam;
+                if (player.Template.Grade == Grade.DYNASTY && !result.IsDynastyActive) counts = false;
                 if (!counts) continue;
 
-                result.Score += player.SetDeckScore;
+                result.Score += ContributionScore(player, result.DeckTeam, result.IsDynastyActive);
                 result.CountedPlayers.Add(player);
             }
 

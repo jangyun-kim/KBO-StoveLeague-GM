@@ -102,7 +102,7 @@ namespace KBOManager.Broadcast.Managers
                     GradeId = row.GetInt("grade_id"),
                     GradeName = row.GetString("grade_name"),
                     BaseOvr = row.GetInt("base_ovr"),
-                    SalaryCost = row.GetInt("salary_cost"),
+                    SetDeckBaseScore = row.GetInt("salary_cost"), // [TASK-KBO-173] Salary = 기본 세트덱 스코어
                     MaxEnhance = row.GetInt("max_enhance"),
                     MaxAwaken = row.GetInt("max_awaken"),
                     IsDroppable = row.GetBool("is_droppable", true),

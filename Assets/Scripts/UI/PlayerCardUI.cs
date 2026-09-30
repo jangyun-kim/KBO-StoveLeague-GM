@@ -69,6 +69,8 @@ namespace KBOManager.UI
         [SerializeField] private Text teamText;
         [SerializeField] private Text positionText;
         [SerializeField] private Text ovrText;
+        [Tooltip("[TASK-KBO-173] 개인 세트덱 스코어(= 카드 Salary) 표기. 비워두면 생략(기존 프리팹 호환).")]
+        [SerializeField] private Text setDeckScoreText;
 
         [Header("Portrait (TASK-KBO-147 - Resources/Portraits/{TemplateId} 동적 로딩)")]
         [Tooltip("실제 선수 초상화를 표시할 Image. 비워두면 초상화 기능 자체를 생략한다(기존 카드 프리팹 " +
@@ -144,6 +146,7 @@ namespace KBOManager.UI
             if (teamText != null) teamText.text = player.Template.Team.ToString();
             if (positionText != null) positionText.text = DescribePosition(player.Template);
             if (ovrText != null) ovrText.text = player.CalculateOVR(false).ToString();
+            if (setDeckScoreText != null) setDeckScoreText.text = $"SD {player.SetDeckScore}"; // [TASK-KBO-173] Salary = 세트덱 스코어
 
             var gradeColor = GetStarTypeColor(player.CurrentStarType, player.Template.Team);
             if (frameImage != null) frameImage.color = gradeColor;
@@ -370,6 +373,7 @@ namespace KBOManager.UI
             if (teamText != null) teamText.text = "";
             if (positionText != null) positionText.text = "";
             if (ovrText != null) ovrText.text = "";
+            if (setDeckScoreText != null) setDeckScoreText.text = "";
             if (frameImage != null)
             {
                 frameImage.color = Color.white;
