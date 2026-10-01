@@ -27,13 +27,34 @@ namespace KBOManager.EditorTools
         /// 치어리더 시너지 표시(TASK-175)는 기존 텍스트(TeamSynergyUIController.cheerleaderText, CheerleaderSlotUI.gradeText)에
         /// 런타임 문구만 바뀐 것이라 별도 씬 조립이 필요 없다. 실행 후 반드시 씬을 저장(Ctrl+S)해야 디스크에 반영된다.
         /// </summary>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~176)")]
+        /// <remarks>
+        /// [TASK-KBO-177] 메뉴 이름을 TASK-168~177로 갱신하고 9:16 모바일 수정 4건을 추가했다. 실행 순서:
+        ///   0) 화면 자체가 없을 때만 기본 조립(Scout Hub / 치어리더 관리) - 이미 있으면 다시 돌리지 않는다(구 Setup은 자식을
+        ///      지우고 재조립하거나 구 행을 다시 만들어 TASK-177 레이아웃과 겹치기 때문).
+        ///   1) 카드 템플릿(4단 레이어·가독성·SD) 2) 로스터(9:16 고정 28슬롯·빈 슬롯 배치·자동 편성·교체 팝업·버프 패널)
+        ///   3) 로비 재화(볼/유니폼/티켓 텍스트 생성 + LeagueDashboardUIController 바인딩)
+        ///   4) SetupMobileUI177 - 치어리더 관리 / 치어리더 영입 / 선수 영입(재화 바) 9:16 레이아웃 5) 핫픽스 재바인딩.
+        /// 개별 구 메뉴(Auto-Connect Scout Hub 등)를 나중에 따로 실행했다면 이 메뉴를 한 번 더 실행하면 된다.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~177)")]
         public static void ApplyLatestUI()
         {
+            if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
+                UnityEngine.Object.FindAnyObjectByType<CheerleaderShopUIController>(FindObjectsInactive.Include) == null)
+            {
+                SetupScoutHubUI.AutoConnectScoutHub();
+            }
+            if (UnityEngine.Object.FindAnyObjectByType<CheerleaderInventoryUIController>(FindObjectsInactive.Include) == null)
+            {
+                SetupCheerleaderUI.AutoCreateInventoryUI();
+            }
+
             SetupTemplates.SetupDualPortraitAndGradeFrameLayers();
             SetupRosterUI.AutoConnectRosterUI();
+            SetupLobbyCurrencyUI.AutoConnectLobbyCurrencyUI();
+            SetupMobileUI177.ApplyAll();
             AutoBindAllMissingReferences();
-            Debug.Log("[SetupMasterBinding] TASK-168~176 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            Debug.Log("[SetupMasterBinding] TASK-168~177 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

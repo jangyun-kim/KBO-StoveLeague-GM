@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -7,10 +9,14 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// [TASK-KBO-058] 유저가 보유한 치어리더(GameManager.Instance.OwnedCheerleaders) 전체를
-    /// CheerleaderSlotUI 프리팹으로 그려주고, 슬롯의 장착/해제 버튼을 GameManager.EquipCheerleader()/
-    /// UnequipCheerleader()로 그대로 위임하는 인벤토리 화면 컨트롤러. GameManager.OnCheerleaderChanged를
-    /// 구독해 장착 상태가 바뀔 때마다(이 화면이 아닌 다른 경로에서 바뀐 경우 포함) 자동으로 다시 그린다.
+    /// [TASK-KBO-060] 치어리더 관리(보유 목록 + 장착/해제) 화면. GameManager.OwnedCheerleaders를 슬롯 템플릿으로 그린다.
+    ///
+    /// [TASK-KBO-177, 9:16 모바일 레이아웃 전면 개편] 기존 화면은 헤더/닫기 버튼 없이 거대한 흰 막대만 나열됐다. 이제:
+    ///   - 상단: 타이틀 + 보유 수량(ownedCountText) + 닫기, 장착 슬롯 요약(equippedSummaryText - 장착 치어리더,
+    ///     세트덱 구단과의 시너지 발동 여부, 컨디션/클러치(시너지 시)·수익/팬심(상시) 효과).
+    ///   - 필터 바: 전체 / 구단(누를 때마다 보유 구단 순환) / LIVE / ICON / LEGEND.
+    ///   - 목록: 고정 높이 카드(티어 뱃지 · 이름 · 구단·활동기간 · 버프 · 장착/해제 - CheerleaderSlotUI).
+    /// 장착 슬롯은 게임 규칙상 1개(GameManager.EquippedCheerleader)다. 레이아웃은 SetupMobileUI177이 조립한다.
     /// </summary>
     public class CheerleaderInventoryUIController : MonoBehaviour
     {
@@ -19,18 +25,37 @@ namespace KBOManager.Controllers
         [SerializeField] private GameObject slotPrefab;
 
         [Header("Navigation")]
-        [Tooltip("로비 화면(UIManager.ScreenType.Lobby)으로 돌아가는 버튼. LeagueDashboardUIController를 " +
-                 "직접 참조하지 않고 UIManager.ShowScreen()만 호출한다. 이 화면 자신은 " +
-                 "UIManager.ScreenType.CheerleaderInventory에 등록된다(기존 ScreenType.Inventory는 " +
-                 "선수 카드 인벤토리 전용으로 이미 예약돼 있어 재사용하지 않음).")]
+        [Tooltip("로비 화면(UIManager.ScreenType.Lobby)으로 돌아가는 버튼. 이 화면 자신은 UIManager.ScreenType.CheerleaderInventory에 등록된다.")]
         [SerializeField] private Button closeButton;
 
-        /// <summary>[TASK-KBO-060] 버튼 리스너는 Awake()에서 한 번만 등록한다 - OnEnable은 화면 전환마다
-        /// (UIManager.ShowScreen()이 SetActive(true)할 때마다) 반복 호출되므로, 거기서 AddListener를
-        /// 하면 열 때마다 리스너가 중복 등록된다.</summary>
+        [Header("Header (TASK-KBO-177)")]
+        [SerializeField] private Text ownedCountText;
+        [Tooltip("장착 슬롯 + 세트덱 구단 시너지 상태 + 효과 합계.")]
+        [SerializeField] private Text equippedSummaryText;
+        [Tooltip("보유 치어리더가 없거나 필터 결과가 0명일 때 켜지는 안내 문구.")]
+        [SerializeField] private Text emptyText;
+
+        [Header("Filter Bar (TASK-KBO-177)")]
+        [SerializeField] private Button filterAllButton;
+        [Tooltip("누를 때마다 '구단: 전체 → 보유 구단들 → 전체'로 순환한다.")]
+        [SerializeField] private Button filterTeamButton;
+        [SerializeField] private Button filterLiveButton;
+        [SerializeField] private Button filterIconButton;
+        [SerializeField] private Button filterLegendButton;
+        [SerializeField] private Color filterActiveColor = new Color(1f, 0.84f, 0f);
+        [SerializeField] private Color filterIdleColor = new Color(0.9f, 0.9f, 0.9f);
+
+        private CheerleaderGrade? tierFilter;
+        private Team teamFilter = Team.None;
+
         private void Awake()
         {
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+            if (filterAllButton != null) filterAllButton.onClick.AddListener(() => { tierFilter = null; teamFilter = Team.None; RefreshInventory(); });
+            if (filterTeamButton != null) filterTeamButton.onClick.AddListener(CycleTeamFilter);
+            if (filterLiveButton != null) filterLiveButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.LIVE_NORMAL));
+            if (filterIconButton != null) filterIconButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.ICON));
+            if (filterLegendButton != null) filterLegendButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.LEGEND));
         }
 
         private void OnEnable()
@@ -51,11 +76,57 @@ namespace KBOManager.Controllers
             }
         }
 
-        /// <summary>contentContainer의 기존 자식을 모두 파괴한 뒤, GameManager.Instance.OwnedCheerleaders를
-        /// 순회하며 slotPrefab을 새로 Instantiate해 채운다. v0.1 프로토타입 단계라 오브젝트 풀링 없이
-        /// 단순 Destroy&amp;Instantiate를 쓴다(명령서 7항 - 오버엔지니어링 회피).</summary>
+        private void ToggleTier(CheerleaderGrade grade)
+        {
+            tierFilter = tierFilter == grade ? (CheerleaderGrade?)null : grade;
+            RefreshInventory();
+        }
+
+        private void CycleTeamFilter()
+        {
+            var owned = GameManager.Instance?.OwnedCheerleaders;
+            var teams = new List<Team> { Team.None };
+            if (owned != null) teams.AddRange(owned.Where(c => c != null && c.Team != Team.None).Select(c => c.Team).Distinct().OrderBy(t => t));
+
+            int index = teams.IndexOf(teamFilter);
+            teamFilter = teams[(index + 1) % teams.Count];
+            RefreshInventory();
+        }
+
+        /// <summary>필터 조건(티어 + 구단)에 맞는 보유 치어리더. LIVE 필터는 LIVE_NORMAL/LIVE_EPIC을 함께 포함한다.</summary>
+        public static IEnumerable<Cheerleader> ApplyFilter(IEnumerable<Cheerleader> owned, CheerleaderGrade? tier, Team team)
+        {
+            foreach (var c in owned ?? Enumerable.Empty<Cheerleader>())
+            {
+                if (c == null) continue;
+                if (team != Team.None && c.Team != team) continue;
+                if (tier.HasValue)
+                {
+                    bool isLive = c.Grade == CheerleaderGrade.LIVE_NORMAL || c.Grade == CheerleaderGrade.LIVE_EPIC;
+                    if (tier.Value == CheerleaderGrade.LIVE_NORMAL ? !isLive : c.Grade != tier.Value) continue;
+                }
+                yield return c;
+            }
+        }
+
         public void RefreshInventory()
         {
+            var gm = GameManager.Instance;
+            var owned = gm?.OwnedCheerleaders ?? new List<Cheerleader>();
+            var filtered = ApplyFilter(owned, tierFilter, teamFilter)
+                .OrderByDescending(c => c.Grade).ThenBy(c => c.Team).ThenBy(c => c.Name).ToList();
+
+            RefreshHeader(gm, owned.Count, filtered.Count);
+            RefreshFilterBar();
+
+            if (emptyText != null)
+            {
+                emptyText.text = owned.Count == 0
+                    ? "보유한 치어리더가 없습니다.\n스카우트 > 치어리더 영입에서 영입하십시오."
+                    : "조건에 맞는 치어리더가 없습니다. [전체]를 눌러 필터를 해제하십시오.";
+                emptyText.gameObject.SetActive(filtered.Count == 0);
+            }
+
             if (contentContainer == null || slotPrefab == null) return;
 
             for (int i = contentContainer.childCount - 1; i >= 0; i--)
@@ -63,18 +134,13 @@ namespace KBOManager.Controllers
                 Destroy(contentContainer.GetChild(i).gameObject);
             }
 
-            if (GameManager.Instance == null) return;
+            if (gm == null) return;
+            var equipped = gm.EquippedCheerleader;
 
-            var owned = GameManager.Instance.OwnedCheerleaders;
-            if (owned == null || owned.Count == 0) return;
-
-            var equipped = GameManager.Instance.EquippedCheerleader;
-
-            foreach (var cheerleader in owned)
+            foreach (var cheerleader in filtered)
             {
-                if (cheerleader == null) continue;
-
                 var slotObject = Instantiate(slotPrefab, contentContainer);
+                slotObject.SetActive(true); // 템플릿이 비활성으로 보관돼 있어도 복제본은 보이게
                 var slot = slotObject.GetComponent<CheerleaderSlotUI>();
                 if (slot == null) continue;
 
@@ -85,13 +151,54 @@ namespace KBOManager.Controllers
             }
         }
 
-        /// <summary>
-        /// 참조 동일성(==) 대신 InstanceId로 비교한다 - 세이브/로드를 거치면 EquippedCheerleader와
-        /// OwnedCheerleaders의 원소가 JsonUtility에 의해 서로 다른 C# 인스턴스로 복원되므로(같은
-        /// 치어리더라도 참조가 달라짐), ID 비교만이 "지금 장착된 것과 같은 치어리더인지"를 안정적으로
-        /// 판별할 수 있다. 빈 InstanceId끼리는 절대 같다고 보지 않는다(둘 다 "미확정" 상태일 뿐 서로
-        /// 다른 데이터일 수 있음).
-        /// </summary>
+        private void RefreshHeader(GameManager gm, int ownedCount, int shownCount)
+        {
+            if (ownedCountText != null)
+            {
+                ownedCountText.text = shownCount == ownedCount ? $"보유 {ownedCount}명" : $"보유 {ownedCount}명 (표시 {shownCount}명)";
+            }
+
+            if (equippedSummaryText == null) return;
+            var equipped = gm?.EquippedCheerleader;
+            if (gm == null || equipped == null || string.IsNullOrEmpty(equipped.InstanceId))
+            {
+                equippedSummaryText.text = "장착 슬롯: 비어 있음 - 아래 목록에서 [장착]을 누르십시오.";
+                return;
+            }
+
+            string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
+            var deckTeam = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favoriteTeamName, gm.SetDeckSelection).DeckTeam;
+            bool synergy = CheerleaderSynergy.IsActive(equipped, deckTeam);
+            string affiliation = string.IsNullOrEmpty(equipped.AffiliationLabel) ? "구단 무관" : equipped.AffiliationLabel;
+            string synergyLine = synergy
+                ? $"시너지 발동 (세트덱 {deckTeam}) · 홈 경기 컨디션 +{equipped.ConditionBuff} / 클러치 x{equipped.ClutchMultiplier:F2}"
+                : $"시너지 미발동 (세트덱 {deckTeam}) · 경기 버프 없음";
+
+            equippedSummaryText.text =
+                $"장착 슬롯: [{CheerleaderSlotUI.TierLabel(equipped.Grade)}] {equipped.Name} · {affiliation}\n" +
+                $"{synergyLine}\n상시 효과 · 관중 수익 x{equipped.EconomicBonusRate:F2} / 팬심 방어 +{equipped.SentimentDefense}";
+        }
+
+        private void RefreshFilterBar()
+        {
+            StyleFilter(filterAllButton, tierFilter == null && teamFilter == Team.None, null);
+            StyleFilter(filterTeamButton, teamFilter != Team.None, teamFilter == Team.None ? "구단: 전체" : $"구단: {teamFilter}");
+            StyleFilter(filterLiveButton, tierFilter == CheerleaderGrade.LIVE_NORMAL, null);
+            StyleFilter(filterIconButton, tierFilter == CheerleaderGrade.ICON, null);
+            StyleFilter(filterLegendButton, tierFilter == CheerleaderGrade.LEGEND, null);
+        }
+
+        private void StyleFilter(Button button, bool active, string label)
+        {
+            if (button == null) return;
+            if (button.targetGraphic != null) button.targetGraphic.color = active ? filterActiveColor : filterIdleColor;
+            if (label != null)
+            {
+                var text = button.GetComponentInChildren<Text>(true);
+                if (text != null) text.text = label;
+            }
+        }
+
         private static bool IsSameCheerleader(Cheerleader a, Cheerleader b)
         {
             if (a == null || b == null) return false;

@@ -214,6 +214,116 @@ namespace KBOManager.Models
     }
 
     /// <summary>
+    /// [TASK-KBO-177] 로스터 화면의 고정 슬롯 배치(순수 로직). 로스터가 비어 있거나 일부만 차 있어도 항상
+    /// 주전 타자 9(C~DH) + 후보 타자 6(BENCH 1~6) + 투수 13(SP 1~5, 승리조 RP 2, 추격조 RP 4, 롱 RP 1, 마무리 CP 1) = 28슬롯을
+    /// 돌려준다 - 빈 슬롯(Player == null)을 눌러 보유 카드를 배치할 수 있게 하기 위함(TASK-176은 카드가 있어야만 클릭할 수
+    /// 있어 빈 로스터에서 배치 수단이 없는 데드락이 있었다). 주전/후보 구분은 SetDeckEvaluator.ClassifyBatters()와 같고,
+    /// 정원·보직 쿼터를 넘는 카드(OverwriteRoster 등으로 들어온 예외)는 슬롯 뒤에 "추가" 슬롯으로 붙여 숨기지 않는다.
+    /// </summary>
+    public static class RosterSlotLayout
+    {
+        public enum SlotKind { StarterBatter, BenchBatter, Pitcher }
+
+        public sealed class Slot
+        {
+            public SlotKind Kind;
+            public BatterPosition Position;
+            public PitcherRole Role;
+            public string Label;
+            public Player Player;
+            public bool IsExtra;
+        }
+
+        public const int BatterCount = 15;
+        public const int PitcherCount = 13;
+
+        /// <summary>1군 투수 13인 보직 쿼터(RosterManager 오토 라인업과 공유).</summary>
+        public static readonly IReadOnlyList<(PitcherRole Role, int Count)> PitcherRoleQuota = new List<(PitcherRole, int)>
+        {
+            (PitcherRole.StartingPitcher, 5),
+            (PitcherRole.WinningReliever, 2),
+            (PitcherRole.MopUpReliever, 4),
+            (PitcherRole.LongReliever, 1),
+            (PitcherRole.Closer, 1),
+        };
+
+        public static string PositionLabel(BatterPosition position) => position switch
+        {
+            BatterPosition.Catcher => "C",
+            BatterPosition.FirstBase => "1B",
+            BatterPosition.SecondBase => "2B",
+            BatterPosition.ThirdBase => "3B",
+            BatterPosition.ShortStop => "SS",
+            BatterPosition.LeftField => "LF",
+            BatterPosition.CenterField => "CF",
+            BatterPosition.RightField => "RF",
+            _ => "DH"
+        };
+
+        public static string RoleLabel(PitcherRole role, int index) => role switch
+        {
+            PitcherRole.StartingPitcher => $"SP {index}",
+            PitcherRole.WinningReliever => $"RP 승리조 {index}",
+            PitcherRole.MopUpReliever => $"RP 추격조 {index}",
+            PitcherRole.LongReliever => "RP 롱릴리프",
+            _ => "CP 마무리"
+        };
+
+        public static List<Slot> Build(IReadOnlyList<Player> roster)
+        {
+            var valid = (roster ?? new List<Player>()).Where(p => p?.Template != null).Distinct().ToList();
+            var slots = new List<Slot>();
+
+            SetDeckEvaluator.ClassifyBatters(valid, out var starters, out var bench);
+            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
+            {
+                slots.Add(new Slot
+                {
+                    Kind = SlotKind.StarterBatter, Position = position, Label = PositionLabel(position),
+                    Player = starters.FirstOrDefault(p => p.Template.BatterPosition == position),
+                });
+            }
+
+            var benchQueue = new Queue<Player>(bench.Concat(valid.Where(p => !p.Template.IsPitcher && !starters.Contains(p) && !bench.Contains(p))));
+            for (int i = 1; i <= SetDeckEvaluator.BenchBatterSlots || benchQueue.Count > 0; i++)
+            {
+                slots.Add(new Slot
+                {
+                    Kind = SlotKind.BenchBatter, Label = $"BENCH {i}",
+                    Player = benchQueue.Count > 0 ? benchQueue.Dequeue() : null,
+                    IsExtra = i > SetDeckEvaluator.BenchBatterSlots,
+                });
+            }
+
+            var pitchers = valid.Where(p => p.Template.IsPitcher).ToList();
+            var overflow = new List<Player>();
+            foreach (var (role, count) in PitcherRoleQuota)
+            {
+                var ofRole = pitchers.Where(p => p.Template.PitcherRole == role).ToList();
+                for (int i = 0; i < count; i++)
+                {
+                    slots.Add(new Slot
+                    {
+                        Kind = SlotKind.Pitcher, Role = role, Label = RoleLabel(role, i + 1),
+                        Player = i < ofRole.Count ? ofRole[i] : null,
+                    });
+                }
+                overflow.AddRange(ofRole.Skip(count));
+            }
+            foreach (var extra in overflow)
+            {
+                slots.Add(new Slot
+                {
+                    Kind = SlotKind.Pitcher, Role = extra.Template.PitcherRole,
+                    Label = $"{RoleLabel(extra.Template.PitcherRole, 0).Split(' ')[0]} 추가", Player = extra, IsExtra = true,
+                });
+            }
+
+            return slots;
+        }
+    }
+
+    /// <summary>
     /// [TASK-KBO-176] 로스터 수동 교체 규칙(순수 로직 - 로스터 화면의 카드 교체 팝업과 GameManager.SwapRosterPlayer 공용).
     /// - 후보 타자 슬롯: 로스터 밖의 아무 타자나 넣을 수 있다(세트덱 스코어 배터리 - LIVE 초월 8P 배치가 핵심 전략).
     /// - 주전 타자 슬롯: 같은 수비 포지션 타자만(포지션 공백 방지).
@@ -259,6 +369,49 @@ namespace KBOManager.Models
             var swapped = roster.ToList();
             swapped[swapped.IndexOf(outgoing)] = incoming;
             return swapped;
+        }
+
+        /// <summary>[TASK-KBO-177] 빈 슬롯(slot.Player == null)에 넣을 수 있는가 - 로스터 밖 카드 + 슬롯 조건(주전=같은 포지션,
+        /// 후보=아무 타자, 투수=같은 보직) + 1군 정원(타자 15 / 투수 13).</summary>
+        public static bool CanPlace(IReadOnlyList<Player> roster, RosterSlotLayout.Slot slot, Player incoming)
+        {
+            if (roster == null || slot == null || slot.Player != null || incoming?.Template == null) return false;
+            if (roster.Contains(incoming)) return false;
+
+            var t = incoming.Template;
+            switch (slot.Kind)
+            {
+                case RosterSlotLayout.SlotKind.StarterBatter:
+                    if (t.IsPitcher || t.BatterPosition != slot.Position) return false;
+                    break;
+                case RosterSlotLayout.SlotKind.BenchBatter:
+                    if (t.IsPitcher) return false;
+                    break;
+                case RosterSlotLayout.SlotKind.Pitcher:
+                    if (!t.IsPitcher || t.PitcherRole != slot.Role) return false;
+                    break;
+            }
+
+            int sameGroup = roster.Count(p => p?.Template != null && p.Template.IsPitcher == t.IsPitcher);
+            return sameGroup < (t.IsPitcher ? RosterSlotLayout.PitcherCount : RosterSlotLayout.BatterCount);
+        }
+
+        /// <summary>[TASK-KBO-177] 빈 슬롯 배치 후보 - 배치 후 예상 세트덱 스코어 높은 순(같으면 OVR 순).</summary>
+        public static List<Candidate> GetPlacementCandidates(IEnumerable<Player> inventory, IReadOnlyList<Player> roster,
+            RosterSlotLayout.Slot slot, string favoriteTeam = null, SetDeckSelection selection = null)
+        {
+            int currentScore = SetDeckEvaluator.Evaluate(roster, favoriteTeam, selection).Score;
+            var result = new List<Candidate>();
+            foreach (var candidate in (inventory ?? Enumerable.Empty<Player>()).Distinct())
+            {
+                if (!CanPlace(roster, slot, candidate)) continue;
+                int projected = SetDeckEvaluator.Evaluate(roster.Append(candidate), favoriteTeam, selection).Score;
+                result.Add(new Candidate { Player = candidate, ProjectedScore = projected, ScoreDelta = projected - currentScore });
+            }
+
+            return result.OrderByDescending(c => c.ProjectedScore)
+                .ThenByDescending(c => c.Player.CalculateOVR(false))
+                .ToList();
         }
 
         public static List<Candidate> GetCandidates(IEnumerable<Player> inventory, IReadOnlyList<Player> roster, Player outgoing,

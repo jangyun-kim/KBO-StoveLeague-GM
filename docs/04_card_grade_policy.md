@@ -1,10 +1,10 @@
 ---
 문서명: 카드 등급 정책
-버전: v0.7
+버전: v0.8
 상태: Active
 최종 수정일: 2026-10-01
 담당자: 김장윤
-관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146, DCL-147), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
+관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146, DCL-147, DCL-148), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
 ---
 
 # 1. 목적
@@ -382,3 +382,17 @@ PDF 해설 요지:
 1. 치어리더 시너지 - 카드 소속 구단 == 세트덱 구단일 때만 경기 버프(ConditionBuff/ClutchMultiplier) 발동, 경제·팬심 효과는 구단 무관 상시.
 2. 재료 경험치 서열 - PowerRank 기준(SIG = DYN = RN 최상위), RETIRED_NUMBER 요구 경험치 = DYNASTY와 동일 2,800.
 3. 치어리더 ActivePeriod - 소속 구단 구분·카드 표기·구 세이브 매핑용. 세트덱 연도 선택과는 연동하지 않는다.
+
+# 14. 9:16 모바일 UI 결함 4건 수정 (TASK-KBO-177)
+
+기준: CanvasScaler 1080x1920(세로, 가로 기준 매칭). 실사 검수에서 발견된 결함과 수정 내역.
+
+| 결함 | 원인 | 수정 |
+| :-- | :-- | :-- |
+| 1. 빈 로스터 배치 불가(데드락) | TASK-176은 로스터 카드가 있어야만 클릭 가능 - 빈 로스터엔 클릭 대상 자체가 없음 | `RosterSlotLayout`: 항상 28슬롯(C~DH 9 / BENCH 1~6 / SP1~5·RP 승리조2·추격조4·롱1·CP) 렌더링. 빈 슬롯 = "포지션 + [+ 선수 배치]" → 클릭 시 배치 팝업(`RosterSwapRules.GetPlacementCandidates` - 주전=같은 포지션, 후보=아무 타자, 투수=같은 보직, 정원 15/13). 로스터 화면 액션 바에 [자동 편성] 버튼(오토 라인업) 추가. 9:16 세로 적층 배치로 재배치. |
+| 2. 치어리더 관리 화면 붕괴 | 초기 더미(헤더/닫기 없는 흰 막대 목록) | 헤더(타이틀·보유 수·X 닫기) / 장착 슬롯(1) + 세트덱 시너지 발동 여부·효과 요약 / 필터(전체·구단 순환·LIVE·ICON·LEGEND) / 230px 고정 높이 카드(티어 뱃지·이름·구단·활동기간·버프 4종·장착/해제). |
+| 3. 치어리더 영입 UI 축소 | 패널이 700x900 고정 + 패널 자체 VerticalLayoutGroup | 탭 바 아래 전체 영역(Stretch), 응원봉 4종 2x2 배지, 상품 배너 4개(상품명·1회/10회 필요 재화·보유·확률 요약·버튼), 최근 영입 결과 스크롤 박스. |
+| 4. 선수 영입 재화 미표시 / 로비 재화 참조 끊김 | 재화 표시 UI 부재, 로비 재화 Setup 메뉴 미실행 | 영입 재화 5종 배지 바(라이브 일반/에픽 영입권·싸인볼·트로피·픽업권) + 배너별 "1회 N · 10회 N (보유, 가능 횟수)" - 영입 직후 즉시 갱신. 로비 볼/유니폼/티켓 텍스트는 통합 메뉴가 생성·바인딩. |
+
+- 통합 메뉴 `KBO Manager/Setup/Apply Latest UI (TASK-168~177)` 한 번으로 전부 반영된다(새 레이아웃은 각 패널의 `Layout177`, 대체된 구 오브젝트는 비활성 `_Legacy177`로 보관).
+- 검증: 임시 csproj 빌드 오류 0, 빈 로스터 슬롯/배치 하네스 47항목 + TASK-176 회귀 36항목 통과.

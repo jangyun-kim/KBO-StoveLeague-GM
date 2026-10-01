@@ -82,6 +82,16 @@ namespace KBOManager.Controllers
         private readonly List<PlayerCardUI> spawnedBenchCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedSwapCards = new List<PlayerCardUI>();
 
+        [Header("Empty Slots / Auto Lineup (TASK-KBO-177)")]
+        [Tooltip("빈 슬롯 플레이스홀더 템플릿(비활성 보관) - Image + Button + 자식 'Label'(Text).")]
+        [SerializeField] private GameObject placeholderTemplate;
+        [Tooltip("보유 카드로 28인 자동 편성(GameActionController.ExecuteAutoRoster).")]
+        [SerializeField] private Button autoLineupButton;
+
+        private readonly List<GameObject> spawnedPlaceholders = new List<GameObject>();
+        private bool placeholderWarningLogged;
+        private RosterSlotLayout.Slot placementSlot; // null이 아니면 팝업이 "빈 슬롯 배치" 모드
+
         private Player swapOutgoing;
         private Player swapSelectedIncoming;
         private List<RosterSwapRules.Candidate> swapCandidates = new List<RosterSwapRules.Candidate>();
@@ -91,6 +101,7 @@ namespace KBOManager.Controllers
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
             if (swapConfirmButton != null) swapConfirmButton.onClick.AddListener(ConfirmSwap);
             if (swapCancelButton != null) swapCancelButton.onClick.AddListener(CloseSwapPopup);
+            if (autoLineupButton != null) autoLineupButton.onClick.AddListener(ExecuteAutoLineup);
             if (setDeckOptionButton != null) setDeckOptionButton.onClick.AddListener(() =>
             {
                 if (setDeckOptionController != null) setDeckOptionController.Open();
@@ -121,53 +132,111 @@ namespace KBOManager.Controllers
         private void HandleRosterChanged() => RefreshRoster();
 
         /// <summary>GameManager.Instance.Roster를 다시 읽어 주전 타자/후보 타자/투수 컨테이너를 새로 그린다.
-        /// [TASK-KBO-176] 타자는 SetDeckEvaluator.ClassifyBatters()(세트덱 27인 선정과 같은 규칙)로 주전 9 / 후보 6을
-        /// 나눠 그리고, 모든 카드는 클릭하면 보유 카드와 교체하는 팝업을 연다.</summary>
+        /// [TASK-KBO-177] 로스터가 비어 있어도 RosterSlotLayout의 고정 28슬롯(주전 C~DH 9 + BENCH 1~6 + SP1~5/RP/CP 13)을 항상
+        /// 그린다 - 선수가 있는 슬롯은 카드(클릭 = 교체 팝업), 빈 슬롯은 "포지션 + [+ 선수 배치]" 플레이스홀더(클릭 = 배치 팝업).
+        /// TASK-176은 카드가 있어야만 클릭할 수 있어 빈 로스터에서는 선수를 배치할 방법이 없는 데드락이 있었다.</summary>
         public void RefreshRoster()
         {
             ClearCards(spawnedBatterCards);
             ClearCards(spawnedPitcherCards);
             ClearCards(spawnedBenchCards);
+            ClearPlaceholders();
 
             if (GameManager.Instance == null) return;
 
             var roster = GameManager.Instance.Roster;
-            SetDeckEvaluator.ClassifyBatters(roster, out var starters, out _);
             var benchTarget = benchContainer != null ? benchContainer : batterContainer;
 
-            foreach (var player in roster)
+            foreach (var slot in RosterSlotLayout.Build(roster))
             {
-                if (player?.Template == null) continue;
+                var container = slot.Kind == RosterSlotLayout.SlotKind.Pitcher ? pitcherContainer
+                    : slot.Kind == RosterSlotLayout.SlotKind.BenchBatter ? benchTarget : batterContainer;
+                var tracking = slot.Kind == RosterSlotLayout.SlotKind.Pitcher ? spawnedPitcherCards
+                    : slot.Kind == RosterSlotLayout.SlotKind.BenchBatter ? spawnedBenchCards : spawnedBatterCards;
 
-                if (player.Template.IsPitcher) SpawnRosterCard(player, pitcherContainer, spawnedPitcherCards);
-                else if (starters.Contains(player)) SpawnRosterCard(player, batterContainer, spawnedBatterCards);
-                else SpawnRosterCard(player, benchTarget, spawnedBenchCards); // 후보 6 (+ 정원 초과분이 있다면)
+                if (slot.Player != null) SpawnRosterCard(slot.Player, container, tracking);
+                else SpawnPlaceholder(slot, container);
             }
 
-            RefreshEmptyState();
+            RefreshEmptyState(roster.Count);
             RefreshSetDeckStatus();
         }
 
-        /// <summary>
-        /// [TASK-KBO-098] 타자/투수 카드가 단 한 장도 생성되지 않았으면(RosterManager 미배선, 인벤토리
-        /// 비어있음 등) 화면이 흰 배경만 남은 채로 멈춰 보이는 문제를 방지한다. Debug.LogWarning은 항상
-        /// 남기고, emptyStateText가 배선되어 있으면 화면에도 안내 문구를 띄운다.
-        /// </summary>
-        private void RefreshEmptyState()
+        /// <summary>[TASK-KBO-177] 빈 슬롯 플레이스홀더(placeholderTemplate 복제 - 자식 "Label" Text). 템플릿이 없으면(씬 미갱신)
+        /// 빈 슬롯을 그리지 못하므로 한 번만 경고한다.</summary>
+        private void SpawnPlaceholder(RosterSlotLayout.Slot slot, Transform container)
         {
-            bool isEmpty = spawnedBatterCards.Count == 0 && spawnedPitcherCards.Count == 0 && spawnedBenchCards.Count == 0;
-
-            if (isEmpty)
+            if (container == null) return;
+            if (placeholderTemplate == null)
             {
-                Debug.LogWarning("[RosterUIController] 로스터에 표시할 선수가 없습니다 - " +
-                    "GameManager.Instance.Roster가 비어 있거나 아직 편성되지 않았을 수 있습니다.");
+                if (!placeholderWarningLogged)
+                {
+                    Debug.LogWarning("[RosterUIController] 빈 슬롯 템플릿(placeholderTemplate)이 배선되지 않았습니다 - " +
+                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~177)'을 실행해 씬을 갱신하십시오.");
+                    placeholderWarningLogged = true;
+                }
+                return;
             }
 
-            if (emptyStateText != null)
+            var placeholder = Instantiate(placeholderTemplate, container);
+            placeholder.SetActive(true);
+            placeholder.name = $"EmptySlot_{slot.Label}";
+            var label = placeholder.transform.Find("Label")?.GetComponent<Text>();
+            if (label != null) label.text = $"{slot.Label}\n\n[+ 선수 배치]";
+            var button = placeholder.GetComponent<Button>();
+            if (button != null)
             {
-                emptyStateText.text = emptyStateMessage;
-                emptyStateText.gameObject.SetActive(isEmpty);
+                var captured = slot;
+                button.onClick.AddListener(() => OpenPlacementPopup(captured));
             }
+            spawnedPlaceholders.Add(placeholder);
+        }
+
+        private void ClearPlaceholders()
+        {
+            foreach (var placeholder in spawnedPlaceholders)
+            {
+                if (placeholder != null) Destroy(placeholder);
+            }
+            spawnedPlaceholders.Clear();
+        }
+
+        /// <summary>
+        /// [TASK-KBO-098] 로스터가 비어 있을 때 안내 문구를 띄운다. [TASK-KBO-177] 이제 빈 슬롯이 항상 그려지므로 경고 로그 대신
+        /// "빈 슬롯을 누르거나 [자동 편성]" 안내만 표시한다(로스터를 열 때마다 콘솔 경고가 쌓이던 문제 해소).
+        /// </summary>
+        private void RefreshEmptyState(int rosterCount)
+        {
+            if (emptyStateText == null) return;
+
+            int inventoryCount = GameManager.Instance != null ? GameManager.Instance.Inventory.Count : 0;
+            emptyStateText.text = rosterCount == 0
+                ? (inventoryCount > 0
+                    ? $"로스터가 비어 있습니다 (보유 카드 {inventoryCount}장). 빈 슬롯을 누르거나 [자동 편성]을 누르십시오."
+                    : $"{emptyStateMessage} (보유 카드 0장 - 스카우트에서 선수를 영입하십시오.)")
+                : $"1군 {rosterCount}/{RosterSlotLayout.BatterCount + RosterSlotLayout.PitcherCount}명 · 빈 슬롯을 눌러 배치, 카드를 눌러 교체";
+            emptyStateText.gameObject.SetActive(true);
+        }
+
+        /// <summary>[TASK-KBO-177] [자동 편성] - 보유 카드로 28인 오토 라인업(주전 OVR 우선 + 후보 6인 세트덱 스코어 우선).
+        /// GameActionController.ExecuteAutoRoster()가 OnRosterChanged를 내면 이 화면이 다시 그려진다.</summary>
+        private void ExecuteAutoLineup()
+        {
+            if (gameActionController == null)
+            {
+                Debug.LogWarning("[RosterUIController] GameActionController가 배선되지 않아 자동 편성을 실행할 수 없습니다.");
+                return;
+            }
+
+            CloseSwapPopup();
+            gameActionController.ExecuteAutoRoster();
+            var gm = GameManager.Instance;
+            if (gm != null && gm.Roster.Count == 0 && gm.Inventory.Count > 0)
+            {
+                Debug.LogWarning("[RosterUIController] 자동 편성 후에도 로스터가 비어 있습니다 - GameActionController.rosterManager " +
+                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~177)'이 자동 배선).");
+            }
+            RefreshRoster(); // OnRosterChanged 구독 여부와 무관하게 즉시 반영
         }
 
         /// <summary>
@@ -271,17 +340,43 @@ namespace KBOManager.Controllers
             }
 
             swapOutgoing = outgoing;
-            swapSelectedIncoming = null;
+            placementSlot = null;
             string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
-            swapCandidates = RosterSwapRules.GetCandidates(gm.Inventory, gm.Roster, outgoing, favoriteTeamName, gm.SetDeckSelection)
-                .Take(Mathf.Max(1, maxSwapCandidates)).ToList();
+            var candidates = RosterSwapRules.GetCandidates(gm.Inventory, gm.Roster, outgoing, favoriteTeamName, gm.SetDeckSelection);
 
             bool isBench = RosterSwapRules.IsBenchBatter(gm.Roster, outgoing);
             string slotLabel = outgoing.Template.IsPitcher ? "투수" : isBench ? "후보 타자" : "주전 타자";
+            ShowCandidatePopup(candidates,
+                $"{slotLabel} 교체: {outgoing.Template.PlayerName} (OVR {outgoing.CalculateOVR(false)}, SD {outgoing.SetDeckScore})");
+        }
+
+        /// <summary>[TASK-KBO-177] 빈 슬롯 배치 팝업 - RosterSwapRules.CanPlace(주전=같은 포지션, 후보=아무 타자, 투수=같은 보직,
+        /// 정원 15/13) 조건의 보유 카드를 배치 후 예상 세트덱 스코어 순으로 띄운다.</summary>
+        public void OpenPlacementPopup(RosterSlotLayout.Slot slot)
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || slot == null) return;
+            if (swapPopupRoot == null)
+            {
+                Debug.LogWarning("[RosterUIController] 배치 팝업(swapPopupRoot)이 배선되지 않았습니다 - " +
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~177)'을 실행해 씬을 갱신하십시오.");
+                return;
+            }
+
+            swapOutgoing = null;
+            placementSlot = slot;
+            string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
+            var candidates = RosterSwapRules.GetPlacementCandidates(gm.Inventory, gm.Roster, slot, favoriteTeamName, gm.SetDeckSelection);
+            ShowCandidatePopup(candidates, $"빈 슬롯 배치: {slot.Label}");
+        }
+
+        private void ShowCandidatePopup(List<RosterSwapRules.Candidate> candidates, string header)
+        {
+            swapSelectedIncoming = null;
+            swapCandidates = candidates.Take(Mathf.Max(1, maxSwapCandidates)).ToList();
             if (swapTitleText != null)
             {
-                swapTitleText.text = $"{slotLabel} 교체: {outgoing.Template.PlayerName} (OVR {outgoing.CalculateOVR(false)}, " +
-                    $"SD {outgoing.SetDeckScore}) - 교체 가능 {swapCandidates.Count}장, 세트덱 스코어 높은 순";
+                swapTitleText.text = $"{header}\n가능 {candidates.Count}장 (세트덱 스코어 높은 순{(candidates.Count > swapCandidates.Count ? $", 상위 {swapCandidates.Count}장 표시" : "")})";
             }
 
             ClearCards(spawnedSwapCards);
@@ -313,26 +408,46 @@ namespace KBOManager.Controllers
             if (swapConfirmButton != null) swapConfirmButton.interactable = candidate != null;
             if (swapPreviewText == null) return;
 
-            if (candidate == null || swapOutgoing == null)
+            if (candidate == null || (swapOutgoing == null && placementSlot == null))
             {
-                swapPreviewText.text = "교체할 카드를 선택하십시오.";
+                swapPreviewText.text = placementSlot != null ? "배치할 카드를 선택하십시오." : "교체할 카드를 선택하십시오.";
                 return;
             }
 
             int current = candidate.ProjectedScore - candidate.ScoreDelta;
             string delta = candidate.ScoreDelta > 0 ? $"+{candidate.ScoreDelta}" : candidate.ScoreDelta.ToString();
-            swapPreviewText.text = $"세트덱 {current}P → {candidate.ProjectedScore}P ({delta}) · " +
-                $"OVR {swapOutgoing.CalculateOVR(false)} → {candidate.Player.CalculateOVR(false)} · " +
-                $"SD {swapOutgoing.SetDeckScore} → {candidate.Player.SetDeckScore}";
+            swapPreviewText.text = swapOutgoing != null
+                ? $"세트덱 {current}P → {candidate.ProjectedScore}P ({delta}) · " +
+                  $"OVR {swapOutgoing.CalculateOVR(false)} → {candidate.Player.CalculateOVR(false)} · " +
+                  $"SD {swapOutgoing.SetDeckScore} → {candidate.Player.SetDeckScore}"
+                : $"세트덱 {current}P → {candidate.ProjectedScore}P ({delta}) · " +
+                  $"{candidate.Player.Template.PlayerName} OVR {candidate.Player.CalculateOVR(false)} · SD {candidate.Player.SetDeckScore}";
         }
 
         private void ConfirmSwap()
         {
             var gm = GameManager.Instance;
-            if (gm == null || swapOutgoing == null || swapSelectedIncoming == null) return;
+            if (gm == null || swapSelectedIncoming == null) return;
 
-            string outName = swapOutgoing.Template.PlayerName;
             string inName = swapSelectedIncoming.Template.PlayerName;
+            if (placementSlot != null)
+            {
+                string slotLabel = placementSlot.Label;
+                if (!RosterSwapRules.CanPlace(gm.Roster, placementSlot, swapSelectedIncoming) || !gm.AddPlayerToRoster(swapSelectedIncoming))
+                {
+                    Debug.LogWarning($"[RosterUIController] 배치 실패: {inName} -> {slotLabel} (정원/슬롯 조건 위반 또는 미보유 카드)");
+                    return;
+                }
+
+                CloseSwapPopup();
+                RefreshRoster();
+                if (setDeckOptionController != null) setDeckOptionController.Refresh();
+                Debug.Log($"[RosterUIController] 빈 슬롯 배치: {slotLabel} <- {inName}");
+                return;
+            }
+
+            if (swapOutgoing == null) return;
+            string outName = swapOutgoing.Template.PlayerName;
             if (!gm.SwapRosterPlayer(swapOutgoing, swapSelectedIncoming))
             {
                 Debug.LogWarning($"[RosterUIController] 교체 실패: {outName} -> {inName} (교체 규칙 위반 또는 미보유 카드)");
@@ -349,6 +464,7 @@ namespace KBOManager.Controllers
         {
             ClearCards(spawnedSwapCards);
             swapOutgoing = null;
+            placementSlot = null;
             swapSelectedIncoming = null;
             if (swapPopupRoot != null) swapPopupRoot.SetActive(false);
         }

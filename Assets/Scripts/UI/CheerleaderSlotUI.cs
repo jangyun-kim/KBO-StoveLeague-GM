@@ -31,7 +31,37 @@ namespace KBOManager.UI
         [SerializeField] private Button equipButton;
         [SerializeField] private Text equipButtonLabel;
 
+        [Header("Card Visual (TASK-KBO-177 - 비워두면 생략, 구 슬롯 템플릿 호환)")]
+        [Tooltip("티어 뱃지 문구(LIVE / ICON / LEGEND).")]
+        [SerializeField] private Text tierBadgeText;
+        [Tooltip("티어 뱃지 배경 - 티어별 색으로 칠한다.")]
+        [SerializeField] private Image tierBadgeImage;
+        [Tooltip("소속 구단 + 활동 기간(예: 'KIA · 2020~2021').")]
+        [SerializeField] private Text teamPeriodText;
+        [Tooltip("카드 배경 - 장착 중이면 강조색.")]
+        [SerializeField] private Image cardBackground;
+        [SerializeField] private Color equippedBackgroundColor = new Color(1f, 0.95f, 0.75f);
+        [SerializeField] private Color normalBackgroundColor = Color.white;
+
         public Cheerleader BoundCheerleader { get; private set; }
+
+        /// <summary>[TASK-KBO-177] 뱃지 표기 - CheerleaderGrade.LIVE_NORMAL은 "LIVE"로 줄인다(카탈로그 ID 표기와 동일).</summary>
+        public static string TierLabel(CheerleaderGrade grade) => grade switch
+        {
+            CheerleaderGrade.LIVE_NORMAL => "LIVE",
+            CheerleaderGrade.LIVE_EPIC => "LIVE EPIC",
+            CheerleaderGrade.SEASON_LIMITED => "LIMITED",
+            _ => grade.ToString()
+        };
+
+        public static Color TierColor(CheerleaderGrade grade) => grade switch
+        {
+            CheerleaderGrade.ICON => new Color(0.55f, 0.35f, 0.85f),
+            CheerleaderGrade.LEGEND => new Color(0.95f, 0.7f, 0.1f),
+            CheerleaderGrade.SEASON_LIMITED => new Color(0.85f, 0.25f, 0.3f),
+            CheerleaderGrade.LIVE_EPIC => new Color(0.25f, 0.6f, 0.85f),
+            _ => new Color(0.45f, 0.55f, 0.65f)
+        };
 
         /// <summary>슬롯 데이터를 채우고 버튼을 연결한다. data가 null이면 빈 슬롯으로 표시한다.
         /// isEquipped가 true면 버튼 라벨이 "해제"로 바뀌고 클릭 시 onUnequip이, false면 "장착"으로
@@ -58,6 +88,16 @@ namespace KBOManager.UI
             if (clutchText != null) clutchText.text = $"클러치: {data.ClutchMultiplier}x";
             if (sentimentText != null) sentimentText.text = $"팬심 방어: +{data.SentimentDefense}";
 
+            if (tierBadgeText != null) tierBadgeText.text = TierLabel(data.Grade);
+            if (tierBadgeImage != null) tierBadgeImage.color = TierColor(data.Grade);
+            if (teamPeriodText != null)
+            {
+                teamPeriodText.text = data.Team == Team.None
+                    ? "구단 정보 없음"
+                    : string.IsNullOrEmpty(data.ActivePeriod) ? data.Team.ToString() : $"{data.Team} · {data.ActivePeriod}";
+            }
+            if (cardBackground != null) cardBackground.color = isEquipped ? equippedBackgroundColor : normalBackgroundColor;
+
             if (equipButtonLabel != null) equipButtonLabel.text = isEquipped ? "해제" : "장착";
 
             if (equipButton != null)
@@ -83,6 +123,8 @@ namespace KBOManager.UI
             if (sentimentText != null) sentimentText.text = "";
             if (equipButtonLabel != null) equipButtonLabel.text = "";
             if (equipButton != null) equipButton.onClick.RemoveAllListeners();
+            if (tierBadgeText != null) tierBadgeText.text = "";
+            if (teamPeriodText != null) teamPeriodText.text = "";
         }
     }
 }

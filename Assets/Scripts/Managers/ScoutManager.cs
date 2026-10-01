@@ -40,6 +40,12 @@ namespace KBOManager.Managers
         [SerializeField] private int pickupCost = 1;
         [SerializeField] private int premiumCost = 1;
 
+        // [TASK-KBO-177] 영입 화면이 "1회/10회 소모 재화"를 표시하도록 1회 비용을 노출한다(10회 = 1회 x 10, ExecuteMultiRoll).
+        public int LiveNormalCost => liveNormalCost;
+        public int LiveEpicCost => liveEpicCost;
+        public int PickupCost => pickupCost;
+        public int PremiumCost => premiumCost;
+
         [Header("Grade Drop Rates (총합 100%)")]
         [Tooltip("[TASK-KBO-155, 사용자 직접 지시] SEASON 등급이 전면 삭제되어 활성 등급 2종" +
                  "(LIVE_NORMAL/LIVE_EPIC)만 뽑힌다. 기존 SEASON 70%는 LIVE_NORMAL로 흡수해 " +

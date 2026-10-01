@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Managers;
 using KBOManager.Models;
 using UnityEngine;
@@ -23,7 +24,17 @@ namespace KBOManager.Services
     /// </summary>
     public static class CheerleaderGachaService
     {
-        private const int CostPerRoll = 100;
+        /// <summary>1회 영입에 드는 응원봉 수(4개 상품 공통). [TASK-KBO-177] 영입 배너 표시용으로 공개.</summary>
+        public const int CostPerRoll = 100;
+
+        /// <summary>[TASK-KBO-177] 영입 배너용 등장 확률 요약(아래 표에서 직접 만들어 표와 어긋나지 않는다).</summary>
+        public static string LiveRateSummary => $"LIVE {LiveNormalRatePercent:0.#}% / LIVE EPIC {100f - LiveNormalRatePercent:0.#}%";
+        public static string LimitedRateSummary => "시즌 한정 100%";
+        public static string IconRateSummary => DescribeTable(IconDropTable);
+        public static string LegendRateSummary => DescribeTable(LegendDropTable);
+
+        private static string DescribeTable(List<(CheerleaderGrade Grade, float RatePercent)> table) =>
+            string.Join(" / ", table.Select(e => $"{e.Grade.ToString().Replace('_', ' ')} {e.RatePercent:0.#}%"));
 
         // [TASK-KBO-129] "라이브 영입" 전용 2단계 확률(%) - TASK-KBO-127의 5단계 표(50/30/12/5/3)에서
         // LIVE_NORMAL/LIVE_EPIC 두 항목만 남겨 그 비율(50:30)대로 재정규화했다(62.5%/37.5%).

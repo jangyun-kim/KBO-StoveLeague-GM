@@ -77,6 +77,21 @@ namespace KBOManager.Controllers
         [SerializeField] private Text topPullAnnouncementText;
         [SerializeField] private float announcementDisplaySeconds = 2.5f;
 
+        [Header("Currency Bar (TASK-KBO-177 - 선수 영입 재화 5종 보유량)")]
+        [SerializeField] private Text liveNormalTicketText;
+        [SerializeField] private Text liveEpicTicketText;
+        [SerializeField] private Text signatureBallText;
+        [SerializeField] private Text trophyText;
+        [SerializeField] private Text pickupTicketText;
+
+        [Header("Row Cost Labels (TASK-KBO-177 - 1회/10회 소모 재화)")]
+        [SerializeField] private Text liveNormalCostText;
+        [SerializeField] private Text liveEpicCostText;
+        [SerializeField] private Text premiumSignatureCostText;
+        [SerializeField] private Text premiumTitleHolderCostText;
+        [SerializeField] private Text pickupSignatureCostText;
+        [SerializeField] private Text pickupTitleHolderCostText;
+
         [Header("Navigation")]
         [Tooltip("[TASK-KBO-083] 스카우트 화면을 닫고 로비로 돌아가는 버튼. CheerleaderInventoryUIController/" +
                  "CheerleaderShopUIController의 closeButton과 동일한 관례로 UIManager.ShowScreen()만 호출한다.")]
@@ -174,8 +189,48 @@ namespace KBOManager.Controllers
             ShowResults(results);
         }
 
+        private void OnEnable() => RefreshCurrencyBar();
+
+        /// <summary>
+        /// [TASK-KBO-177] 상단 재화 바(5종 보유량)와 각 영입 행의 "1회/10회 소모 재화" 문구를 갱신한다. 영입 결과 처리
+        /// (ShowResults - 성공/재화 부족 모두)와 화면 진입(OnEnable) 때 호출돼 차감이 즉시 보인다.
+        /// </summary>
+        public void RefreshCurrencyBar()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+
+            SetText(liveNormalTicketText, $"라이브 일반 영입권\n{gm.LiveNormalTicket:N0}");
+            SetText(liveEpicTicketText, $"라이브 에픽 영입권\n{gm.LiveEpicTicket:N0}");
+            SetText(signatureBallText, $"싸인볼\n{gm.SignatureBall:N0}");
+            SetText(trophyText, $"트로피\n{gm.Trophy:N0}");
+            SetText(pickupTicketText, $"픽업 영입권\n{gm.PickupTicket:N0}");
+
+            if (scoutManager == null) return;
+            SetText(liveNormalCostText, CostLabel("라이브 일반 영입권", scoutManager.LiveNormalCost, gm.LiveNormalTicket));
+            SetText(liveEpicCostText, CostLabel("라이브 에픽 영입권", scoutManager.LiveEpicCost, gm.LiveEpicTicket));
+            SetText(premiumSignatureCostText, CostLabel("싸인볼", scoutManager.PremiumCost, gm.SignatureBall));
+            SetText(premiumTitleHolderCostText, CostLabel("트로피", scoutManager.PremiumCost, gm.Trophy));
+            SetText(pickupSignatureCostText, CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket));
+            SetText(pickupTitleHolderCostText, CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket));
+        }
+
+        /// <summary>"1회 싸인볼 1 · 10회 10 (보유 37 → 37회 가능)" 형식.</summary>
+        private static string CostLabel(string currency, int costPerRoll, int owned)
+        {
+            int cost = Mathf.Max(1, costPerRoll);
+            return $"1회 {currency} {cost} · 10회 {cost * 10} (보유 {owned:N0}, {owned / cost:N0}회 가능)";
+        }
+
+        private static void SetText(Text target, string value)
+        {
+            if (target != null) target.text = value;
+        }
+
         private void ShowResults(List<Player> players)
         {
+            RefreshCurrencyBar(); // [TASK-KBO-177] 성공/실패와 무관하게 차감 결과를 즉시 반영
+
             // [TASK-KBO-140] 재화 부족 등으로 이번 뽑기가 비었을 때 ClearCards()를 먼저 호출해 버리면
             // "다시 뽑기"가 실패한 것뿐인데 직전에 성공적으로 보여주고 있던 카드까지 함께 지워진다 -
             // 빈 결과 체크를 ClearCards()보다 앞으로 옮겨, 실패한 시도는 기존 화면을 그대로 둔 채

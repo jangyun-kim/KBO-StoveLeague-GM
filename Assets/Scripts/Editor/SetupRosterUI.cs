@@ -459,6 +459,43 @@ namespace KBOManager.EditorTools
         private const string SwapPopupName = "SwapPopup";
         private const string SetDeckOptionButtonName = "SetDeckOptionButton";
         private const string SetDeckOptionPanelName = "SetDeckOptionPanel";
+        private const string AutoLineupButtonName = "AutoLineupButton";
+        private const string SlotPlaceholderTemplateName = "SlotPlaceholderTemplate";
+
+        /// <summary>[TASK-KBO-177] 빈 슬롯 플레이스홀더 템플릿(카드와 같은 140x200, 비활성 보관). 런타임이 복제해 "포지션 +
+        /// [+ 선수 배치]"를 쓰고 클릭 시 배치 팝업을 연다. 패널 직속(그리드 밖)에 둬 레이아웃에 끼지 않게 한다.</summary>
+        private static GameObject FindOrCreateSlotPlaceholderTemplate(Transform panel)
+        {
+            var rect = FindOrCreateRect(panel, SlotPlaceholderTemplateName, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rect.sizeDelta = new Vector2(140f, 200f);
+            var image = GetOrAdd<Image>(rect.gameObject);
+            image.color = new Color(0.86f, 0.9f, 0.96f, 1f);
+            var button = GetOrAdd<Button>(rect.gameObject);
+            button.targetGraphic = image;
+            var outline = GetOrAdd<Outline>(rect.gameObject);
+            outline.effectColor = new Color(0.35f, 0.45f, 0.65f, 1f);
+            outline.effectDistance = new Vector2(2f, -2f);
+            var label = FindOrCreateLabel(rect, "Label", "C\n\n[+ 선수 배치]", Vector2.zero, Vector2.one, 22);
+            label.color = new Color(0.2f, 0.3f, 0.5f);
+            rect.gameObject.SetActive(false);
+            return rect.gameObject;
+        }
+
+        private static void StyleText(Transform target, int fontSize)
+        {
+            if (target == null || !target.TryGetComponent<Text>(out var text)) return;
+            text.fontSize = fontSize;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            EditorUtility.SetDirty(text);
+        }
+
+        private static void StyleButtonLabel(Transform button, int fontSize)
+        {
+            if (button == null) return;
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text != null) StyleText(text.transform, fontSize);
+        }
 
         /// <summary>
         /// 타자 구역을 주전 9(위)/후보 6(아래)로 나누고, 카드 클릭 시 열리는 교체 팝업을 조립해 RosterUIController의
@@ -467,29 +504,56 @@ namespace KBOManager.EditorTools
         /// </summary>
         private static void BindBenchAndSwapPopup(RosterUIController controller)
         {
+            // [TASK-KBO-177] 9:16 세로(1080x1920) 기준 세로 적층 배치로 전면 재배치. 위에서부터:
+            //   세트덱 상태(0.955~1) / 게이지 / 액션 바(자동 편성·버프 선택·닫기, 0.89~0.94) / 안내 문구(0.86~0.89) /
+            //   주전 머리글 + 주전 9슬롯(2줄) / 후보 머리글 + 후보 6슬롯(1줄) / 투수 머리글 + 투수 13슬롯(2줄).
             var panel = controller.transform;
-            SetAnchors(FindOrCreateCardGridContainer(panel, BatterContainerName, Vector2.zero, Vector2.one), new Vector2(0f, 0.38f), new Vector2(0.5f, 0.8f));
-            SetAnchors(FindOrCreateCardGridContainer(panel, PitcherContainerName, Vector2.zero, Vector2.one), new Vector2(0.5f, 0.08f), new Vector2(1f, 0.8f));
-            var benchContainer = FindOrCreateCardGridContainer(panel, BenchContainerName, Vector2.zero, Vector2.one);
-            SetAnchors(benchContainer, new Vector2(0f, 0.08f), new Vector2(0.5f, 0.33f));
+            SetAnchors(panel.Find(SetDeckStatusTextName), new Vector2(0.02f, 0.955f), new Vector2(0.98f, 1f));
+            SetAnchors(panel.Find(SetDeckGaugeFillImageName), new Vector2(0.02f, 0.945f), new Vector2(0.98f, 0.953f));
+            SetAnchors(panel.Find(SetDeckActiveGlowRootName), new Vector2(0f, 0.945f), new Vector2(1f, 1f));
+            StyleText(panel.Find(SetDeckStatusTextName), 28);
+            SetAnchors(panel.Find(EmptyStateTextName), new Vector2(0.02f, 0.86f), new Vector2(0.98f, 0.89f));
+            StyleText(panel.Find(EmptyStateTextName), 24);
 
-            FindOrCreateLabel(panel, StarterHeaderName, "주전 타자 9인 (포지션별 최고 OVR · 카드를 눌러 교체)", new Vector2(0f, 0.8f), new Vector2(0.5f, 0.85f), 18);
-            var benchHeader = FindOrCreateLabel(panel, BenchHeaderName, "후보 6인", new Vector2(0f, 0.33f), new Vector2(0.5f, 0.38f), 18);
-            FindOrCreateLabel(panel, PitcherHeaderName, "투수 13인 (카드를 눌러 같은 보직과 교체)", new Vector2(0.5f, 0.8f), new Vector2(1f, 0.85f), 18);
+            var autoButton = FindOrCreateStretchButton(panel, AutoLineupButtonName, "자동 편성", new Vector2(0.02f, 0.893f), new Vector2(0.34f, 0.94f), 30);
+            SetAnchors(panel.Find(CloseButtonName), new Vector2(0.78f, 0.893f), new Vector2(0.98f, 0.94f));
+            StyleButtonLabel(panel.Find(CloseButtonName), 30);
+
+            var batterContainer = FindOrCreateCardGridContainer(panel, BatterContainerName, Vector2.zero, Vector2.one);
+            var benchContainer = FindOrCreateCardGridContainer(panel, BenchContainerName, Vector2.zero, Vector2.one);
+            var pitcherContainer = FindOrCreateCardGridContainer(panel, PitcherContainerName, Vector2.zero, Vector2.one);
+            SetAnchors(batterContainer, new Vector2(0f, 0.615f), new Vector2(1f, 0.83f));
+            SetAnchors(benchContainer, new Vector2(0f, 0.465f), new Vector2(1f, 0.585f));
+            SetAnchors(pitcherContainer, new Vector2(0f, 0.005f), new Vector2(1f, 0.435f));
+            foreach (var grid in new[] { batterContainer, benchContainer, pitcherContainer })
+            {
+                var layout = grid.GetComponent<GridLayoutGroup>();
+                layout.cellSize = new Vector2(140f, 200f);
+                layout.spacing = new Vector2(8f, 8f);
+                layout.childAlignment = TextAnchor.UpperCenter;
+            }
+
+            FindOrCreateLabel(panel, StarterHeaderName, "주전 타자 9 (C·1B·2B·3B·SS·LF·CF·RF·DH)", new Vector2(0.02f, 0.83f), new Vector2(0.98f, 0.86f), 26);
+            var benchHeader = FindOrCreateLabel(panel, BenchHeaderName, "후보 6인", new Vector2(0.02f, 0.585f), new Vector2(0.98f, 0.615f), 26);
+            FindOrCreateLabel(panel, PitcherHeaderName, "투수 13 (SP 1~5 · RP 승리조/추격조/롱 · CP)", new Vector2(0.02f, 0.435f), new Vector2(0.98f, 0.465f), 26);
+
+            var placeholder = FindOrCreateSlotPlaceholderTemplate(panel);
 
             var popup = FindOrCreatePanel(panel, SwapPopupName, Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.6f));
-            var inner = FindOrCreatePanel(popup.transform, "Window", new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.92f), new Color(0.97f, 0.97f, 0.97f, 1f));
-            var title = FindOrCreateLabel(inner.transform, "TitleText", "교체", new Vector2(0f, 0.9f), new Vector2(1f, 1f), 20);
-            var preview = FindOrCreateLabel(inner.transform, "PreviewText", "교체할 카드를 선택하십시오.", new Vector2(0f, 0.82f), new Vector2(1f, 0.9f), 18);
-            var candidateContent = FindOrCreateScrollGrid(inner.transform, "CandidateScroll", new Vector2(0.02f, 0.12f), new Vector2(0.98f, 0.82f));
-            var emptyText = FindOrCreateLabel(inner.transform, "EmptyText", "교체할 수 있는 보유 카드가 없습니다.", new Vector2(0f, 0.4f), new Vector2(1f, 0.5f), 20);
+            var inner = FindOrCreatePanel(popup.transform, "Window", new Vector2(0.03f, 0.04f), new Vector2(0.97f, 0.96f), new Color(0.97f, 0.97f, 0.97f, 1f));
+            var title = FindOrCreateLabel(inner.transform, "TitleText", "교체", new Vector2(0.02f, 0.92f), new Vector2(0.98f, 1f), 30);
+            var preview = FindOrCreateLabel(inner.transform, "PreviewText", "교체할 카드를 선택하십시오.", new Vector2(0.02f, 0.86f), new Vector2(0.98f, 0.92f), 26);
+            var candidateContent = FindOrCreateScrollGrid(inner.transform, "CandidateScroll", new Vector2(0.02f, 0.1f), new Vector2(0.98f, 0.86f));
+            var emptyText = FindOrCreateLabel(inner.transform, "EmptyText", "넣을 수 있는 보유 카드가 없습니다.", new Vector2(0f, 0.45f), new Vector2(1f, 0.52f), 28);
             emptyText.gameObject.SetActive(false);
-            var confirm = FindOrCreateStretchButton(inner.transform, "ConfirmButton", "교체", new Vector2(0.55f, 0.02f), new Vector2(0.75f, 0.1f));
-            var cancel = FindOrCreateStretchButton(inner.transform, "CancelButton", "취소", new Vector2(0.77f, 0.02f), new Vector2(0.97f, 0.1f));
+            var confirm = FindOrCreateStretchButton(inner.transform, "ConfirmButton", "확정", new Vector2(0.4f, 0.015f), new Vector2(0.68f, 0.085f), 32);
+            var cancel = FindOrCreateStretchButton(inner.transform, "CancelButton", "취소", new Vector2(0.7f, 0.015f), new Vector2(0.98f, 0.085f), 32);
             popup.transform.SetAsLastSibling();
             popup.SetActive(false);
 
             var serialized = new SerializedObject(controller);
+            serialized.FindProperty("placeholderTemplate").objectReferenceValue = placeholder;
+            serialized.FindProperty("autoLineupButton").objectReferenceValue = autoButton;
             serialized.FindProperty("benchContainer").objectReferenceValue = benchContainer;
             serialized.FindProperty("benchHeaderText").objectReferenceValue = benchHeader;
             serialized.FindProperty("swapPopupRoot").objectReferenceValue = popup;
@@ -510,13 +574,17 @@ namespace KBOManager.EditorTools
         {
             var panel = rosterController.transform;
             var openButton = FindOrCreateButton(panel, SetDeckOptionButtonName, "세트덱 버프 선택", new Vector2(200f, 20f));
+            // [TASK-KBO-177] 9:16 액션 바 가운데로 이동(자동 편성 | 버프 선택 | 닫기).
+            SetAnchors(openButton.transform, new Vector2(0.36f, 0.893f), new Vector2(0.76f, 0.94f));
+            ((RectTransform)openButton.transform).pivot = new Vector2(0.5f, 0.5f);
+            StyleButtonLabel(openButton.transform, 30);
 
             var optionPanel = FindOrCreatePanel(panel, SetDeckOptionPanelName, Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.6f));
-            var window = FindOrCreatePanel(optionPanel.transform, "Window", new Vector2(0.1f, 0.05f), new Vector2(0.9f, 0.95f), new Color(0.97f, 0.97f, 0.97f, 1f));
-            FindOrCreateLabel(window.transform, "TitleText", "세트덱 선택형 버프 구간 (A/B 중 하나 선택 · 미도달 구간도 미리 선택 가능)", new Vector2(0f, 0.93f), new Vector2(1f, 1f), 20);
-            var summary = FindOrCreateLabel(window.transform, "SummaryText", "", new Vector2(0f, 0.87f), new Vector2(1f, 0.93f), 16);
+            var window = FindOrCreatePanel(optionPanel.transform, "Window", new Vector2(0.03f, 0.03f), new Vector2(0.97f, 0.97f), new Color(0.97f, 0.97f, 0.97f, 1f));
+            FindOrCreateLabel(window.transform, "TitleText", "세트덱 선택형 버프 구간\n(A/B 중 하나 선택 · 미도달 구간도 미리 선택 가능)", new Vector2(0.02f, 0.93f), new Vector2(0.98f, 1f), 28);
+            var summary = FindOrCreateLabel(window.transform, "SummaryText", "", new Vector2(0.02f, 0.87f), new Vector2(0.98f, 0.93f), 22);
 
-            var rows = FindOrCreateRect(window.transform, "Rows", new Vector2(0.02f, 0.12f), new Vector2(0.98f, 0.86f));
+            var rows = FindOrCreateRect(window.transform, "Rows", new Vector2(0.02f, 0.1f), new Vector2(0.98f, 0.86f));
             var layout = GetOrAdd<VerticalLayoutGroup>(rows.gameObject);
             layout.spacing = 4f;
             layout.childControlHeight = true;
@@ -526,8 +594,8 @@ namespace KBOManager.EditorTools
 
             var rowTemplate = FindOrCreateOptionRowTemplate(window.transform);
 
-            var yearButton = FindOrCreateStretchButton(window.transform, "YearButton", "연도 선택: 자동", new Vector2(0.02f, 0.02f), new Vector2(0.4f, 0.1f));
-            var closeButton = FindOrCreateStretchButton(window.transform, "CloseButton", "닫기", new Vector2(0.78f, 0.02f), new Vector2(0.98f, 0.1f));
+            var yearButton = FindOrCreateStretchButton(window.transform, "YearButton", "연도 선택: 자동", new Vector2(0.02f, 0.015f), new Vector2(0.6f, 0.085f), 28);
+            var closeButton = FindOrCreateStretchButton(window.transform, "CloseButton", "닫기", new Vector2(0.7f, 0.015f), new Vector2(0.98f, 0.085f), 30);
             optionPanel.transform.SetAsLastSibling();
             optionPanel.SetActive(false);
 
@@ -554,14 +622,14 @@ namespace KBOManager.EditorTools
         private static GameObject FindOrCreateOptionRowTemplate(Transform window)
         {
             var row = FindOrCreateRect(window, "OptionRowTemplate", new Vector2(0f, 0f), new Vector2(1f, 0f));
-            row.sizeDelta = new Vector2(0f, 52f);
+            row.sizeDelta = new Vector2(0f, 118f);
             var element = GetOrAdd<LayoutElement>(row.gameObject);
-            element.preferredHeight = 52f;
-            element.minHeight = 44f;
+            element.preferredHeight = 118f; // [TASK-KBO-177] 10행 x 118 + 간격 = 약 1,220px (창 높이 0.76 ≈ 1,330px)
+            element.minHeight = 90f;
 
-            FindOrCreateLabel(row, "Label", "80P", new Vector2(0f, 0f), new Vector2(0.16f, 1f), 16);
-            FindOrCreateStretchButton(row, "OptionA", "A", new Vector2(0.17f, 0.05f), new Vector2(0.58f, 0.95f));
-            FindOrCreateStretchButton(row, "OptionB", "B", new Vector2(0.59f, 0.05f), new Vector2(1f, 0.95f));
+            FindOrCreateLabel(row, "Label", "80P", new Vector2(0f, 0f), new Vector2(0.18f, 1f), 24);
+            FindOrCreateStretchButton(row, "OptionA", "A", new Vector2(0.19f, 0.05f), new Vector2(0.59f, 0.95f), 22);
+            FindOrCreateStretchButton(row, "OptionB", "B", new Vector2(0.6f, 0.05f), new Vector2(1f, 0.95f), 22);
             row.gameObject.SetActive(false);
             return row.gameObject;
         }
@@ -576,6 +644,7 @@ namespace KBOManager.EditorTools
 
         private static void SetAnchors(Transform target, Vector2 anchorMin, Vector2 anchorMax)
         {
+            if (target == null) return; // [TASK-KBO-177] 구버전 씬에 없는 선택 오브젝트는 건너뛴다
             var rect = (RectTransform)target;
             Undo.RecordObject(rect, "Set Anchors");
             rect.anchorMin = anchorMin;
@@ -626,14 +695,15 @@ namespace KBOManager.EditorTools
 
         /// <summary>앵커 스트레치형 버튼(라벨 자식 "Label"). 여러 번 실행해도 라벨 텍스트는 처음 생성 때만 쓴다
         /// (런타임 컨트롤러가 덮어쓰는 문구를 매번 초기화하지 않기 위함).</summary>
-        private static Button FindOrCreateStretchButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax)
+        private static Button FindOrCreateStretchButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax,
+            int fontSize = 24)
         {
             var rect = FindOrCreateRect(parent, name, anchorMin, anchorMax);
             var image = GetOrAdd<Image>(rect.gameObject);
             image.color = new Color(0.9f, 0.9f, 0.9f);
             var button = GetOrAdd<Button>(rect.gameObject);
             button.targetGraphic = image;
-            FindOrCreateLabel(rect, "Label", label, Vector2.zero, Vector2.one, 16);
+            FindOrCreateLabel(rect, "Label", label, Vector2.zero, Vector2.one, fontSize);
             return button;
         }
 

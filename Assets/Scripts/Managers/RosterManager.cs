@@ -26,18 +26,12 @@ namespace KBOManager.Managers
         public const int BenchBatterCount = 6; // 타자 15 = 선발 9 + 후보 6
 
         // 투수 13명 배분 (기획 확정치): 선발 5 + 승리조 2 + 추격조 4 + 롱릴리프 1 + 마무리 1 = 13명.
-        private static readonly (PitcherRole role, int count)[] PitcherRoleQuota =
-        {
-            (PitcherRole.StartingPitcher, 5),
-            (PitcherRole.WinningReliever, 2),
-            (PitcherRole.MopUpReliever, 4),
-            (PitcherRole.LongReliever, 1),
-            (PitcherRole.Closer, 1),
-        };
+        // [TASK-KBO-177] 로스터 화면 고정 슬롯(RosterSlotLayout)과 같은 표를 공유한다.
+        private static IReadOnlyList<(PitcherRole Role, int Count)> PitcherRoleQuota => RosterSlotLayout.PitcherRoleQuota;
 
         static RosterManager()
         {
-            int totalPitcherQuota = PitcherRoleQuota.Sum(q => q.count);
+            int totalPitcherQuota = PitcherRoleQuota.Sum(q => q.Count);
             Debug.Assert(totalPitcherQuota == GameManager.RequiredPitcherCount,
                 $"[RosterManager] 투수 쿼터 합계 오류: {totalPitcherQuota}명 (기대값 {GameManager.RequiredPitcherCount}명)");
         }

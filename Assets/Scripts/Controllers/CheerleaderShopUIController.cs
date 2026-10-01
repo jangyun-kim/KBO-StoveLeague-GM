@@ -69,6 +69,12 @@ namespace KBOManager.Controllers
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
         }
 
+        [Header("Banner Info (TASK-KBO-177 - 상품별 필요 재화 + 등장 확률 요약)")]
+        [SerializeField] private Text liveInfoText;
+        [SerializeField] private Text limitedInfoText;
+        [SerializeField] private Text iconInfoText;
+        [SerializeField] private Text legendInfoText;
+
         private void OnEnable()
         {
             RefreshUI();
@@ -76,12 +82,26 @@ namespace KBOManager.Controllers
 
         private void RefreshUI()
         {
-            if (GameManager.Instance == null) return;
+            var gm = GameManager.Instance;
+            if (gm == null) return;
 
-            if (liveCheerStickText != null) liveCheerStickText.text = $"라이브 응원봉: {GameManager.Instance.LiveCheerStick}";
-            if (limitedCheerStickText != null) limitedCheerStickText.text = $"한정 응원봉: {GameManager.Instance.LimitedCheerStick}";
-            if (starCheerStickText != null) starCheerStickText.text = $"스타 응원봉: {GameManager.Instance.StarCheerStick}";
-            if (legendCheerStickText != null) legendCheerStickText.text = $"레전드 응원봉: {GameManager.Instance.LegendCheerStick}";
+            // [TASK-KBO-177] 2x2 재화 배지용 2줄 표기(이름 / 수량).
+            if (liveCheerStickText != null) liveCheerStickText.text = $"라이브 응원봉\n{gm.LiveCheerStick:N0}";
+            if (limitedCheerStickText != null) limitedCheerStickText.text = $"한정 응원봉\n{gm.LimitedCheerStick:N0}";
+            if (starCheerStickText != null) starCheerStickText.text = $"스타 응원봉\n{gm.StarCheerStick:N0}";
+            if (legendCheerStickText != null) legendCheerStickText.text = $"레전드 응원봉\n{gm.LegendCheerStick:N0}";
+
+            SetInfo(liveInfoText, "라이브 응원봉", gm.LiveCheerStick, CheerleaderGachaService.LiveRateSummary);
+            SetInfo(limitedInfoText, "한정 응원봉", gm.LimitedCheerStick, CheerleaderGachaService.LimitedRateSummary);
+            SetInfo(iconInfoText, "스타 응원봉", gm.StarCheerStick, CheerleaderGachaService.IconRateSummary);
+            SetInfo(legendInfoText, "레전드 응원봉", gm.LegendCheerStick, CheerleaderGachaService.LegendRateSummary);
+        }
+
+        private static void SetInfo(Text target, string currency, int owned, string rates)
+        {
+            if (target == null) return;
+            int cost = CheerleaderGachaService.CostPerRoll;
+            target.text = $"1회 {currency} {cost} · 10회 {cost * 10} (보유 {owned:N0}, {owned / cost:N0}회 가능)\n확률: {rates}";
         }
 
         /// <summary>
@@ -116,7 +136,8 @@ namespace KBOManager.Controllers
                 if (i > 0) builder.Append('\n');
 
                 var c = results[i];
-                builder.Append($"획득: [{c.Grade}] {c.Name} (경제: {c.EconomicBonusRate:F2}x / 클러치: {c.ClutchMultiplier:F2}x / 팬심방어: {c.SentimentDefense})");
+                string affiliation = string.IsNullOrEmpty(c.AffiliationLabel) ? "" : $" · {c.AffiliationLabel}"; // [TASK-KBO-177]
+                builder.Append($"[{c.Grade}] {c.Name}{affiliation}  (컨디션 +{c.ConditionBuff} / 클러치 x{c.ClutchMultiplier:F2} / 수익 x{c.EconomicBonusRate:F2} / 팬심 +{c.SentimentDefense})");
             }
 
             return builder.ToString();
