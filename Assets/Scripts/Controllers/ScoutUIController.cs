@@ -120,22 +120,9 @@ namespace KBOManager.Controllers
             if (retryButton != null) retryButton.onClick.AddListener(OnClickRetry);
         }
 
-        // GDD 2절 등급 서열(숫자가 클수록 상위 등급). "최고급"의 기준(SIGNATURE 이상)을 여기서 정한다.
-        // [TASK-KBO-155] SEASON 삭제로 시작 랭크가 사라졌고, 신설 RETIRED_NUMBER(영구결번)를
-        // TITLE_HOLDER 다음(GOLDEN_GLOVE보다 한 단계 아래)에 끼워 넣었다 - 이 표는 컴파일 타임
-        // 상수라 Unity Inspector 직렬화 위험이 없어(Types.cs Grade enum과 달리) 자유롭게 재배치했다.
-        private static readonly Dictionary<Grade, int> GradeRank = new Dictionary<Grade, int>
-        {
-            { Grade.LIVE_NORMAL, 0 },
-            { Grade.LIVE_EPIC, 1 },
-            { Grade.ALLSTAR, 2 },
-            { Grade.FRANCHISE, 3 }, // [TASK-KBO-172 신설] ALLSTAR~TITLE_HOLDER 사이
-            { Grade.TITLE_HOLDER, 4 },
-            { Grade.RETIRED_NUMBER, 5 },
-            { Grade.GOLDEN_GLOVE, 6 },
-            { Grade.SIGNATURE, 7 },
-            { Grade.DYNASTY, 8 },
-        };
+        // "최고급"의 기준(SIGNATURE 이상). [TASK-KBO-175] 이 컨트롤러 전용 랭크표(RETIRED_NUMBER가 GOLDEN_GLOVE보다
+        // 아래였다)를 폐기하고 공용 위상 순번 CardGrowthRules.PowerRank를 쓴다 - SIGNATURE/DYNASTY/RETIRED_NUMBER가
+        // 같은 최상위 순번이라 영구결번 획득도 최고급 연출 대상이다.
         private const Grade TopPullThreshold = Grade.SIGNATURE;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
@@ -240,7 +227,7 @@ namespace KBOManager.Controllers
             {
                 if (player?.Template == null) continue;
 
-                int rank = GradeRank.TryGetValue(player.Template.Grade, out var r) ? r : 0;
+                int rank = CardGrowthRules.PowerRank(player.Template.Grade);
                 if (rank > bestRank)
                 {
                     bestRank = rank;
@@ -248,7 +235,7 @@ namespace KBOManager.Controllers
                 }
             }
 
-            if (best == null || bestRank < GradeRank[TopPullThreshold]) return;
+            if (best == null || bestRank < CardGrowthRules.PowerRank(TopPullThreshold)) return;
 
             string message = $"★ 최고급 선수 획득! {best.Template.PlayerName} ({best.Template.Grade}) ★";
             Debug.Log($"[ScoutUIController] {message}");

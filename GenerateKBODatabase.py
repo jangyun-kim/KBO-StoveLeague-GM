@@ -709,6 +709,8 @@ for year in sorted(TITLE_HOLDER_HISTORY.keys(), reverse=True):
 # 대표 커리어 하이 시즌"으로 바꿨다(1인·구단당 1장). 가능한 한 이 스크립트의 실제 수상 기록(타이틀/골든
 # 글러브)으로 교차검증되는 시즌을 골랐고, SIGNATURE와 같은 해는 피했다(박철순·김영신은 대안 시즌이 없어
 # 예외). 주석의 "(TH)"/"(GG)"는 교차검증 근거.
+# [TASK-KBO-175] 아래 18장의 대표 연도를 정식 확정했다(사용자 확정, DCL-146) - 이후 변경 시 card_id가 바뀌므로
+# (`{TEAM}_{연도}_{player_id}_RN`) 세이브 호환을 함께 검토해야 한다.
 RETIRED_NUMBER_HISTORY = [
     ("이종범", "KIA", 1993),      # 데뷔 시즌 해태 우승·한국시리즈 MVP, 득점(TH) - SIG는 1994
     ("이병규", "LG", 2005),       # 타율·최다안타(TH) - SIG는 1999
@@ -1094,6 +1096,95 @@ for name, team_token, year, is_pitcher, position in DYNASTY_CARDS:
     dynasty_cards_to_issue.append((rec, year, team_token))
 
 # ---------------------------------------------------------------------------
+# 5-L. [TASK-KBO-175, DCL-146] 실존 선수 기본 능력치 2단계 산정 - 1단계(이 절): 성적/위상 기반 기본 OVR.
+# 실존 인물의 z_value는 지금까지 add_player()의 무작위 gauss(1.0, 0.6)였다 - 그래서 오승환(기본 OVR 54)·
+# 최형우(49)·김태균(54)처럼 커리어 레전드가 +10 종결 카드를 받아도 가상 선수 LIVE 중앙값(65)보다 약한 역전이
+# 생겼다(DCL-145 후속). 저장소에 실존 선수의 시즌 원성적(스탯티즈 원자료)은 없고, 이 스크립트가 실시간 조회로
+# 확정한 "수상 장부"(골든글러브/개인 타이틀/올스타 BEST 12/영구결번/시그니처/왕조)가 유일한 검증된 성적
+# 기준이라 그 장부로 산정한다:
+#   기본 OVR = 최고 위상 하한(STATURE_FLOOR) + 누적 수상 가산(나머지 수상 포인트의 제곱근 x 1.0, 반올림)
+#              -> REAL_OVR_CAP(95)으로 상한. 2단계(make_card_row)에서 GRADE_OVR_BONUS가 그 위에 가산된다.
+#   - 하한 근거: SIG/DYN/RN 88 + 10 = 98 = 가상 선수 LIVE 최댓값과 동률 이상 -> 종결 카드가 어떤 가상 LIVE에도
+#     밀리지 않는다. GG 82(가상 LIVE 상위 약 3%), TH 78, AS 73(상위 약 10~15%).
+#   - REAL_PLAYERS_2025의 수기 z 근사치(디아즈 2.6 등, 2025 성적을 직접 조사해 넣은 값)가 더 높으면 그 값을 쓴다.
+#   - 수상 이력이 없는 실존 인물(2026 로스터 일반 선수 등)은 기존 값을 유지한다(근거 성적이 없어 바꾸지 않음).
+# 난수를 전혀 쓰지 않고 rec.z_value만 덮어쓰므로 player_id/card_id/카드 연도·등급 추첨은 1바이트도 바뀌지 않는다
+# (FRANCHISE 후보 정렬은 가상 선수 z만 쓰므로 영향 없음). 같은 선수 등급 서열도 2단계 보정이 그대로 보장한다.
+# ---------------------------------------------------------------------------
+STATURE_FLOOR = {
+    "RETIRED_NUMBER": 88, "SIGNATURE": 88, "DYNASTY": 88,
+    "GOLDEN_GLOVE": 82, "TITLE_HOLDER": 78, "ALLSTAR": 73,
+}
+STATURE_POINTS = {
+    "RETIRED_NUMBER": 3.0, "SIGNATURE": 3.0, "DYNASTY": 3.0,
+    "GOLDEN_GLOVE": 2.0, "TITLE_HOLDER": 1.5, "ALLSTAR": 0.5,
+}
+STATURE_ACCUMULATION_SCALE = 1.0
+REAL_OVR_CAP = 95
+KIM_SANGYEOP_ID = "PLY_900001"  # 섹션 7-I 강제 주입 인물 - 레코드가 그 절에서 만들어져 ID로 장부를 연결한다.
+
+# player_id -> {(year, grade)} - 실제로 발급될 수상 카드 전부(섹션 7-B~7-J와 1:1).
+award_ledger = {}
+
+
+def _ledger_add(player_id, year, grade):
+    award_ledger.setdefault(player_id, set()).add((int(year), grade))
+
+
+for _name, _grades in REAL_AWARDS_2025.items():
+    for _grade in _grades:
+        _ledger_add(real_player_records[_name].player_id, 2025, _grade)
+for _rec, _year, _ in golden_glove_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "GOLDEN_GLOVE")
+for _rec, _year, _ in title_holder_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "TITLE_HOLDER")
+for _rec, _year, _ in retired_number_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "RETIRED_NUMBER")
+for _rec, _year, _ in signature_cards_to_issue + signature_quota_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "SIGNATURE")
+for _rec, _year, _ in allstar_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "ALLSTAR")
+for _rec, _year, _ in dynasty_cards_to_issue:
+    _ledger_add(_rec.player_id, _year, "DYNASTY")
+for _rec_or_alias, _year, _ in title_holder_1986_2012_to_issue:
+    _pid = KIM_SANGYEOP_ID if _rec_or_alias == "김상엽" else _rec_or_alias.player_id
+    _ledger_add(_pid, _year, "TITLE_HOLDER")
+_ledger_add(KIM_SANGYEOP_ID, 1995, "GOLDEN_GLOVE")                       # 7-I 강제 주입
+_ledger_add(real_player_records["구자욱"].player_id, 2026, "SIGNATURE")  # 7-I 강제 주입
+
+
+def stature_base_overall(player_id):
+    """수상 장부 기반 기본 OVR(1단계). 장부가 없으면 None(=기존 값 유지)."""
+    seasons = award_ledger.get(player_id)
+    if not seasons:
+        return None
+    top = max(seasons, key=lambda s: (STATURE_FLOOR[s[1]], STATURE_POINTS[s[1]]))
+    rest_points = sum(STATURE_POINTS[g] for _, g in seasons) - STATURE_POINTS[top[1]]
+    bonus = round(STATURE_ACCUMULATION_SCALE * rest_points ** 0.5)
+    return min(REAL_OVR_CAP, STATURE_FLOOR[top[1]] + bonus)
+
+
+def overall_to_z(ovr):
+    """기본 OVR -> players.csv z(3자리). player_base_overall()의 z*15+50 환산이 정확히 ovr로 돌아오게 한다."""
+    z = round((ovr - 50) / 15.0, 3)
+    assert max(1, min(100, round(float(f"{z:.3f}") * 15 + 50))) == ovr
+    return z
+
+
+_REAL_2025_HAND_Z = {name: z for name, *_, z in REAL_PLAYERS_2025}
+stat_recalibration_report = []  # (이름, player_id, 보정 전 기본 OVR, 보정 후 기본 OVR, 수상 시즌 수)
+for rec in player_records:
+    target = stature_base_overall(rec.player_id)
+    if target is None:
+        continue
+    before = max(1, min(100, round(float(f"{rec.z_value:.3f}") * 15 + 50)))
+    hand_z = _REAL_2025_HAND_Z.get(rec.name)
+    if hand_z is not None:
+        target = max(target, round(hand_z * 15 + 50))
+    rec.z_value = overall_to_z(target)
+    stat_recalibration_report.append((rec.name, rec.player_id, before, target, len(award_ledger[rec.player_id])))
+
+# ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
 # ---------------------------------------------------------------------------
 PLAYERS_HEADER = [
@@ -1286,13 +1377,19 @@ class _ForcedPlayer:
     pass
 
 kim_sangyeop = _ForcedPlayer()
-kim_sangyeop.player_id = "PLY_900001"
+kim_sangyeop.player_id = KIM_SANGYEOP_ID
 kim_sangyeop.team_token = "SAMSUNG"
-kim_sangyeop.z_value = 1.7  # [TASK-KBO-174] base_ovr 계산용 - 아래 players.csv 행의 z(1.700)와 동일
+kim_sangyeop.name = "김상엽"
+# [TASK-KBO-175] 기존 수기 1.7(OVR 76) 대신 다른 실존 인물과 같은 수상 장부 기반 산정(섹션 5-L)을 쓴다.
+_kim_before = round(1.7 * 15 + 50)
+kim_sangyeop.z_value = overall_to_z(stature_base_overall(KIM_SANGYEOP_ID))
+stat_recalibration_report.append(("김상엽", KIM_SANGYEOP_ID, _kim_before, player_base_overall(kim_sangyeop),
+                                  len(award_ledger[KIM_SANGYEOP_ID])))
+_kim_z = f"{kim_sangyeop.z_value:.3f}"
 players_rows.append([
     kim_sangyeop.player_id, "TEM_002", "김상엽", 1990, "SP", 170,
-    "0.000", "0.000", "0.000", "1.700", "0.000", "1.700", "FALSE",
-    "1.700", "1.700", "1.700",
+    "0.000", "0.000", "0.000", _kim_z, "0.000", _kim_z, "FALSE",
+    _kim_z, _kim_z, _kim_z,
 ])
 
 forced_card_count = 0
@@ -1412,25 +1509,24 @@ if len(_dyn_players) != len(DYNASTY_CARDS) or len(set(_dyn_players)) != len(_dyn
     raise ValueError(f"[TASK-KBO-172] DYNASTY 1인 1연도 규칙 위반: {len(_dyn_players)}장 / 고유 {len(set(_dyn_players))}명")
 
 # ---------------------------------------------------------------------------
-# 8. cheerleaders.csv 행 생성 (CheerleaderCatalog.cs 실제 파서 스키마 7컬럼 + TASK-KBO-171 v4.0
-#    신설 Team/Year 2컬럼 = 총 9컬럼)
+# 8. cheerleaders.csv 행 생성 (CheerleaderCatalog.cs 파서 스키마 7컬럼 + Team/ActivePeriod 2컬럼 = 총 9컬럼)
 # ---------------------------------------------------------------------------
-# [TASK-KBO-171 v4.0] CheerleaderCatalog.ParseCsv()는 `columns.Length < ExpectedColumnCount(7)`만
-# 검사하고 columns[0..6]을 고정 인덱스로만 읽는다(Assets/Scripts/Models/CheerleaderCatalog.cs 72~87행
-# 직접 확인) - 즉 뒤에 컬럼을 추가해도 하위 호환이 깨지지 않는다. "연도별 구단 세트덱(Synergy)"
-# 준비를 위해 Team/Year를 8·9번째 컬럼으로 추가한다(현재 C# 파서는 이 두 컬럼을 아직 소비하지
-# 않고 무시만 한다 - Cheerleader.cs 모델/CheerleaderCatalog.cs 파서에 실제로 필드를 추가해 읽어
-# 들이는 것은 이번 작업 범위 밖이며 별도 후속 작업이다).
+# [TASK-KBO-175, DCL-146] 치어리더 "단일 대표 연도" 폐지 -> "소속 구단 + 활동 기간" 체제. 치어리더 카드는 선수
+# 시즌 카드처럼 연도('24)로 쪼개지 않는다. 한 사람이 여러 구단을 거쳤으면 구단 이력마다 카드가 따로 있고, 각 카드는
+# 그 활동 기간에 소속했던 구단(Team)과만 세트덱 시너지가 발동한다(예: 이아영 2020~2021 = KIA, 2022~2023 = NC).
+# 스키마: 9번째 컬럼 Year(TASK-171~174, C# 미사용) -> ActivePeriod로 교체. 0~6번 컬럼 위치/의미는 그대로라
+# 구버전 파서도 그대로 읽는다. C# CheerleaderCatalog가 Team/ActivePeriod를 읽어 Cheerleader 모델에 싣는다.
+# ActivePeriod 표기: "시작~끝"(종료), "시작~"(현역 진행 중), "연도"(단일 시즌), 복수 구간은 "/"로 연결.
 CHEERLEADERS_HEADER = [
     "CatalogId", "Name", "Grade", "ConditionBuff", "EconomicBonusRate",
-    "ClutchMultiplier", "SentimentDefense", "Team", "Year",
+    "ClutchMultiplier", "SentimentDefense", "Team", "ActivePeriod",
 ]
 
 # docs/16_shop_and_gacha_policy.md 2절에 PM이 이미 확정한 등급별 수치표를 그대로 가져다 썼다
 # (스크립트가 임의로 지어낸 값이 아니다). SEASON_LIMITED(TASK-KBO-168)은 당시 문서에는 없었으나
 # Cheerleader.cs의 CheerleaderGrade enum에는 이미 6번 값으로 존재했다 - 같은 문서 2절 표를
-# 그대로 가져다 썼다(+5/1.20/1.25/4). 이번 v4.0 재생성에서는 LIVE_NORMAL/ICON/LEGEND만 실제로
-# 쓰이지만(아래 참고), 다른 등급이 언젠가 다시 필요해질 수 있어 표 전체를 그대로 유지한다.
+# 그대로 가져다 썼다(+5/1.20/1.25/4). 현재는 LIVE_NORMAL/ICON/LEGEND만 실제로 쓰이지만,
+# 다른 등급이 언젠가 다시 필요해질 수 있어 표 전체를 그대로 유지한다.
 CHEER_GRADE_META = {
     "LIVE_NORMAL":    {"buff": 1, "clutch": 1.00, "economic": 1.05, "sentiment": 0},
     "LIVE_EPIC":      {"buff": 2, "clutch": 1.05, "economic": 1.10, "sentiment": 1},
@@ -1439,13 +1535,9 @@ CHEER_GRADE_META = {
     "SEASON_LIMITED": {"buff": 5, "clutch": 1.20, "economic": 1.25, "sentiment": 4},
 }
 
-# [TASK-KBO-171 v4.0, 사용자 직접 지시 - "치어리더 마스터 DB 4.0"] DCL-139가 기록한 이전 45명
-# 실명 목록(namu.wiki WebFetch 조사, 이 세션이 검증할 수 없는 근사치였다)을 대체하는, 기획자가
-# 직접 확정해 이 세션에 그대로 전달한 최신 로스터다 - 이 스크립트는 아래 두 데이터셋을 리서치하거나
-# 임의로 창작하지 않았고, 사용자가 준 원본 그대로 옮겼다.
-#
-# 1) CHEER_LIVE_2026: 2026년 현재 10개 구단 소속 현역 치어리더 풀(구단 -> 이름 리스트). 전원
-#    `year=2026`, `LIVE` 카드로 1장씩 "확정" 생성된다(명령서 2항 - 확률 분기 없음).
+# 1) CHEER_LIVE_2026: 2026년 현재 10개 구단 소속 현역 치어리더 124명(구단 -> 이름, 기획자 확정 원본 그대로 -
+#    TASK-KBO-171 v4.0). 전원 활동 기간 "2026~", LIVE(LIVE_NORMAL) 1장씩 확정 생성(확률 분기 없음).
+CHEER_LIVE_PERIOD = "2026~"
 CHEER_LIVE_2026 = {
     "LG": ["차영현", "고예지", "김태희", "박예은", "서여진", "신서윤", "양효주", "우혜준", "임혜진", "장로나", "진수화", "이서우"],
     "HANWHA": ["하지원", "김연정", "감서윤", "김보미", "김이현", "우수한", "유진경", "이호은", "전은비", "지아영", "최석화", "최홍라"],
@@ -1459,101 +1551,123 @@ CHEER_LIVE_2026 = {
     "KIWOOM": ["용경아", "송민교", "강수경", "정차연", "홍예빈", "차예나", "서예은", "최혜린", "이채원"],
 }
 
-# 2) CHEER_ICON_LEGEND: 역대 ICON/LEGEND 로스터. [TASK-KBO-174, 사용자 확정본 그대로] 활동 구간의 매 연도를
-#    전개하던 방식을 폐지하고 이력당 대표 1개 연도(rep_year)로만 생성한다. 형식: (이름, 소속구단, 대표 연도,
-#    활동 구간 표기(참고용 문자열 - 생성에는 쓰지 않음), [티어 리스트]).
+# 2) CHEER_ICON_LEGEND: 1~4세대 구단 이력 46건 = ICON 46장 + LEGEND 15장(TASK-KBO-175 사용자 확정본 그대로).
+#    형식: (이름, 소속 구단, 활동 기간, [티어]). LEGEND 기준: 당대 레전드급 인기 + 은퇴 또는 타 구단 이적으로
+#    2026년 현재 그 구단에 남아 있지 않은 경우만 - 아래 _validate_cheer_legend()가 기계적으로 검증한다
+#    (서현숙/이주희/하지원은 2026 현역이라 LEGEND에서 빠졌고, 남궁혜미/이연주/김한나(KIA)/김이서가 추가됐다).
 CHEER_ICON_LEGEND = [
     # 1세대 (4건)
-    ("배수현", "SSG", 2022, "2003~", ["ICON"]),
-    ("노숙희", "SAMSUNG", 2011, "2000~2012", ["ICON", "LEGEND"]),
-    ("이미경", "NC", 2014, "2012~2014", ["ICON", "LEGEND"]),
-    ("강보경", "HANWHA", 2012, "2009~2013", ["ICON", "LEGEND"]),
+    ("배수현", "SSG", "2003~", ["ICON"]),
+    ("노숙희", "SAMSUNG", "2000~2012", ["ICON", "LEGEND"]),
+    ("이미경", "NC", "2012~2014", ["ICON", "LEGEND"]),
+    ("강보경", "HANWHA", "2009~2013", ["ICON", "LEGEND"]),
     # 2세대 (14건)
-    ("박기량", "LOTTE", 2012, "2009~2022", ["ICON", "LEGEND"]),
-    ("박기량", "DOOSAN", 2024, "2024~", ["ICON"]),
-    ("김연정", "NC", 2016, "2013~2016", ["ICON", "LEGEND"]),
-    ("김연정", "HANWHA", 2018, "2009~2011/2017~", ["ICON"]),
-    ("남궁혜미", "LG", 2013, "2012~2020", ["ICON"]),
-    ("금보아", "HANWHA", 2015, "2011~2015", ["ICON"]),
-    ("이엄지", "KIWOOM", 2019, "2019~2022", ["ICON"]),
-    ("이연주", "SAMSUNG", 2014, "2012~2018", ["ICON"]),
-    ("이수진", "SAMSUNG", 2024, "2013~2024", ["ICON", "LEGEND"]),
-    ("이수진", "SSG", 2025, "2025~", ["ICON"]),
-    ("김한나", "KIWOOM", 2019, "2017~2019", ["ICON"]),
-    ("김한나", "KIA", 2024, "2020~2025", ["ICON"]),
-    ("김진아", "LOTTE", 2014, "2014~2015", ["ICON"]),
-    ("김진아", "KT", 2021, "2017~", ["ICON"]),
+    ("박기량", "LOTTE", "2009~2022", ["ICON", "LEGEND"]),
+    ("박기량", "DOOSAN", "2024~", ["ICON"]),
+    ("김연정", "NC", "2013~2016", ["ICON", "LEGEND"]),
+    ("김연정", "HANWHA", "2009~2011/2017~", ["ICON"]),
+    ("남궁혜미", "LG", "2012~2020", ["ICON", "LEGEND"]),
+    ("금보아", "HANWHA", "2011~2015", ["ICON"]),
+    ("이엄지", "KIWOOM", "2019~2022", ["ICON"]),
+    ("이연주", "SAMSUNG", "2012~2018", ["ICON", "LEGEND"]),
+    ("이수진", "SAMSUNG", "2013~2024", ["ICON", "LEGEND"]),
+    ("이수진", "SSG", "2025~", ["ICON"]),
+    ("김한나", "KIWOOM", "2017~2019", ["ICON"]),
+    ("김한나", "KIA", "2020~2025", ["ICON", "LEGEND"]),
+    ("김진아", "LOTTE", "2014~2015", ["ICON"]),
+    ("김진아", "KT", "2017~", ["ICON"]),
     # 3세대 (19건)
-    ("김한슬", "KT", 2021, "2015~", ["ICON"]),
-    ("서현숙", "DOOSAN", 2019, "2016~", ["ICON", "LEGEND"]),
-    ("이아영", "KIA", 2020, "2020~2021", ["ICON", "LEGEND"]),
-    ("이아영", "NC", 2023, "2022~2023", ["ICON"]),
-    ("이나경", "DOOSAN", 2019, "2017~2023", ["ICON", "LEGEND"]),
-    ("안지현", "KIWOOM", 2018, "2017~2018", ["ICON", "LEGEND"]),
-    ("안지현", "LOTTE", 2019, "2019~2022", ["ICON"]),
-    ("안지현", "SSG", 2025, "2025~", ["ICON"]),
-    ("이주희", "NC", 2020, "2018~2021/2025~", ["ICON", "LEGEND"]),
-    ("김이서", "LG", 2023, "2023~2024", ["ICON"]),
-    ("이하윤", "HANWHA", 2018, "2017~2020", ["ICON"]),
-    ("하지원", "HANWHA", 2024, "2023~", ["ICON", "LEGEND"]),
-    ("하지원", "LG", 2019, "2018~2021", ["ICON"]),
-    ("고정현", "SAMSUNG", 2021, "2019~2023", ["ICON"]),
-    ("이다혜", "KIA", 2022, "2019~2022", ["ICON", "LEGEND"]),
-    ("차영현", "LG", 2023, "2018~", ["ICON"]),
-    ("신세희", "KT", 2021, "2020~", ["ICON"]),
-    ("목나경", "LOTTE", 2024, "2024~", ["ICON"]),
-    ("유세리", "KIA", 2024, "2024~", ["ICON"]),
+    ("김한슬", "KT", "2015~", ["ICON"]),
+    ("서현숙", "DOOSAN", "2016~", ["ICON"]),             # 2026 두산 현역 -> LEGEND 제외
+    ("이아영", "KIA", "2020~2021", ["ICON", "LEGEND"]),
+    ("이아영", "NC", "2022~2023", ["ICON"]),
+    ("이나경", "DOOSAN", "2017~2023", ["ICON", "LEGEND"]),
+    ("안지현", "KIWOOM", "2017~2018", ["ICON", "LEGEND"]),
+    ("안지현", "LOTTE", "2019~2022", ["ICON"]),
+    ("안지현", "SSG", "2025~", ["ICON"]),
+    ("이주희", "NC", "2018~2021/2025~", ["ICON"]),        # 2026 NC 현역 -> LEGEND 제외
+    ("김이서", "LG", "2023~2024", ["ICON", "LEGEND"]),
+    ("이하윤", "HANWHA", "2017~2020", ["ICON"]),
+    ("하지원", "HANWHA", "2023~", ["ICON"]),              # 2026 한화 현역 -> LEGEND 제외
+    ("하지원", "LG", "2018~2021", ["ICON"]),
+    ("고정현", "SAMSUNG", "2019~2023", ["ICON"]),
+    ("이다혜", "KIA", "2019~2022", ["ICON", "LEGEND"]),
+    ("차영현", "LG", "2018~", ["ICON"]),
+    ("신세희", "KT", "2020~", ["ICON"]),
+    ("목나경", "LOTTE", "2024~", ["ICON"]),
+    ("유세리", "KIA", "2024~", ["ICON"]),
     # 4세대 (9건)
-    ("박소영", "SAMSUNG", 2025, "2025~", ["ICON"]),
-    ("우수한", "HANWHA", 2024, "2023~", ["ICON"]),
-    ("정희정", "DOOSAN", 2021, "2020~2024", ["ICON"]),
-    ("정희정", "KT", 2025, "2025~", ["ICON"]),
-    ("이연진", "SSG", 2024, "2024~", ["ICON"]),
-    ("이주은", "KIA", 2024, "2024", ["ICON", "LEGEND"]),
-    ("유세빈", "SAMSUNG", 2026, "2026~", ["ICON"]),
-    ("천소윤", "SAMSUNG", 2026, "2026~", ["ICON"]),
-    ("용경아", "KIWOOM", 2025, "2025~", ["ICON"]),
+    ("박소영", "SAMSUNG", "2025~", ["ICON"]),
+    ("우수한", "HANWHA", "2023~", ["ICON"]),
+    ("정희정", "DOOSAN", "2020~2024", ["ICON"]),
+    ("정희정", "KT", "2025~", ["ICON"]),
+    ("이연진", "SSG", "2024~", ["ICON"]),
+    ("이주은", "KIA", "2024", ["ICON", "LEGEND"]),
+    ("유세빈", "SAMSUNG", "2026~", ["ICON"]),
+    ("천소윤", "SAMSUNG", "2026~", ["ICON"]),
+    ("용경아", "KIWOOM", "2025~", ["ICON"]),
 ]
+CHEER_EXPECTED_COUNTS = {"LIVE_NORMAL": 124, "ICON": 46, "LEGEND": 15}
+
+
+def cheer_period_token(active_period):
+    """CatalogId용 활동 기간 토큰. "~"는 "-", 열린 끝은 "NOW", 복수 구간 구분자 "/"는 "+"로 바꾼다
+    (예: "2009~2011/2017~" -> "2009-2011+2017-NOW", "2024" -> "2024"). C# CheerleaderActivePeriod.ToIdToken()과
+    반드시 같은 규칙이어야 한다."""
+    segments = []
+    for segment in active_period.split("/"):
+        start, sep, end = segment.partition("~")
+        segments.append(f"{start}-{end or 'NOW'}" if sep else start)
+    return "+".join(segments)
+
+
+def _validate_cheer_legend():
+    """LEGEND 기준(은퇴/이적으로 2026년 현재 그 구단에 없음)을 기계적으로 검증한다 - 진행 중 활동 기간("~"로
+    끝남)이거나 2026 현역 명단에 같은 구단으로 있으면 위반."""
+    violations = []
+    for name, team, period, tiers in CHEER_ICON_LEGEND:
+        if "LEGEND" not in tiers:
+            continue
+        if period.endswith("~") or name in CHEER_LIVE_2026.get(team, []):
+            violations.append((name, team, period))
+    if violations:
+        raise ValueError(f"[TASK-KBO-175] LEGEND 선정 기준 위반(2026 현재 해당 구단 소속): {violations}")
+
+
+_validate_cheer_legend()
 
 cheerleaders_rows = []
 _seen_cheer_ids = set()
 
 
-def _add_cheer_row(name, team, year, tier_token, grade):
-    """[TASK-KBO-171 v4.0] 명령서 ID 규칙 `{Team}_{Year}_CHR_{Name}_{Tier}`을 그대로 발급한다.
-    `tier_token`은 ID에 그대로 박히는 문자열(LIVE 풀은 명령서 예시대로 "LIVE" 고정)이고, `grade`는
-    실제 CheerleaderGrade enum 값이다(ICON/LEGEND 풀은 tier_token==grade라 동일하지만, LIVE 풀만
-    ID상 "LIVE"와 실제 Grade("LIVE_NORMAL")가 다르다 - 아래 호출부 주석 참고). 같은 (team, year,
-    tier_token, name) 조합이 두 번 생성되면 원본 데이터의 연도 구간이 겹친다는 뜻이므로 조용히
-    덮어쓰지 않고 즉시 예외를 던진다."""
-    catalog_id = f"{team}_{year}_CHR_{name}_{tier_token}"
+def _add_cheer_row(name, team, active_period, tier_token, grade):
+    """CatalogId = `{Team}_{활동기간 토큰}_CHR_{Name}_{Tier}`(TASK-KBO-175). 이름+구단+활동 기간+티어가 곧 카드의
+    정체성이다. `tier_token`은 ID에 박히는 문자열(LIVE 풀은 "LIVE"), `grade`는 실제 CheerleaderGrade enum 값이다
+    (CheerleaderGrade에 "LIVE"가 없어 LIVE는 LIVE_NORMAL로 매핑 - TASK-KBO-171 판단 유지). 중복 ID는 원본 데이터
+    오류이므로 조용히 덮어쓰지 않고 즉시 예외를 던진다."""
+    catalog_id = f"{team}_{cheer_period_token(active_period)}_CHR_{name}_{tier_token}"
     if catalog_id in _seen_cheer_ids:
-        raise ValueError(f"[cheerleaders] 중복 CatalogId - CHEER_ICON_LEGEND의 연도 구간이 겹칩니다: {catalog_id}")
+        raise ValueError(f"[cheerleaders] 중복 CatalogId: {catalog_id}")
     _seen_cheer_ids.add(catalog_id)
 
     meta = CHEER_GRADE_META[grade]
     cheerleaders_rows.append([
         catalog_id, name, grade, meta["buff"], meta["economic"], meta["clutch"], meta["sentiment"],
-        team, year,
+        team, active_period,
     ])
 
 
-# 1) 2026 LIVE 풀. [판단 필요 - CheerleaderGrade에 없는 "LIVE" 처리] 명령서 원문은 `tier="LIVE"`라고
-#    쓰지만 Cheerleader.cs의 CheerleaderGrade enum에는 "LIVE"라는 이름의 값이 없다(LIVE_NORMAL/
-#    LIVE_EPIC만 존재) - Grade 컬럼에 그대로 "LIVE"를 쓰면 CheerleaderCatalog.ParseCsv()의
-#    `Enum.Parse(typeof(CheerleaderGrade), ...)`가 예외를 던져 해당 줄이 통째로 스킵된다(TASK-170에서
-#    겪은 "임포트 설정 불일치로 조용히 로드 실패"와 같은 클래스의 버그 - 이번엔 사전에 잡았다).
-#    명령서가 "확률 분기 없이 1장씩 확정 생성"이라고 명시했으므로(LIVE_NORMAL/LIVE_EPIC 확률 분배를
-#    요구하지 않음) 기본 라이브 등급인 LIVE_NORMAL로 고정 매핑했다 - CatalogId 문자열 자체는 명령서
-#    예시(`SAMSUNG_2026_CHR_이수진_ICON`)의 표기 관례를 그대로 따라 "_LIVE" 접미사를 쓴다.
 for _team, _names in CHEER_LIVE_2026.items():
     for _name in _names:
-        _add_cheer_row(_name, _team, 2026, "LIVE", "LIVE_NORMAL")
+        _add_cheer_row(_name, _team, CHEER_LIVE_PERIOD, "LIVE", "LIVE_NORMAL")
 
-# 2) 역대 ICON/LEGEND 풀 - [TASK-KBO-174] 이력당 대표 연도 1개 x 지정된 각 티어로 1장씩.
-for _name, _team, _rep_year, _active_range, _tiers in CHEER_ICON_LEGEND:
+for _name, _team, _active_period, _tiers in CHEER_ICON_LEGEND:
     for _tier in _tiers:
-        _add_cheer_row(_name, _team, _rep_year, _tier, _tier)
+        _add_cheer_row(_name, _team, _active_period, _tier, _tier)
+
+_cheer_counts = Counter(row[2] for row in cheerleaders_rows)
+if dict(_cheer_counts) != CHEER_EXPECTED_COUNTS:
+    raise ValueError(f"[TASK-KBO-175] 치어리더 카드 수 불일치: {dict(_cheer_counts)} (기대 {CHEER_EXPECTED_COUNTS})")
 
 # ---------------------------------------------------------------------------
 # 9. 파일 출력 (utf-8-sig - 명령서 6항, 엑셀/유니티 한글 깨짐 방지)
@@ -1609,14 +1723,18 @@ print(f"  - [TASK-172] DYNASTY 1인 1연도 정예 카드: {dynasty_card_count}�
 print(f"  - [TASK-172] FRANCHISE 신설 카드: {franchise_card_count}장 (구단-연도당 RP2/CP1/C1/SS·2B1)")
 _grade_totals = Counter(row[3] for rows in cards_by_team.values() for row in rows)
 print(f"  - [TASK-172] 등급별 총계: {dict(sorted(_grade_totals.items(), key=lambda kv: GRADE_ID[kv[0]]))}")
+_raised = [r for r in stat_recalibration_report if r[3] > r[2]]
+print(f"  - [TASK-175] 수상 장부 기반 기본 OVR 산정: 실존 {len(stat_recalibration_report)}명 "
+      f"(상향 {len(_raised)}명, 보정 전 평균 {sum(r[2] for r in stat_recalibration_report) / len(stat_recalibration_report):.1f} -> "
+      f"보정 후 {sum(r[3] for r in stat_recalibration_report) / len(stat_recalibration_report):.1f})")
 
 _cheer_grade_counts = {}
 _cheer_unique_names = set()
 for _row in cheerleaders_rows:
     _cheer_grade_counts[_row[2]] = _cheer_grade_counts.get(_row[2], 0) + 1
     _cheer_unique_names.add(_row[1])
-print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}장 (기획자 확정 로스터 기반, TASK-KBO-171 v4.0 - "
-      f"고유 인물 {len(_cheer_unique_names)}명, 연도별 카드로 분리 발급)")
+print(f"총 치어리더 카탈로그 수: {len(cheerleaders_rows)}장 (TASK-KBO-175 확정 로스터 - "
+      f"고유 인물 {len(_cheer_unique_names)}명, 소속 구단 + 활동 기간 단위 발급)")
 for _grade in ("LIVE_NORMAL", "LIVE_EPIC", "ICON", "LEGEND", "SEASON_LIMITED"):
     if _grade in _cheer_grade_counts:
         print(f"  - {_grade}: {_cheer_grade_counts[_grade]}장")

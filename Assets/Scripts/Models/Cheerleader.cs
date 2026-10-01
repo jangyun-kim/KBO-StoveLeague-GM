@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace KBOManager.Models
 {
@@ -95,10 +97,29 @@ namespace KBOManager.Models
         /// </summary>
         public int SentimentDefense = 0;
 
+        /// <summary>
+        /// [TASK-KBO-175] 이 카드의 소속 구단 - 활동 기간(ActivePeriod) 동안 소속했던 구단이며, 세트덱 기준 구단이
+        /// 이 구단일 때만 치어리더 경기 버프(시너지)가 발동한다(CheerleaderSynergy). 같은 사람이라도 구단 이력마다
+        /// 다른 카드다(예: 이아영 2020~2021 = KIA, 2022~2023 = NC). Team.None은 구단 제약 없는 개발용/식별 불가 카드.
+        /// </summary>
+        public Team Team = Team.None;
+
+        /// <summary>
+        /// [TASK-KBO-175] 활동 기간 원문("2020~2021", "2026~", "2009~2011/2017~", "2024"). 선수 시즌 카드처럼 단일
+        /// 대표 연도로 쪼개지 않는다 - 파싱/판정은 CheerleaderActivePeriod 참고.
+        /// </summary>
+        public string ActivePeriod;
+
+        /// <summary>UI 표기용 "구단 활동기간"(예: "KIA 2020~2021"). 구단 정보가 없으면 빈 문자열.</summary>
+        public string AffiliationLabel => Team == Team.None
+            ? string.Empty
+            : string.IsNullOrEmpty(ActivePeriod) ? Team.ToString() : $"{Team} {ActivePeriod}";
+
         public Cheerleader() { }
 
         public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier,
-            float economicBonusRate = 1.0f, int sentimentDefense = 0, string catalogId = null)
+            float economicBonusRate = 1.0f, int sentimentDefense = 0, string catalogId = null,
+            Team team = Team.None, string activePeriod = null)
         {
             InstanceId = instanceId;
             Name = name;
@@ -108,6 +129,92 @@ namespace KBOManager.Models
             EconomicBonusRate = economicBonusRate;
             SentimentDefense = sentimentDefense;
             CatalogId = catalogId;
+            Team = team;
+            ActivePeriod = activePeriod;
+        }
+    }
+
+    /// <summary>
+    /// [TASK-KBO-175] 치어리더 활동 기간 문자열 규칙. "시작~끝"(종료), "시작~"(진행 중), "연도"(단일 시즌),
+    /// 복수 구간은 "/"로 연결("2009~2011/2017~"). GenerateKBODatabase.py의 CHEER_ICON_LEGEND 표기와 같다.
+    /// </summary>
+    public static class CheerleaderActivePeriod
+    {
+        /// <summary>진행 중("시작~") 구간의 끝 연도로 쓰는 값.</summary>
+        public const int OngoingEndYear = int.MaxValue;
+
+        /// <summary>구간 목록으로 파싱한다. 해석할 수 없는 구간은 건너뛴다(빈 문자열이면 빈 목록).</summary>
+        public static List<(int Start, int End)> Parse(string activePeriod)
+        {
+            var ranges = new List<(int Start, int End)>();
+            if (string.IsNullOrWhiteSpace(activePeriod)) return ranges;
+
+            foreach (var rawSegment in activePeriod.Split('/'))
+            {
+                string segment = rawSegment.Trim();
+                int tilde = segment.IndexOf('~');
+                string startText = tilde < 0 ? segment : segment.Substring(0, tilde);
+                if (!int.TryParse(startText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int start)) continue;
+
+                int end = start;
+                if (tilde >= 0)
+                {
+                    string endText = segment.Substring(tilde + 1);
+                    if (endText.Length == 0) end = OngoingEndYear;
+                    else if (!int.TryParse(endText, NumberStyles.Integer, CultureInfo.InvariantCulture, out end)) continue;
+                }
+                ranges.Add((start, end));
+            }
+            return ranges;
+        }
+
+        /// <summary>year가 활동 기간 안에 있는가.</summary>
+        public static bool Contains(string activePeriod, int year)
+        {
+            foreach (var (start, end) in Parse(activePeriod))
+            {
+                if (year >= start && year <= end) return true;
+            }
+            return false;
+        }
+
+        /// <summary>CatalogId용 토큰 - "~"는 "-", 열린 끝은 "NOW", "/"는 "+"("2009~2011/2017~" -&gt; "2009-2011+2017-NOW").
+        /// GenerateKBODatabase.py cheer_period_token()과 반드시 같은 규칙이어야 한다.</summary>
+        public static string ToIdToken(string activePeriod)
+        {
+            if (string.IsNullOrWhiteSpace(activePeriod)) return string.Empty;
+
+            var segments = new List<string>();
+            foreach (var rawSegment in activePeriod.Split('/'))
+            {
+                string segment = rawSegment.Trim();
+                int tilde = segment.IndexOf('~');
+                if (tilde < 0)
+                {
+                    segments.Add(segment);
+                    continue;
+                }
+                string end = segment.Substring(tilde + 1);
+                segments.Add($"{segment.Substring(0, tilde)}-{(end.Length == 0 ? "NOW" : end)}");
+            }
+            return string.Join("+", segments);
+        }
+    }
+
+    /// <summary>
+    /// [TASK-KBO-175] 치어리더 구단 시너지 판정. 치어리더 카드는 활동 기간 동안 소속했던 구단(Cheerleader.Team)이
+    /// 세트덱 기준 구단(SetDeckResult.DeckTeam)과 같을 때만 경기 버프(ConditionBuff/ClutchMultiplier)가 발동한다 -
+    /// 이아영 KIA(2020~2021) 카드는 KIA 세트덱에서만, NC(2022~2023) 카드는 NC 세트덱에서만 발동한다.
+    /// 경기 결산 효과(EconomicBonusRate/SentimentDefense)는 구단과 무관한 상시 효과라 이 판정을 받지 않는다.
+    /// </summary>
+    public static class CheerleaderSynergy
+    {
+        public static bool IsActive(Cheerleader cheerleader, Team deckTeam)
+        {
+            if (cheerleader == null) return false;
+            // 구단 정보가 없는 카드(개발용 TEST/더미, 카탈로그로 식별할 수 없는 구버전 세이브)는 기존처럼 제약 없이 동작한다.
+            if (cheerleader.Team == Team.None) return true;
+            return cheerleader.Team == deckTeam;
         }
     }
 }

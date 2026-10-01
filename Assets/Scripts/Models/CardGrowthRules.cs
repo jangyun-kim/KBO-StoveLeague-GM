@@ -127,6 +127,30 @@ namespace KBOManager.Models
             _ => 0
         };
 
+        /// <summary>최상위 종결 등급(SIGNATURE/DYNASTY/RETIRED_NUMBER)의 PowerRank.</summary>
+        public const int TopTierPowerRank = 7;
+
+        /// <summary>
+        /// [TASK-KBO-175] 등급 "위상" 순번 - 영입 확률 등급 필터(ScoutManager)·강화 재료 경험치(UpgradeConstants)·
+        /// 최고급 뽑기 연출(ScoutUIController)이 등급 대소를 비교할 때 쓴다. 실전 성능 서열(GradeOvrBonus)과 같은
+        /// LIVE_NORMAL &lt; LIVE_EPIC &lt; ALLSTAR &lt; FRANCHISE &lt; TITLE_HOLDER &lt; GOLDEN_GLOVE &lt; SIGNATURE = DYNASTY =
+        /// RETIRED_NUMBER 순서다. Grade enum 정수값은 cards_*.csv grade_id/직렬화 호환 때문에 그대로 두므로
+        /// (RETIRED_NUMBER = 6이 SIGNATURE(7)/GOLDEN_GLOVE(8)보다 작다) 등급 비교에 (int)Grade를 직접 쓰지 말 것.
+        /// </summary>
+        public static int PowerRank(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 1,
+            Grade.LIVE_EPIC => 2,
+            Grade.ALLSTAR => 3,
+            Grade.FRANCHISE => 4,
+            Grade.TITLE_HOLDER => 5,
+            Grade.GOLDEN_GLOVE => 6,
+            Grade.SIGNATURE => TopTierPowerRank,
+            Grade.DYNASTY => TopTierPowerRank,
+            Grade.RETIRED_NUMBER => TopTierPowerRank,
+            _ => 0
+        };
+
         /// <summary>
         /// [TASK-KBO-174 LIVE 각성/초월 비용 완화] 각성 재료 1장이 주는 각성 포인트(초월 = 10포인트).
         /// 완전히 같은 카드 사본: LIVE 5 / 그 외 3. 같은 선수의 같은 등급 다른 카드: LIVE 2 / 그 외 1.

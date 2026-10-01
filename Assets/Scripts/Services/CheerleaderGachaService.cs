@@ -210,7 +210,9 @@ namespace KBOManager.Services
                 clutchMultiplier: template.ClutchMultiplier,
                 economicBonusRate: template.EconomicBonusRate,
                 sentimentDefense: template.SentimentDefense,
-                catalogId: template.CatalogId);
+                catalogId: template.CatalogId,
+                team: template.Team,                 // [TASK-KBO-175] 구단 시너지 판정용
+                activePeriod: template.ActivePeriod);
         }
 
         /// <summary>등급을 한 단계 낮춘다. LIVE_NORMAL보다 더 내려갈 곳이 없으면 null.</summary>

@@ -1,10 +1,10 @@
 ---
 문서명: 카드 등급 정책
-버전: v0.5
+버전: v0.6
 상태: Active
 최종 수정일: 2026-10-01
 담당자: 김장윤
-관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
+관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
 ---
 
 # 1. 목적
@@ -266,6 +266,8 @@ PDF 해설 요지:
 
 ## 11-3. 치어리더 ICON/LEGEND 대표 연도 단일 생성
 
+> **[TASK-KBO-175로 대체]** 단일 대표 연도 방식은 폐지됐다 - 현행은 12-3절(소속 구단 + 활동 기간, 185장).
+
 연도 구간 전개를 폐지하고 이력당 대표 연도 1장만 생성한다(사용자 확정 46개 이력 그대로). 결과: **LIVE_NORMAL 124 + ICON 46 + LEGEND 14 = 184장**(465 → 184). 명령서의 "LEGEND 15장 / 합계 185장"과 1장 차이가 나는데, 제공된 목록의 LEGEND 지정 이력이 14건이기 때문이다(이전 데이터에서 두 튜플이던 이주희 NC 2018~2021/2025~가 한 건으로 합쳐진 것이 원인으로 보인다 - 15번째 LEGEND 대상 확인 필요, DCL-145).
 
 ## 11-4. 카드 등급별 실전 능력치(base_ovr) 연동
@@ -281,7 +283,7 @@ PDF 해설 요지:
 | 오승환 | - | 57 → 76 | 59 → 78 | - | 64 → 84 | 64 → 84 | 64 → 84 |
 
   LIVE 초월(97)은 같은 선수 ALLSTAR 9각(100)보다 낮다 - "LIVE 초월 ≤ AS 9각" 제약 충족.
-- **[주의] 선수 간 비교는 보장되지 않는다:** 역대 실존 인물 상당수(오승환 기본 54, 최형우 DYN 56 등)는 등록 당시 재능치(z)가 무작위로 배정돼, 레전드 종결 카드가 평범한 선수의 LIVE보다 약할 수 있다. 실존 레전드 재능치 보정은 후속 과제다(DCL-145).
+- **[주의] 선수 간 비교는 보장되지 않는다:** 역대 실존 인물 상당수(오승환 기본 54, 최형우 DYN 56 등)는 등록 당시 재능치(z)가 무작위로 배정돼, 레전드 종결 카드가 평범한 선수의 LIVE보다 약할 수 있다. 실존 레전드 재능치 보정은 후속 과제다(DCL-145). → **[TASK-KBO-175 해결]** 12-1절(수상 장부 기반 1단계 산정). 위 표의 수치는 TASK-174 시점 값이며 현행 값은 12-1절 참고.
 
 ## 11-5. LIVE 각성/초월 비용 확정
 
@@ -293,3 +295,57 @@ PDF 해설 요지:
 
 무과금 연간 LIVE 약 10장 초월 = 사본 약 20장. 이 경우 27인에 LIVE 초월 10장 + 나머지 LIVE 6각 7장 + 무과금 한계 프리미엄 10장(풀성장)이면 10×8 + 7×6 + (SIG 4×5 + TH 2×6 + AS 4×7) = 80 + 42 + 60 = **182P**, SIG 4장 대신 LIVE 6각 4장을 쓰면 186P(핵심 185P), 나아가 프리미엄을 AS 9각 4장만 남기고 나머지 LIVE 13장을 9각까지 키우면 10×8 + 13×7 + 4×7 = 199P(핵심 190P) - 편성과 LIVE 육성도에 따라 **185~190P 핵심 구간**에 도달한다. 연간 LIVE 영입 횟수(재화 수급량) 자체는 아직 정의되지 않아 사본 20장 확보 가능 여부는 경제 설계에서 확인해야 한다.
 
+# 12. 실존 선수 스탯 2단계 산정, 영구결번 위상 순번, 치어리더 구단·활동기간 시너지 (TASK-KBO-175)
+
+## 12-1. 선수 스탯 2단계 산정
+
+- **1단계 - 성적/위상 기반 기본 OVR(`GenerateKBODatabase.py` 5-L절):** 저장소의 스탯 기준은 z-score(`OVR = z×15+50`)이고, 실존 선수의 시즌 원성적은 저장소에 없다. 대신 이 스크립트가 실시간 조회로 확정한 **수상 장부**(골든글러브/개인 타이틀/올스타 BEST 12/영구결번/시그니처/왕조 - 실제 발급 카드와 1:1)가 유일한 검증된 성적 기준이라 이를 쓴다.
+  - `기본 OVR = 최고 위상 하한 + round(√(나머지 수상 포인트))`, 상한 95
+  - 위상 하한: SIG·DYN·RN 88 / GG 82 / TH 78 / AS 73. 수상 포인트(시즌당): SIG·DYN·RN 3 / GG 2 / TH 1.5 / AS 0.5
+  - 하한 88의 근거: 88 + 10 = 98 = 가상 선수 LIVE 최댓값 → 실존 레전드의 종결 카드는 어떤 가상 LIVE에도 밀리지 않는다.
+  - `REAL_PLAYERS_2025`의 수기 z(2025 성적 직접 조사값, 예: 디아즈 2.6 = 89)가 더 높으면 그 값을 쓴다. 수상 이력이 없는 실존 인물(2026 로스터 일반 선수)과 가상 선수는 바꾸지 않는다.
+- **2단계 - 시즌 등급 보정:** 기존 `GRADE_OVR_BONUS`(LIVE_NORMAL +0, LIVE_EPIC +1, AS +3, FRA +4, TH +5, GG +7, SIG/DYN/RN +10)를 1단계 값 위에 가산 → `base_ovr`. 런타임은 11-4절 그대로(카드 세부 스탯 균등 이동).
+- **보존:** 1단계는 난수를 쓰지 않고 등록이 끝난 뒤 z만 덮어쓴다 - `player_id`(구자욱 PLY_004038 등)·`card_id`·카드 연도/등급 추첨 전부 불변(재생성 diff 검증: players.csv ID·이름·연도·포지션 동일, cards_*.csv의 card_id 순서 동일, 변경 컬럼은 `base_ovr` 1,252장뿐).
+
+| 선수 | 기본 OVR 전 → 후 | 대표 종결 카드 base_ovr 전 → 후 |
+| :-- | :-: | :-- |
+| 이승엽 | 71 → 94 | RN'99 81 → 104 |
+| 선동열 | 76 → 93 | RN'93 86 → 103 |
+| 최형우 | 46 → 93 | DYN'14 56 → 103 |
+| 양준혁 | 53 → 93 | RN'98 63 → 103 |
+| 이종범 | 67 → 93 | RN'93 77 → 103 |
+| 이대호 | 78 → 93 | RN'10 88 → 103 |
+| 양의지 | 84 → 93 | SIG'20 94 → 103 |
+| 오승환 | 54 → 92 | RN'12 64 → 102 |
+| 김태균 | 47 → 92 | RN'12 57 → 102 |
+| 구자욱 | 78 → 92 | SIG'26 88 → 102 |
+| 송진우 | 54 → 91 | RN'02 64 → 101 |
+| 박철순 | 51 → 90 | RN'82 61 → 100 |
+| 최정 | 69 → 87 | GG'22 76 → 94 |
+| 류현진 | 71 → 85 | GG'10 78 → 92 |
+
+- **역전 해소 검증:** 실존 SIG/DYN/RN 96장 중 가상 선수 LIVE 중앙값(65)보다 낮은 카드 14 → 0장, LIVE 상위 1%(87)보다 낮은 카드 82 → 0장, LIVE 최댓값(98)보다 낮은 카드 92 → 0장(최저 98). 같은 선수 등급 서열 위반 0건.
+- **동일 선수 비교(명함, 11-4절 표 갱신):** 구자욱 LIVE 92 < AS 95 < TH 97 < GG 99 < SIG 102 / 선동열 TH 98 < GG 100 < SIG = DYN = RN 103 / 오승환 AS 95 < TH 97 < SIG = DYN = RN 102.
+- 실존 359명 평균 기본 OVR 65.9 → 81.6(분포 73~94, 상한 95 도달 0명).
+
+## 12-2. 영구결번(RETIRED_NUMBER) 대표 연도 확정 + 위상 순번
+
+- 11-2절 18장의 대표 연도를 정식 확정했다(변경 없음).
+- **위상 순번 `CardGrowthRules.PowerRank()`:** LIVE_NORMAL 1 < LIVE_EPIC 2 < ALLSTAR 3 < FRANCHISE 4 < TITLE_HOLDER 5 < GOLDEN_GLOVE 6 < **SIGNATURE = DYNASTY = RETIRED_NUMBER 7**. `Grade` enum 정수(RN 6 < SIG 7 < GG 8 < DYN 9)는 cards_*.csv `grade_id`/직렬화 호환 때문에 그대로 두고, 등급 대소 비교 지점만 이 순번으로 바꿨다.
+
+| 적용 지점 | 변경 전(enum 정수) | 변경 후(PowerRank) |
+| :-- | :-- | :-- |
+| `ScoutManager.RollGradeAtLeast/AtMost` (영입 확률 등급 필터) | RN이 SIG/GG보다 하위로 필터링 | SIG/DYN과 동급 |
+| `UpgradeConstants.GetMaterialExp` (재료 경험치, 1단계당 ±300) | RN 재료 → SIG 대상 -300, DYN 대상 -900 | 셋 사이 0(동급). GG는 SIG/DYN/RN보다 1단계 아래 |
+| `UpgradeConstants.RequiredExpBaseByGrade` | RN 1850 | RN 2800(= DYNASTY) |
+| `ScoutUIController` 최고급 뽑기 연출 | 전용 랭크표(RN < GG < SIG) | PowerRank - RN도 최고급 연출 |
+
+- **부수 효과(확인 필요):** 재료 경험치에서 GG는 enum 기준 SIG보다 1단계 위(8 vs 7)였으나 이제 1단계 아래, DYN은 SIG보다 2단계 위(9)였으나 이제 동급이다 - 실전 성능 서열(GG +7 < SIG/DYN/RN +10)에 맞춘 결과다. 카드 별(성급) 표시(RN 5성 검정)는 시각 연출이라 바꾸지 않았다.
+
+## 12-3. 치어리더 '소속 구단 + 활동 기간' 시너지 체제
+
+- **단일 대표 연도 폐지:** 치어리더 카드는 연도('24)로 쪼개지 않는다. 구단 이력마다 카드 1장(티어별)이며 `Team` + `ActivePeriod`를 가진다. 스키마/CatalogId는 `11_data_dictionary.md` B-2절.
+- **시너지 판정(`CheerleaderSynergy.IsActive`):** 카드의 `Team`(활동 기간 동안 소속 구단) == 그 경기 세트덱 기준 구단(`SetDeckResult.DeckTeam`)일 때만 경기 버프(ConditionBuff/ClutchMultiplier)가 발동한다. 예: 이아영 `KIA 2020~2021` 카드는 KIA 세트덱에서만, `NC 2022~2023` 카드는 NC 세트덱에서만. 경기 결산 효과(EconomicBonusRate/SentimentDefense)는 구단 무관 상시 효과로 유지. 기존 조건(유저 팀 홈 경기)은 그대로 AND로 걸린다. 구단 정보가 없는 카드(개발용 TEST/더미)는 기존처럼 제약 없음.
+- 적용 지점: `GameManager.ResolveCheerleaderConditionBuff/ClutchMultiplier(…, deckTeam)` ← `PlayBallController`/`LeagueManager`/`PostSeasonManager`의 `BuildTeamPowerModifiers`. UI: 시너지 패널에 "KIA 2020~2021 시너지 발동/미발동", 치어리더 슬롯에 "LEGEND · KIA 2020~2021".
+- **구성 185장 = LIVE 124 + ICON 46 + LEGEND 15** (11-3절 184장에서 정정). LEGEND 기준: 당대 레전드급 인기 + 은퇴/이적으로 2026년 현재 그 구단에 없음 - 서현숙(두산)·이주희(NC)·하지원(한화)은 2026 현역이라 LEGEND 제외, 남궁혜미(LG)·이연주(삼성)·김한나(KIA)·김이서(LG) LEGEND 추가. 생성 스크립트가 "진행 중 활동 기간이거나 2026 현역 명단에 같은 구단으로 있으면 LEGEND 위반"을 기계 검증한다.
+- **세이브 호환:** 구 단일 연도 ID(TASK-171~174) 184개 중 181개는 `CheerleaderCatalog.Hydrate()`가 새 카드로 매핑(같은 구단·이름·티어 + 그 연도를 포함하는 활동 기간). LEGEND에서 빠진 3개(서현숙/이주희/하지원 LEGEND)는 매핑 대상이 없어 저장된 ID·등급·수치를 그대로 보존하고, 구 ID 접두어에서 구단만 복원해 시너지 판정이 가능하게 했다.

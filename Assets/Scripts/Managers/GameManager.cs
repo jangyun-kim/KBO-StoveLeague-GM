@@ -321,29 +321,38 @@ namespace KBOManager.Managers
         {
             var equipped = new Cheerleader("SELFCHECK", "SelfCheck", CheerleaderGrade.TEST, conditionBuff: 3, clutchMultiplier: 1.2f);
 
-            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-01(유저 홈+장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, equipped)}(기대 3), " +
-                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, equipped)}(기대 1.2)");
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-01(유저 홈+장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, equipped, Team.None)}(기대 3), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, equipped, Team.None)}(기대 1.2)");
 
-            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-02(유저 홈+미장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, null)}(기대 0), " +
-                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, null)}(기대 1)");
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-02(유저 홈+미장착): ConditionBuff={ResolveCheerleaderConditionBuff(true, null, Team.None)}(기대 0), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(true, null, Team.None)}(기대 1)");
 
-            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-03(유저 원정+장착): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped)}(기대 0), " +
-                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(false, equipped)}(기대 1)");
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-03(유저 원정+장착): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped, Team.None)}(기대 0), " +
+                $"ClutchMultiplier={ResolveCheerleaderClutchMultiplier(false, equipped, Team.None)}(기대 1)");
 
             // AC-04(AI 홈): 팀 식별 자체는 각 매니저의 BuildTeamPowerModifiers가 책임지고, 이 정적
             // 함수는 그 판별 결과(isUserTeamHome)만 입력으로 받는다 - "AI 팀"이라는 조건은 여기서
             // isUserTeamHome=false로 표현되며 입력 형태상 AC-03과 동일하다(둘 다 0/1.0 기대).
-            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-04(AI 홈, isUserTeamHome=false로 표현): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped)}(기대 0)");
+            Debug.Log($"[TASK-KBO-048 SelfCheck] AC-04(AI 홈, isUserTeamHome=false로 표현): ConditionBuff={ResolveCheerleaderConditionBuff(false, equipped, Team.None)}(기대 0)");
 
             var nanCheer = new Cheerleader("SELFCHECK_NAN", "NaN", CheerleaderGrade.TEST, 0, float.NaN);
             var infCheer = new Cheerleader("SELFCHECK_INF", "Inf", CheerleaderGrade.TEST, 0, float.PositiveInfinity);
             var zeroCheer = new Cheerleader("SELFCHECK_ZERO", "Zero", CheerleaderGrade.TEST, 0, 0f);
             var negCheer = new Cheerleader("SELFCHECK_NEG", "Neg", CheerleaderGrade.TEST, 0, -5f);
             Debug.Log("[TASK-KBO-048 SelfCheck] AC-06(방어적 설계, 모두 기대값 1): " +
-                $"NaN->{ResolveCheerleaderClutchMultiplier(true, nanCheer)}, " +
-                $"Infinity->{ResolveCheerleaderClutchMultiplier(true, infCheer)}, " +
-                $"0->{ResolveCheerleaderClutchMultiplier(true, zeroCheer)}, " +
-                $"음수->{ResolveCheerleaderClutchMultiplier(true, negCheer)}");
+                $"NaN->{ResolveCheerleaderClutchMultiplier(true, nanCheer, Team.None)}, " +
+                $"Infinity->{ResolveCheerleaderClutchMultiplier(true, infCheer, Team.None)}, " +
+                $"0->{ResolveCheerleaderClutchMultiplier(true, zeroCheer, Team.None)}, " +
+                $"음수->{ResolveCheerleaderClutchMultiplier(true, negCheer, Team.None)}");
+
+            // [TASK-KBO-175] 구단 시너지: 이아영 KIA(2020~2021) 카드는 KIA 세트덱에서만 발동한다.
+            var kiaCheer = new Cheerleader("SELFCHECK_KIA", "이아영", CheerleaderGrade.LEGEND, conditionBuff: 4, clutchMultiplier: 1.15f,
+                team: Team.KIA, activePeriod: "2020~2021");
+            Debug.Log("[TASK-KBO-175 SelfCheck] AC-07(구단 시너지): " +
+                $"KIA 세트덱 ConditionBuff={ResolveCheerleaderConditionBuff(true, kiaCheer, Team.KIA)}(기대 4), " +
+                $"NC 세트덱 ConditionBuff={ResolveCheerleaderConditionBuff(true, kiaCheer, Team.NC)}(기대 0), " +
+                $"NC 세트덱 Clutch={ResolveCheerleaderClutchMultiplier(true, kiaCheer, Team.NC)}(기대 1), " +
+                $"활동기간 2021 포함={CheerleaderActivePeriod.Contains(kiaCheer.ActivePeriod, 2021)}(기대 True)/2022={CheerleaderActivePeriod.Contains(kiaCheer.ActivePeriod, 2022)}(기대 False)");
         }
 #endif
 
@@ -544,9 +553,11 @@ namespace KBOManager.Managers
         /// 쪽 가산분만 계산해서 넘긴다. 치어리더 효과는 Player.CalculateOVR()/CalculateTeamOVR()
         /// (영구·표시용 구단 OVR)에는 절대 반영되지 않는다(Cheerleader.cs 클래스 주석 참고).
         /// </summary>
-        public static int ResolveCheerleaderConditionBuff(bool isUserTeamHome, Cheerleader equippedCheerleader)
+        /// <remarks>[TASK-KBO-175] deckTeam = 그 경기 세트덱의 기준 구단(SetDeckResult.DeckTeam). 치어리더 카드의 소속
+        /// 구단(활동 기간 동안 소속했던 구단)이 deckTeam과 다르면 구단 시너지 미발동으로 0이다(CheerleaderSynergy).</remarks>
+        public static int ResolveCheerleaderConditionBuff(bool isUserTeamHome, Cheerleader equippedCheerleader, Team deckTeam)
         {
-            if (!isUserTeamHome || equippedCheerleader == null) return 0;
+            if (!isUserTeamHome || !CheerleaderSynergy.IsActive(equippedCheerleader, deckTeam)) return 0;
             return equippedCheerleader.ConditionBuff;
         }
 
@@ -560,9 +571,10 @@ namespace KBOManager.Managers
         /// [TBD] 코치 등 다른 시너지와 이 값이 중첩될 때의 합산 방식/상한선은 아직 기획 확정 전이다 -
         /// 지금은 치어리더 단독 값만 정규화해서 반환한다(7항 경계 조건).
         /// </summary>
-        public static float ResolveCheerleaderClutchMultiplier(bool isUserTeamHome, Cheerleader equippedCheerleader)
+        /// <remarks>[TASK-KBO-175] 구단 시너지 미발동(치어리더 소속 구단 != deckTeam)이면 중립값.</remarks>
+        public static float ResolveCheerleaderClutchMultiplier(bool isUserTeamHome, Cheerleader equippedCheerleader, Team deckTeam)
         {
-            if (!isUserTeamHome || equippedCheerleader == null) return NeutralClutchMultiplier;
+            if (!isUserTeamHome || !CheerleaderSynergy.IsActive(equippedCheerleader, deckTeam)) return NeutralClutchMultiplier;
 
             float raw = equippedCheerleader.ClutchMultiplier;
             if (float.IsNaN(raw) || float.IsInfinity(raw)) return NeutralClutchMultiplier;

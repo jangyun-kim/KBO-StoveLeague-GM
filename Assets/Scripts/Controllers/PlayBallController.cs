@@ -112,8 +112,9 @@ namespace KBOManager.Controllers
             bool isUserTeamHome = isUserTeam && isHome;
             var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
             int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
-                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader);
-            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader);
+                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
+            // [TASK-KBO-175] 치어리더 소속 구단 == 세트덱 기준 구단일 때만 시너지(경기 버프) 발동.
+            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
 
             return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, clutchMultiplier);
         }

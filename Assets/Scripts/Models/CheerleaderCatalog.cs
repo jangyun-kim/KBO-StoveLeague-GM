@@ -22,13 +22,22 @@ namespace KBOManager.Models
     /// 복잡한 외부 CSV 라이브러리를 쓰지 않고 string.Split(',') 수준의 단순 파서만 쓴다(명령서 5항) -
     /// 따라서 값에 콤마가 포함된 필드(따옴표 이스케이프 등)는 지원하지 않는다. 현재 카탈로그 데이터는
     /// 콤마를 포함하지 않으므로 문제가 없다.
+    ///
+    /// [TASK-KBO-175] 8·9번째 컬럼 Team/ActivePeriod를 읽는다(필수 7컬럼은 그대로 - 두 컬럼이 없는 행도 구단 정보
+    /// 없이 로드된다). CatalogId = `{Team}_{활동기간 토큰}_CHR_{Name}_{Tier}`(예: KIA_2020-2021_CHR_이아영_LEGEND).
+    /// TASK-171~174의 단일 연도 ID(`KIA_2020_CHR_이아영_LEGEND`)로 저장된 세이브는 Hydrate()가 같은 구단·이름·티어 +
+    /// 그 연도를 포함하는 활동 기간의 새 카드로 매핑한다.
     /// </summary>
     public static class CheerleaderCatalog
     {
         private const string ResourcePath = "Data/cheerleaders";
         private const int ExpectedColumnCount = 7;
+        private const int TeamColumn = 7;
+        private const int ActivePeriodColumn = 8;
+        private const string CatalogIdSeparator = "_CHR_";
 
         private static Dictionary<CheerleaderGrade, List<Cheerleader>> templatesByGrade;
+        private static Dictionary<string, Cheerleader> templatesById;
 
         /// <summary>
         /// CSV를 읽어 등급별 템플릿 목록을 캐싱한다. 이미 초기화되어 있으면 아무 것도 하지 않는다
@@ -42,6 +51,7 @@ namespace KBOManager.Models
             if (templatesByGrade != null) return;
 
             templatesByGrade = new Dictionary<CheerleaderGrade, List<Cheerleader>>();
+            templatesById = new Dictionary<string, Cheerleader>();
 
             var csvAsset = Resources.Load<TextAsset>(ResourcePath);
             if (csvAsset == null)
@@ -85,6 +95,8 @@ namespace KBOManager.Models
                     float economicBonusRate = float.Parse(columns[4].Trim(), CultureInfo.InvariantCulture);
                     float clutchMultiplier = float.Parse(columns[5].Trim(), CultureInfo.InvariantCulture);
                     int sentimentDefense = int.Parse(columns[6].Trim(), CultureInfo.InvariantCulture);
+                    Team team = columns.Length > TeamColumn ? ParseTeam(columns[TeamColumn]) : Team.None;
+                    string activePeriod = columns.Length > ActivePeriodColumn ? columns[ActivePeriodColumn].Trim() : null;
 
                     var template = new Cheerleader
                     {
@@ -95,7 +107,16 @@ namespace KBOManager.Models
                         EconomicBonusRate = economicBonusRate,
                         ClutchMultiplier = clutchMultiplier,
                         SentimentDefense = sentimentDefense,
+                        Team = team,
+                        ActivePeriod = string.IsNullOrEmpty(activePeriod) ? null : activePeriod,
                     };
+
+                    if (templatesById.ContainsKey(catalogId))
+                    {
+                        Debug.LogWarning($"[CheerleaderCatalog] {i + 1}번째 줄의 CatalogId가 중복되어 건너뜁니다: '{catalogId}'");
+                        continue;
+                    }
+                    templatesById[catalogId] = template;
 
                     if (!templatesByGrade.TryGetValue(grade, out var list))
                     {
@@ -125,6 +146,90 @@ namespace KBOManager.Models
             return templatesByGrade.TryGetValue(grade, out var list)
                 ? new List<Cheerleader>(list)
                 : new List<Cheerleader>();
+        }
+
+        /// <summary>[TASK-KBO-175] CatalogId로 카탈로그 원본을 찾는다. 현행 ID에 없으면 TASK-171~174 단일 연도 ID로
+        /// 해석해 같은 구단·이름·티어 + 그 연도를 포함하는 활동 기간의 카드를 찾는다. 못 찾으면 null.</summary>
+        public static Cheerleader FindTemplate(string catalogId)
+        {
+            if (string.IsNullOrEmpty(catalogId)) return null;
+            if (templatesById == null) Initialize();
+            if (templatesById.TryGetValue(catalogId, out var exact)) return exact;
+
+            if (!TryParseLegacyCatalogId(catalogId, out Team team, out int year, out string name, out string tier)) return null;
+
+            Cheerleader fallback = null;
+            int candidateCount = 0;
+            foreach (var template in templatesById.Values)
+            {
+                if (template.Team != team || template.Name != name || TierToken(template.CatalogId) != tier) continue;
+                if (CheerleaderActivePeriod.Contains(template.ActivePeriod, year)) return template;
+                fallback = template;
+                candidateCount++;
+            }
+            return candidateCount == 1 ? fallback : null;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-175] 세이브에서 복원한 치어리더 인스턴스에 현행 카탈로그의 CatalogId/Team/ActivePeriod를 채운다
+        /// (구버전 세이브에는 Team/ActivePeriod 필드가 없고 CatalogId도 단일 연도 형식이다). 버프 수치·등급·InstanceId는
+        /// 저장된 값을 그대로 둔다. 카탈로그로 식별할 수 없으면(예: 기준 개편으로 LEGEND에서 빠진 서현숙 LEGEND) ID와
+        /// 수치는 보존하고, 구버전 ID 접두어에서 구단만 복원해 시너지 판정이 가능하게 한다.
+        /// </summary>
+        public static void Hydrate(Cheerleader instance)
+        {
+            if (instance == null || string.IsNullOrEmpty(instance.CatalogId)) return;
+
+            var template = FindTemplate(instance.CatalogId);
+            if (template != null)
+            {
+                instance.CatalogId = template.CatalogId;
+                instance.Team = template.Team;
+                instance.ActivePeriod = template.ActivePeriod;
+                return;
+            }
+
+            if (instance.Team == Team.None && TryParseLegacyCatalogId(instance.CatalogId, out Team legacyTeam, out _, out _, out _))
+            {
+                instance.Team = legacyTeam;
+            }
+        }
+
+        /// <summary>CSV Team 토큰("KIA"/"SAMSUNG"/"HANWHA" 등)을 Team enum으로(대소문자 무시). 해석 불가면 Team.None.</summary>
+        private static Team ParseTeam(string token)
+        {
+            string trimmed = token?.Trim();
+            return !string.IsNullOrEmpty(trimmed) && Enum.TryParse(trimmed, ignoreCase: true, out Team team) ? team : Team.None;
+        }
+
+        /// <summary>CatalogId 끝의 티어 토큰("LIVE"/"ICON"/"LEGEND").</summary>
+        private static string TierToken(string catalogId)
+        {
+            int index = catalogId?.LastIndexOf('_') ?? -1;
+            return index < 0 ? string.Empty : catalogId.Substring(index + 1);
+        }
+
+        /// <summary>TASK-171~174 단일 연도 ID `{Team}_{Year}_CHR_{Name}_{Tier}`를 해석한다(Year가 4자리 숫자일 때만).</summary>
+        private static bool TryParseLegacyCatalogId(string catalogId, out Team team, out int year, out string name, out string tier)
+        {
+            team = Team.None;
+            year = 0;
+            name = null;
+            tier = null;
+
+            int separator = catalogId.IndexOf(CatalogIdSeparator, StringComparison.Ordinal);
+            if (separator < 0) return false;
+
+            var head = catalogId.Substring(0, separator).Split('_');
+            string tail = catalogId.Substring(separator + CatalogIdSeparator.Length);
+            int tierIndex = tail.LastIndexOf('_');
+            if (head.Length != 2 || tierIndex <= 0 || head[1].Length != 4) return false;
+            if (!int.TryParse(head[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year)) return false;
+
+            team = ParseTeam(head[0]);
+            name = tail.Substring(0, tierIndex);
+            tier = tail.Substring(tierIndex + 1);
+            return team != Team.None;
         }
     }
 }

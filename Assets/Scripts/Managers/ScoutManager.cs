@@ -250,10 +250,11 @@ namespace KBOManager.Managers
 
         private Grade RollGradeAtLeast(Grade minimumGrade)
         {
-            // Grade enum 정수값이 04_card_grade_policy.md 확정 서열(SEASON=0 ~ DYNASTY=7)과 완전히
-            // 일치하도록 재배치되었으므로(TASK-KBO-032-IMPLEMENT), 이 정수 대소 비교(>=)는 곧 "등급
-            // 랭크가 minimumGrade 이상인가"와 정확히 같은 의미가 되어 별도 랭크 테이블 없이도 안전하다.
-            var eligible = gradeDropRates.Where(g => g.Grade >= minimumGrade).ToList();
+            // [TASK-KBO-175] Grade enum 정수 비교 대신 위상 순번(CardGrowthRules.PowerRank)으로 비교한다 -
+            // enum 정수로는 RETIRED_NUMBER(6)가 SIGNATURE/GOLDEN_GLOVE보다 낮게 판정돼 "SIGNATURE 이상 확정"
+            // 같은 필터에서 최상위 RN이 빠지는 문제가 있었다.
+            int minimumRank = CardGrowthRules.PowerRank(minimumGrade);
+            var eligible = gradeDropRates.Where(g => CardGrowthRules.PowerRank(g.Grade) >= minimumRank).ToList();
             if (eligible.Count == 0) return minimumGrade; // 확률표에 해당 등급 이상이 없으면 최소 등급으로 확정
 
             float total = eligible.Sum(g => g.RatePercent);
@@ -276,7 +277,8 @@ namespace KBOManager.Managers
         /// 분리) 상한선을 둔다.</summary>
         private Grade RollGradeAtMost(Grade maximumGrade)
         {
-            var eligible = gradeDropRates.Where(g => g.Grade <= maximumGrade).ToList();
+            int maximumRank = CardGrowthRules.PowerRank(maximumGrade); // [TASK-KBO-175] 위상 순번 비교
+            var eligible = gradeDropRates.Where(g => CardGrowthRules.PowerRank(g.Grade) <= maximumRank).ToList();
             if (eligible.Count == 0) return maximumGrade;
 
             float total = eligible.Sum(g => g.RatePercent);

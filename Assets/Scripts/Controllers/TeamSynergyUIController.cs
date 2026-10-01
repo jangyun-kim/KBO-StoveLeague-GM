@@ -34,26 +34,26 @@ namespace KBOManager.Controllers
 
             var gm = GameManager.Instance;
 
-            RefreshSetDeckText(gm);
-            RefreshCheerleaderText(gm);
-            RefreshFanSentimentText(gm);
-        }
-
-        private void RefreshSetDeckText(GameManager gm)
-        {
-            if (setDeckText == null) return;
-
             // GameManager.CalculateTeamOVR()가 favoriteTeam을 CalculateSynergy()에 넘길 때 쓰는 것과
             // 동일한 변환: Team.None(온보딩 이전 등 미지정 상태)이면 null을 넘겨 "로스터 내 최다 구단
             // 기준" 경로를 그대로 태운다.
             string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
             var setDeck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favoriteTeamName, gm.SetDeckSelection);
 
+            RefreshSetDeckText(setDeck);
+            RefreshCheerleaderText(gm, setDeck);
+            RefreshFanSentimentText(gm);
+        }
+
+        private void RefreshSetDeckText(SetDeckResult setDeck)
+        {
+            if (setDeckText == null) return;
+
             // [TASK-KBO-172] 27인 세트덱 스코어 체계 - "현재 스코어 / 모든 능력치 누적 / 다음 목표 단계"를 한 줄로.
             setDeckText.text = SetDeckUIText.Summary(setDeck);
         }
 
-        private void RefreshCheerleaderText(GameManager gm)
+        private void RefreshCheerleaderText(GameManager gm, SetDeckResult setDeck)
         {
             if (cheerleaderText == null) return;
 
@@ -65,7 +65,16 @@ namespace KBOManager.Controllers
             }
 
             int bonusPercent = Mathf.RoundToInt(cheerleader.EconomicBonusRate * 100f);
-            cheerleaderText.text = $"장착됨 (관중 수익 {bonusPercent}%)";
+            string text = $"장착됨 (관중 수익 {bonusPercent}%)";
+
+            // [TASK-KBO-175] 구단 시너지 - 치어리더 소속 구단(활동 기간 기준)이 세트덱 기준 구단과 같을 때만 경기 버프 발동.
+            if (cheerleader.Team != Team.None)
+            {
+                text += CheerleaderSynergy.IsActive(cheerleader, setDeck.DeckTeam)
+                    ? $" · {cheerleader.AffiliationLabel} 시너지 발동"
+                    : $" · 시너지 미발동({cheerleader.AffiliationLabel} ≠ 세트덱 {setDeck.DeckTeam})";
+            }
+            cheerleaderText.text = text;
         }
 
         private void RefreshFanSentimentText(GameManager gm)

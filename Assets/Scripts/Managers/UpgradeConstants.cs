@@ -10,9 +10,9 @@ namespace KBOManager.Managers
     ///
     /// 등급 순서는 `Player.cs`(`GradeBaseCostFor`)와 `Types.cs`의 `Grade` enum 정수값(TASK-KBO-155
     /// 재배치 이후, [TASK-KBO-172] FRANCHISE 삽입으로 LIVE_NORMAL=1 ~ DYNASTY=9)이 이미 합의하고 있는 "파워 서열"을 그대로 따른다
-    /// (`(int)Grade`를 순위로 직접 사용) - `ScoutUIController.GradeRank`(단순 "최고급 뽑기 연출"
-    /// 임계값 판정용, GOLDEN_GLOVE/SIGNATURE 순서가 이와 다름)는 이 파일과 무관한 별개 용도라
-    /// 참고하지 않았다.
+    /// [TASK-KBO-175] 재료 경험치의 등급 차이는 `(int)Grade` 대신 `CardGrowthRules.PowerRank`(위상 순번 -
+    /// SIGNATURE = DYNASTY = RETIRED_NUMBER 최상위)로 계산한다. enum 정수값은 CSV/직렬화 호환 때문에 그대로라
+    /// RETIRED_NUMBER(6)가 SIGNATURE(7)보다 낮게 계산되는 문제가 있었다.
     /// </summary>
     public static class UpgradeConstants
     {
@@ -31,7 +31,7 @@ namespace KBOManager.Managers
                 { Grade.ALLSTAR, 1350 },
                 { Grade.FRANCHISE, 1500 },      // [TASK-KBO-172 신설] ALLSTAR~TITLE_HOLDER 단조 증가 유지
                 { Grade.TITLE_HOLDER, 1700 },
-                { Grade.RETIRED_NUMBER, 1850 }, // [TASK-KBO-155 신설]
+                { Grade.RETIRED_NUMBER, 2800 }, // [TASK-KBO-175] 1850 -> 2800: 최상위 종결 등급(실전 +10, 비가챠 레거시)이라 DYNASTY와 동일
                 { Grade.SIGNATURE, 2000 },      // 사용자 지시 예시값
                 { Grade.GOLDEN_GLOVE, 2300 },
                 { Grade.DYNASTY, 2800 },
@@ -76,7 +76,8 @@ namespace KBOManager.Managers
         /// 낮을수록 `MaterialExpPerGradeStep`만큼씩 가감된다.</summary>
         public static int GetMaterialExp(Grade materialGrade, Grade targetGrade)
         {
-            int rankDelta = (int)materialGrade - (int)targetGrade;
+            // [TASK-KBO-175] (int)Grade 차이 대신 위상 순번 차이 - RETIRED_NUMBER가 SIGNATURE/DYNASTY와 같은 최상위로 계산된다.
+            int rankDelta = CardGrowthRules.PowerRank(materialGrade) - CardGrowthRules.PowerRank(targetGrade);
             int exp = MaterialExpBaseSameGrade + rankDelta * MaterialExpPerGradeStep;
             return exp < MaterialExpMinimum ? MaterialExpMinimum : exp;
         }

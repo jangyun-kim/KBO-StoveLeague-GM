@@ -400,6 +400,8 @@ namespace KBOManager.Managers
                 // UnequipCheerleader()로 위임되므로 이 한 줄로 장착/해제 복원이 모두 처리된다.
                 bool hasEquippedCheerleader = data.EquippedCheerleader != null &&
                     !string.IsNullOrEmpty(data.EquippedCheerleader.InstanceId);
+                // [TASK-KBO-175] 구버전(단일 연도 CatalogId, Team/ActivePeriod 없음) 치어리더를 현행 카탈로그로 매핑한다.
+                if (hasEquippedCheerleader) CheerleaderCatalog.Hydrate(data.EquippedCheerleader);
                 gm.EquipCheerleader(hasEquippedCheerleader ? data.EquippedCheerleader : null);
 
                 // OwnedCheerleaders가 없는 구버전 세이브(필드 자체가 JSON에 없음)를 불러오면
@@ -408,6 +410,7 @@ namespace KBOManager.Managers
                 gm.OwnedCheerleaders.Clear();
                 if (data.OwnedCheerleaders != null)
                 {
+                    foreach (var owned in data.OwnedCheerleaders) CheerleaderCatalog.Hydrate(owned); // [TASK-KBO-175]
                     gm.OwnedCheerleaders.AddRange(data.OwnedCheerleaders);
                 }
             }

@@ -2,9 +2,9 @@
 문서명: 데이터 사전 (Data Dictionary)
 버전: v0.1
 상태: Active
-최종 수정일: 2026-09-14
+최종 수정일: 2026-10-01
 담당자: 김장윤
-관련 파일: 모든 data/*.csv 파일, Cheerleader.cs, GameManager.cs, MatchRewardManager.cs
+관련 파일: 모든 data/*.csv 파일, Cheerleader.cs, CheerleaderCatalog.cs, CardGrowthRules.cs, GameManager.cs, MatchRewardManager.cs
 ---
 
 # 1. 목적
@@ -76,6 +76,10 @@ DCL-055 당시 확인된 실제 인덱스와 완전히 동일하게 유지, 신�
 - `active` (Bool): 현재 `PlayerDatabase.ParseCsv()`가 읽지는 않는다(**[TBD]**).
 - `z_stuff, z_control, z_movement` (Float): **[TASK-KBO-088 신규]** 투수 전용 Z-score 3종. 타자 행에는 의미
   없는 값(`0.000`)이 채워진다. D절 확정 공식/매핑표 참고.
+- **[TASK-KBO-175] 실존 선수 z 산정 기준:** 수상 이력(골든글러브/개인 타이틀/올스타 BEST 12/영구결번/시그니처/왕조)이
+  있는 실존 인물의 z는 무작위가 아니라 `GenerateKBODatabase.py` 5-L절의 수상 장부 기반 기본 OVR(최고 위상 하한
+  SIG·DYN·RN 88 / GG 82 / TH 78 / AS 73 + 누적 수상 √포인트, 상한 95)을 `z = (OVR-50)/15`로 역환산한 값이다.
+  수상 이력이 없는 인물과 가상 선수는 기존 값 그대로다(`docs/04_card_grade_policy.md` 12절, DCL-146).
 
 ### B. cards.csv
 
@@ -93,6 +97,28 @@ DCL-055 당시 확인된 실제 인덱스와 완전히 동일하게 유지, 신�
   `Player.MaxAwakenLevel`)는 이 값을 상수(둘 다 10)로 고정하고 있으며, CSV 컬럼값을 실제로 읽어오는 로직은
   아직 없다(**[TBD]**, `docs/18_player_schema_policy.md` 4-2절 참고).
 - `is_droppable` (Bool): 가챠로 뽑힐 수 있는 카드인지 여부.
+- **[TASK-KBO-175] 등급 비교 주의:** `grade_id`(= `Grade` enum 정수)는 CSV/직렬화 호환 때문에 그대로 두지만
+  RETIRED_NUMBER(6)가 SIGNATURE(7)/GOLDEN_GLOVE(8)보다 작아 "위상" 순서가 아니다. 영입 확률 등급 필터·재료 경험치·
+  최고급 연출 등 등급 대소 비교는 `CardGrowthRules.PowerRank()`(LIVE_NORMAL 1 ~ GG 6, SIG = DYN = RN 7)를 쓴다.
+
+### B-2. cheerleaders.csv (TASK-KBO-175 스키마)
+
+`CatalogId,Name,Grade,ConditionBuff,EconomicBonusRate,ClutchMultiplier,SentimentDefense,Team,ActivePeriod` - 9컬럼.
+앞 7컬럼은 `CheerleaderCatalog`의 필수 컬럼(위치/의미 불변), 8·9번째는 선택 컬럼(없으면 구단 정보 없이 로드).
+
+- `CatalogId` (String): `{Team}_{활동기간 토큰}_CHR_{Name}_{Tier}` (예: `KIA_2020-2021_CHR_이아영_LEGEND`,
+  `HANWHA_2009-2011+2017-NOW_CHR_김연정_ICON`, `LG_2026-NOW_CHR_차영현_LIVE`). 토큰 규칙: `~`→`-`, 열린 끝→`NOW`,
+  복수 구간 `/`→`+` (`CheerleaderActivePeriod.ToIdToken()` = Python `cheer_period_token()`). 이름+구단+활동 기간+티어가
+  카드의 정체성이며 단일 대표 연도는 없다. TASK-171~174의 단일 연도 ID(`KIA_2020_CHR_이아영_LEGEND`)로 저장된 세이브는
+  `CheerleaderCatalog.Hydrate()`가 같은 구단·이름·티어 + 그 연도를 포함하는 활동 기간 카드로 매핑한다.
+- `Grade` (Enum): `LIVE_NORMAL`(ID 티어 표기 `LIVE`) / `ICON` / `LEGEND`.
+- `Team` (String): 활동 기간 동안 소속했던 구단 토큰(`KIA`, `SAMSUNG`, `HANWHA` …, 대소문자 무시로 `Team` enum 파싱).
+  세트덱 기준 구단(`SetDeckResult.DeckTeam`)과 같을 때만 경기 버프(ConditionBuff/ClutchMultiplier)가 발동한다
+  (`CheerleaderSynergy`). EconomicBonusRate/SentimentDefense는 구단 무관 상시 효과.
+- `ActivePeriod` (String): `시작~끝` / `시작~`(진행 중) / `연도`(단일 시즌), 복수 구간은 `/`로 연결
+  (예: `2009~2011/2017~`). 현역 LIVE는 전원 `2026~`.
+- 구성: LIVE 124(2026 현역 10개 구단) + ICON 46 + LEGEND 15 = 185장. LEGEND는 은퇴/이적으로 2026년 현재 그 구단에
+  없는 이력만(생성 스크립트가 진행 중 기간 또는 2026 현역 명단과 겹치면 예외로 중단).
 
 ### C. `PlayerTemplate` 런타임 인스턴스화 아키텍처 (SSOT → 게임 내 카드)
 

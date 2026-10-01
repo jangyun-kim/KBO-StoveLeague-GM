@@ -47,7 +47,12 @@ namespace KBOManager.UI
             }
 
             if (nameText != null) nameText.text = data.Name;
-            if (gradeText != null) gradeText.text = data.Grade.ToString();
+            // [TASK-KBO-175] 단일 연도 대신 "소속 구단 + 활동 기간"을 등급 옆에 표기(예: "LEGEND · KIA 2020~2021").
+            if (gradeText != null)
+            {
+                string affiliation = data.AffiliationLabel;
+                gradeText.text = string.IsNullOrEmpty(affiliation) ? data.Grade.ToString() : $"{data.Grade} · {affiliation}";
+            }
             if (buffText != null) buffText.text = $"전력 보정: +{data.ConditionBuff}";
             if (economicRateText != null) economicRateText.text = $"관중 수익 x{data.EconomicBonusRate:F2}";
             if (clutchText != null) clutchText.text = $"클러치: {data.ClutchMultiplier}x";
