@@ -167,6 +167,11 @@ namespace KBOManager.Models
                 milestone: SetDeckMilestone.Final),
         };
 
+        /// <summary>[TASK-KBO-176] 유저가 A/B를 고르는 "OR" 구간 10개(80/100/115/120/135/140/150/155/185/190P).</summary>
+        public static IEnumerable<SetDeckBracket> SelectableBrackets => Brackets.Where(b => b.IsSelectable);
+
+        public static bool IsSelectableThreshold(int threshold) => Brackets.Any(b => b.Threshold == threshold && b.IsSelectable);
+
         public static IEnumerable<SetDeckBracket> ReachedBrackets(int score) => Brackets.Where(b => score >= b.Threshold);
 
         public static SetDeckBracket NextBracket(int score) => Brackets.FirstOrDefault(b => score < b.Threshold);
@@ -185,6 +190,95 @@ namespace KBOManager.Models
         public int SelectedYear; // 0 = 자동
 
         public bool UsesOptionB(int threshold) => OptionBThresholds != null && OptionBThresholds.Contains(threshold);
+
+        /// <summary>[TASK-KBO-176] 선택형 구간(threshold)의 A/B를 지정한다. 선택형이 아닌 구간은 무시하고 false.</summary>
+        public bool SetOption(int threshold, bool useOptionB)
+        {
+            if (!SetDeckBuffTable.IsSelectableThreshold(threshold)) return false;
+            if (OptionBThresholds == null) OptionBThresholds = new List<int>();
+
+            OptionBThresholds.Remove(threshold);
+            if (useOptionB) OptionBThresholds.Add(threshold);
+            OptionBThresholds.Sort();
+            return true;
+        }
+
+        /// <summary>[TASK-KBO-176] 세이브 복원용 - 다른 선택을 덮어쓴다. 선택형이 아니거나 중복된 구간은 버리고
+        /// 음수 연도는 자동(0)으로 정규화한다(손상/구버전 세이브 방어).</summary>
+        public void CopyFrom(SetDeckSelection other)
+        {
+            OptionBThresholds = (other?.OptionBThresholds ?? new List<int>())
+                .Where(SetDeckBuffTable.IsSelectableThreshold).Distinct().OrderBy(t => t).ToList();
+            SelectedYear = other != null && other.SelectedYear > 0 ? other.SelectedYear : 0;
+        }
+    }
+
+    /// <summary>
+    /// [TASK-KBO-176] 로스터 수동 교체 규칙(순수 로직 - 로스터 화면의 카드 교체 팝업과 GameManager.SwapRosterPlayer 공용).
+    /// - 후보 타자 슬롯: 로스터 밖의 아무 타자나 넣을 수 있다(세트덱 스코어 배터리 - LIVE 초월 8P 배치가 핵심 전략).
+    /// - 주전 타자 슬롯: 같은 수비 포지션 타자만(포지션 공백 방지).
+    /// - 투수: 같은 보직(선발/승리조/추격조/롱릴리프/마무리) 투수만(13인 보직 쿼터 유지).
+    /// 후보 목록은 교체 후 예상 세트덱 스코어 내림차순, 같으면 OVR 내림차순으로 정렬한다. 주전/후보 구분은
+    /// SetDeckEvaluator.ClassifyBatters()가 OVR로 파생하므로, 후보에 넣은 카드의 OVR이 같은 포지션 주전보다
+    /// 높으면 다음 평가에서 주전으로 올라가고 기존 주전이 후보로 내려온다 - 어느 쪽이든 로스터 타자 15명 전원이
+    /// 27인 세트덱(주전 9 + 후보 6)에 합산되므로 스코어는 같다.
+    /// </summary>
+    public static class RosterSwapRules
+    {
+        public sealed class Candidate
+        {
+            public Player Player;
+            public int ProjectedScore;
+            public int ScoreDelta;
+        }
+
+        public static bool IsBenchBatter(IEnumerable<Player> roster, Player player)
+        {
+            if (player?.Template == null || player.Template.IsPitcher) return false;
+            SetDeckEvaluator.ClassifyBatters(roster, out _, out var bench);
+            return bench.Contains(player);
+        }
+
+        /// <summary>outgoing 자리에 incoming을 넣을 수 있는가(그룹/포지션/보직 + 로스터 밖 보유 카드).</summary>
+        public static bool CanSwap(IReadOnlyList<Player> roster, Player outgoing, Player incoming)
+        {
+            if (roster == null || outgoing?.Template == null || incoming?.Template == null) return false;
+            if (!roster.Contains(outgoing) || roster.Contains(incoming) || ReferenceEquals(outgoing, incoming)) return false;
+
+            var outT = outgoing.Template;
+            var inT = incoming.Template;
+            if (outT.IsPitcher != inT.IsPitcher) return false;
+            if (outT.IsPitcher) return outT.PitcherRole == inT.PitcherRole;
+            return IsBenchBatter(roster, outgoing) || outT.BatterPosition == inT.BatterPosition;
+        }
+
+        /// <summary>교체한 로스터 사본(같은 자리에 넣어 순서 유지). 교체 불가면 null.</summary>
+        public static List<Player> BuildSwappedRoster(IReadOnlyList<Player> roster, Player outgoing, Player incoming)
+        {
+            if (!CanSwap(roster, outgoing, incoming)) return null;
+            var swapped = roster.ToList();
+            swapped[swapped.IndexOf(outgoing)] = incoming;
+            return swapped;
+        }
+
+        public static List<Candidate> GetCandidates(IEnumerable<Player> inventory, IReadOnlyList<Player> roster, Player outgoing,
+            string favoriteTeam = null, SetDeckSelection selection = null)
+        {
+            int currentScore = SetDeckEvaluator.Evaluate(roster, favoriteTeam, selection).Score;
+            var result = new List<Candidate>();
+            foreach (var candidate in (inventory ?? Enumerable.Empty<Player>()).Distinct())
+            {
+                var swapped = BuildSwappedRoster(roster, outgoing, candidate);
+                if (swapped == null) continue;
+
+                int projected = SetDeckEvaluator.Evaluate(swapped, favoriteTeam, selection).Score;
+                result.Add(new Candidate { Player = candidate, ProjectedScore = projected, ScoreDelta = projected - currentScore });
+            }
+
+            return result.OrderByDescending(c => c.ProjectedScore)
+                .ThenByDescending(c => c.Player.CalculateOVR(false))
+                .ToList();
+        }
     }
 
     /// <summary>[TASK-KBO-172] 경기에 주입되는 세트덱 버프 프로필. "모든 능력치"(AllPlayers) 균등 가산은
@@ -311,20 +405,31 @@ namespace KBOManager.Models
         public static List<Player> SelectSlots(IEnumerable<Player> roster)
         {
             var valid = (roster ?? Enumerable.Empty<Player>()).Where(p => p?.Template != null).Distinct().ToList();
-            var batters = valid.Where(p => !p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
             var pitchers = valid.Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
 
-            var starters = new List<Player>();
-            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
-            {
-                var pick = batters.FirstOrDefault(p => p.Template.BatterPosition == position && !starters.Contains(p));
-                if (pick != null) starters.Add(pick);
-            }
-            var bench = batters.Except(starters).Take(BenchBatterSlots);
+            ClassifyBatters(valid, out var starters, out var bench);
             var sp = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).Take(StartingPitcherSlots);
             var bullpen = pitchers.Where(p => p.Template.PitcherRole != PitcherRole.StartingPitcher).Take(BullpenSlots);
 
             return starters.Concat(bench).Concat(sp).Concat(bullpen).ToList();
+        }
+
+        /// <summary>[TASK-KBO-176] 로스터 타자를 주전 9(포지션별 최고 OVR)와 후보 6(나머지 OVR 순)으로 나눈다 -
+        /// SelectSlots()와 로스터 화면의 주전/후보 구역 표시가 같은 규칙을 쓰도록 분리했다.</summary>
+        public static void ClassifyBatters(IEnumerable<Player> roster, out List<Player> starters, out List<Player> bench)
+        {
+            var batters = (roster ?? Enumerable.Empty<Player>())
+                .Where(p => p?.Template != null && !p.Template.IsPitcher).Distinct()
+                .OrderByDescending(p => p.CalculateOVR(false)).ToList();
+
+            var picked = new List<Player>();
+            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
+            {
+                var pick = batters.FirstOrDefault(p => p.Template.BatterPosition == position && !picked.Contains(p));
+                if (pick != null) picked.Add(pick);
+            }
+            starters = picked;
+            bench = batters.Except(picked).Take(BenchBatterSlots).ToList();
         }
 
         public static Team ResolveDeckTeam(IEnumerable<Player> slots, string favoriteTeam)

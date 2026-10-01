@@ -1,10 +1,10 @@
 ---
 문서명: 카드 등급 정책
-버전: v0.6
+버전: v0.7
 상태: Active
 최종 수정일: 2026-10-01
 담당자: 김장윤
-관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
+관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146, DCL-147), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
 ---
 
 # 1. 목적
@@ -349,3 +349,36 @@ PDF 해설 요지:
 - 적용 지점: `GameManager.ResolveCheerleaderConditionBuff/ClutchMultiplier(…, deckTeam)` ← `PlayBallController`/`LeagueManager`/`PostSeasonManager`의 `BuildTeamPowerModifiers`. UI: 시너지 패널에 "KIA 2020~2021 시너지 발동/미발동", 치어리더 슬롯에 "LEGEND · KIA 2020~2021".
 - **구성 185장 = LIVE 124 + ICON 46 + LEGEND 15** (11-3절 184장에서 정정). LEGEND 기준: 당대 레전드급 인기 + 은퇴/이적으로 2026년 현재 그 구단에 없음 - 서현숙(두산)·이주희(NC)·하지원(한화)은 2026 현역이라 LEGEND 제외, 남궁혜미(LG)·이연주(삼성)·김한나(KIA)·김이서(LG) LEGEND 추가. 생성 스크립트가 "진행 중 활동 기간이거나 2026 현역 명단에 같은 구단으로 있으면 LEGEND 위반"을 기계 검증한다.
 - **세이브 호환:** 구 단일 연도 ID(TASK-171~174) 184개 중 181개는 `CheerleaderCatalog.Hydrate()`가 새 카드로 매핑(같은 구단·이름·티어 + 그 연도를 포함하는 활동 기간). LEGEND에서 빠진 3개(서현숙/이주희/하지원 LEGEND)는 매핑 대상이 없어 저장된 ID·등급·수치를 그대로 보존하고, 구 ID 접두어에서 구단만 복원해 시너지 판정이 가능하게 했다.
+
+# 13. 핵심 루프 완성 - 후보 6인 수동 교체, FRANCHISE 획득처, 세트덱 선택형 버프 (TASK-KBO-176)
+
+## 13-1. 후보(벤치) 6인 수동 교체 (DCL-144 해소)
+
+- **화면:** 로스터(라인업) 화면을 주전 타자 9 / 후보 타자 6 / 투수 13 세 구역으로 나눴다. 주전/후보 구분은 세트덱 27인 선정과 같은 규칙(`SetDeckEvaluator.ClassifyBatters` - 포지션별 최고 OVR이 주전, 나머지가 후보)이라 화면과 스코어 계산이 항상 일치한다.
+- **조작:** 아무 카드나 누르면 교체 팝업이 열린다 → 보유 카드 중 교체 가능한 카드가 **교체 후 예상 세트덱 스코어 높은 순**으로 나열된다 → 카드를 고르면 "세트덱 171P → 175P (+4) · OVR · SD" 미리보기 → [교체]로 확정(2단계, 오조작 방지).
+- **교체 규칙(`RosterSwapRules`):** 후보 타자 슬롯 = 로스터 밖의 **아무 타자**(LIVE 초월 8P 배치가 핵심 전략), 주전 타자 = 같은 수비 포지션, 투수 = 같은 보직(선발/승리조/추격조/롱/마무리 - 13인 보직 쿼터 유지). 같은 자리에 넣어 28인 정원이 유지된다.
+- **즉시 반영:** 교체 직후 27인 세트덱 스코어·게이지·버프 구간·후보 구역 기여 스코어("후보 6인 · 세트덱 기여 nP")를 다시 계산해 그린다. 후보에 넣은 카드의 OVR이 같은 포지션 주전보다 높으면 다음 평가에서 주전으로 올라가고 기존 주전이 후보로 내려오지만, 로스터 타자 15명 전원이 27인에 합산되므로 스코어는 같다.
+- **검증:** KIA 로스터에서 후보 LIVE 0각(SD 4)을 LIVE 초월(SD 8)로 교체 → 171P → 175P(+4), 미리보기 예상값과 실제 재계산 값 일치. 주전 유격수 자리 후보는 유격수만, 마무리 자리는 마무리만, 타자 자리에 투수·이미 로스터에 있는 카드는 거부.
+
+## 13-2. FRANCHISE 스카우트 획득처 (DCL-144/145 해소)
+
+| 상품 | 변경 전 | 변경 후 |
+| :-- | :-- | :-- |
+| 프리미엄/픽업 시그니처 (싸인볼·픽업 영입권) | SIG 0.5 / TH 1.5 / AS 3.0 / LIVE_EPIC 95.0 | SIG 0.5 / TH 1.5 / **FRA 2.0** / AS 3.0 / LIVE_EPIC 93.0 |
+| 프리미엄/픽업 타이틀홀더 (트로피·픽업 영입권) | TH 0.5 / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 95.0 | TH 0.5 / **FRA 1.0** / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 94.0 |
+| 라이브 일반 / 라이브 에픽 | LIVE_NORMAL 100% / LIVE_EPIC 100% | 변경 없음(등급 확정 상품) |
+
+- FRANCHISE는 PowerRank 4(ALLSTAR 3 < FRA < TITLE_HOLDER 5) - 두 표 모두 바로 위(TH)와 바로 아래(AS) 사이 확률로 넣어 "등급이 낮을수록 확률이 높다"는 단조 관계를 지켰다. 기존 상위 등급 확률은 그대로 두고 기본(소비) 등급에서만 덜어냈다.
+- 표는 `Models/ScoutDropTables.cs` 한 곳에 있고 기본 등급 칸은 `100 - 나머지 합`으로 계산돼 합계가 항상 정확히 100.000%다(산술 검증 + 10만 회 몬테카를로: 시그니처 FRA 2.08%, 타이틀홀더 FRA 1.00%).
+
+## 13-3. 세트덱 선택형 버프 구간 UI + 세이브 (DCL-143/144/145 해소)
+
+- **화면:** 로스터 화면 하단 [세트덱 버프 선택] → 패널에 선택형 10개 구간(80/100/115/120/135/140/150/155/185/190P)이 행으로 나온다. 각 행 = "{구간}P · 적용 중/미도달" + [A: 효과] [B: 효과]. 고른 쪽이 강조색(✔)이다. 미도달 구간도 미리 골라 둘 수 있고 도달하는 순간 적용된다. [연도 선택] 버튼은 자동(세트덱 최다 연도) → 세트덱 카드 연도(최신순) → 자동으로 순환한다(80/185/190P의 "연도 선택" 효과 대상).
+- **저장:** 선택은 `GameManager.SetDeckSelection`에 들어가고 `GameSaveData.SetDeckSelection`(SaveVersion 6)으로 세이브/로드된다. 구버전 세이브(필드 없음)는 전 구간 A안 + 자동 연도로 로드되고, 손상된 값(선택형이 아닌 구간·중복·음수 연도)은 `SetDeckSelection.CopyFrom`이 정규화한다. 저장 시점은 기존과 같다(수동 저장 `ExecuteSaveGame` - 로스터 변경과 동일 정책).
+- **경기 반영:** 유저 구단 경기(`PlayBallController`/`LeagueManager`/`PostSeasonManager`의 `BuildTeamPowerModifiers`)가 이 선택으로 세트덱을 평가해 `SetDeckBuffProfile`을 만든다. 검증: 175P 로스터에서 100P A안 = 유격수 수비 +2, B안 = 중견수 주루 +2가 경기 프로필에 정확히 반영. 선택형 효과는 대상 한정 효과라 팀 OVR 표시분("모든 능력치" 균등 가산)은 A/B와 무관하다.
+
+## 13-4. DCL-146 확인 사항 확정
+
+1. 치어리더 시너지 - 카드 소속 구단 == 세트덱 구단일 때만 경기 버프(ConditionBuff/ClutchMultiplier) 발동, 경제·팬심 효과는 구단 무관 상시.
+2. 재료 경험치 서열 - PowerRank 기준(SIG = DYN = RN 최상위), RETIRED_NUMBER 요구 경험치 = DYNASTY와 동일 2,800.
+3. 치어리더 ActivePeriod - 소속 구단 구분·카드 표기·구 세이브 매핑용. 세트덱 연도 선택과는 연동하지 않는다.

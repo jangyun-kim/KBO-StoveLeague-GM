@@ -18,6 +18,37 @@ namespace KBOManager.EditorTools
     /// </summary>
     public static class SetupMasterBinding
     {
+        /// <summary>
+        /// [TASK-KBO-176] TASK-168~176에서 추가/변경된 UI를 씬에 한 번에 반영하는 통합 메뉴(전부 idempotent - 몇 번 실행해도 안전).
+        ///   1) SetupTemplates.SetupDualPortraitAndGradeFrameLayers - 카드 4단 레이어(TASK-168), 텍스트 Outline+Shadow
+        ///      가독성(TASK-170, TASK-176 버그 수정), 카드 "SD n" 세트덱 스코어 표기(TASK-173/176).
+        ///   2) SetupRosterUI.AutoConnectRosterUI - 주전/후보 구역 분리 + 카드 클릭 교체 팝업 + 세트덱 선택형 버프 패널(TASK-176).
+        ///   3) AutoBindAllMissingReferences - 기존 핫픽스 재바인딩.
+        /// 치어리더 시너지 표시(TASK-175)는 기존 텍스트(TeamSynergyUIController.cheerleaderText, CheerleaderSlotUI.gradeText)에
+        /// 런타임 문구만 바뀐 것이라 별도 씬 조립이 필요 없다. 실행 후 반드시 씬을 저장(Ctrl+S)해야 디스크에 반영된다.
+        /// </summary>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~176)")]
+        public static void ApplyLatestUI()
+        {
+            SetupTemplates.SetupDualPortraitAndGradeFrameLayers();
+            SetupRosterUI.AutoConnectRosterUI();
+            AutoBindAllMissingReferences();
+            Debug.Log("[SetupMasterBinding] TASK-168~176 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+        }
+
+        /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod
+        /// KBOManager.EditorTools.SetupMasterBinding.RunBatchApplyLatestUI -quit`) - 씬을 열어 ApplyLatestUI() 후 저장한다.</summary>
+        public static void RunBatchApplyLatestUI()
+        {
+            const string scenePath = "Assets/Scenes/SampleScene.unity";
+            var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            ApplyLatestUI();
+            bool saved = EditorSceneManager.SaveScene(scene);
+            Debug.Log(saved
+                ? "[SetupMasterBinding] RunBatchApplyLatestUI 완료 - 씬 저장 성공."
+                : "[SetupMasterBinding] RunBatchApplyLatestUI 완료했으나 씬 저장 실패.");
+        }
+
         [MenuItem("KBO Manager/Setup/Auto-Bind All Missing References (HOTFIX)")]
         public static void AutoBindAllMissingReferences()
         {

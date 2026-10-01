@@ -224,6 +224,9 @@ namespace KBOManager.EditorTools
             var serializedCard = new SerializedObject(cardUI);
             serializedCard.FindProperty("portraitBGImage").objectReferenceValue = portraitBGImage;
             serializedCard.FindProperty("frameOverlayImage").objectReferenceValue = frameOverlayImage;
+            // [TASK-KBO-176] TASK-173이 PlayerCardUI.setDeckScoreText("SD n")를 추가했지만 이를 만드는 Setup이 없어 카드에
+            // 세트덱 스코어가 한 번도 표시되지 않았다 - OVR 바로 아래에 만들어 바인딩한다(아래 가독성 보강 대상에도 포함됨).
+            serializedCard.FindProperty("setDeckScoreText").objectReferenceValue = FindOrCreateSetDeckScoreText(templateTransform);
             serializedCard.ApplyModifiedProperties();
             EditorUtility.SetDirty(cardUI);
 
@@ -263,7 +266,15 @@ namespace KBOManager.EditorTools
                 outline.effectDistance = new Vector2(1.2f, -1.2f);
                 outline.useGraphicAlpha = true;
 
-                if (!text.TryGetComponent<Shadow>(out var shadow))
+                // [TASK-KBO-176, 버그 수정] Outline은 Shadow를 상속하므로 TryGetComponent<Shadow>는 방금 만든 Outline을
+                // 돌려준다 - 그래서 지금까지는 Shadow가 따로 생기지 않고 Outline 값(흰색)이 그림자 값(검정 0.6)으로 덮였다
+                // (미커밋 SampleScene.unity의 Outline 5개가 실제로 검정 0.6/(1,-1) 상태). 정확히 Shadow 타입만 찾는다.
+                Shadow shadow = null;
+                foreach (var candidate in text.GetComponents<Shadow>())
+                {
+                    if (candidate.GetType() == typeof(Shadow)) { shadow = candidate; break; }
+                }
+                if (shadow == null)
                 {
                     shadow = text.gameObject.AddComponent<Shadow>();
                 }
@@ -275,6 +286,42 @@ namespace KBOManager.EditorTools
             }
 
             return texts.Length;
+        }
+
+        /// <summary>[TASK-KBO-176] OVR 텍스트(상단 기준 -90) 바로 아래 "SetDeckScoreText"(예: "SD 8"). 여러 번 실행해도 안전 -
+        /// 있으면 위치/스타일만 다시 맞춘다. 레이어 순서상 FrameOverlay보다 뒤 sibling이라 프레임 위에 그려진다.</summary>
+        private static Text FindOrCreateSetDeckScoreText(Transform cardTransform)
+        {
+            const string name = "SetDeckScoreText";
+            var existing = cardTransform.Find(name);
+            GameObject textObject;
+            if (existing != null)
+            {
+                textObject = existing.gameObject;
+            }
+            else
+            {
+                textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
+                Undo.RegisterCreatedObjectUndo(textObject, $"Create {name}");
+                textObject.transform.SetParent(cardTransform, false);
+            }
+
+            var rect = (RectTransform)textObject.transform;
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.sizeDelta = new Vector2(132f, 18f);
+            rect.anchoredPosition = new Vector2(0f, -110f);
+            textObject.transform.SetAsLastSibling();
+
+            if (!textObject.TryGetComponent<Text>(out var text)) text = textObject.AddComponent<Text>();
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = 13;
+            text.fontStyle = FontStyle.Bold;
+            text.font = KBOFonts.Default;
+            text.raycastTarget = false;
+            return text;
         }
 
         /// <summary>`cardTransform`(PlayerCardTemplate) 바로 아래에 `PortraitBG`(배경 인물, 듀얼 샷)

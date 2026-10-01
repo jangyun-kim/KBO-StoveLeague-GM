@@ -396,6 +396,23 @@ namespace KBOManager.Managers
             return inventory.Remove(player);
         }
 
+        /// <summary>
+        /// [TASK-KBO-176] 로스터의 outgoing 자리에 보유 카드 incoming을 넣는다(같은 자리 교체, 순서 유지). 규칙은
+        /// RosterSwapRules.CanSwap - 후보 타자 슬롯은 아무 타자, 주전 타자는 같은 포지션, 투수는 같은 보직.
+        /// incoming은 반드시 인벤토리 보유 카드여야 한다. 성공하면 true.
+        /// </summary>
+        public bool SwapRosterPlayer(Player outgoing, Player incoming)
+        {
+            if (incoming == null || !inventory.Contains(incoming)) return false;
+
+            var swapped = RosterSwapRules.BuildSwappedRoster(roster, outgoing, incoming);
+            if (swapped == null) return false;
+
+            roster.Clear();
+            roster.AddRange(swapped);
+            return true;
+        }
+
         /// <summary>오토 라인업 등으로 새로 계산된 28인 리스트를 로스터에 그대로 덮어쓴다.</summary>
         public void OverwriteRoster(List<Player> newRoster)
         {
@@ -511,6 +528,31 @@ namespace KBOManager.Managers
         /// 연도 자동 선택. UI가 이 객체를 수정하면 다음 경기부터 반영된다(세이브 저장은 후속 작업 - DCL 참고).
         /// </summary>
         public SetDeckSelection SetDeckSelection { get; } = new SetDeckSelection();
+
+        /// <summary>[TASK-KBO-176] 선택형 구간 옵션/연도 선택이 바뀌었을 때(UI 조작·세이브 로드) 발생한다.</summary>
+        public event Action OnSetDeckSelectionChanged;
+
+        /// <summary>[TASK-KBO-176] 선택형 구간의 A/B를 바꾸고 변경 이벤트를 낸다. 선택형이 아닌 구간이면 false.</summary>
+        public bool SetSetDeckOption(int threshold, bool useOptionB)
+        {
+            if (!SetDeckSelection.SetOption(threshold, useOptionB)) return false;
+            OnSetDeckSelectionChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>[TASK-KBO-176] "연도 선택" 대상 연도(0 = 자동).</summary>
+        public void SetSetDeckSelectedYear(int year)
+        {
+            SetDeckSelection.SelectedYear = year > 0 ? year : 0;
+            OnSetDeckSelectionChanged?.Invoke();
+        }
+
+        /// <summary>[TASK-KBO-176] 세이브 복원 - 저장된 선택으로 덮어쓴다(SetDeckSelection.CopyFrom이 정규화).</summary>
+        public void RestoreSetDeckSelection(SetDeckSelection saved)
+        {
+            SetDeckSelection.CopyFrom(saved);
+            OnSetDeckSelectionChanged?.Invoke();
+        }
 
         /// <summary>
         /// [TASK-KBO-172] 27인 세트덱 스코어/버프 구간 판정(docs/04_card_grade_policy.md 6~7절). 유저/AI 공용.

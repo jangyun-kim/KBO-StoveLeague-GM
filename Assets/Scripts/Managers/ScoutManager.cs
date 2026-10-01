@@ -53,42 +53,19 @@ namespace KBOManager.Managers
             new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = 16.67f },
         };
 
-        // [TASK-KBO-144] 프리미엄/픽업 영입(시그니처·타이틀 홀더)이 "타겟 등급 100% 확정"으로
-        // 동작하던 치명적 기획 오류를 해소하기 위한 가중치 확률표. 위 gradeDropRates(RollGradeAtLeast
-        // 필터링용, SEASON~LIVE_EPIC 3종 한정)와 별개로, 이 두 카테고리는 SIGNATURE/TITLE_HOLDER까지
-        // 등급 범위가 넓어 전용 드랍 테이블이 필요하다 - RollGradeAtLeast()로 gradeDropRates를
-        // 필터링하면 그 표에 SIGNATURE/TITLE_HOLDER 자체가 없어 eligible이 비고, "필터링 결과가
-        // 없으면 최소 등급으로 확정"하는 안전장치(215행)가 오히려 매번 타겟 등급만 반환하는 버그로
-        // 뒤바뀌어 있었다(명령서 3항이 지적한 실제 원인). 아래 4개 상수는 명령서 4항이 제시한 예시
-        // 배분(타겟 최고 등급/바로 아래 등급/중간 등급/기본 등급)을 그대로 채택했다 - 기획 조정 시 이
-        // 4개 값만 바꾸면 두 표 모두에 반영된다.
-        private const float PremiumTargetRatePercent = 0.5f;   // 타겟 최고 등급
-        private const float PremiumOneBelowRatePercent = 1.5f; // 바로 아래 등급
-        private const float PremiumMidRatePercent = 3.0f;      // 중간 등급
-        private const float PremiumBaseRatePercent = 95.0f;    // 기본(소비) 등급
+        // [TASK-KBO-144] 프리미엄/픽업 영입(시그니처·타이틀 홀더)이 "타겟 등급 100% 확정"으로 동작하던 기획 오류를
+        // 해소하기 위한 가중치 확률표. 위 gradeDropRates(RollGradeAtLeast 필터링용, LIVE 2종 한정)와 별개다.
+        // [TASK-KBO-176] 표 정의를 순수 데이터 클래스 ScoutDropTables로 옮기고 FRANCHISE를 편입했다(시그니처 상품
+        // FRA 2.0%, 타이틀홀더 상품 FRA 1.0% - 기본 등급에서만 덜어내 합계 100% 유지). 확률 조정은 그 파일에서 한다.
 
-        /// <summary>[프리미엄/픽업 영입 &gt; 시그니처] RollPremiumSignature()/RollPickupSignature() 공용
-        /// 드랍 테이블. SIGNATURE(타겟) 0.5% / TITLE_HOLDER(한 단계 아래) 1.5% / ALLSTAR(중간) 3.0% /
-        /// LIVE_EPIC(기본, 나머지 전부) 95.0% - 합계 100%.</summary>
-        private static readonly List<GradeDropRate> SignatureDropTable = new List<GradeDropRate>
-        {
-            new GradeDropRate { Grade = Grade.SIGNATURE, RatePercent = PremiumTargetRatePercent },
-            new GradeDropRate { Grade = Grade.TITLE_HOLDER, RatePercent = PremiumOneBelowRatePercent },
-            new GradeDropRate { Grade = Grade.ALLSTAR, RatePercent = PremiumMidRatePercent },
-            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = PremiumBaseRatePercent },
-        };
+        /// <summary>[프리미엄/픽업 영입 &gt; 시그니처] SIG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 = 100%.</summary>
+        private static readonly List<GradeDropRate> SignatureDropTable = ToDropRates(ScoutDropTables.Signature);
 
-        /// <summary>[프리미엄/픽업 영입 &gt; 타이틀 홀더] RollPremiumTitleHolder()/RollPickupTitleHolder()
-        /// 공용 드랍 테이블. 타겟이 시그니처보다 한 등급 낮으므로 전체 표도 한 칸씩 아래로 옮긴다 -
-        /// TITLE_HOLDER(타겟) 0.5% / ALLSTAR(한 단계 아래) 1.5% / LIVE_EPIC(중간) 3.0% /
-        /// LIVE_NORMAL(기본, 나머지 전부) 95.0% - 합계 100%.</summary>
-        private static readonly List<GradeDropRate> TitleHolderDropTable = new List<GradeDropRate>
-        {
-            new GradeDropRate { Grade = Grade.TITLE_HOLDER, RatePercent = PremiumTargetRatePercent },
-            new GradeDropRate { Grade = Grade.ALLSTAR, RatePercent = PremiumOneBelowRatePercent },
-            new GradeDropRate { Grade = Grade.LIVE_EPIC, RatePercent = PremiumMidRatePercent },
-            new GradeDropRate { Grade = Grade.LIVE_NORMAL, RatePercent = PremiumBaseRatePercent },
-        };
+        /// <summary>[프리미엄/픽업 영입 &gt; 타이틀 홀더] TH 0.5 / FRA 1.0 / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 94.0 = 100%.</summary>
+        private static readonly List<GradeDropRate> TitleHolderDropTable = ToDropRates(ScoutDropTables.TitleHolder);
+
+        private static List<GradeDropRate> ToDropRates(IEnumerable<(Grade Grade, float RatePercent)> table) =>
+            table.Select(e => new GradeDropRate { Grade = e.Grade, RatePercent = e.RatePercent }).ToList();
 
         private void Awake()
         {

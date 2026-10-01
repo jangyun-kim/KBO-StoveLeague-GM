@@ -126,7 +126,9 @@ namespace KBOManager.Managers
         // null인지 여부는 SaveManager.ApplySaveData()에서 InstanceId 존재 여부로 판별한다(자세한
         // 내용은 ApplySaveData() 주석 참고) - "필드 존재 여부로 구버전 판별" 관례와는 별개의, JsonUtility
         // 자체의 null 처리 한계에 대한 방어다.
-        public int SaveVersion = 5;
+        // v6: 세트덱 선택형 구간 옵션/연도 선택(SetDeckSelection) 추가(TASK-KBO-176). 필드가 없는 구버전 JSON은
+        // 기본 인스턴스(전 구간 A안 + 연도 자동)로 역직렬화되므로 별도 분기가 필요 없다.
+        public int SaveVersion = 6;
         public string SavedAtUtc;
 
         // GameManager
@@ -154,6 +156,7 @@ namespace KBOManager.Managers
         public int LosingStreak;
         public Cheerleader EquippedCheerleader; // null 여부는 ApplySaveData()에서 InstanceId로 판별(위 v5 주석 참고)
         public List<Cheerleader> OwnedCheerleaders = new List<Cheerleader>();
+        public SetDeckSelection SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] v6
 
         // LeagueManager
         public bool HasLeagueData;
@@ -274,6 +277,8 @@ namespace KBOManager.Managers
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
+                data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
+                data.SetDeckSelection.CopyFrom(gm.SetDeckSelection);
                 data.EquippedCheerleader = gm.EquippedCheerleader;
                 data.OwnedCheerleaders = new List<Cheerleader>(gm.OwnedCheerleaders);
             }
@@ -390,6 +395,7 @@ namespace KBOManager.Managers
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
+                gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)
 
                 // JsonUtility는 null 참조 필드를 저장할 때 JSON null이 아니라 "필드가 전부 기본값인
                 // 인스턴스"로 직렬화한다(실측 확인 - 위 GameSaveData의 v5 주석 참고). 그 결과

@@ -49,6 +49,13 @@ namespace KBOManager.EditorTools
     /// [TASK-KBO-099] TASK-098이 남긴 명칭 충돌([결정 필요])을 PM이 "라인업"으로 확정해, 로비 진입 버튼
     /// 라벨을 "구단 관리"에서 "라인업"으로 다시 변경한다(내부 오브젝트 이름은 이번에도 그대로 유지 -
     /// TASK-098과 동일한 이유).
+    ///
+    /// [TASK-KBO-176] 후보 6인 수동 교체 + 세트덱 선택형 버프 UI를 같은 메뉴에 통합했다(여러 번 실행해도 안전 -
+    /// 이름으로 찾아 재사용하고, 레이아웃 값은 매번 다시 적용해 구버전 씬도 최신 배치로 맞춘다):
+    ///   - 타자 구역을 주전(BatterContainer, 위)/후보(BenchContainer, 아래)로 나누고 머리글 3개(주전/후보/투수)를 만든다.
+    ///   - SwapPopup(카드 클릭 시 열리는 교체 팝업: 제목/미리보기/스크롤 후보 그리드/교체·취소/빈 목록 안내).
+    ///   - SetDeckOptionButton + SetDeckOptionPanel(선택형 10개 구간 A/B 행 템플릿, 연도 선택, 닫기) +
+    ///     SetDeckOptionUIController(RosterPanel에 부착).
     /// </summary>
     public static class SetupRosterUI
     {
@@ -86,6 +93,8 @@ namespace KBOManager.EditorTools
             BindRosterContainers(rosterController, cardTemplate);
             BindSetDeckVisualization(rosterController);
             BindEmptyStateText(rosterController);
+            BindBenchAndSwapPopup(rosterController);   // [TASK-KBO-176]
+            BindSetDeckOptionPanel(rosterController);  // [TASK-KBO-176]
             var gameActionController = BindGameActionController(rosterController, canvas.transform);
             BindRosterManager(gameActionController);
 
@@ -439,6 +448,219 @@ namespace KBOManager.EditorTools
                 "canvas 하위에 새로 생성했습니다.");
 
             return holderObject;
+        }
+
+        // ----- [TASK-KBO-176] 후보 구역 / 교체 팝업 / 세트덱 선택형 버프 패널 -----
+
+        private const string BenchContainerName = "BenchContainer";
+        private const string StarterHeaderName = "StarterHeaderText";
+        private const string BenchHeaderName = "BenchHeaderText";
+        private const string PitcherHeaderName = "PitcherHeaderText";
+        private const string SwapPopupName = "SwapPopup";
+        private const string SetDeckOptionButtonName = "SetDeckOptionButton";
+        private const string SetDeckOptionPanelName = "SetDeckOptionPanel";
+
+        /// <summary>
+        /// 타자 구역을 주전 9(위)/후보 6(아래)로 나누고, 카드 클릭 시 열리는 교체 팝업을 조립해 RosterUIController의
+        /// benchContainer/benchHeaderText/swap* 필드에 바인딩한다. 기존 BatterContainer/PitcherContainer도 앵커를 다시
+        /// 적용한다(구버전 씬은 타자 컨테이너가 패널 왼쪽 전체를 차지했다).
+        /// </summary>
+        private static void BindBenchAndSwapPopup(RosterUIController controller)
+        {
+            var panel = controller.transform;
+            SetAnchors(FindOrCreateCardGridContainer(panel, BatterContainerName, Vector2.zero, Vector2.one), new Vector2(0f, 0.38f), new Vector2(0.5f, 0.8f));
+            SetAnchors(FindOrCreateCardGridContainer(panel, PitcherContainerName, Vector2.zero, Vector2.one), new Vector2(0.5f, 0.08f), new Vector2(1f, 0.8f));
+            var benchContainer = FindOrCreateCardGridContainer(panel, BenchContainerName, Vector2.zero, Vector2.one);
+            SetAnchors(benchContainer, new Vector2(0f, 0.08f), new Vector2(0.5f, 0.33f));
+
+            FindOrCreateLabel(panel, StarterHeaderName, "주전 타자 9인 (포지션별 최고 OVR · 카드를 눌러 교체)", new Vector2(0f, 0.8f), new Vector2(0.5f, 0.85f), 18);
+            var benchHeader = FindOrCreateLabel(panel, BenchHeaderName, "후보 6인", new Vector2(0f, 0.33f), new Vector2(0.5f, 0.38f), 18);
+            FindOrCreateLabel(panel, PitcherHeaderName, "투수 13인 (카드를 눌러 같은 보직과 교체)", new Vector2(0.5f, 0.8f), new Vector2(1f, 0.85f), 18);
+
+            var popup = FindOrCreatePanel(panel, SwapPopupName, Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.6f));
+            var inner = FindOrCreatePanel(popup.transform, "Window", new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.92f), new Color(0.97f, 0.97f, 0.97f, 1f));
+            var title = FindOrCreateLabel(inner.transform, "TitleText", "교체", new Vector2(0f, 0.9f), new Vector2(1f, 1f), 20);
+            var preview = FindOrCreateLabel(inner.transform, "PreviewText", "교체할 카드를 선택하십시오.", new Vector2(0f, 0.82f), new Vector2(1f, 0.9f), 18);
+            var candidateContent = FindOrCreateScrollGrid(inner.transform, "CandidateScroll", new Vector2(0.02f, 0.12f), new Vector2(0.98f, 0.82f));
+            var emptyText = FindOrCreateLabel(inner.transform, "EmptyText", "교체할 수 있는 보유 카드가 없습니다.", new Vector2(0f, 0.4f), new Vector2(1f, 0.5f), 20);
+            emptyText.gameObject.SetActive(false);
+            var confirm = FindOrCreateStretchButton(inner.transform, "ConfirmButton", "교체", new Vector2(0.55f, 0.02f), new Vector2(0.75f, 0.1f));
+            var cancel = FindOrCreateStretchButton(inner.transform, "CancelButton", "취소", new Vector2(0.77f, 0.02f), new Vector2(0.97f, 0.1f));
+            popup.transform.SetAsLastSibling();
+            popup.SetActive(false);
+
+            var serialized = new SerializedObject(controller);
+            serialized.FindProperty("benchContainer").objectReferenceValue = benchContainer;
+            serialized.FindProperty("benchHeaderText").objectReferenceValue = benchHeader;
+            serialized.FindProperty("swapPopupRoot").objectReferenceValue = popup;
+            serialized.FindProperty("swapTitleText").objectReferenceValue = title;
+            serialized.FindProperty("swapPreviewText").objectReferenceValue = preview;
+            serialized.FindProperty("swapCandidateContainer").objectReferenceValue = candidateContent;
+            serialized.FindProperty("swapConfirmButton").objectReferenceValue = confirm;
+            serialized.FindProperty("swapCancelButton").objectReferenceValue = cancel;
+            serialized.FindProperty("swapEmptyText").objectReferenceValue = emptyText;
+            serialized.ApplyModifiedProperties();
+        }
+
+        /// <summary>
+        /// [세트덱 버프 선택] 버튼과 선택형 구간 패널을 조립하고, RosterPanel에 SetDeckOptionUIController를 붙여 바인딩한다.
+        /// 행(구간별 A/B)은 런타임에 rowTemplate을 복제해 만든다 - 구간표(SetDeckBuffTable)가 바뀌어도 씬을 다시 조립할 필요가 없다.
+        /// </summary>
+        private static void BindSetDeckOptionPanel(RosterUIController rosterController)
+        {
+            var panel = rosterController.transform;
+            var openButton = FindOrCreateButton(panel, SetDeckOptionButtonName, "세트덱 버프 선택", new Vector2(200f, 20f));
+
+            var optionPanel = FindOrCreatePanel(panel, SetDeckOptionPanelName, Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.6f));
+            var window = FindOrCreatePanel(optionPanel.transform, "Window", new Vector2(0.1f, 0.05f), new Vector2(0.9f, 0.95f), new Color(0.97f, 0.97f, 0.97f, 1f));
+            FindOrCreateLabel(window.transform, "TitleText", "세트덱 선택형 버프 구간 (A/B 중 하나 선택 · 미도달 구간도 미리 선택 가능)", new Vector2(0f, 0.93f), new Vector2(1f, 1f), 20);
+            var summary = FindOrCreateLabel(window.transform, "SummaryText", "", new Vector2(0f, 0.87f), new Vector2(1f, 0.93f), 16);
+
+            var rows = FindOrCreateRect(window.transform, "Rows", new Vector2(0.02f, 0.12f), new Vector2(0.98f, 0.86f));
+            var layout = GetOrAdd<VerticalLayoutGroup>(rows.gameObject);
+            layout.spacing = 4f;
+            layout.childControlHeight = true;
+            layout.childControlWidth = true;
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = true;
+
+            var rowTemplate = FindOrCreateOptionRowTemplate(window.transform);
+
+            var yearButton = FindOrCreateStretchButton(window.transform, "YearButton", "연도 선택: 자동", new Vector2(0.02f, 0.02f), new Vector2(0.4f, 0.1f));
+            var closeButton = FindOrCreateStretchButton(window.transform, "CloseButton", "닫기", new Vector2(0.78f, 0.02f), new Vector2(0.98f, 0.1f));
+            optionPanel.transform.SetAsLastSibling();
+            optionPanel.SetActive(false);
+
+            var optionController = GetOrAdd<SetDeckOptionUIController>(rosterController.gameObject);
+            var serializedOption = new SerializedObject(optionController);
+            serializedOption.FindProperty("panelRoot").objectReferenceValue = optionPanel;
+            serializedOption.FindProperty("summaryText").objectReferenceValue = summary;
+            serializedOption.FindProperty("rowContainer").objectReferenceValue = rows;
+            serializedOption.FindProperty("rowTemplate").objectReferenceValue = rowTemplate;
+            serializedOption.FindProperty("yearButton").objectReferenceValue = yearButton;
+            serializedOption.FindProperty("yearText").objectReferenceValue = yearButton.GetComponentInChildren<Text>(true);
+            serializedOption.FindProperty("closeButton").objectReferenceValue = closeButton;
+            serializedOption.ApplyModifiedProperties();
+            EditorUtility.SetDirty(optionController);
+
+            var serializedRoster = new SerializedObject(rosterController);
+            serializedRoster.FindProperty("setDeckOptionButton").objectReferenceValue = openButton;
+            serializedRoster.FindProperty("setDeckOptionController").objectReferenceValue = optionController;
+            serializedRoster.ApplyModifiedProperties();
+        }
+
+        /// <summary>구간 행 템플릿(비활성): Label(구간/도달 여부) + OptionA + OptionB 버튼. Rows 밖(Window 직속)에 둬서
+        /// VerticalLayoutGroup 배치에 끼지 않게 한다.</summary>
+        private static GameObject FindOrCreateOptionRowTemplate(Transform window)
+        {
+            var row = FindOrCreateRect(window, "OptionRowTemplate", new Vector2(0f, 0f), new Vector2(1f, 0f));
+            row.sizeDelta = new Vector2(0f, 52f);
+            var element = GetOrAdd<LayoutElement>(row.gameObject);
+            element.preferredHeight = 52f;
+            element.minHeight = 44f;
+
+            FindOrCreateLabel(row, "Label", "80P", new Vector2(0f, 0f), new Vector2(0.16f, 1f), 16);
+            FindOrCreateStretchButton(row, "OptionA", "A", new Vector2(0.17f, 0.05f), new Vector2(0.58f, 0.95f));
+            FindOrCreateStretchButton(row, "OptionB", "B", new Vector2(0.59f, 0.05f), new Vector2(1f, 0.95f));
+            row.gameObject.SetActive(false);
+            return row.gameObject;
+        }
+
+        /// <summary>에디터의 GetComponent는 컴포넌트가 없을 때 C# null이 아닌 "가짜 null"을 돌려줄 수 있어 `??`가 동작하지
+        /// 않는다 - TryGetComponent로 확인하고 없을 때만 Undo.AddComponent한다.</summary>
+        private static T GetOrAdd<T>(GameObject go) where T : Component
+        {
+            if (!go.TryGetComponent<T>(out var component)) component = Undo.AddComponent<T>(go);
+            return component;
+        }
+
+        private static void SetAnchors(Transform target, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var rect = (RectTransform)target;
+            Undo.RecordObject(rect, "Set Anchors");
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
+        private static RectTransform FindOrCreateRect(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var existing = parent.Find(name);
+            GameObject go;
+            if (existing != null) go = existing.gameObject;
+            else
+            {
+                go = new GameObject(name, typeof(RectTransform));
+                Undo.RegisterCreatedObjectUndo(go, $"Create {name}");
+                go.transform.SetParent(parent, false);
+            }
+            SetAnchors(go.transform, anchorMin, anchorMax);
+            return (RectTransform)go.transform;
+        }
+
+        private static GameObject FindOrCreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
+        {
+            var rect = FindOrCreateRect(parent, name, anchorMin, anchorMax);
+            var image = GetOrAdd<Image>(rect.gameObject);
+            image.color = color;
+            image.raycastTarget = true; // 오버레이 뒤 카드 클릭 차단
+            return rect.gameObject;
+        }
+
+        private static Text FindOrCreateLabel(Transform parent, string name, string defaultText, Vector2 anchorMin, Vector2 anchorMax, int fontSize)
+        {
+            var rect = FindOrCreateRect(parent, name, anchorMin, anchorMax);
+            bool created = !rect.TryGetComponent<Text>(out _);
+            var text = GetOrAdd<Text>(rect.gameObject);
+            if (created || string.IsNullOrEmpty(text.text)) text.text = defaultText;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.black;
+            text.fontSize = fontSize;
+            text.font = KBOFonts.Default;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.raycastTarget = false;
+            return text;
+        }
+
+        /// <summary>앵커 스트레치형 버튼(라벨 자식 "Label"). 여러 번 실행해도 라벨 텍스트는 처음 생성 때만 쓴다
+        /// (런타임 컨트롤러가 덮어쓰는 문구를 매번 초기화하지 않기 위함).</summary>
+        private static Button FindOrCreateStretchButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var rect = FindOrCreateRect(parent, name, anchorMin, anchorMax);
+            var image = GetOrAdd<Image>(rect.gameObject);
+            image.color = new Color(0.9f, 0.9f, 0.9f);
+            var button = GetOrAdd<Button>(rect.gameObject);
+            button.targetGraphic = image;
+            FindOrCreateLabel(rect, "Label", label, Vector2.zero, Vector2.one, 16);
+            return button;
+        }
+
+        /// <summary>세로 스크롤 + 카드 그리드(140x200, PlayerCardTemplate과 같은 셀) - 반환값은 카드가 담길 Content.</summary>
+        private static Transform FindOrCreateScrollGrid(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var viewport = FindOrCreateRect(parent, name, anchorMin, anchorMax);
+            var image = GetOrAdd<Image>(viewport.gameObject);
+            image.color = new Color(1f, 1f, 1f, 0.02f);
+            if (viewport.GetComponent<RectMask2D>() == null) Undo.AddComponent<RectMask2D>(viewport.gameObject);
+
+            var content = FindOrCreateRect(viewport, "Content", new Vector2(0f, 1f), new Vector2(1f, 1f));
+            content.pivot = new Vector2(0.5f, 1f);
+            var grid = GetOrAdd<GridLayoutGroup>(content.gameObject);
+            grid.cellSize = new Vector2(140f, 200f);
+            grid.spacing = new Vector2(10f, 10f);
+            grid.childAlignment = TextAnchor.UpperCenter;
+            var fitter = GetOrAdd<ContentSizeFitter>(content.gameObject);
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var scroll = GetOrAdd<ScrollRect>(viewport.gameObject);
+            scroll.content = content;
+            scroll.viewport = viewport;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            return content;
         }
 
         private static Button FindOrCreateButton(Transform parent, string name, string label, Vector2 anchoredPosition)
