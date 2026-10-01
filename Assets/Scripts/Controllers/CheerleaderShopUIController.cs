@@ -29,15 +29,12 @@ namespace KBOManager.Controllers
     {
         [Header("Currency Display")]
         [SerializeField] private Text liveCheerStickText;
-        [SerializeField] private Text limitedCheerStickText;
         [SerializeField] private Text starCheerStickText;
         [SerializeField] private Text legendCheerStickText;
 
         [Header("일반 영입 (라이브 응원봉 / 한정 응원봉)")]
         [SerializeField] private Button liveButton;
         [SerializeField] private Button liveButton10;
-        [SerializeField] private Button limitedButton;
-        [SerializeField] private Button limitedButton10;
 
         [Header("픽업/프리미엄 영입 (스타 응원봉 / 레전드 응원봉)")]
         [SerializeField] private Button iconButton;
@@ -55,14 +52,12 @@ namespace KBOManager.Controllers
         private void Awake()
         {
             if (liveButton != null) liveButton.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLive, 1));
-            if (limitedButton != null) limitedButton.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLimited, 1));
             if (iconButton != null) iconButton.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollIcon, 1));
             if (legendButton != null) legendButton.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLegend, 1));
 
             // [TASK-KBO-140] CheerleaderGachaService.RollX(int count)가 이미 count를 받으므로 그대로
             // 10을 넘기기만 하면 된다(ScoutUIController.ExecuteMultiRoll()류의 반복 호출 불필요).
             if (liveButton10 != null) liveButton10.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLive, 10));
-            if (limitedButton10 != null) limitedButton10.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLimited, 10));
             if (iconButton10 != null) iconButton10.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollIcon, 10));
             if (legendButton10 != null) legendButton10.onClick.AddListener(() => ExecuteRoll(CheerleaderGachaService.RollLegend, 10));
 
@@ -71,7 +66,6 @@ namespace KBOManager.Controllers
 
         [Header("Banner Info (TASK-KBO-177 - 상품별 필요 재화 + 등장 확률 요약)")]
         [SerializeField] private Text liveInfoText;
-        [SerializeField] private Text limitedInfoText;
         [SerializeField] private Text iconInfoText;
         [SerializeField] private Text legendInfoText;
 
@@ -87,12 +81,10 @@ namespace KBOManager.Controllers
 
             // [TASK-KBO-177] 2x2 재화 배지용 2줄 표기(이름 / 수량).
             if (liveCheerStickText != null) liveCheerStickText.text = $"라이브 응원봉\n{gm.LiveCheerStick:N0}";
-            if (limitedCheerStickText != null) limitedCheerStickText.text = $"한정 응원봉\n{gm.LimitedCheerStick:N0}";
             if (starCheerStickText != null) starCheerStickText.text = $"스타 응원봉\n{gm.StarCheerStick:N0}";
             if (legendCheerStickText != null) legendCheerStickText.text = $"레전드 응원봉\n{gm.LegendCheerStick:N0}";
 
             SetInfo(liveInfoText, "라이브 응원봉", gm.LiveCheerStick, CheerleaderGachaService.LiveRateSummary);
-            SetInfo(limitedInfoText, "한정 응원봉", gm.LimitedCheerStick, CheerleaderGachaService.LimitedRateSummary);
             SetInfo(iconInfoText, "스타 응원봉", gm.StarCheerStick, CheerleaderGachaService.IconRateSummary);
             SetInfo(legendInfoText, "레전드 응원봉", gm.LegendCheerStick, CheerleaderGachaService.LegendRateSummary);
         }
@@ -137,7 +129,7 @@ namespace KBOManager.Controllers
 
                 var c = results[i];
                 string affiliation = string.IsNullOrEmpty(c.AffiliationLabel) ? "" : $" · {c.AffiliationLabel}"; // [TASK-KBO-177]
-                builder.Append($"[{c.Grade}] {c.Name}{affiliation}  (컨디션 +{c.ConditionBuff} / 클러치 x{c.ClutchMultiplier:F2} / 수익 x{c.EconomicBonusRate:F2} / 팬심 +{c.SentimentDefense})");
+                builder.Append($"[{c.Grade.Display()}] {c.Name}{affiliation}  (컨디션 +{c.ConditionBuff} / 클러치 x{c.ClutchMultiplier:F2} / 수익 x{c.EconomicBonusRate:F2} / 팬심 +{c.SentimentDefense})");
             }
 
             return builder.ToString();

@@ -45,21 +45,15 @@ namespace KBOManager.UI
 
         public Cheerleader BoundCheerleader { get; private set; }
 
-        /// <summary>[TASK-KBO-177] 뱃지 표기 - CheerleaderGrade.LIVE_NORMAL은 "LIVE"로 줄인다(카탈로그 ID 표기와 동일).</summary>
-        public static string TierLabel(CheerleaderGrade grade) => grade switch
-        {
-            CheerleaderGrade.LIVE_NORMAL => "LIVE",
-            CheerleaderGrade.LIVE_EPIC => "LIVE EPIC",
-            CheerleaderGrade.SEASON_LIMITED => "LIMITED",
-            _ => grade.ToString()
-        };
+        /// <summary>[TASK-KBO-177] 뱃지 표기 - LIVE_NORMAL은 "LIVE". [TASK-KBO-178] LIVE_EPIC도 "LIVE"로 통일
+        /// (CheerleaderGradeLabels.Display에 위임).</summary>
+        public static string TierLabel(CheerleaderGrade grade) => grade.Display();
 
         public static Color TierColor(CheerleaderGrade grade) => grade switch
         {
             CheerleaderGrade.ICON => new Color(0.55f, 0.35f, 0.85f),
             CheerleaderGrade.LEGEND => new Color(0.95f, 0.7f, 0.1f),
             CheerleaderGrade.SEASON_LIMITED => new Color(0.85f, 0.25f, 0.3f),
-            CheerleaderGrade.LIVE_EPIC => new Color(0.25f, 0.6f, 0.85f),
             _ => new Color(0.45f, 0.55f, 0.65f)
         };
 
@@ -81,7 +75,7 @@ namespace KBOManager.UI
             if (gradeText != null)
             {
                 string affiliation = data.AffiliationLabel;
-                gradeText.text = string.IsNullOrEmpty(affiliation) ? data.Grade.ToString() : $"{data.Grade} · {affiliation}";
+                gradeText.text = string.IsNullOrEmpty(affiliation) ? data.Grade.Display() : $"{data.Grade.Display()} · {affiliation}";
             }
             if (buffText != null) buffText.text = $"전력 보정: +{data.ConditionBuff}";
             if (economicRateText != null) economicRateText.text = $"관중 수익 x{data.EconomicBonusRate:F2}";

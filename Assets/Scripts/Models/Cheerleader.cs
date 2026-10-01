@@ -135,6 +135,24 @@ namespace KBOManager.Models
     }
 
     /// <summary>
+    /// [TASK-KBO-178] 유저에게 보이는 치어리더 티어 표기. 내부 enum은 세이브 호환 때문에 LIVE_NORMAL/LIVE_EPIC을 유지하지만 화면·로그에는
+    /// 둘 다 "LIVE"로 통일한다(치어리더 DB의 라이브 티어는 하나뿐). SEASON_LIMITED는 상품이 폐지됐으나 구 세이브 표시용으로 "LIMITED".
+    /// </summary>
+    public static class CheerleaderGradeLabels
+    {
+        public static string Display(this CheerleaderGrade grade) => grade switch
+        {
+            CheerleaderGrade.LIVE_NORMAL => "LIVE",
+            CheerleaderGrade.LIVE_EPIC => "LIVE",
+            CheerleaderGrade.ICON => "ICON",
+            CheerleaderGrade.LEGEND => "LEGEND",
+            CheerleaderGrade.SEASON_LIMITED => "LIMITED",
+            CheerleaderGrade.TEST => "TEST",
+            _ => "-"
+        };
+    }
+
+    /// <summary>
     /// [TASK-KBO-175] 치어리더 활동 기간 문자열 규칙. "시작~끝"(종료), "시작~"(진행 중), "연도"(단일 시즌),
     /// 복수 구간은 "/"로 연결("2009~2011/2017~"). GenerateKBODatabase.py의 CHEER_ICON_LEGEND 표기와 같다.
     /// </summary>

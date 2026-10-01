@@ -121,7 +121,7 @@ namespace KBOManager.Controllers
 
             if (previewCard != null) previewCard.Setup(player);
             if (nameText != null) nameText.text = player.Template.PlayerName;
-            if (teamGradeText != null) teamGradeText.text = $"{player.Template.Team} · {player.Template.Grade}";
+            if (teamGradeText != null) teamGradeText.text = $"{player.Template.Team} · {CardGrowthRules.DisplayName(player.Template.Grade)}";
 
             RefreshStatsTab();
             RefreshSkillTab();

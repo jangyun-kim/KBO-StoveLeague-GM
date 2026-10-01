@@ -36,7 +36,12 @@ namespace KBOManager.EditorTools
         ///   4) SetupMobileUI177 - 치어리더 관리 / 치어리더 영입 / 선수 영입(재화 바) 9:16 레이아웃 5) 핫픽스 재바인딩.
         /// 개별 구 메뉴(Auto-Connect Scout Hub 등)를 나중에 따로 실행했다면 이 메뉴를 한 번 더 실행하면 된다.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~177)")]
+        /// <remarks>
+        /// [TASK-KBO-178] 메뉴 이름을 TASK-168~178로 갱신. SetupMobileUI177을 SetImage 레퍼런스 기반 SetupThemeUI178로 대체했다
+        /// (로비 재화 바도 178이 직접 조립하므로 SetupLobbyCurrencyUI 호출은 뺐다). 핫픽스 재바인딩은 테마 적용 "전"에 돌려
+        /// 이름 기반 재탐색이 새 로비 바인딩을 덮어쓰지 않게 했다(보관함 하위도 제외).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~178)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -51,10 +56,9 @@ namespace KBOManager.EditorTools
 
             SetupTemplates.SetupDualPortraitAndGradeFrameLayers();
             SetupRosterUI.AutoConnectRosterUI();
-            SetupLobbyCurrencyUI.AutoConnectLobbyCurrencyUI();
-            SetupMobileUI177.ApplyAll();
             AutoBindAllMissingReferences();
-            Debug.Log("[SetupMasterBinding] TASK-168~177 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupThemeUI178.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~178 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod
@@ -120,6 +124,15 @@ namespace KBOManager.EditorTools
         /// teamOVRText/standingsRowTexts) 필드를 씬에 이미 존재하는 오브젝트에서 이름 기준으로 다시
         /// 찾아 강제 재바인딩한다(SetupLeagueUI.cs와 달리 새 오브젝트를 생성하지 않는 순수 재탐색).
         /// </summary>
+        private static bool IsUnderLegacyHolder(Transform node)
+        {
+            for (var t = node; t != null; t = t.parent)
+            {
+                if (t.name.StartsWith("_Legacy", StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
         private static void BindLeagueDashboardUIController()
         {
             try
@@ -143,7 +156,10 @@ namespace KBOManager.EditorTools
                     Debug.LogWarning("[SetupMasterBinding] 씬에서 LeagueManager를 찾지 못해 leagueManager 바인딩을 건너뜁니다.");
                 }
 
-                var allTexts = dashboard.GetComponentsInChildren<Text>(true);
+                // [TASK-KBO-178] TASK-177/178 Setup이 구 오브젝트를 비활성 "_Legacy177/178" 보관함으로 옮기므로, 같은 이름의 구
+                // 텍스트로 되돌려 바인딩하지 않도록 보관함 하위는 제외한다.
+                var allTexts = dashboard.GetComponentsInChildren<Text>(true)
+                    .Where(t => !IsUnderLegacyHolder(t.transform)).ToArray();
 
                 BindNamedText(serialized, "seasonProgressText", allTexts, "SeasonProgressText");
                 BindNamedText(serialized, "nextMatchupText", allTexts, "NextMatchupText");

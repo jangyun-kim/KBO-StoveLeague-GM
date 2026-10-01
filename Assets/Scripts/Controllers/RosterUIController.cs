@@ -172,7 +172,7 @@ namespace KBOManager.Controllers
                 if (!placeholderWarningLogged)
                 {
                     Debug.LogWarning("[RosterUIController] 빈 슬롯 템플릿(placeholderTemplate)이 배선되지 않았습니다 - " +
-                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~177)'을 실행해 씬을 갱신하십시오.");
+                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~178)'을 실행해 씬을 갱신하십시오.");
                     placeholderWarningLogged = true;
                 }
                 return;
@@ -234,7 +234,7 @@ namespace KBOManager.Controllers
             if (gm != null && gm.Roster.Count == 0 && gm.Inventory.Count > 0)
             {
                 Debug.LogWarning("[RosterUIController] 자동 편성 후에도 로스터가 비어 있습니다 - GameActionController.rosterManager " +
-                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~177)'이 자동 배선).");
+                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~178)'이 자동 배선).");
             }
             RefreshRoster(); // OnRosterChanged 구독 여부와 무관하게 즉시 반영
         }
@@ -359,7 +359,7 @@ namespace KBOManager.Controllers
             if (swapPopupRoot == null)
             {
                 Debug.LogWarning("[RosterUIController] 배치 팝업(swapPopupRoot)이 배선되지 않았습니다 - " +
-                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~177)'을 실행해 씬을 갱신하십시오.");
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~178)'을 실행해 씬을 갱신하십시오.");
                 return;
             }
 

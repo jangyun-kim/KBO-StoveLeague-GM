@@ -30,6 +30,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Color selectedColor = new Color(1f, 0.84f, 0f);
         [SerializeField] private Color unselectedColor = new Color(0.85f, 0.85f, 0.85f);
         [SerializeField] private Color unreachedLabelColor = new Color(0.45f, 0.45f, 0.45f);
+        [Tooltip("[TASK-KBO-178] 도달(적용 중) 구간 라벨 색 - 어두운 테마 창에서는 흰색으로 지정된다.")]
+        [SerializeField] private Color reachedLabelColor = Color.black;
 
         private sealed class Row
         {
@@ -94,7 +96,7 @@ namespace KBOManager.Controllers
                 if (row.Label != null)
                 {
                     row.Label.text = $"{bracket.Threshold}P · {(reached ? "적용 중" : "미도달")}";
-                    row.Label.color = reached ? Color.black : unreachedLabelColor;
+                    row.Label.color = reached ? reachedLabelColor : unreachedLabelColor;
                 }
                 StyleOption(row.OptionA, $"A: {bracket.OptionA.Label}", !usesB);
                 StyleOption(row.OptionB, $"B: {bracket.OptionB.Label}", usesB);

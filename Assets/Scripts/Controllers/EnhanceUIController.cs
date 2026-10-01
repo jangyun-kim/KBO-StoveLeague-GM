@@ -122,7 +122,7 @@ namespace KBOManager.Controllers
             if (target == null) return;
 
             if (targetPreviewCard != null) targetPreviewCard.Setup(target);
-            if (targetGradeText != null) targetGradeText.text = target.Template.Grade.ToString();
+            if (targetGradeText != null) targetGradeText.text = CardGrowthRules.DisplayName(target.Template.Grade);
             if (executeButton != null) executeButton.interactable = target.ReinforceLevel < Player.MaxReinforceLevel;
 
             UpdateExpBar();

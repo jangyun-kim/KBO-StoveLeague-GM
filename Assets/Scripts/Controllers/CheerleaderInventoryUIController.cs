@@ -16,7 +16,7 @@ namespace KBOManager.Controllers
     ///     세트덱 구단과의 시너지 발동 여부, 컨디션/클러치(시너지 시)·수익/팬심(상시) 효과).
     ///   - 필터 바: 전체 / 구단(누를 때마다 보유 구단 순환) / LIVE / ICON / LEGEND.
     ///   - 목록: 고정 높이 카드(티어 뱃지 · 이름 · 구단·활동기간 · 버프 · 장착/해제 - CheerleaderSlotUI).
-    /// 장착 슬롯은 게임 규칙상 1개(GameManager.EquippedCheerleader)다. 레이아웃은 SetupMobileUI177이 조립한다.
+    /// 장착 슬롯은 게임 규칙상 1개(GameManager.EquippedCheerleader)다. 레이아웃은 SetupThemeUI178(구 SetupMobileUI177)이 조립한다.
     /// </summary>
     public class CheerleaderInventoryUIController : MonoBehaviour
     {

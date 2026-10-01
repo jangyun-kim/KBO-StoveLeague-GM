@@ -1,10 +1,10 @@
 ---
 문서명: 카드 등급 정책
-버전: v0.8
+버전: v0.9
 상태: Active
 최종 수정일: 2026-10-01
 담당자: 김장윤
-관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146, DCL-147, DCL-148), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
+관련 파일: 기획 고도화 자료.pdf, RosterManager.cs, 11_data_dictionary.md, 13_decision_change_log.md(DCL-127, DCL-143, DCL-144, DCL-145, DCL-146, DCL-147, DCL-148, DCL-149), 15_team_power_policy.md, Models/CardGrowthRules.cs, Models/SetDeck.cs, GenerateKBODatabase.py, SimulateSetDeckTiers.py
 ---
 
 # 1. 목적
@@ -396,3 +396,27 @@ PDF 해설 요지:
 
 - 통합 메뉴 `KBO Manager/Setup/Apply Latest UI (TASK-168~177)` 한 번으로 전부 반영된다(새 레이아웃은 각 패널의 `Layout177`, 대체된 구 오브젝트는 비활성 `_Legacy177`로 보관).
 - 검증: 임시 csproj 빌드 오류 0, 빈 로스터 슬롯/배치 하네스 47항목 + TASK-176 회귀 36항목 통과.
+
+# 15. LIVE_EPIC 잔재 제거 + SetImage 레퍼런스 기반 UI 전면 개편 (TASK-KBO-178)
+
+## 15-1. 치어리더 LIVE 단일 풀 / 표기 통일
+
+| 상품 | 이전 | 현재 |
+| :-- | :-- | :-- |
+| 라이브 영입 | LIVE 62.5 / LIVE_EPIC 37.5 | **LIVE 100** |
+| 아이콘 영입 | ICON 0.5 / LIVE_EPIC 4.5 / LIVE 95.0 | **ICON 0.5 / LIVE 99.5** |
+| 레전드 영입 | LEGEND 0.5 / ICON 1.5 / LIVE_EPIC 3.0 / LIVE 95.0 | **LEGEND 0.5 / ICON 1.5 / LIVE 98.0** |
+| 한정 영입 | SEASON_LIMITED 100 | **폐지**(카탈로그 0장) - 배너·한정 응원봉 표시 제거 |
+
+- 확률표 SSOT `Models/CheerleaderDropTables.cs`(마지막 LIVE 칸 = 100 - 나머지). 검증: 실제 cheerleaders.csv 로드 + 표별 10만 회 추첨 → 카탈로그 없는 등급(폴백 경고) **0건**.
+- 화면·로그 표기: 치어리더 `CheerleaderGradeLabels.Display()`(LIVE_NORMAL/LIVE_EPIC → "LIVE"), 선수 `CardGrowthRules.DisplayName()`(라이브/라이브 에픽/올스타/…/왕조 - 선수는 두 라이브 등급이 실제로 다른 상품·등급이라 구분 유지). 강화 화면·선수 상세·최고급 연출·영입 로그·시즌 확정팩 문구의 enum 노출 제거.
+
+## 15-2. UI 테마(SetImage 34장 분석 → `SetupThemeUI178`)
+
+- 공통: 파란 헤더 + 네이비 필 타이틀, 검정 재화 스트립, 하단 파란 5탭 내비(로비), 어두운 헤더 띠 + 밝은/네이비 본문 카드, 보라 구매 버튼(비용 띠) / 파랑 확인 / 회색 보조.
+- 로비: 프로필(시즌 진행·팀 OVR) 헤더, 볼/유니폼/티켓 스트립, NEXT MATCH 카드, 순위표 카드(10행), 시너지 카드, 타일 3종(스카우트·리그 기록실·플레이 볼), 하단 내비(선수 관리·라인업·홈·상점·치어리더).
+- 라인업: 밝은 구장 톤 배경 + 파란 헤더("라인업") + 흰 액션 버튼 + 진회색 섹션 띠 + 하단 검정 세트덱 스코어 바.
+- 스카우트: 탭 강조(활성 네이비), 영입 재화 스트립, 상품 배너(헤더 띠에 보유/비용, 본문에 상품명·확률 태그, 보라 1회/10회 버튼), 영입 결과는 검정 + "SCOUT RESULT" + 5열 그리드 + 보라(다시 영입)/파랑(확인).
+- 치어리더 관리/영입: 네이비 테마, 응원봉 3종 스트립, 배너 3개, 카드(네이비 + 티어 뱃지 + 보라 장착 버튼).
+- 카드: 별 상단 · OVR 36pt 좌상단 · 포지션 · 구단/SD 우상단 · 하단 검정 이름 띠(흰 굵은 글씨) · 검정 외곽선.
+- 인벤토리/강화/선수 관리/상세/재료 선택: 구조 유지 + 다크 테마 패스(배경 네이비, 무채색 버튼 파랑, 배경 밝기에 따른 글자색, 최소 22pt).

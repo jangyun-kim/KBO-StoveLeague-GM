@@ -105,14 +105,14 @@ namespace KBOManager.Managers
             if (finalRank <= 1)
             {
                 report.LiveNormalTicketGained = championLiveNormalTicket;
-                report.GuaranteedPackGrade = championGuaranteedGrade.ToString();
+                report.GuaranteedPackGrade = CardGrowthRules.DisplayName(championGuaranteedGrade);
                 GameManager.Instance.LiveNormalTicket += championLiveNormalTicket;
                 GrantGuaranteedPack(championGuaranteedGrade);
             }
             else if (finalRank >= TotalTeamCount)
             {
                 report.GameGoldGained = lastPlaceConsolationGameGold;
-                report.GuaranteedPackGrade = lastPlaceGuaranteedGrade.ToString();
+                report.GuaranteedPackGrade = CardGrowthRules.DisplayName(lastPlaceGuaranteedGrade);
                 GameManager.Instance.GameGold += lastPlaceConsolationGameGold;
                 GrantGuaranteedPack(lastPlaceGuaranteedGrade);
             }

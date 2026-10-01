@@ -185,12 +185,10 @@ namespace KBOManager.EditorTools
             }
 
             var liveCheerStickText = FindOrCreateText(parent, "LiveCheerStickText", 32f, isDisplayOnly: true);
-            var limitedCheerStickText = FindOrCreateText(parent, "LimitedCheerStickText", 32f, isDisplayOnly: true);
             var starCheerStickText = FindOrCreateText(parent, "StarCheerStickText", 32f, isDisplayOnly: true);
             var legendCheerStickText = FindOrCreateText(parent, "LegendCheerStickText", 32f, isDisplayOnly: true);
 
             var (liveButton, liveButton10) = CreateCategoryRow(parent, "LiveRow", "일반 영입 - 라이브 (라이브 응원봉)");
-            var (limitedButton, limitedButton10) = CreateCategoryRow(parent, "LimitedRow", "일반 영입 - 한정 (한정 응원봉)");
             var (iconButton, iconButton10) = CreateCategoryRow(parent, "IconRow", "픽업/프리미엄 영입 - 아이콘 (스타 응원봉)");
             var (legendButton, legendButton10) = CreateCategoryRow(parent, "LegendRow", "픽업/프리미엄 영입 - 레전드 (레전드 응원봉)");
 
@@ -199,13 +197,11 @@ namespace KBOManager.EditorTools
 
             var serializedController = new SerializedObject(controller);
             serializedController.FindProperty("liveCheerStickText").objectReferenceValue = liveCheerStickText;
-            serializedController.FindProperty("limitedCheerStickText").objectReferenceValue = limitedCheerStickText;
             serializedController.FindProperty("starCheerStickText").objectReferenceValue = starCheerStickText;
             serializedController.FindProperty("legendCheerStickText").objectReferenceValue = legendCheerStickText;
             serializedController.FindProperty("liveButton").objectReferenceValue = liveButton;
             serializedController.FindProperty("liveButton10").objectReferenceValue = liveButton10;
-            serializedController.FindProperty("limitedButton").objectReferenceValue = limitedButton;
-            serializedController.FindProperty("limitedButton10").objectReferenceValue = limitedButton10;
+            // [TASK-KBO-178] 한정 영입(SEASON_LIMITED - 카탈로그 0장) 상품 폐지로 한정 응원봉/한정 행을 만들지 않는다.
             serializedController.FindProperty("iconButton").objectReferenceValue = iconButton;
             serializedController.FindProperty("iconButton10").objectReferenceValue = iconButton10;
             serializedController.FindProperty("legendButton").objectReferenceValue = legendButton;

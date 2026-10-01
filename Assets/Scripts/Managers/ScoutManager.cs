@@ -204,7 +204,7 @@ namespace KBOManager.Managers
             if (player?.Template == null) return;
 
             Debug.Log($"[ScoutManager] 선수 획득: {player.Template.PlayerName} " +
-                $"(등급 {player.Template.Grade}, OVR {player.CalculateOVR(false)})");
+                $"(등급 {CardGrowthRules.DisplayName(player.Template.Grade)}, OVR {player.CalculateOVR(false)})");
         }
 
         /// <summary>

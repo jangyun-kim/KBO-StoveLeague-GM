@@ -127,6 +127,22 @@ namespace KBOManager.Models
             _ => 0
         };
 
+        /// <summary>[TASK-KBO-178] 유저에게 보이는 선수 등급 표기 - 화면/로그에 내부 enum 이름(LIVE_NORMAL 등)을 그대로 쓰지 않는다.
+        /// 선수 카드는 LIVE_NORMAL(1~3성)과 LIVE_EPIC(4성)이 실제로 다른 등급(별도 영입 상품·5,000장 이상씩 존재)이라 둘을 구분해 표기한다.</summary>
+        public static string DisplayName(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => "라이브",
+            Grade.LIVE_EPIC => "라이브 에픽",
+            Grade.ALLSTAR => "올스타",
+            Grade.FRANCHISE => "프랜차이즈",
+            Grade.TITLE_HOLDER => "타이틀 홀더",
+            Grade.RETIRED_NUMBER => "영구결번",
+            Grade.SIGNATURE => "시그니처",
+            Grade.GOLDEN_GLOVE => "골든글러브",
+            Grade.DYNASTY => "왕조",
+            _ => grade.ToString()
+        };
+
         /// <summary>최상위 종결 등급(SIGNATURE/DYNASTY/RETIRED_NUMBER)의 PowerRank.</summary>
         public const int TopTierPowerRank = 7;
 

@@ -38,14 +38,15 @@
 - **[TASK-KBO-129 갱신, SSOT 통일, 재폐기]** TASK-KBO-065/066이 구현했던 단일 재화(`CheerStick`) 1회/10회
   뽑기 구조는 GDD 원문에 없는 양산형 모바일 가챠 관습으로 확인되어 **완전히 폐기**되었다. GDD "뽑기(가챠) &gt;
   치어리더 영입"/"재화" 절이 실제로 정의한 4개 카테고리 전용 재화로 교체했다(`CheerleaderGachaService.cs`).
-  아래 표는 그 실제 구현체와 1:1로 일치하며, "제안"이 아니라 "코드가 곧 사양"이다.
+  아래 표는 그 실제 구현체와 1:1로 일치하며, "제안"이 아니라 "코드가 곧 사양"이다. **[TASK-KBO-178]** 확률표 SSOT는
+  `Models/CheerleaderDropTables.cs`이며 화면/로그의 티어 표기는 `LIVE`/`ICON`/`LEGEND`로 통일했다(내부 enum LIVE_NORMAL/LIVE_EPIC → "LIVE").
 
 | 카테고리(GDD 분류) | 메서드 | 소모 재화 | 비용(1회) | 등급 판정 | 비고 |
 | :--- | :--- | :--- | :-- | :--- | :--- |
-| 일반 영입 &gt; 라이브 | `RollLive(count)` | `LiveCheerStick`(라이브 응원봉) | 100 | `LIVE_NORMAL` 62.5% / `LIVE_EPIC` 37.5% (2단계 재정규화) | `CheerleaderShopUIController.liveButton` |
-| 일반 영입 &gt; 한정(시즌 한정 기간) | `RollLimited(count)` | `LimitedCheerStick`(한정 응원봉) | 100 | `SEASON_LIMITED` 확정(100%) | `limitedButton` |
-| 픽업·프리미엄 영입 &gt; 아이콘 | `RollIcon(count)` | `StarCheerStick`(스타 응원봉) | 100 | `ICON` 확정(100%) | `iconButton`. 픽업/프리미엄 구분 전용 재화가 GDD에 없어 통합(4절 참고) |
-| 픽업·프리미엄 영입 &gt; 레전드 | `RollLegend(count)` | `LegendCheerStick`(레전드 응원봉) | 100 | `LEGEND` 확정(100%) | `legendButton`. 위와 동일 사유로 통합 |
+| 일반 영입 &gt; 라이브 | `RollLive(count)` | `LiveCheerStick`(라이브 응원봉) | 100 | **[TASK-178]** `LIVE` 100% (구 LIVE_NORMAL 62.5 / LIVE_EPIC 37.5 - LIVE_EPIC 카탈로그 0장이라 폐지) | `CheerleaderShopUIController.liveButton` |
+| ~~일반 영입 &gt; 한정~~ | ~~`RollLimited`~~ | `LimitedCheerStick` | - | **[TASK-178] 상품 폐지** - `SEASON_LIMITED` 카탈로그 0장(치어리더 DB는 LIVE/ICON/LEGEND뿐). 재화 필드는 세이브 호환용으로만 유지 | - |
+| 픽업·프리미엄 영입 &gt; 아이콘 | `RollIcon(count)` | `StarCheerStick`(스타 응원봉) | 100 | **[TASK-144→178]** `ICON` 0.5% / `LIVE` 99.5% | `iconButton`. 픽업/프리미엄 구분 전용 재화가 GDD에 없어 통합(4절 참고) |
+| 픽업·프리미엄 영입 &gt; 레전드 | `RollLegend(count)` | `LegendCheerStick`(레전드 응원봉) | 100 | **[TASK-144→178]** `LEGEND` 0.5% / `ICON` 1.5% / `LIVE` 98.0% | `legendButton`. 위와 동일 사유로 통합 |
 
 - **[UI 변경]** `CheerleaderShopUIController`는 이제 "1회/10회 뽑기" 2버튼이 아니라 위 4개 카테고리 버튼을
   각각 count=1로 호출한다(TASK-KBO-129 - 10연뽑 개념 자체를 폐지, GDD가 픽업의 10/40/80회를 "1회 클릭 10연출"이

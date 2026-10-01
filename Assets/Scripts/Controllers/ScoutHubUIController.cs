@@ -46,6 +46,12 @@ namespace KBOManager.Controllers
         [Tooltip("CheerleaderShopUIController가 붙은 치어리더 영입 섹션 루트.")]
         [SerializeField] private GameObject cheerleaderSection;
 
+        [Header("Tab Style (TASK-KBO-178 - 활성 탭 네이비 + 흰 글씨, 비활성 흰 바탕 + 회색 글씨)")]
+        [SerializeField] private Color activeTabColor = new Color(0.06f, 0.17f, 0.45f, 1f);
+        [SerializeField] private Color inactiveTabColor = new Color(0.94f, 0.95f, 0.97f, 1f);
+        [SerializeField] private Color activeTabTextColor = Color.white;
+        [SerializeField] private Color inactiveTabTextColor = new Color(0.5f, 0.53f, 0.6f, 1f);
+
         private void Awake()
         {
             // [TASK-KBO-138] playerSection/cheerleaderSection이 실수로 같은 오브젝트에 연결되면(에디터
@@ -78,6 +84,7 @@ namespace KBOManager.Controllers
 
             if (playerSection != null) playerSection.SetActive(true);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
+            StyleTabs(playerActive: true);
         }
 
         public void ShowCheerleaderSection()
@@ -86,6 +93,26 @@ namespace KBOManager.Controllers
 
             if (playerSection != null) playerSection.SetActive(false);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(true);
+            StyleTabs(playerActive: false);
+        }
+
+        /// <summary>[TASK-KBO-178] 레퍼런스(선수 스카우트 탭 바)처럼 현재 탭만 네이비로 강조한다.</summary>
+        private void StyleTabs(bool playerActive)
+        {
+            StyleTab(playerTabButton, playerActive);
+            StyleTab(cheerleaderTabButton, !playerActive);
+        }
+
+        private void StyleTab(Button tab, bool active)
+        {
+            if (tab == null) return;
+            if (tab.targetGraphic != null) tab.targetGraphic.color = active ? activeTabColor : inactiveTabColor;
+            var label = tab.GetComponentInChildren<Text>(true);
+            if (label != null)
+            {
+                label.color = active ? activeTabTextColor : inactiveTabTextColor;
+                label.fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+            }
         }
 
         /// <summary>[TASK-KBO-142, 명령서 4/6항] 활성화/비활성화되는 두 GameObject의 이름과

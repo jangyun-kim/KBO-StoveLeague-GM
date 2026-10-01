@@ -292,7 +292,7 @@ namespace KBOManager.Controllers
 
             if (best == null || bestRank < CardGrowthRules.PowerRank(TopPullThreshold)) return;
 
-            string message = $"★ 최고급 선수 획득! {best.Template.PlayerName} ({best.Template.Grade}) ★";
+            string message = $"★ 최고급 선수 획득! {best.Template.PlayerName} ({CardGrowthRules.DisplayName(best.Template.Grade)}) ★";
             Debug.Log($"[ScoutUIController] {message}");
 
             if (topPullAnnouncementText == null) return;
