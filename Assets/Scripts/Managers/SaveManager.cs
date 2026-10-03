@@ -131,7 +131,9 @@ namespace KBOManager.Managers
         // v7: 치어리더 6인 역할 편성(CheerSquad, 6칸 - 빈 칸은 InstanceId가 빈 객체) 추가(TASK-KBO-180). CheerSquad가 비어 있는
         // 구버전(v5~v6) 세이브는 EquippedCheerleader(단일 슬롯)를 1번 응원단장 슬롯으로 이관한다. EquippedCheerleader는
         // 구버전 빌드 호환을 위해 계속 응원단장 슬롯 값을 함께 기록한다.
-        public int SaveVersion = 7;
+        // v8: 단장 닉네임(ManagerNickname)·신규 단장 튜토리얼 완료 여부(TutorialCompleted) 추가(TASK-KBO-181). 필드가 없는 구버전
+        // 세이브는 닉네임 빈 문자열(로비는 '단장'으로 표기), 튜토리얼 완료(true - 기존 유저에게 가이드를 다시 띄우지 않음)로 채워진다.
+        public int SaveVersion = 8;
         public string SavedAtUtc;
 
         // GameManager
@@ -161,6 +163,8 @@ namespace KBOManager.Managers
         public List<Cheerleader> OwnedCheerleaders = new List<Cheerleader>();
         public SetDeckSelection SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] v6
         public List<Cheerleader> CheerSquad = new List<Cheerleader>(); // [TASK-KBO-180] v7 - 인덱스 = (int)CheerRole
+        public string ManagerNickname = ""; // [TASK-KBO-181] v8
+        public bool TutorialCompleted = true; // [TASK-KBO-181] v8 - 구버전 세이브는 가이드 생략
 
         // LeagueManager
         public bool HasLeagueData;
@@ -212,6 +216,38 @@ namespace KBOManager.Managers
         }
 
         public bool HasSaveFile() => File.Exists(SavePath);
+
+        /// <summary>[TASK-KBO-181] 이어하기 가능한 세이브인가 - 파일이 있고 온보딩(구단 선택)을 마친 커리어여야 한다.</summary>
+        public bool HasContinuableSave()
+        {
+            if (!HasSaveFile()) return false;
+            try
+            {
+                var data = JsonUtility.FromJson<GameSaveData>(File.ReadAllText(SavePath));
+                return data != null && !data.IsFirstLogin && data.FavoriteTeam != Team.None && data.Inventory != null && data.Inventory.Count > 0;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[SaveManager] 세이브 파일을 확인하지 못했습니다: {e.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>[TASK-KBO-181] 온보딩을 마친 커리어만 자동 저장한다(타이틀/온보딩 도중의 빈 상태로 기존 세이브를 덮어쓰지 않음).</summary>
+        public bool TrySaveCareer()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || gm.IsFirstLogin || gm.FavoriteTeam == Team.None) return false;
+            SaveGame();
+            return true;
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) TrySaveCareer();
+        }
+
+        private void OnApplicationQuit() => TrySaveCareer();
 
         /// <summary>현재 GameManager/LeagueManager 상태를 JSON으로 직렬화해 기기에 저장한다.</summary>
         public void SaveGame()
@@ -279,6 +315,8 @@ namespace KBOManager.Managers
                 data.Uniform = gm.Uniform;
                 data.Ticket = gm.Ticket;
                 data.IsFirstLogin = gm.IsFirstLogin;
+                data.ManagerNickname = gm.ManagerNickname;
+                data.TutorialCompleted = gm.TutorialCompleted;
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
                 data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
@@ -399,6 +437,8 @@ namespace KBOManager.Managers
                 gm.Uniform = data.Uniform;
                 gm.Ticket = data.Ticket;
                 gm.IsFirstLogin = data.IsFirstLogin;
+                gm.ManagerNickname = data.ManagerNickname ?? "";
+                gm.TutorialCompleted = data.TutorialCompleted;
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
                 gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)

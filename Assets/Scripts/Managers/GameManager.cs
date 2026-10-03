@@ -51,6 +51,23 @@ namespace KBOManager.Managers
             set => isFirstLogin = value;
         }
 
+        [Tooltip("[TASK-KBO-181] 온보딩에서 입력한 단장 닉네임(로비 헤더 '[구단명] [닉네임] 단장').")]
+        [SerializeField] private string managerNickname = "";
+        public string ManagerNickname
+        {
+            get => managerNickname;
+            set => managerNickname = value ?? "";
+        }
+
+        [Tooltip("[TASK-KBO-181] 신규 단장 튜토리얼(라인업 → 세트덱 → 플레이 볼) 완료/건너뛰기 여부. " +
+                 "온보딩 완료 시 false로 내려 첫 로비 진입에서 가이드를 띄운다. 기존 세이브는 true(가이드 없음).")]
+        [SerializeField] private bool tutorialCompleted = true;
+        public bool TutorialCompleted
+        {
+            get => tutorialCompleted;
+            set => tutorialCompleted = value;
+        }
+
         // ----- 치어리더 장착 슬롯 (TASK-KBO-048) -----
         [Header("Cheerleader")]
         [Tooltip("유저가 장착한 치어리더 1명(v0.1은 단일 슬롯). null이면 '미장착' 상태 - 경기 조건부 " +
@@ -352,6 +369,7 @@ namespace KBOManager.Managers
             // CheerleaderCatalog.Initialize() 자체가 이미 초기화됐으면 재실행을 건너뛰므로, 씬 재로드
             // 등으로 이 Awake()가 다시 호출돼도 안전하다.
             CheerleaderCatalog.Initialize();
+            CaptureNewManagerDefaults();
 
             // [TASK-KBO-085] 선수 데이터베이스(players.csv) 초기화 호출을 여기서 제거했다 - 같은
             // GameObject에 붙은 PlayerDatabase와 GameManager 중 어느 Awake()가 먼저 실행되는지 Unity가
@@ -434,6 +452,43 @@ namespace KBOManager.Managers
                 $"활동기간 2021 포함={CheerleaderActivePeriod.Contains(kiaCheer.ActivePeriod, 2021)}(기대 True)/2022={CheerleaderActivePeriod.Contains(kiaCheer.ActivePeriod, 2022)}(기대 False)");
         }
 #endif
+
+        // ----- [TASK-KBO-181] 새 단장 부임(새 게임) -----
+
+        private int[] newManagerCurrencyDefaults;
+
+        private int[] ReadCurrencies() => new[]
+        {
+            liveNormalTicket, liveEpicTicket, pickupTicket, advancedTicket, trophy, signatureBall,
+            liveCheerStick, starCheerStick, legendCheerStick, limitedCheerStick, gameGold, uniform, ticket,
+        };
+
+        /// <summary>씬(인스펙터)에 설정된 시작 재화를 기억해 둔다 - [새 단장 부임] 시 이 값으로 되돌린다.</summary>
+        private void CaptureNewManagerDefaults() => newManagerCurrencyDefaults = ReadCurrencies();
+
+        /// <summary>
+        /// [TASK-KBO-181] [새 단장 부임] - 진행 중이던 커리어(선수/로스터/재료/치어리더/재화/세트덱 선택/팬심)를 버리고 첫 실행 상태로
+        /// 되돌린다. 재화는 씬 시작값으로 복원한다. 디스크 세이브는 건드리지 않는다 - 온보딩을 끝까지 마쳐야 새 커리어로 덮어쓴다.
+        /// </summary>
+        public void ResetForNewManager()
+        {
+            inventory.Clear();
+            roster.Clear();
+            itemInventory.Clear();
+            favoriteTeam = Team.None;
+            managerNickname = "";
+            isFirstLogin = true;
+            tutorialCompleted = false;
+            fanSentiment = 100;
+            losingStreak = 0;
+            OwnedCheerleaders.Clear();
+            RestoreCheerSquad(null);
+            RestoreSetDeckSelection(new SetDeckSelection());
+
+            var d = newManagerCurrencyDefaults ?? new int[13];
+            liveNormalTicket = d[0]; liveEpicTicket = d[1]; pickupTicket = d[2]; advancedTicket = d[3]; trophy = d[4]; signatureBall = d[5];
+            liveCheerStick = d[6]; starCheerStick = d[7]; legendCheerStick = d[8]; limitedCheerStick = d[9]; gameGold = d[10]; uniform = d[11]; ticket = d[12];
+        }
 
         // ----- 인벤토리/로스터 헬퍼 -----
 

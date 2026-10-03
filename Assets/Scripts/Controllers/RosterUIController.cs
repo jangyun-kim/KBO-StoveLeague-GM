@@ -88,6 +88,33 @@ namespace KBOManager.Controllers
         [Tooltip("보유 카드로 28인 자동 편성(GameActionController.ExecuteAutoRoster).")]
         [SerializeField] private Button autoLineupButton;
 
+        [Header("Tabs / Slot Frames (TASK-KBO-181 - [타자 라인업] / [투수 로스터] 분리)")]
+        [Tooltip("켜면 RosterSlotLayout 28칸을 한 화면에 몰아 그리지 않고, 탭별로 슬롯 칸(머리글 + 카드)을 그린다. " +
+                 "타자 탭 = 주전 9(batterContainer, 3x3) + 후보 6(benchContainer), 투수 탭 = 선발 5(startingPitcherContainer) + 불펜(bullpenContainer).")]
+        [SerializeField] private bool useSlotFrames;
+        [SerializeField] private Button batterTabButton;
+        [SerializeField] private Button pitcherTabButton;
+        [SerializeField] private GameObject batterPage;
+        [SerializeField] private GameObject pitcherPage;
+        [SerializeField] private Transform startingPitcherContainer;
+        [SerializeField] private Transform bullpenContainer;
+        [SerializeField] private Text lineupHeaderText;
+        [SerializeField] private Text startingPitcherHeaderText;
+        [SerializeField] private Text bullpenHeaderText;
+        [SerializeField] private Font slotFont;
+        [SerializeField] private Font slotBoldFont;
+        [SerializeField] private Color tabActiveColor = new Color(0.09f, 0.19f, 0.47f);
+        [SerializeField] private Color tabInactiveColor = new Color(0.93f, 0.94f, 0.97f);
+
+        [Header("Set Deck Bar (TASK-KBO-181 - 하단 고정 바)")]
+        [SerializeField] private Image setDeckTeamLogo;
+        [SerializeField] private Text setDeckTeamText;
+        [SerializeField] private Text setDeckScoreText;
+        [SerializeField] private Text teamOvrText;
+
+        private readonly List<GameObject> spawnedCells = new List<GameObject>();
+        private bool showingPitchers;
+
         private readonly List<GameObject> spawnedPlaceholders = new List<GameObject>();
         private bool placeholderWarningLogged;
         private RosterSlotLayout.Slot placementSlot; // null이 아니면 팝업이 "빈 슬롯 배치" 모드
@@ -106,6 +133,26 @@ namespace KBOManager.Controllers
             {
                 if (setDeckOptionController != null) setDeckOptionController.Open();
             });
+            if (batterTabButton != null) batterTabButton.onClick.AddListener(() => ShowTab(false));
+            if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(() => ShowTab(true));
+        }
+
+        /// <summary>[TASK-KBO-181] [타자 라인업 (15인)] / [투수 로스터 (13인)] 탭 전환.</summary>
+        public void ShowTab(bool pitchers)
+        {
+            showingPitchers = pitchers;
+            if (batterPage != null) batterPage.SetActive(!pitchers);
+            if (pitcherPage != null) pitcherPage.SetActive(pitchers);
+            PaintTab(batterTabButton, !pitchers);
+            PaintTab(pitcherTabButton, pitchers);
+        }
+
+        private void PaintTab(Button tab, bool active)
+        {
+            if (tab == null) return;
+            if (tab.targetGraphic != null) tab.targetGraphic.color = active ? tabActiveColor : tabInactiveColor;
+            var label = tab.GetComponentInChildren<Text>(true);
+            if (label != null) label.color = active ? Color.white : new Color(0.45f, 0.48f, 0.55f);
         }
 
         private void OnEnable()
@@ -117,6 +164,7 @@ namespace KBOManager.Controllers
             if (GameManager.Instance != null) GameManager.Instance.OnSetDeckSelectionChanged += HandleRosterChanged;
 
             CloseSwapPopup();
+            if (useSlotFrames) ShowTab(showingPitchers);
             RefreshRoster();
         }
 
@@ -141,10 +189,19 @@ namespace KBOManager.Controllers
             ClearCards(spawnedPitcherCards);
             ClearCards(spawnedBenchCards);
             ClearPlaceholders();
+            ClearCells();
 
             if (GameManager.Instance == null) return;
 
             var roster = GameManager.Instance.Roster;
+            if (useSlotFrames)
+            {
+                RefreshSlotFrames(roster);
+                RefreshEmptyState(roster.Count);
+                RefreshSetDeckStatus();
+                return;
+            }
+
             var benchTarget = benchContainer != null ? benchContainer : batterContainer;
 
             foreach (var slot in RosterSlotLayout.Build(roster))
@@ -162,6 +219,129 @@ namespace KBOManager.Controllers
             RefreshSetDeckStatus();
         }
 
+        // ----- [TASK-KBO-181] 탭별 슬롯 칸(머리글 + 카드) -----
+
+        private void RefreshSlotFrames(IReadOnlyList<Player> roster)
+        {
+            var lineup = LineupView.BuildLineup(roster);
+            var bench = LineupView.BuildBench(roster);
+            var (starters, bullpen) = LineupView.BuildPitchers(roster);
+            var nativeSize = CardHolderFit.NativeSizeOf(cardPrefab);
+
+            foreach (var entry in lineup) SpawnCell(entry, batterContainer, spawnedBatterCards, nativeSize, new Color(0.13f, 0.3f, 0.72f));
+            var benchTarget = benchContainer != null ? benchContainer : batterContainer;
+            foreach (var entry in bench) SpawnCell(entry, benchTarget, spawnedBenchCards, nativeSize, new Color(0.24f, 0.26f, 0.32f));
+            var spTarget = startingPitcherContainer != null ? startingPitcherContainer : pitcherContainer;
+            foreach (var entry in starters) SpawnCell(entry, spTarget, spawnedPitcherCards, nativeSize, new Color(0.13f, 0.3f, 0.72f));
+            var bullpenTarget = bullpenContainer != null ? bullpenContainer : pitcherContainer;
+            foreach (var entry in bullpen) SpawnCell(entry, bullpenTarget, spawnedPitcherCards, nativeSize, BullpenColor(entry));
+
+            int batterCount = roster.Count(p => p?.Template != null && !p.Template.IsPitcher);
+            int pitcherCount = roster.Count(p => p?.Template != null && p.Template.IsPitcher);
+            if (lineupHeaderText != null)
+                lineupHeaderText.text = $"주전 타자 9인 · 타순 / 수비 포지션 (라인업 OVR {AverageOvr(lineup)})";
+            if (startingPitcherHeaderText != null)
+                startingPitcherHeaderText.text = $"선발 로테이션 1~5선발 (평균 OVR {AverageOvr(starters)})";
+            if (bullpenHeaderText != null)
+                bullpenHeaderText.text = $"불펜 · 승리조 2 / 추격조 4 / 롱릴리프 1 / 마무리 1 (투수 {pitcherCount}/{GameManager.RequiredPitcherCount})";
+            if (batterTabButton != null) CompyaUiKit.SetButtonText(batterTabButton, $"타자 라인업 ({batterCount}/{GameManager.RequiredBatterCount})");
+            if (pitcherTabButton != null) CompyaUiKit.SetButtonText(pitcherTabButton, $"투수 로스터 ({pitcherCount}/{GameManager.RequiredPitcherCount})");
+        }
+
+        private static string AverageOvr(IEnumerable<LineupView.Entry> entries)
+        {
+            var players = entries.Where(e => e.Player != null).Select(e => e.Player).ToList();
+            return players.Count == 0 ? "-" : players.Average(p => p.CalculateOVR(false)).ToString("F1");
+        }
+
+        private static Color BullpenColor(LineupView.Entry entry) => entry.Role switch
+        {
+            _ when entry.IsExtra => new Color(0.35f, 0.35f, 0.38f),
+            PitcherRole.Closer => new Color(0.66f, 0.1f, 0.14f),
+            PitcherRole.WinningReliever => new Color(0.12f, 0.45f, 0.36f),
+            PitcherRole.LongReliever => new Color(0.42f, 0.3f, 0.62f),
+            _ => new Color(0.2f, 0.24f, 0.33f),
+        };
+
+        /// <summary>슬롯 칸 1개: 머리글(타순·포지션 / 선발 순번 / 불펜 보직) + 카드 홀더(카드 디자인 크기 유지 스케일) + 강화 뱃지.
+        /// 카드가 있으면 클릭 = 교체 팝업, 비어 있으면 클릭 = 배치 팝업.</summary>
+        private void SpawnCell(LineupView.Entry entry, Transform container, List<PlayerCardUI> tracking, Vector2 nativeSize, Color headerColor)
+        {
+            if (container == null) return;
+
+            var cell = new GameObject($"Slot_{entry.Header}", typeof(RectTransform), typeof(Image), typeof(Button));
+            var cellRect = (RectTransform)cell.transform;
+            cellRect.SetParent(container, false);
+            var background = cell.GetComponent<Image>();
+            background.color = entry.Player != null ? new Color(0.07f, 0.09f, 0.16f, 0.92f) : new Color(0.16f, 0.2f, 0.3f, 0.85f);
+            var button = cell.GetComponent<Button>();
+            button.targetGraphic = background;
+            spawnedCells.Add(cell);
+
+            var header = CompyaUiKit.Norm(cellRect, "Header", 0f, 0.84f, 1f, 1f);
+            CompyaUiKit.Paint(header, headerColor);
+            string headerText = entry.BattingOrder > 0 ? $"<color=#FFD54A>{entry.BattingOrder}번</color> {entry.Header}" : entry.Header;
+            if (entry.IsFill) headerText += " <size=80%>(대체)</size>";
+            CellLabel(header, headerText, TextAnchor.MiddleCenter, Color.white, true);
+
+            var holderRect = CompyaUiKit.Norm(cellRect, "CardHolder", 0.03f, 0.015f, 0.97f, 0.83f);
+            var holder = holderRect.gameObject.AddComponent<CardHolderFit>();
+            holder.Configure(nativeSize, 1f);
+
+            if (entry.Player != null)
+            {
+                var player = entry.Player;
+                var card = SpawnCard(player, holderRect, tracking);
+                if (card != null)
+                {
+                    holder.Place((RectTransform)card.transform);
+                    BindCardClick(card, () => OpenSwapPopup(player));
+                }
+                button.onClick.AddListener(() => OpenSwapPopup(player));
+
+                if (player.ReinforceLevel > 0)
+                {
+                    var badge = CompyaUiKit.Norm(cellRect, "ReinforceBadge", 0.66f, 0.7f, 0.98f, 0.83f);
+                    CompyaUiKit.Paint(badge, new Color(0.55f, 0.18f, 0.62f, 0.95f));
+                    CellLabel(badge, $"+{player.ReinforceLevel}", TextAnchor.MiddleCenter, Color.white, true);
+                }
+            }
+            else
+            {
+                CellLabel(holderRect, $"{entry.Header}\n\n<b>[+ 선수 배치]</b>", TextAnchor.MiddleCenter, new Color(0.78f, 0.85f, 0.98f), false);
+                var slot = entry.ToPlacementSlot();
+                button.onClick.AddListener(() => OpenPlacementPopup(slot));
+            }
+        }
+
+        private void CellLabel(RectTransform parent, string text, TextAnchor anchor, Color color, bool bold)
+        {
+            var rect = CompyaUiKit.Norm(parent, "Text", 0.02f, 0f, 0.98f, 1f);
+            var label = rect.gameObject.AddComponent<Text>();
+            var fallback = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.font = bold ? (slotBoldFont != null ? slotBoldFont : slotFont != null ? slotFont : fallback) : (slotFont != null ? slotFont : fallback);
+            label.text = text;
+            label.alignment = anchor;
+            label.color = color;
+            label.supportRichText = true;
+            label.raycastTarget = false;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 12;
+            label.resizeTextMaxSize = 30;
+            label.fontSize = 30;
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+        }
+
+        private void ClearCells()
+        {
+            foreach (var cell in spawnedCells)
+            {
+                if (cell != null) Destroy(cell);
+            }
+            spawnedCells.Clear();
+        }
+
         /// <summary>[TASK-KBO-177] 빈 슬롯 플레이스홀더(placeholderTemplate 복제 - 자식 "Label" Text). 템플릿이 없으면(씬 미갱신)
         /// 빈 슬롯을 그리지 못하므로 한 번만 경고한다.</summary>
         private void SpawnPlaceholder(RosterSlotLayout.Slot slot, Transform container)
@@ -172,7 +352,7 @@ namespace KBOManager.Controllers
                 if (!placeholderWarningLogged)
                 {
                     Debug.LogWarning("[RosterUIController] 빈 슬롯 템플릿(placeholderTemplate)이 배선되지 않았습니다 - " +
-                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~180)'을 실행해 씬을 갱신하십시오.");
+                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~181)'을 실행해 씬을 갱신하십시오.");
                     placeholderWarningLogged = true;
                 }
                 return;
@@ -234,7 +414,7 @@ namespace KBOManager.Controllers
             if (gm != null && gm.Roster.Count == 0 && gm.Inventory.Count > 0)
             {
                 Debug.LogWarning("[RosterUIController] 자동 편성 후에도 로스터가 비어 있습니다 - GameActionController.rosterManager " +
-                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~180)'이 자동 배선).");
+                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~181)'이 자동 배선).");
             }
             RefreshRoster(); // OnRosterChanged 구독 여부와 무관하게 즉시 반영
         }
@@ -272,6 +452,13 @@ namespace KBOManager.Controllers
             {
                 setDeckActiveGlowRoot.SetActive(isGoalMet);
             }
+
+            // [TASK-KBO-181] 하단 고정 바: 활성 구단 세트덱 뱃지(로고 + 구단명) · 스코어 NP / 200P · 팀 OVR.
+            if (setDeckTeamLogo != null) TeamLogoSprites.Apply(setDeckTeamLogo, setDeck.DeckTeam);
+            if (setDeckTeamText != null) setDeckTeamText.text = $"{CompyaUiKit.FullName(setDeck.DeckTeam)} 세트덱";
+            if (setDeckScoreText != null)
+                setDeckScoreText.text = $"<color=#5FE3FF>{setDeck.Score}P</color> / {SetDeckBuffTable.FinalGoalScore}P";
+            if (teamOvrText != null) teamOvrText.text = $"팀 OVR {gm.CalculateTeamOVR()}";
 
             if (benchHeaderText != null)
             {
@@ -316,6 +503,7 @@ namespace KBOManager.Controllers
             {
                 if (card == null) continue;
                 if (card.TryGetComponent<Button>(out var button)) button.onClick.RemoveAllListeners();
+                CardHolderFit.ResetCard(card); // [TASK-KBO-181] 슬롯 칸 스케일이 다른 화면 재사용에 새지 않게
 
                 if (CardPoolManager.Instance != null) CardPoolManager.Instance.Release(card);
                 else Destroy(card.gameObject);
@@ -359,7 +547,7 @@ namespace KBOManager.Controllers
             if (swapPopupRoot == null)
             {
                 Debug.LogWarning("[RosterUIController] 배치 팝업(swapPopupRoot)이 배선되지 않았습니다 - " +
-                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~180)'을 실행해 씬을 갱신하십시오.");
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~181)'을 실행해 씬을 갱신하십시오.");
                 return;
             }
 

@@ -61,6 +61,9 @@ namespace KBOManager.Managers
         [Tooltip("시작 시 자동으로 켤 화면.")]
         [SerializeField] private ScreenType initialScreen = ScreenType.Lobby;
 
+        [Tooltip("[TASK-KBO-181] 시작 시 타이틀(온보딩 화면)부터 띄운다. 끄면 첫 실행(IsFirstLogin)일 때만 온보딩을 띄운다.")]
+        [SerializeField] private bool startWithTitle = true;
+
         private readonly Dictionary<ScreenType, GameObject> screenRoots = new Dictionary<ScreenType, GameObject>();
 
         public ScreenType CurrentScreen { get; private set; }
@@ -90,10 +93,13 @@ namespace KBOManager.Managers
         /// 이미 씬의 모든 오브젝트보다 먼저 끝나 있으므로(Unity의 Awake -&gt; Start 실행 순서 보장),
         /// 여기 Start() 시점에는 GameManager.Instance가 항상 준비돼 있다.
         /// </summary>
+        /// <remarks>[TASK-KBO-181] 온보딩 화면이 이제 타이틀(『KBO 스토브리그 : 단장의 시간』 - [시즌 이어하기] / [새 단장 부임] /
+        /// [단장 부임하기])을 겸하므로, startWithTitle이 켜져 있고 온보딩 화면이 등록돼 있으면 항상 타이틀부터 시작한다.</remarks>
         private void Start()
         {
             bool needsOnboarding = GameManager.Instance != null && GameManager.Instance.IsFirstLogin;
-            ShowScreen(needsOnboarding ? ScreenType.Onboarding : initialScreen);
+            bool showTitle = (startWithTitle || needsOnboarding) && screenRoots.ContainsKey(ScreenType.Onboarding);
+            ShowScreen(showTitle ? ScreenType.Onboarding : initialScreen);
         }
 
         /// <summary>지정한 화면만 켜고 나머지 등록된 화면은 전부 끈다.</summary>

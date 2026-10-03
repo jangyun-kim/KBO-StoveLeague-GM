@@ -144,9 +144,12 @@ namespace KBOManager.Managers
             {
                 if (slot.Assigned != null) continue;
                 if (pool.Count == 0) break;
-
+                // [TASK-KBO-181] 같은 그룹(투수 슬롯 = 투수, 타자 슬롯 = 타자) 잉여 선수를 먼저 쓴다 - 예전에는 그룹을 보지 않아
+                // 보직 쿼터가 비는 구단(예: 2026 삼성 추격조 MR 0명)에서 투수 슬롯에 타자가 들어가 타자 19 / 투수 9가 되는 버그가 있었다.
+                bool wantsPitcher = slot.Kind == SlotKind.PitcherRole;
                 var best = pool
-                    .OrderByDescending(p => SetDeckEvaluator.ContributionScore(p, deckTeam))
+                    .OrderByDescending(p => p.Template.IsPitcher == wantsPitcher)
+                    .ThenByDescending(p => SetDeckEvaluator.ContributionScore(p, deckTeam))
                     .ThenByDescending(p => p.CalculateOVR(false))
                     .First();
                 slot.Assigned = best;

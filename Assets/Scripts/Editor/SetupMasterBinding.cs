@@ -49,7 +49,12 @@ namespace KBOManager.EditorTools
         /// [TASK-KBO-180] 메뉴 이름을 TASK-168~180으로 갱신. 마지막 단계로 SetupTask180.ApplyAll()을 실행한다 - 치어리더 관리 화면
         /// 6인 역할 편성 3x2 그리드(CheerSquadPanel), 메인 홈(로비) 메인 홈.jpg 1:1 레이아웃 + 대구 삼성 라이온즈 파크 배경.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~180)")]
+        /// <remarks>
+        /// [TASK-KBO-181] 메뉴 이름을 TASK-168~181로 갱신. 마지막 단계로 SetupTask181.ApplyAll()을 실행한다 - OnboardingManager/SaveManager
+        /// 배선 + UIManager 온보딩(타이틀) 등록, 온보딩 3페이지(타이틀 / 10구단 + 닉네임 / 2024 골든글러브 4종 선물), 로비 5단 네이티브 레이아웃
+        /// (TASK-178/180 캡처 배경·거대 로고·더미 버튼 레이아웃 삭제) + 신규 단장 튜토리얼, 라인업 [타자 라인업] / [투수 로스터] 탭 분리.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~181)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -68,7 +73,8 @@ namespace KBOManager.EditorTools
             SetupThemeUI178.ApplyAll();
             SetupCompyaMatchUI179.ApplyAll();
             SetupTask180.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~180 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask181.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~181 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod
