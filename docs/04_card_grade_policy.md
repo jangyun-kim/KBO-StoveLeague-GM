@@ -504,3 +504,17 @@ PDF 해설 요지:
 
 - LIVE 카드 OVR 범위 50~82(2024 V3 라이브 선수 카드 정보 안내) - 수상 경력 없는 현역 18명의 범위 밖 기본 OVR을 보정(LIVE 카드 18장 `base_ovr` 변경, ID 불변).
 - 투수 보직: 구단별 대표 선발 5·마무리 1(실제 2025~2026 보직) + 나머지 명단 순서대로 필승조 4 → 롱릴리프 2 → 추격조. 이전에는 선발 8~11 / 불펜 3~5 / 롱·추격조 0이라 AI 불펜이 절차 생성 투수로 채워졌다. 가짜 선수 생성 금지 가드(TASK-179)는 그대로다.
+
+## 18. 스카우트 등급 서열 정합성 교정 (TASK-KBO-182, DCL-153)
+
+등급 위상: LIVE_NORMAL(+0) < LIVE_EPIC(+1) < ALLSTAR(+3) < FRANCHISE(+4) < TITLE_HOLDER(+5) < GOLDEN_GLOVE(+7) < SIGNATURE / DYNASTY / RETIRED_NUMBER(+10).
+상시 스카우트 최상위 상품이 GOLDEN_GLOVE를 건너뛰고 종결 등급 SIGNATURE를 주던 서열 모순을 바로잡았다.
+
+| 상품 | 변경 전 | 변경 후 |
+| :-- | :-- | :-- |
+| 프리미엄/픽업 최상위 (싸인볼·픽업 영입권) | **시그니처 스카우트** SIG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 | **골든글러브 스카우트** GG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 |
+| 프리미엄/픽업 타이틀홀더 (트로피·픽업 영입권) | TH 0.5 / FRA 1.0 / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 94.0 | 변경 없음 |
+
+- 종결 등급군(SIGNATURE / DYNASTY / RETIRED_NUMBER)은 상시 스카우트에서 완전히 제외한다(`ScoutDropTables.ExcludedFromScout`) - 해당 등급 템플릿이 없을 때의 대체 추첨에서도 제외.
+- 배너 제목/확률 문구는 `프리미엄 · 골든글러브 스카우트`, `픽업 · 골든글러브 스카우트`. 최고급 획득 연출 기준도 GOLDEN_GLOVE 이상.
+- 씬 버튼 바인딩 호환을 위해 필드/메서드 이름(`premiumSignatureButton`, `RollPremiumSignature`)은 유지했다.

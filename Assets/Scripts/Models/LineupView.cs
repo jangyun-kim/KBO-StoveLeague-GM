@@ -70,7 +70,10 @@ namespace KBOManager.Models
             (roster ?? Enumerable.Empty<Player>()).Where(p => p?.Template != null).Distinct().ToList();
 
         /// <summary>주전 타자 9칸(C, 1B, 2B, 3B, SS, LF, CF, RF, DH 순서).</summary>
-        public static List<Entry> BuildLineup(IEnumerable<Player> roster)
+        public static List<Entry> BuildLineup(IEnumerable<Player> roster) => BuildLineup(roster, null);
+
+        /// <summary>[TASK-KBO-182] overrideIds = 유저 지정 타순(LineupOrder, GameManager.BattingOrderOverride).</summary>
+        public static List<Entry> BuildLineup(IEnumerable<Player> roster, IReadOnlyList<string> overrideIds)
         {
             var batters = Valid(roster).Where(p => !p.Template.IsPitcher).ToList();
             SetDeckEvaluator.ClassifyBatters(batters, out var starters, out _);
@@ -98,6 +101,13 @@ namespace KBOManager.Models
             int order = 1;
             foreach (var entry in entries.Where(e => e.Player != null && !e.IsFill)) entry.BattingOrder = order++;
             foreach (var entry in entries.Where(e => e.Player != null && e.IsFill)) entry.BattingOrder = order++;
+
+            if (overrideIds != null && overrideIds.Count > 0)
+            {
+                var filled = entries.Where(e => e.Player != null).OrderBy(e => e.BattingOrder).ToList();
+                var reordered = LineupOrder.Apply(filled.Select(e => e.Player).ToList(), overrideIds);
+                foreach (var entry in filled) entry.BattingOrder = reordered.IndexOf(entry.Player) + 1;
+            }
             return entries;
         }
 
@@ -105,7 +115,7 @@ namespace KBOManager.Models
         public static List<Entry> BuildBench(IEnumerable<Player> roster)
         {
             var valid = Valid(roster);
-            var used = new HashSet<Player>(BuildLineup(valid).Where(e => e.Player != null).Select(e => e.Player));
+            var used = new HashSet<Player>(BuildLineup(valid, null).Where(e => e.Player != null).Select(e => e.Player));
             var bench = valid.Where(p => !p.Template.IsPitcher && !used.Contains(p)).OrderByDescending(p => p.CalculateOVR(false)).ToList();
 
             var entries = new List<Entry>();

@@ -18,7 +18,7 @@ namespace KBOManager.Controllers
     /// -> +12 OVR)에 맞춰, 이 컨트롤러가 직접 로스터를 그룹핑해 최다 구단/인원수를 구한다 - 더 이상
     /// GameManager.CheckSetDeckBonus()(구식 5명/배율 1.15배 기준, 이번 작업에서 삭제됨)에 의존하지 않는다.
     /// </summary>
-    public class RosterUIController : MonoBehaviour
+    public partial class RosterUIController : MonoBehaviour
     {
         [Header("References")]
         [Tooltip("OnRosterChanged 이벤트를 구독할 GameActionController. 비워두면 자동 갱신 없이 수동 RefreshRoster()만 동작한다.")]
@@ -135,11 +135,13 @@ namespace KBOManager.Controllers
             });
             if (batterTabButton != null) batterTabButton.onClick.AddListener(() => ShowTab(false));
             if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(() => ShowTab(true));
+            AwakeCompya();
         }
 
         /// <summary>[TASK-KBO-181] [타자 라인업 (15인)] / [투수 로스터 (13인)] 탭 전환.</summary>
         public void ShowTab(bool pitchers)
         {
+            if (useCompyaLayout) { ShowCompyaTab(pitchers ? CompyaTab.Pitcher : CompyaTab.Batter); return; }
             showingPitchers = pitchers;
             if (batterPage != null) batterPage.SetActive(!pitchers);
             if (pitcherPage != null) pitcherPage.SetActive(pitchers);
@@ -164,7 +166,8 @@ namespace KBOManager.Controllers
             if (GameManager.Instance != null) GameManager.Instance.OnSetDeckSelectionChanged += HandleRosterChanged;
 
             CloseSwapPopup();
-            if (useSlotFrames) ShowTab(showingPitchers);
+            if (useCompyaLayout) OnEnableCompya();
+            else if (useSlotFrames) ShowTab(showingPitchers);
             RefreshRoster();
         }
 
@@ -194,6 +197,14 @@ namespace KBOManager.Controllers
             if (GameManager.Instance == null) return;
 
             var roster = GameManager.Instance.Roster;
+            if (useCompyaLayout)
+            {
+                RefreshCompya(roster);
+                RefreshEmptyState(roster.Count);
+                RefreshSetDeckStatus();
+                RefreshCompyaBar();
+                return;
+            }
             if (useSlotFrames)
             {
                 RefreshSlotFrames(roster);
@@ -352,7 +363,7 @@ namespace KBOManager.Controllers
                 if (!placeholderWarningLogged)
                 {
                     Debug.LogWarning("[RosterUIController] 빈 슬롯 템플릿(placeholderTemplate)이 배선되지 않았습니다 - " +
-                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~181)'을 실행해 씬을 갱신하십시오.");
+                        "'KBO Manager/Setup/Apply Latest UI (TASK-168~182)'을 실행해 씬을 갱신하십시오.");
                     placeholderWarningLogged = true;
                 }
                 return;
@@ -409,12 +420,13 @@ namespace KBOManager.Controllers
             }
 
             CloseSwapPopup();
+            GameManager.Instance?.SetBattingOrderOverride(null); // [TASK-KBO-182] 새 라인업은 기본 타순부터
             gameActionController.ExecuteAutoRoster();
             var gm = GameManager.Instance;
             if (gm != null && gm.Roster.Count == 0 && gm.Inventory.Count > 0)
             {
                 Debug.LogWarning("[RosterUIController] 자동 편성 후에도 로스터가 비어 있습니다 - GameActionController.rosterManager " +
-                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~181)'이 자동 배선).");
+                    "배선을 확인하십시오('KBO Manager/Setup/Apply Latest UI (TASK-168~182)'이 자동 배선).");
             }
             RefreshRoster(); // OnRosterChanged 구독 여부와 무관하게 즉시 반영
         }
@@ -547,7 +559,7 @@ namespace KBOManager.Controllers
             if (swapPopupRoot == null)
             {
                 Debug.LogWarning("[RosterUIController] 배치 팝업(swapPopupRoot)이 배선되지 않았습니다 - " +
-                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~181)'을 실행해 씬을 갱신하십시오.");
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~182)'을 실행해 씬을 갱신하십시오.");
                 return;
             }
 

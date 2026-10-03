@@ -154,21 +154,26 @@ namespace KBOManager.EditorTests
         }
 
         [Test]
-        public void DescribeGiftPlacement_StartsHigherOvrGoldenGlove()
+        public void DescribeGiftPlacement_SameTeamGiftStarts_OtherTeamGiftStored()
         {
+            // [TASK-KBO-182] 자동 편성은 선택 구단 우선 - 같은 구단 골든글러브는 즉시 주전, 타 구단 골든글러브는 선택 구단 3루수가 있으면 보관.
             var inventory = SamsungLikeInventory();
-            var gift = P("KIA_2024_PLY_004368_GG", BatterPosition.ThirdBase, null, 95, Team.KIA, Grade.GOLDEN_GLOVE, 2024);
-            gift.Template.PlayerName = "김도영";
-            inventory.Add(gift);
+            var own = P("SAMSUNG_2024_PLY_004038_GG", BatterPosition.RightField, null, 99, Team.Samsung, Grade.GOLDEN_GLOVE, 2024);
+            own.Template.PlayerName = "구자욱";
+            var other = P("KIA_2024_PLY_004368_GG", BatterPosition.ThirdBase, null, 95, Team.KIA, Grade.GOLDEN_GLOVE, 2024);
+            other.Template.PlayerName = "김도영";
+            inventory.Add(own);
+            inventory.Add(other);
             var go = new GameObject("RosterManagerTest");
             created.Add(go);
             var roster = go.AddComponent<RosterManager>().AutoSetRoster(inventory, "Samsung");
 
-            Assert.Contains(gift, roster);
-            var note = OnboardingRules.DescribeGiftPlacement(roster, gift);
-            StringAssert.Contains("김도영 '24", note);
-            StringAssert.Contains("3B 주전 즉시 편성", note);
-            StringAssert.Contains("보관함", OnboardingRules.DescribeGiftPlacement(new List<Player>(), gift));
+            Assert.Contains(own, roster);
+            var note = OnboardingRules.DescribeGiftPlacement(roster, own);
+            StringAssert.Contains("구자욱 '24", note);
+            StringAssert.Contains("RF 주전 즉시 편성", note);
+            CollectionAssert.DoesNotContain(roster, other);
+            StringAssert.Contains("보관함", OnboardingRules.DescribeGiftPlacement(roster, other));
         }
     }
 }

@@ -23,6 +23,10 @@ TEAMS = ["SAMSUNG", "KIA", "LG", "DOOSAN", "KT", "SSG", "LOTTE", "HANWHA", "NC",
 SD = {"LIVE_NORMAL": 8, "GOLDEN_GLOVE": 6}  # 세트덱 기여(자팀 LIVE 8 / GG 구단 무관 6) - 후보 정렬용
 
 players, cards = load(DATA)
+# C# PlayerDatabase는 card_id를 딕셔너리 키로 써서 같은 행이 두 번 있으면 1장만 등록한다 - 동일하게 중복 제거.
+_raw_count = len(cards)
+cards = list({r["card_id"]: r for r in cards}.values())
+DUPLICATE_ROWS = _raw_count - len(cards)
 fails = []
 
 
@@ -30,7 +34,21 @@ def card(row):
     p = players[row["player_id"]]
     pos = p["position"]
     return {"id": row["card_id"], "name": p["name"], "pos": pos, "pitcher": pos in ROLE, "ovr": int(row["base_ovr"]),
-            "grade": row["grade_name"], "team": row["card_id"].split("_")[0], "year": row["year"]}
+            "grade": row["grade_name"], "team": row["card_id"].split("_")[0], "year": row["year"], "person": row["player_id"]}
+
+
+def starter_pack(team):
+    """OnboardingManager.GenerateStarterPack 재현 - 2026 LIVE_NORMAL 전원 + 투수/타자 정원 미달 시 절차 생성 신인(OVR 50) 보충."""
+    pack = [card(r) for r in cards if r["card_id"].startswith(team + "_2026_") and r["grade_name"] == "LIVE_NORMAL" and r["year"] == "2026"]
+    pitchers = sum(c["pitcher"] for c in pack)
+    for role, n in QUOTA:
+        missing = n - sum(1 for c in pack if c["pitcher"] and ROLE[c["pos"]] == role)
+        for i in range(max(0, missing)):
+            if pitchers >= 13: break
+            pack.append({"id": f"STARTER_{team}_{role}{i}", "name": f"{team} 신인({role})", "pos": role, "pitcher": True, "ovr": 50,
+                         "grade": "LIVE_NORMAL", "team": team, "year": "2026", "person": f"STARTER_{team}_{role}{i}"})
+            pitchers += 1
+    return pack
 
 
 def contribution(c, deck):
@@ -39,24 +57,40 @@ def contribution(c, deck):
 
 
 def auto_roster(inv, deck):
+    """[TASK-KBO-182] RosterManager.AutoSetRoster 재현 - 선택 구단 최우선 + 동일 인물(player_id) 1장."""
     pool = list(inv)
+    used = set()
     slots = [("B", p) for p in BATTER_POS] + [("P", r) for r, n in QUOTA for _ in range(n)] + [("BENCH", None)] * 6
     assigned = [None] * len(slots)
-    take = lambda c: pool.remove(c)
+    pref = lambda c: c["team"] == deck
+    exact = lambda c, k, need: (k == "B" and not c["pitcher"] and c["pos"] == need) or (k == "P" and c["pitcher"] and ROLE[c["pos"]] == need) or (k == "BENCH" and not c["pitcher"])
+    avail = lambda: [c for c in pool if c["person"] not in used]
+
+    def assign(i, c):
+        assigned[i] = c; pool.remove(c); used.add(c["person"])
+
+    def starter_pass(flt, exact_role, pitchers_only=False):
+        for i, (k, need) in enumerate(slots):
+            if k == "BENCH" or assigned[i] or (pitchers_only and k != "P"): continue
+            cands = [c for c in avail() if flt(c) and (exact(c, k, need) if exact_role else c["pitcher"] == (k == "P"))]
+            if cands: assign(i, max(cands, key=lambda c: (c["ovr"], SD.get(c["grade"], 0))))
+    starter_pass(pref, True)
+    starter_pass(pref, False, True)
+    starter_pass(lambda c: True, True)
+    for i, (k, _) in enumerate(slots):  # 빈 주전 타자 칸(DH) 먼저
+        if k != "B" or assigned[i]: continue
+        cands = [c for c in avail() if not c["pitcher"]]
+        if cands: assign(i, max(cands, key=lambda c: (pref(c), c["ovr"], SD.get(c["grade"], 0))))
+    for i, (k, _) in enumerate(slots):
+        if k != "BENCH" or assigned[i]: continue
+        cands = [c for c in avail() if not c["pitcher"]]
+        if cands: assign(i, max(cands, key=lambda c: (pref(c), contribution(c, deck), c["ovr"])))
     for i, (k, need) in enumerate(slots):
-        if k == "BENCH": continue
-        cands = [c for c in pool if (k == "B" and not c["pitcher"] and c["pos"] == need) or (k == "P" and c["pitcher"] and ROLE[c["pos"]] == need)]
-        if cands:
-            best = max(cands, key=lambda c: c["ovr"]); assigned[i] = best; take(best)
-    for i, (k, _) in enumerate(slots):
-        if k != "BENCH": continue
-        cands = [c for c in pool if not c["pitcher"]]
-        if cands:
-            best = max(cands, key=lambda c: (contribution(c, deck), c["ovr"])); assigned[i] = best; take(best)
-    for i, (k, _) in enumerate(slots):
-        if assigned[i] or not pool: continue
+        if assigned[i]: continue
+        cands = avail()
+        if not cands: break
         want = k == "P"
-        best = max(pool, key=lambda c: (c["pitcher"] == want, contribution(c, deck), c["ovr"])); assigned[i] = best; take(best)
+        assign(i, max(cands, key=lambda c: (c["pitcher"] == want, pref(c), exact(c, k, need), contribution(c, deck), c["ovr"])))
     return [c for c in assigned if c]
 
 
@@ -102,7 +136,7 @@ for gid in GIFTS:
 
 print("\n== 2~3) 구단별 2026 LIVE_NORMAL 지급 + 오토 라인업 + 라인업 탭 슬롯")
 for team in TEAMS:
-    inv = [card(r) for r in cards if r["card_id"].startswith(team + "_2026_") and r["grade_name"] == "LIVE_NORMAL" and r["year"] == "2026"]
+    inv = starter_pack(team)
     roster = auto_roster(inv, team)
     nb = sum(not c["pitcher"] for c in roster); np_ = sum(c["pitcher"] for c in roster)
     lineup, bench, rotation, bullpen, extra = lineup_view(roster)
@@ -117,7 +151,7 @@ print("\n== 4) 선물 카드 편성(구단 10개 x 선물 4종)")
 for g in gift_cards:
     started = []
     for team in TEAMS:
-        inv = [card(r) for r in cards if r["card_id"].startswith(team + "_2026_") and r["grade_name"] == "LIVE_NORMAL" and r["year"] == "2026"] + [g]
+        inv = starter_pack(team) + [g]
         roster = auto_roster(inv, team)
         lineup, bench, rotation, bullpen, _ = lineup_view(roster)
         if g not in roster: started.append(f"{team}:보관"); continue
@@ -126,8 +160,25 @@ for g in gift_cards:
         else:
             slot = next((p for p, c, _ in lineup if c is g), None)
             started.append(f"{team}:{slot}주전" if slot else f"{team}:후보")
-    print(f"{g['name']} '24 ({g['pos']}, OVR {g['ovr']}): " + ", ".join(started))
-    if any(s.endswith("보관") for s in started): fails.append(f"{g['name']} 선물이 1군에 들어가지 않는 구단 존재")
+        if team == g["team"] and not (started[-1].endswith("주전") or started[-1].endswith("선발")):
+            fails.append(f"{g['name']} 선물이 자기 구단({team}) 선택 시 주전/선발에 들어가지 않음")
+        if len({c["person"] for c in roster}) != len(roster): fails.append(f"{team}+{g['name']} 동일 인물 중복 편성")
+        if any(c["team"] != team for c in roster if c is not g): fails.append(f"{team}+{g['name']} 타 구단 선수 편성")
+    print(f"{g['name']} '24 ({g['team']} {g['pos']}, OVR {g['ovr']}): " + ", ".join(started))
+
+# [TASK-KBO-182] 선택 구단 최우선 + 동일 인물 1장: 10개 구단 x 2026 LIVE 전원 + 선물 4종 + 같은 인물 다른 카드(GG/AS 등) 전부 보유 시
+print("\n== 5) 선택 구단 최우선 + 동일 player_id 중복 금지(구단 2026 LIVE + 선물 4종 + 자기 구단 상위 카드 전부 보유)")
+for team in TEAMS:
+    inv = [card(r) for r in cards if r["card_id"].startswith(team + "_") and (r["year"] == "2026" or r["grade_name"] != "LIVE_NORMAL")]
+    inv += [g for g in gift_cards if g["team"] != team]
+    roster = auto_roster(inv, team)
+    persons = [c["person"] for c in roster]
+    foreign = [c["name"] for c in roster if c["team"] != team]
+    dup = len(persons) - len(set(persons))
+    nb = sum(not c["pitcher"] for c in roster); np_ = sum(c["pitcher"] for c in roster)
+    ok = dup == 0 and not foreign and nb == 15 and np_ == 13
+    print(f"{team:8} 보유 {len(inv):3}장(동일 인물 다장 {len(inv) - len({c['person'] for c in inv})}) → 1군 {nb}/{np_} · 타 구단 {len(foreign)} · 중복 {dup}  {'OK' if ok else 'FAIL'}")
+    if not ok: fails.append(f"{team} 선택 구단 우선/중복 금지 실패")
 
 print("\n결과:", "PASS" if not fails else "FAIL")
 for f in fails: print(" -", f)

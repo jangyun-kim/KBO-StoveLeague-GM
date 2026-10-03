@@ -15,6 +15,13 @@ namespace KBOManager.Models
     /// 기존 상위 등급 확률은 한 칸도 바꾸지 않고, FRANCHISE 몫은 기본(소비) 등급에서만 덜어냈다. 등급이 낮을수록 확률이
     /// 높아지는 단조 관계(위상 역순)를 유지하도록 FRANCHISE는 바로 위(TH)와 바로 아래(AS) 사이 값으로 정했다.
     /// 라이브 일반/라이브 에픽 상품은 "등급 확정" 상품(LIVE_NORMAL 100% / LIVE_EPIC 100%)이라 편입 대상이 아니다.
+    ///
+    /// [TASK-KBO-182] 등급 서열 정합성 교정: 위상 서열은 LIVE_NORMAL(+0) &lt; LIVE_EPIC(+1) &lt; ALLSTAR(+3) &lt; FRANCHISE(+4) &lt;
+    /// TITLE_HOLDER(+5) &lt; GOLDEN_GLOVE(+7) &lt; SIGNATURE / DYNASTY / RETIRED_NUMBER(+10)인데, 상시 스카우트 최상위 상품이 GOLDEN_GLOVE를
+    /// 건너뛰고 종결 등급 SIGNATURE(0.5%)를 주고 있었다. 종결 등급군(+10)은 상시 스카우트에서 완전히 제외하고(ExcludedFromScout),
+    /// 최상위 상품(싸인볼/픽업권)을 "골든글러브 스카우트"로 바꿨다:
+    ///   골든글러브 상품  GG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0   (이전 시그니처 상품: SIG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LE 93.0)
+    ///   타이틀홀더 상품  변경 없음
     /// </summary>
     public static class ScoutDropTables
     {
@@ -24,12 +31,21 @@ namespace KBOManager.Models
         public const float SignatureFranchiseRatePercent = 2.0f; // 시그니처 상품의 FRANCHISE(TH 1.5 ~ AS 3.0 사이)
         public const float TitleHolderFranchiseRatePercent = 1.0f; // 타이틀홀더 상품의 FRANCHISE(TH 0.5 ~ AS 1.5 사이)
 
-        /// <summary>프리미엄/픽업 시그니처(싸인볼·픽업 영입권).</summary>
-        public static readonly IReadOnlyList<(Grade Grade, float RatePercent)> Signature = WithBase(Grade.LIVE_EPIC,
-            (Grade.SIGNATURE, TargetRatePercent),
+        /// <summary>[TASK-KBO-182] 상시 스카우트에서 절대 나오지 않는 종결 등급군(+10).</summary>
+        public static readonly IReadOnlyList<Grade> ExcludedFromScout = new[] { Grade.SIGNATURE, Grade.DYNASTY, Grade.RETIRED_NUMBER };
+
+        public static bool IsExcludedFromScout(Grade grade) => ExcludedFromScout.Contains(grade);
+
+        /// <summary>[TASK-KBO-182] 프리미엄/픽업 골든글러브 스카우트(싸인볼·픽업 영입권) - 구 시그니처 스카우트 대체.</summary>
+        public static readonly IReadOnlyList<(Grade Grade, float RatePercent)> GoldenGlove = WithBase(Grade.LIVE_EPIC,
+            (Grade.GOLDEN_GLOVE, TargetRatePercent),
             (Grade.TITLE_HOLDER, OneBelowRatePercent),
             (Grade.FRANCHISE, SignatureFranchiseRatePercent),
             (Grade.ALLSTAR, MidRatePercent));
+
+        /// <summary>[호환] 구 이름 - 골든글러브 스카우트와 같은 표다(SIGNATURE는 더 이상 나오지 않는다).</summary>
+        [System.Obsolete("TASK-KBO-182: 시그니처 스카우트는 골든글러브 스카우트로 대체됐다 - GoldenGlove를 쓰십시오.")]
+        public static IReadOnlyList<(Grade Grade, float RatePercent)> Signature => GoldenGlove;
 
         /// <summary>프리미엄/픽업 타이틀 홀더(트로피·픽업 영입권).</summary>
         public static readonly IReadOnlyList<(Grade Grade, float RatePercent)> TitleHolder = WithBase(Grade.LIVE_NORMAL,

@@ -54,7 +54,11 @@ namespace KBOManager.EditorTools
         /// 배선 + UIManager 온보딩(타이틀) 등록, 온보딩 3페이지(타이틀 / 10구단 + 닉네임 / 2024 골든글러브 4종 선물), 로비 5단 네이티브 레이아웃
         /// (TASK-178/180 캡처 배경·거대 로고·더미 버튼 레이아웃 삭제) + 신규 단장 튜토리얼, 라인업 [타자 라인업] / [투수 로스터] 탭 분리.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~181)")]
+        /// <remarks>
+        /// [TASK-KBO-182] 메뉴 이름을 TASK-168~182로 갱신. 마지막 단계로 SetupTask182.ApplyAll()을 실행한다 - 컴프야V26 라인업(3탭 · 다이아몬드 ·
+        /// 하단 세트덱 바 / 선수 액션 트레이), 상세 정보 패널 캔버스 최상위 이동, 세트덱 A/B 색, BroadcastUIManager 연결, 골든글러브 스카우트 배너.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~182)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -74,7 +78,8 @@ namespace KBOManager.EditorTools
             SetupCompyaMatchUI179.ApplyAll();
             SetupTask180.ApplyAll();
             SetupTask181.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~181 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask182.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~182 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

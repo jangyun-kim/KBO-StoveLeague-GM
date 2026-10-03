@@ -47,27 +47,51 @@ namespace KBOManager.Managers
         }
 
         /// <summary>
-        /// 인벤토리에서 28인을 자동 편성해 반환한다. 주전은 OVR 최우선, 후보 타자 6인은 세트덱 기여 스코어 최우선
-        /// (클래스 요약 참고). favoriteTeam(Team.ToString())은 세트덱 기준 구단 - 생략하면 주전 중 최다 구단.
-        /// 포지션 후보가 부족하면 세트덱 기여 스코어가 가장 높은 잉여 선수로 28인 빈칸을 반드시 채운다.
+        /// 인벤토리에서 28인을 자동 편성해 반환한다. favoriteTeam(Team.ToString())은 세트덱 기준 구단 - 생략하면 주전 중 최다 구단.
+        ///
+        /// [TASK-KBO-182] 선택 구단 최우선 + 동일 인물 중복 금지:
+        ///   1) 주전(타자 포지션 9 / 투수 보직 13): 선택 구단 소속 중 같은 포지션·보직 OVR 최고(동률 SD) → 없을 때만 타 구단 같은 포지션·보직.
+        ///   2) 후보 타자 6: 선택 구단 타자 우선(세트덱 기여 → OVR) → 선택 구단 타자가 바닥날 때만 타 구단.
+        ///   3) 남은 빈칸: 같은 그룹(투수/타자) → 선택 구단 → 보직 일치 → 세트덱 기여 → OVR 순으로 채운다(정원 28 확보).
+        ///   모든 단계에서 같은 실존 선수(RealPlayerId = player_id)의 다른 카드는 한 장만 들어간다 - 같은 인물의 연도/등급 카드가
+        ///   여러 장이면 위 순서에서 먼저 뽑힌 카드만 쓰고 나머지는 보관한다(그 때문에 빈칸이 남을 수는 있어도 중복 편성은 없다).
+        /// 예전에는 OVR만 봐서 온보딩 선물(타 구단 골든글러브)이나 타 구단 영입 카드가 선택 구단 선수를 밀어내 세트덱 스코어를 깎았다.
+        /// favoriteTeam이 없으면(선택 구단 없음) 구단 우선순위 없이 기존처럼 OVR 기준이다.
         /// </summary>
         public List<Player> AutoSetRoster(List<Player> inventory, string favoriteTeam = null)
         {
             var slots = BuildEmptySlots();
             var pool = (inventory ?? new List<Player>())
                 .Where(p => p != null && p.Template != null)
+                .Distinct()
                 .ToList();
+            Team preferred = !string.IsNullOrEmpty(favoriteTeam) && Enum.TryParse(favoriteTeam, out Team parsed) ? parsed : Team.None;
+            var used = new HashSet<string>();
 
-            AssignStartersByOvr(slots, pool);
+            AssignStarters(slots, pool, preferred, used);
 
             var starters = slots.Where(s => s.Assigned != null).Select(s => s.Assigned);
             Team deckTeam = SetDeckEvaluator.ResolveDeckTeam(starters, favoriteTeam);
 
-            AssignBenchBySetDeckScore(slots, pool, deckTeam);
-            FallbackFillEmptySlots(slots, pool, deckTeam);
+            AssignBench(slots, pool, preferred, deckTeam, used);
+            FallbackFillEmptySlots(slots, pool, preferred, deckTeam, used);
 
             return slots.Select(s => s.Assigned).Where(p => p != null).ToList();
         }
+
+        /// <summary>동일 인물 판정 키(player_id). 비어 있으면 카드 ID.</summary>
+        public static string PersonKey(Player player) => RosterSwapRules.PersonKey(player);
+
+        private static bool IsPreferred(Player player, Team preferred) => preferred != Team.None && player.Template.Team == preferred;
+
+        private static void Assign(RosterSlot slot, Player player, List<Player> pool, HashSet<string> used)
+        {
+            slot.Assigned = player;
+            pool.Remove(player);
+            used.Add(PersonKey(player));
+        }
+
+        private static IEnumerable<Player> Available(List<Player> pool, HashSet<string> used) => pool.Where(p => !used.Contains(PersonKey(p)));
 
         private static List<RosterSlot> BuildEmptySlots()
         {
@@ -94,66 +118,85 @@ namespace KBOManager.Managers
             return slots;
         }
 
-        /// <summary>주전 슬롯(타자 포지션 9 + 투수 보직 13)에 조건을 만족하는 후보 중 OVR이 가장 높은 선수를 배정한다.</summary>
-        private static void AssignStartersByOvr(List<RosterSlot> slots, List<Player> pool)
+        /// <summary>주전(타자 포지션 9 + 투수 보직 13): 선택 구단 같은 포지션·보직 전원을 먼저 돌고, 그래도 빈 칸만 타 구단 같은 포지션·보직으로.</summary>
+        private static void AssignStarters(List<RosterSlot> slots, List<Player> pool, Team preferred, HashSet<string> used)
+        {
+            if (preferred != Team.None)
+            {
+                FillStarterPass(slots, pool, used, p => IsPreferred(p, preferred), exactRole: true);
+                // 투수 보직은 표시용 쿼터라(엔진은 실제 보직 목록으로 기용) 선택 구단의 다른 보직 투수를 타 구단 같은 보직보다 먼저 쓴다.
+                FillStarterPass(slots, pool, used, p => IsPreferred(p, preferred), exactRole: false, pitchersOnly: true);
+            }
+            FillStarterPass(slots, pool, used, _ => true, exactRole: true);
+        }
+
+        private static void FillStarterPass(List<RosterSlot> slots, List<Player> pool, HashSet<string> used, Func<Player, bool> filter,
+            bool exactRole, bool pitchersOnly = false)
         {
             foreach (var slot in slots)
             {
-                if (slot.Kind == SlotKind.BatterBench) continue;
+                if (slot.Kind == SlotKind.BatterBench || slot.Assigned != null) continue;
+                if (pitchersOnly && slot.Kind != SlotKind.PitcherRole) continue;
 
-                var candidate = pool
-                    .Where(p => MatchesSlot(p, slot))
+                var candidate = Available(pool, used)
+                    .Where(p => filter(p) && (exactRole ? MatchesSlot(p, slot) : p.Template.IsPitcher == (slot.Kind == SlotKind.PitcherRole)))
                     .OrderByDescending(p => p.CalculateOVR(false))
+                    .ThenByDescending(p => p.SetDeckScore)
                     .FirstOrDefault();
 
-                if (candidate == null) continue;
-
-                slot.Assigned = candidate;
-                pool.Remove(candidate);
+                if (candidate != null) Assign(slot, candidate, pool, used);
             }
         }
 
         /// <summary>
-        /// [TASK-KBO-173] 후보 타자 6인 = 세트덱 스코어 배터리. 기준 구단 세트덱에 실제로 합산될 개인 스코어
-        /// (SetDeckEvaluator.ContributionScore) 내림차순, 동점이면 OVR 내림차순으로 배정한다.
+        /// [TASK-KBO-173] 후보 타자 6인 = 세트덱 스코어 배터리. [TASK-KBO-182] 선택 구단 타자 우선 → 세트덱 기여 스코어 → OVR.
+        /// 그런데 선택 구단 주전 포지션을 비워 둔 채(DH 등) 후보만 채우지 않도록, 빈 주전 칸이 있으면 폴백 단계가 먼저 채운다.
         /// </summary>
-        private static void AssignBenchBySetDeckScore(List<RosterSlot> slots, List<Player> pool, Team deckTeam)
+        private static void AssignBench(List<RosterSlot> slots, List<Player> pool, Team preferred, Team deckTeam, HashSet<string> used)
         {
+            // 비어 있는 주전 타자 칸(주로 DH)을 후보보다 먼저 선택 구단 타자로 채운다 - 엔진 타순 9자리 우선.
+            foreach (var slot in slots.Where(s => s.Kind == SlotKind.BatterStarter && s.Assigned == null))
+            {
+                var filler = Available(pool, used).Where(p => !p.Template.IsPitcher)
+                    .OrderByDescending(p => IsPreferred(p, preferred))
+                    .ThenByDescending(p => p.CalculateOVR(false))
+                    .ThenByDescending(p => p.SetDeckScore)
+                    .FirstOrDefault();
+                if (filler != null) Assign(slot, filler, pool, used);
+            }
+
             foreach (var slot in slots.Where(s => s.Kind == SlotKind.BatterBench && s.Assigned == null))
             {
-                var candidate = pool
+                var candidate = Available(pool, used)
                     .Where(p => MatchesSlot(p, slot))
-                    .OrderByDescending(p => SetDeckEvaluator.ContributionScore(p, deckTeam))
+                    .OrderByDescending(p => IsPreferred(p, preferred))
+                    .ThenByDescending(p => SetDeckEvaluator.ContributionScore(p, deckTeam))
                     .ThenByDescending(p => p.CalculateOVR(false))
                     .FirstOrDefault();
 
-                if (candidate == null) continue;
-
-                slot.Assigned = candidate;
-                pool.Remove(candidate);
+                if (candidate != null) Assign(slot, candidate, pool, used);
             }
         }
 
         /// <summary>
-        /// [Fallback] 포지션/롤 후보가 부족해 비어 있는 슬롯을, 남은 인벤토리 중 세트덱 기여 스코어가 가장 높은
-        /// 선수로 무조건 채운다(28인 정원을 반드시 채우기 위함). [TASK-KBO-173] 구 기준(샐러리 코스트 최저)을 대체.
+        /// [Fallback] 남은 빈칸을 정원(28)을 채우기 위해 무조건 채운다. 우선순위: 같은 그룹(투수 칸 = 투수) → 선택 구단 → 보직 일치 →
+        /// 세트덱 기여 스코어 → OVR. [TASK-KBO-181] 그룹 우선(투수 칸에 타자 금지), [TASK-KBO-182] 선택 구단 우선 + 동일 인물 제외.
         /// </summary>
-        private static void FallbackFillEmptySlots(List<RosterSlot> slots, List<Player> pool, Team deckTeam)
+        private static void FallbackFillEmptySlots(List<RosterSlot> slots, List<Player> pool, Team preferred, Team deckTeam, HashSet<string> used)
         {
             foreach (var slot in slots)
             {
                 if (slot.Assigned != null) continue;
-                if (pool.Count == 0) break;
-                // [TASK-KBO-181] 같은 그룹(투수 슬롯 = 투수, 타자 슬롯 = 타자) 잉여 선수를 먼저 쓴다 - 예전에는 그룹을 보지 않아
-                // 보직 쿼터가 비는 구단(예: 2026 삼성 추격조 MR 0명)에서 투수 슬롯에 타자가 들어가 타자 19 / 투수 9가 되는 버그가 있었다.
                 bool wantsPitcher = slot.Kind == SlotKind.PitcherRole;
-                var best = pool
+                var best = Available(pool, used)
                     .OrderByDescending(p => p.Template.IsPitcher == wantsPitcher)
+                    .ThenByDescending(p => IsPreferred(p, preferred))
+                    .ThenByDescending(p => MatchesSlot(p, slot))
                     .ThenByDescending(p => SetDeckEvaluator.ContributionScore(p, deckTeam))
                     .ThenByDescending(p => p.CalculateOVR(false))
-                    .First();
-                slot.Assigned = best;
-                pool.Remove(best);
+                    .FirstOrDefault();
+                if (best == null) break;
+                Assign(slot, best, pool, used);
             }
         }
 

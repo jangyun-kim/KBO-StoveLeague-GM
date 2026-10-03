@@ -178,11 +178,11 @@ namespace KBOManager.EditorTools
                 "liveNormalButton", "liveNormalButton10");
             BindCategoryRow(controller, list, "LiveEpicRow", "일반 영입\n라이브 에픽",
                 "liveEpicButton", "liveEpicButton10");
-            BindCategoryRow(controller, list, "PremiumSignatureRow", "프리미엄 영입\n시그니처 (싸인볼)",
+            BindCategoryRow(controller, list, "PremiumSignatureRow", "프리미엄 영입\n골든글러브 (싸인볼)",
                 "premiumSignatureButton", "premiumSignatureButton10");
             BindCategoryRow(controller, list, "PremiumTitleHolderRow", "프리미엄 영입\n타이틀 홀더 (트로피)",
                 "premiumTitleHolderButton", "premiumTitleHolderButton10");
-            BindCategoryRow(controller, list, "PickupSignatureRow", "픽업 영입\n시그니처 (픽업권)",
+            BindCategoryRow(controller, list, "PickupSignatureRow", "픽업 영입\n골든글러브 (픽업권)",
                 "pickupSignatureButton", "pickupSignatureButton10");
             BindCategoryRow(controller, list, "PickupTitleHolderRow", "픽업 영입\n타이틀 홀더 (픽업권)",
                 "pickupTitleHolderButton", "pickupTitleHolderButton10");

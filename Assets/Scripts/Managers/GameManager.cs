@@ -59,6 +59,16 @@ namespace KBOManager.Managers
             set => managerNickname = value ?? "";
         }
 
+        [Tooltip("[TASK-KBO-182] 라인업 [타순 변경]으로 지정한 타순(Player.InstanceId 순서). 비어 있으면 기본 타순(포지션 C→DH).")]
+        [SerializeField] private List<string> battingOrderOverride = new List<string>();
+        public IReadOnlyList<string> BattingOrderOverride => battingOrderOverride;
+
+        public void SetBattingOrderOverride(IEnumerable<string> instanceIds)
+        {
+            battingOrderOverride.Clear();
+            if (instanceIds != null) battingOrderOverride.AddRange(instanceIds.Where(id => !string.IsNullOrEmpty(id)));
+        }
+
         [Tooltip("[TASK-KBO-181] 신규 단장 튜토리얼(라인업 → 세트덱 → 플레이 볼) 완료/건너뛰기 여부. " +
                  "온보딩 완료 시 false로 내려 첫 로비 진입에서 가이드를 띄운다. 기존 세이브는 true(가이드 없음).")]
         [SerializeField] private bool tutorialCompleted = true;
@@ -477,6 +487,7 @@ namespace KBOManager.Managers
             itemInventory.Clear();
             favoriteTeam = Team.None;
             managerNickname = "";
+            battingOrderOverride.Clear();
             isFirstLogin = true;
             tutorialCompleted = false;
             fanSentiment = 100;

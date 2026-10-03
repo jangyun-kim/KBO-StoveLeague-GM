@@ -262,7 +262,7 @@ namespace KBOManager.Controllers
             {
                 giftHintText.text = selectedGift < 0
                     ? "2024 골든글러브 수상자 4명 중 1명을 정착 지원 선물로 영입할 수 있습니다."
-                    : $"{OnboardingRules.CardTitle(giftPreviews[selectedGift].Template)} 선택 - 해당 포지션 주전보다 OVR이 높으면 즉시 주전으로 편성됩니다.";
+                    : OnboardingRules.DescribeGiftChoice(giftPreviews[selectedGift], selectedTeam);
             }
         }
 
@@ -273,7 +273,7 @@ namespace KBOManager.Controllers
             if (manager == null)
             {
                 Debug.LogWarning("[OnboardingUIController] OnboardingManager가 없어 단장 취임을 진행할 수 없습니다 - " +
-                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~181)'을 실행하십시오.");
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~182)'을 실행하십시오.");
                 return;
             }
             manager.CompleteOnboarding(selectedTeam, Nickname, OnboardingRules.GiftTemplateIds[selectedGift]);

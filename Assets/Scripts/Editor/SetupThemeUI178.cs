@@ -422,16 +422,16 @@ namespace KBOManager.EditorTools
             int liveEpicCost = scoutManager != null ? scoutManager.LiveEpicCost : 1;
             int premiumCost = scoutManager != null ? scoutManager.PremiumCost : 1;
             int pickupCost = scoutManager != null ? scoutManager.PickupCost : 1;
-            string signatureRates = DescribeScoutTable(ScoutDropTables.Signature);
+            string signatureRates = DescribeScoutTable(ScoutDropTables.GoldenGlove); // [TASK-KBO-182] 시그니처 → 골든글러브
             string titleRates = DescribeScoutTable(ScoutDropTables.TitleHolder);
 
             var products = new[]
             {
                 ("LiveNormalBanner", "일반 · 라이브 스카우트", "라이브 카드 100%", "영입권", liveNormalCost, "liveNormalButton", "liveNormalButton10", "liveNormalCostText"),
                 ("LiveEpicBanner", "일반 · 라이브 에픽 스카우트", "라이브 에픽 카드 100%", "영입권", liveEpicCost, "liveEpicButton", "liveEpicButton10", "liveEpicCostText"),
-                ("PremiumSignatureBanner", "프리미엄 · 시그니처 스카우트", signatureRates, "싸인볼", premiumCost, "premiumSignatureButton", "premiumSignatureButton10", "premiumSignatureCostText"),
+                ("PremiumSignatureBanner", "프리미엄 · 골든글러브 스카우트", signatureRates, "싸인볼", premiumCost, "premiumSignatureButton", "premiumSignatureButton10", "premiumSignatureCostText"),
                 ("PremiumTitleHolderBanner", "프리미엄 · 타이틀 홀더 스카우트", titleRates, "트로피", premiumCost, "premiumTitleHolderButton", "premiumTitleHolderButton10", "premiumTitleHolderCostText"),
-                ("PickupSignatureBanner", "픽업 · 시그니처 스카우트", signatureRates, "픽업권", pickupCost, "pickupSignatureButton", "pickupSignatureButton10", "pickupSignatureCostText"),
+                ("PickupSignatureBanner", "픽업 · 골든글러브 스카우트", signatureRates, "픽업권", pickupCost, "pickupSignatureButton", "pickupSignatureButton10", "pickupSignatureCostText"),
                 ("PickupTitleHolderBanner", "픽업 · 타이틀 홀더 스카우트", titleRates, "픽업권", pickupCost, "pickupTitleHolderButton", "pickupTitleHolderButton10", "pickupTitleHolderCostText"),
             };
             const float top = 0.915f, height = 0.145f, gap = 0.006f;

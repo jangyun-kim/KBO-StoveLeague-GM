@@ -138,7 +138,8 @@ namespace KBOManager.Controllers
         // "최고급"의 기준(SIGNATURE 이상). [TASK-KBO-175] 이 컨트롤러 전용 랭크표(RETIRED_NUMBER가 GOLDEN_GLOVE보다
         // 아래였다)를 폐기하고 공용 위상 순번 CardGrowthRules.PowerRank를 쓴다 - SIGNATURE/DYNASTY/RETIRED_NUMBER가
         // 같은 최상위 순번이라 영구결번 획득도 최고급 연출 대상이다.
-        private const Grade TopPullThreshold = Grade.SIGNATURE;
+        // [TASK-KBO-182] 상시 스카우트 최고 등급이 GOLDEN_GLOVE가 됐으므로(SIG/DYN/RN 제외) 최고급 연출 기준도 GOLDEN_GLOVE 이상으로 내렸다.
+        private const Grade TopPullThreshold = Grade.GOLDEN_GLOVE;
 
         private readonly List<PlayerCardUI> spawnedCards = new List<PlayerCardUI>();
 
@@ -270,7 +271,7 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// SIGNATURE 이상 등급이 하나라도 있으면 상단에 강조 문구를 띄운다.
+        /// GOLDEN_GLOVE 이상 등급이 하나라도 있으면 상단에 강조 문구를 띄운다.
         /// 지금은 텍스트 노출/자동 숨김만 구현한 연출 뼈대이며, 실제 파티클/사운드 등은 후속 과제다.
         /// </summary>
         private void AnnounceTopPullIfAny(List<Player> players)

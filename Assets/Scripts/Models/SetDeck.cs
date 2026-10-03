@@ -349,11 +349,23 @@ namespace KBOManager.Models
             return bench.Contains(player);
         }
 
-        /// <summary>outgoing 자리에 incoming을 넣을 수 있는가(그룹/포지션/보직 + 로스터 밖 보유 카드).</summary>
+        /// <summary>[TASK-KBO-182] 동일 인물 판정 키(player_id = RealPlayerId, 비어 있으면 카드 ID).</summary>
+        public static string PersonKey(Player player) =>
+            !string.IsNullOrEmpty(player?.Template?.RealPlayerId) ? player.Template.RealPlayerId : player?.Template?.TemplateId ?? "";
+
+        /// <summary>[TASK-KBO-182] 같은 실존 선수의 다른 카드가 이미 로스터에 있는가(except는 빠질 카드라 제외).</summary>
+        public static bool HasSamePerson(IEnumerable<Player> roster, Player incoming, Player except = null)
+        {
+            string key = PersonKey(incoming);
+            return (roster ?? Enumerable.Empty<Player>()).Any(p => p != null && !ReferenceEquals(p, except) && !ReferenceEquals(p, incoming) && PersonKey(p) == key);
+        }
+
+        /// <summary>outgoing 자리에 incoming을 넣을 수 있는가(그룹/포지션/보직 + 로스터 밖 보유 카드 + [TASK-KBO-182] 동일 인물 중복 금지).</summary>
         public static bool CanSwap(IReadOnlyList<Player> roster, Player outgoing, Player incoming)
         {
             if (roster == null || outgoing?.Template == null || incoming?.Template == null) return false;
             if (!roster.Contains(outgoing) || roster.Contains(incoming) || ReferenceEquals(outgoing, incoming)) return false;
+            if (HasSamePerson(roster, incoming, outgoing)) return false;
 
             var outT = outgoing.Template;
             var inT = incoming.Template;
@@ -377,6 +389,7 @@ namespace KBOManager.Models
         {
             if (roster == null || slot == null || slot.Player != null || incoming?.Template == null) return false;
             if (roster.Contains(incoming)) return false;
+            if (HasSamePerson(roster, incoming)) return false; // [TASK-KBO-182] 동일 인물 중복 금지
 
             var t = incoming.Template;
             switch (slot.Kind)

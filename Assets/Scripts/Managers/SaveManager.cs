@@ -133,7 +133,8 @@ namespace KBOManager.Managers
         // 구버전 빌드 호환을 위해 계속 응원단장 슬롯 값을 함께 기록한다.
         // v8: 단장 닉네임(ManagerNickname)·신규 단장 튜토리얼 완료 여부(TutorialCompleted) 추가(TASK-KBO-181). 필드가 없는 구버전
         // 세이브는 닉네임 빈 문자열(로비는 '단장'으로 표기), 튜토리얼 완료(true - 기존 유저에게 가이드를 다시 띄우지 않음)로 채워진다.
-        public int SaveVersion = 8;
+        // v9: 라인업 [타순 변경] 유저 지정 타순(BattingOrder, InstanceId 목록) 추가(TASK-KBO-182). 없으면 빈 목록 = 기본 타순.
+        public int SaveVersion = 9;
         public string SavedAtUtc;
 
         // GameManager
@@ -165,6 +166,7 @@ namespace KBOManager.Managers
         public List<Cheerleader> CheerSquad = new List<Cheerleader>(); // [TASK-KBO-180] v7 - 인덱스 = (int)CheerRole
         public string ManagerNickname = ""; // [TASK-KBO-181] v8
         public bool TutorialCompleted = true; // [TASK-KBO-181] v8 - 구버전 세이브는 가이드 생략
+        public List<string> BattingOrder = new List<string>(); // [TASK-KBO-182] v9
 
         // LeagueManager
         public bool HasLeagueData;
@@ -317,6 +319,7 @@ namespace KBOManager.Managers
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.ManagerNickname = gm.ManagerNickname;
                 data.TutorialCompleted = gm.TutorialCompleted;
+                data.BattingOrder = gm.BattingOrderOverride.ToList();
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
                 data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
@@ -439,6 +442,7 @@ namespace KBOManager.Managers
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.ManagerNickname = data.ManagerNickname ?? "";
                 gm.TutorialCompleted = data.TutorialCompleted;
+                gm.SetBattingOrderOverride(data.BattingOrder);
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
                 gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)

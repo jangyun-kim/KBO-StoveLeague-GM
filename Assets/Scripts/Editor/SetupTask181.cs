@@ -24,21 +24,21 @@ namespace KBOManager.EditorTools
     /// </summary>
     public static class SetupTask181
     {
-        private const float W = 1080f;
-        private const float H = 1920f;
+        internal const float W = 1080f;
+        internal const float H = 1920f;
 
-        private static readonly Color Navy = new Color(0.05f, 0.07f, 0.13f);
-        private static readonly Color Card = new Color(0.1f, 0.13f, 0.24f, 0.96f);
-        private static readonly Color SectionBar = new Color(0.16f, 0.19f, 0.27f);
-        private static readonly Color White = new Color(0.97f, 0.98f, 1f);
-        private static readonly Color Muted = new Color(0.68f, 0.73f, 0.82f);
-        private static readonly Color Gold = new Color(1f, 0.82f, 0.27f);
-        private static readonly Color Accent = new Color(0.86f, 0.16f, 0.24f);
-        private static readonly Color Blue = new Color(0.15f, 0.36f, 0.86f);
-        private static readonly Color Gray = new Color(0.32f, 0.35f, 0.42f);
-        private static readonly Color PlayOrange = new Color(0.96f, 0.4f, 0.16f);
+        internal static readonly Color Navy = new Color(0.05f, 0.07f, 0.13f);
+        internal static readonly Color Card = new Color(0.1f, 0.13f, 0.24f, 0.96f);
+        internal static readonly Color SectionBar = new Color(0.16f, 0.19f, 0.27f);
+        internal static readonly Color White = new Color(0.97f, 0.98f, 1f);
+        internal static readonly Color Muted = new Color(0.68f, 0.73f, 0.82f);
+        internal static readonly Color Gold = new Color(1f, 0.82f, 0.27f);
+        internal static readonly Color Accent = new Color(0.86f, 0.16f, 0.24f);
+        internal static readonly Color Blue = new Color(0.15f, 0.36f, 0.86f);
+        internal static readonly Color Gray = new Color(0.32f, 0.35f, 0.42f);
+        internal static readonly Color PlayOrange = new Color(0.96f, 0.4f, 0.16f);
 
-        private static readonly Team[] Teams =
+        internal static readonly Team[] Teams =
             { Team.Samsung, Team.KIA, Team.LG, Team.Doosan, Team.KT, Team.SSG, Team.Lotte, Team.Hanwha, Team.NC, Team.Kiwoom };
 
         [MenuItem("KBO Manager/Setup/Apply TASK-181 (Onboarding + Native Lobby + Lineup Tabs)")]
@@ -178,7 +178,7 @@ namespace KBOManager.EditorTools
                 gifts.Add((slot, holder, caption, frame));
             }
             var giftHint = Label(giftPage, "Hint", "", 40, 1040, 1040, 1160, 30, TextAnchor.MiddleCenter, Gold);
-            Label(giftPage, "Benefit", "선택한 카드는 인벤토리에 지급되며, 해당 포지션 주전보다 OVR이 높으면 즉시 주전(선발 로테이션)으로 편성됩니다.\n" +
+            Label(giftPage, "Benefit", "선택한 카드는 인벤토리에 지급됩니다. 자동 편성은 선택 구단 선수를 우선하므로 같은 구단 카드는 즉시 주전, 타 구단 카드는 [보관 선수]에서 직접 투입할 수 있습니다.\n" +
                 "골든글러브 카드는 구단과 무관하게 세트덱 스코어에 합산됩니다.", 40, 1180, 1040, 1340, 28, TextAnchor.MiddleCenter, Muted);
             var giftBack = Btn(giftPage, "BackButton", "이전", 40, 1720, 360, 1850, Gray, White, 40);
             var giftConfirm = Btn(giftPage, "ConfirmButton", "선물 수령 및 단장 취임", 380, 1720, 1040, 1850, Gold, Navy, 44);
@@ -435,7 +435,7 @@ namespace KBOManager.EditorTools
             MarkDirty(tutorial);
         }
 
-        private static LobbyTutorial181 BuildTutorial(RectTransform panel, RectTransform root, RectTransform lineupTab, RectTransform setDeckTarget, RectTransform playTarget, Button play)
+        internal static LobbyTutorial181 BuildTutorial(RectTransform panel, RectTransform root, RectTransform lineupTab, RectTransform setDeckTarget, RectTransform playTarget, Button play)
         {
             // 오버레이는 로비 패널 맨 위(세트덱 요약 TeamSynergyArea보다 위)에 둔다.
             foreach (var stale in panel.Cast<Transform>().Where(t => t.name == "Tutorial181").ToList()) Undo.DestroyObjectImmediate(stale.gameObject);
@@ -582,13 +582,13 @@ namespace KBOManager.EditorTools
             MarkDirty(controller);
         }
 
-        private static Text Section(RectTransform parent, string name, float y0, float y1)
+        internal static Text Section(RectTransform parent, string name, float y0, float y1)
         {
             Box(parent, name + "Bg", 12, y0, W - 12, y1, SectionBar);
             return Label(parent, name, "", 30, y0, W - 30, y1, 26, TextAnchor.MiddleLeft, White, true);
         }
 
-        private static RectTransform Grid(RectTransform parent, string name, float y0, float y1, int columns, int rows)
+        internal static RectTransform Grid(RectTransform parent, string name, float y0, float y1, int columns, int rows)
         {
             var rect = Place(parent, name, 12, y0, W - 12, y1);
             var grid = rect.gameObject.AddComponent<GridLayoutGroup>();
@@ -600,7 +600,7 @@ namespace KBOManager.EditorTools
             return rect;
         }
 
-        private static void Restyle(RectTransform button, string label, Color color)
+        internal static void Restyle(RectTransform button, string label, Color color)
         {
             if (button.TryGetComponent<Image>(out var image)) { Undo.RecordObject(image, "Restyle"); image.color = color; }
             foreach (var text in button.GetComponentsInChildren<Text>(true))
@@ -614,7 +614,7 @@ namespace KBOManager.EditorTools
             }
         }
 
-        private static void MoveTo(RectTransform rect, RectTransform parent, float x0, float y0, float x1, float y1)
+        internal static void MoveTo(RectTransform rect, RectTransform parent, float x0, float y0, float x1, float y1)
         {
             Undo.SetTransformParent(rect, parent, "TASK-181 Move");
             Undo.RecordObject(rect, "TASK-181 Move");
@@ -625,7 +625,7 @@ namespace KBOManager.EditorTools
 
         // ================================================================== 공용 빌더(1080x1920 px, 좌상단 원점)
 
-        private static PlayerCardUI FindCardTemplate()
+        internal static PlayerCardUI FindCardTemplate()
         {
             var roster = Object.FindAnyObjectByType<RosterUIController>(FindObjectsInactive.Include);
             if (roster != null && new SerializedObject(roster).FindProperty("cardPrefab").objectReferenceValue is PlayerCardUI fromRoster) return fromRoster;
@@ -634,7 +634,7 @@ namespace KBOManager.EditorTools
             return template != null ? template.GetComponent<PlayerCardUI>() : null;
         }
 
-        private static RectTransform NewRoot(RectTransform panel, string name)
+        internal static RectTransform NewRoot(RectTransform panel, string name)
         {
             foreach (var stale in panel.Cast<Transform>().Where(t => t.name == name).ToList()) Undo.DestroyObjectImmediate(stale.gameObject);
             var go = new GameObject(name, typeof(RectTransform));
@@ -645,7 +645,7 @@ namespace KBOManager.EditorTools
             return root;
         }
 
-        private static RectTransform Page(RectTransform parent, string name)
+        internal static RectTransform Page(RectTransform parent, string name)
         {
             var go = new GameObject(name, typeof(RectTransform));
             var rect = (RectTransform)go.transform;
@@ -654,14 +654,14 @@ namespace KBOManager.EditorTools
             return rect;
         }
 
-        private static void StretchFull(RectTransform rect)
+        internal static void StretchFull(RectTransform rect)
         {
             rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero; rect.offsetMax = Vector2.zero;
         }
 
         /// <summary>px 박스 → 부모 기준 앵커(부모가 전체 화면 크기라고 가정 - 이 스크립트의 모든 부모는 전체 화면 페이지다).</summary>
-        private static void SetBox(RectTransform rect, float x0, float y0, float x1, float y1)
+        internal static void SetBox(RectTransform rect, float x0, float y0, float x1, float y1)
         {
             rect.anchorMin = new Vector2(x0 / W, 1f - y1 / H);
             rect.anchorMax = new Vector2(x1 / W, 1f - y0 / H);
@@ -669,7 +669,7 @@ namespace KBOManager.EditorTools
             rect.pivot = new Vector2(0.5f, 0.5f);
         }
 
-        private static RectTransform Place(Transform parent, string name, float x0, float y0, float x1, float y1)
+        internal static RectTransform Place(Transform parent, string name, float x0, float y0, float x1, float y1)
         {
             var go = new GameObject(name, typeof(RectTransform));
             var rect = (RectTransform)go.transform;
@@ -678,7 +678,7 @@ namespace KBOManager.EditorTools
             return rect;
         }
 
-        private static Image Box(Transform parent, string name, float x0, float y0, float x1, float y1, Color color, bool raycast = false)
+        internal static Image Box(Transform parent, string name, float x0, float y0, float x1, float y1, Color color, bool raycast = false)
         {
             var image = Place(parent, name, x0, y0, x1, y1).gameObject.AddComponent<Image>();
             image.color = color;
@@ -686,14 +686,14 @@ namespace KBOManager.EditorTools
             return image;
         }
 
-        private static Image Img(Transform parent, string name, float x0, float y0, float x1, float y1)
+        internal static Image Img(Transform parent, string name, float x0, float y0, float x1, float y1)
         {
             var image = Box(parent, name, x0, y0, x1, y1, new Color(1f, 1f, 1f, 0f));
             image.preserveAspect = true;
             return image;
         }
 
-        private static Text Label(Transform parent, string name, string text, float x0, float y0, float x1, float y1,
+        internal static Text Label(Transform parent, string name, string text, float x0, float y0, float x1, float y1,
             int size, TextAnchor anchor, Color color, bool bold = false, bool absoluteInNav = false)
         {
             var rect = Place(parent, name, x0, y0, x1, y1);
@@ -702,7 +702,7 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>하단 탭 셀(부모가 전체 화면이 아님) 안 자식 - 셀 좌표 기준 정규화로 다시 건다.</summary>
-        private static void Reanchor(RectTransform rect, RectTransform parent, float x0, float y0, float x1, float y1)
+        internal static void Reanchor(RectTransform rect, RectTransform parent, float x0, float y0, float x1, float y1)
         {
             var p = PixelBox(parent);
             rect.anchorMin = new Vector2((x0 - p.xMin) / p.width, 1f - (y1 - p.yMin) / p.height);
@@ -711,7 +711,7 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>RectTransform의 px 박스(1080x1920 좌상단 원점) - 부모 체인의 앵커를 곱해 역산한다.</summary>
-        private static Rect PixelBox(RectTransform rect)
+        internal static Rect PixelBox(RectTransform rect)
         {
             float xMin = 0f, xMax = 1f, yMin = 0f, yMax = 1f; // 정규화(좌하단 원점)
             for (var t = rect; t != null && t.GetComponent<Canvas>() == null; t = t.parent as RectTransform)
@@ -724,7 +724,7 @@ namespace KBOManager.EditorTools
             return Rect.MinMaxRect(xMin * W, (1f - yMax) * H, xMax * W, (1f - yMin) * H);
         }
 
-        private static Text Style(Text label, string text, int size, TextAnchor anchor, Color color, bool bold)
+        internal static Text Style(Text label, string text, int size, TextAnchor anchor, Color color, bool bold)
         {
             label.font = bold ? KBOFonts.Bold : KBOFonts.Medium;
             label.text = text;
@@ -741,7 +741,7 @@ namespace KBOManager.EditorTools
             return label;
         }
 
-        private static Button Btn(Transform parent, string name, string text, float x0, float y0, float x1, float y1,
+        internal static Button Btn(Transform parent, string name, string text, float x0, float y0, float x1, float y1,
             Color background, Color textColor, int size, bool absoluteInNav = false)
         {
             var rect = Place(parent, name, x0, y0, x1, y1);
@@ -761,13 +761,13 @@ namespace KBOManager.EditorTools
             return button;
         }
 
-        private static Text NormLabel(RectTransform parent, string name, float x0, float y0, float x1, float y1, int size, TextAnchor anchor, Color color, bool bold)
+        internal static Text NormLabel(RectTransform parent, string name, float x0, float y0, float x1, float y1, int size, TextAnchor anchor, Color color, bool bold)
         {
             var rect = CompyaUiKit.Norm(parent, name, x0, y0, x1, y1);
             return Style(rect.gameObject.AddComponent<Text>(), "", size, anchor, color, bold);
         }
 
-        private static Button NormButton(RectTransform parent, string name, string text, float x0, float y0, float x1, float y1, Color bg, Color fg, int size)
+        internal static Button NormButton(RectTransform parent, string name, string text, float x0, float y0, float x1, float y1, Color bg, Color fg, int size)
         {
             var rect = CompyaUiKit.Norm(parent, name, x0, y0, x1, y1);
             var image = rect.gameObject.AddComponent<Image>();
@@ -781,7 +781,7 @@ namespace KBOManager.EditorTools
             return button;
         }
 
-        private static InputField Input(Transform parent, string name, float x0, float y0, float x1, float y1, string placeholder)
+        internal static InputField Input(Transform parent, string name, float x0, float y0, float x1, float y1, string placeholder)
         {
             var rect = Place(parent, name, x0, y0, x1, y1);
             var image = rect.gameObject.AddComponent<Image>();
@@ -813,13 +813,13 @@ namespace KBOManager.EditorTools
             return field;
         }
 
-        private static void SetArray(SerializedProperty property, IReadOnlyList<Object> values)
+        internal static void SetArray(SerializedProperty property, IReadOnlyList<Object> values)
         {
             property.arraySize = values.Count;
             for (int i = 0; i < values.Count; i++) property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
         }
 
-        private static void Relay(Button button, ScreenType screen)
+        internal static void Relay(Button button, ScreenType screen)
         {
             var relay = button.GetComponent<LobbyButtonRelay>();
             if (relay == null) relay = Undo.AddComponent<LobbyButtonRelay>(button.gameObject);
@@ -827,7 +827,7 @@ namespace KBOManager.EditorTools
             EditorUtility.SetDirty(relay);
         }
 
-        private static void MarkDirty(Component component)
+        internal static void MarkDirty(Component component)
         {
             if (component == null) return;
             EditorUtility.SetDirty(component);

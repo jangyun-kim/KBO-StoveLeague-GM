@@ -1052,7 +1052,8 @@ namespace KBOManager.Engine
                 order.Add(extra);
             }
 
-            return order;
+            // [TASK-KBO-182] 라인업 [타순 변경] 유저 지정 타순 - 유저 구단 InstanceId에만 매칭되므로 AI 로스터는 그대로다.
+            return LineupOrder.Apply(order, KBOManager.Managers.GameManager.Instance != null ? KBOManager.Managers.GameManager.Instance.BattingOrderOverride : null);
         }
 
         // ----- 세부 스탯 계산(팀 버프 + 스킬 효과 반영) -----

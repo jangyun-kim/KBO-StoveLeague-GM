@@ -141,10 +141,14 @@ namespace KBOManager.UI
             return raw;
         }
 
-        /// <summary>구단 로고(Resources/Broadcast179/logo_{Team}) - 비율을 유지해 박스 안에 맞춘다.</summary>
+        /// <summary>구단 로고(Resources/Broadcast179/logo_{Team}) - 비율을 유지해 박스 안에 맞춘다.
+        /// [TASK-KBO-182] AspectRatioFitter(FitInParent)는 "자기 부모" 크기에 맞춘다 - 예전에는 로고 자신을 화면 전체 크기의 페이지에
+        /// 바로 붙여 박스 좌표가 무시되고 로고가 화면 전체로 늘어났다(경기 결과 화면/로비의 거대 로고). 이제 박스 크기의 홀더를 두고
+        /// 그 안의 자식에 피터를 붙여 박스 안에서만 비율을 맞춘다.</summary>
         public static RawImage Logo(Transform parent, string name, float x0, float y0, float x1, float y1)
         {
-            var rect = Place(parent, name, x0, y0, x1, y1);
+            var holder = Place(parent, name, x0, y0, x1, y1);
+            var rect = Fill(holder, "Logo");
             var raw = rect.gameObject.AddComponent<RawImage>();
             raw.raycastTarget = false;
             var fitter = rect.gameObject.AddComponent<AspectRatioFitter>();

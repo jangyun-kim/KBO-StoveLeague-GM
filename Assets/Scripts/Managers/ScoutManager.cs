@@ -64,8 +64,10 @@ namespace KBOManager.Managers
         // [TASK-KBO-176] 표 정의를 순수 데이터 클래스 ScoutDropTables로 옮기고 FRANCHISE를 편입했다(시그니처 상품
         // FRA 2.0%, 타이틀홀더 상품 FRA 1.0% - 기본 등급에서만 덜어내 합계 100% 유지). 확률 조정은 그 파일에서 한다.
 
-        /// <summary>[프리미엄/픽업 영입 &gt; 시그니처] SIG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 = 100%.</summary>
-        private static readonly List<GradeDropRate> SignatureDropTable = ToDropRates(ScoutDropTables.Signature);
+        /// <summary>[프리미엄/픽업 영입 &gt; 골든글러브] GG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 = 100%.
+        /// [TASK-KBO-182] 구 시그니처 상품(SIG 0.5%) 대체 - 종결 등급(SIG/DYN/RN)은 상시 스카우트에서 제외.
+        /// 메서드 이름(RollPremiumSignature/RollPickupSignature)은 씬 버튼 바인딩 호환을 위해 그대로 둔다.</summary>
+        private static readonly List<GradeDropRate> SignatureDropTable = ToDropRates(ScoutDropTables.GoldenGlove);
 
         /// <summary>[프리미엄/픽업 영입 &gt; 타이틀 홀더] TH 0.5 / FRA 1.0 / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 94.0 = 100%.</summary>
         private static readonly List<GradeDropRate> TitleHolderDropTable = ToDropRates(ScoutDropTables.TitleHolder);
@@ -303,7 +305,8 @@ namespace KBOManager.Managers
             if (candidates.Count == 0)
             {
                 // 해당 등급의 템플릿이 아직 등록되지 않은 경우, 전체 풀에서 대체 추첨한다.
-                candidates = playerDatabase.AllTemplates.ToList();
+                // [TASK-KBO-182] 대체 추첨에서도 종결 등급(SIG/DYN/RN)은 나오지 않게 한다.
+                candidates = playerDatabase.AllTemplates.Where(t => !ScoutDropTables.IsExcludedFromScout(t.Grade)).ToList();
             }
             if (candidates.Count == 0) return null;
 

@@ -28,7 +28,10 @@ namespace KBOManager.Controllers
         [SerializeField] private Text yearText;
         [SerializeField] private Button closeButton;
         [SerializeField] private Color selectedColor = new Color(1f, 0.84f, 0f);
-        [SerializeField] private Color unselectedColor = new Color(0.85f, 0.85f, 0.85f);
+        [Tooltip("[TASK-KBO-182] 선택되지 않은 반대쪽 버튼 - 어두운 비활성 톤(선택 버튼과 대비).")]
+        [SerializeField] private Color unselectedColor = new Color(0.2f, 0.22f, 0.29f);
+        [SerializeField] private Color selectedTextColor = new Color(0.08f, 0.09f, 0.14f);
+        [SerializeField] private Color unselectedTextColor = new Color(0.55f, 0.59f, 0.68f);
         [SerializeField] private Color unreachedLabelColor = new Color(0.45f, 0.45f, 0.45f);
         [Tooltip("[TASK-KBO-178] 도달(적용 중) 구간 라벨 색 - 어두운 테마 창에서는 흰색으로 지정된다.")]
         [SerializeField] private Color reachedLabelColor = Color.black;
@@ -42,6 +45,7 @@ namespace KBOManager.Controllers
         }
 
         private readonly List<Row> rows = new List<Row>();
+        private string lastFeedback; // [TASK-KBO-182] "{tier}P 구간: A안으로 설정되었습니다"
 
         private void Awake()
         {
@@ -62,6 +66,7 @@ namespace KBOManager.Controllers
 
         public void Open()
         {
+            lastFeedback = null;
             if (panelRoot != null) panelRoot.SetActive(true);
             Refresh();
         }
@@ -95,8 +100,12 @@ namespace KBOManager.Controllers
 
                 if (row.Label != null)
                 {
-                    row.Label.text = $"{bracket.Threshold}P · {(reached ? "적용 중" : "미도달")}";
+                    row.Label.text = reached ? $"{bracket.Threshold}P\n도달 · 적용 중" : $"{bracket.Threshold}P\n미도달 · 미리 설정됨";
                     row.Label.color = reached ? reachedLabelColor : unreachedLabelColor;
+                    row.Label.supportRichText = true;
+                    row.Label.resizeTextForBestFit = true; // [TASK-KBO-182] 2줄(구간 / 도달 상태)
+                    row.Label.resizeTextMinSize = 10;
+                    row.Label.resizeTextMaxSize = Mathf.Max(row.Label.resizeTextMaxSize, row.Label.fontSize);
                 }
                 StyleOption(row.OptionA, $"A: {bracket.OptionA.Label}", !usesB);
                 StyleOption(row.OptionB, $"B: {bracket.OptionB.Label}", usesB);
@@ -112,18 +121,49 @@ namespace KBOManager.Controllers
             if (summaryText != null)
             {
                 int reachedSelectable = SetDeckBuffTable.SelectableBrackets.Count(b => setDeck.Score >= b.Threshold);
-                int chosenB = selection.OptionBThresholds?.Count ?? 0;
-                summaryText.text = $"세트덱 {setDeck.Score}P · 선택형 구간 {reachedSelectable}/{rows.Count} 도달 · B안 {chosenB}개 선택 " +
-                    "(저장 시 세이브에 기록되어 경기에 적용됩니다)";
+                // [TASK-KBO-182] A안도 B안과 같은 "명시적 설정"으로 센다 - 예전 문구는 B안 개수만 보여 A안 선택이 반영되지 않는 것처럼 보였다.
+                var (aCount, bCount) = CountChoices(selection, SetDeckBuffTable.SelectableBrackets.Select(b => b.Threshold));
+                string head = $"세트덱 {setDeck.Score}P · 도달 구간 {reachedSelectable}/{rows.Count} · 현재 설정: A안 {aCount}개 / B안 {bCount}개";
+                summaryText.text = string.IsNullOrEmpty(lastFeedback) ? head : $"{head}\n<color=#7FE3FF>{lastFeedback}</color>";
             }
+        }
+
+        /// <summary>[TASK-KBO-182] 선택형 구간별 현재 설정(A/B) 개수 - 모든 구간은 항상 A 또는 B 중 하나로 설정돼 있다(기본 A).</summary>
+        public static (int A, int B) CountChoices(SetDeckSelection selection, IEnumerable<int> thresholds)
+        {
+            var list = thresholds.ToList();
+            int b = list.Count(t => selection != null && selection.UsesOptionB(t));
+            return (list.Count - b, b);
+        }
+
+        /// <summary>A/B 클릭 - 선택을 저장하고 상단 안내줄에 즉시 피드백을 띄운다(같은 쪽을 다시 눌러도 설정 확인 문구가 갱신된다).</summary>
+        private void Choose(int threshold, bool optionB)
+        {
+            lastFeedback = $"{threshold}P 구간: {(optionB ? "B" : "A")}안으로 설정되었습니다";
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+            gm.SetSetDeckOption(threshold, optionB); // OnSetDeckSelectionChanged → Refresh
+            Refresh(); // 패널이 이벤트를 구독하지 않은 상태(비활성 부모 등)에서도 즉시 갱신
         }
 
         private void StyleOption(Button button, string label, bool selected)
         {
             if (button == null) return;
             var text = button.GetComponentInChildren<Text>(true);
-            if (text != null) text.text = selected ? $"✔ {label}" : label;
+            if (text != null)
+            {
+                text.supportRichText = true;
+                text.text = selected ? $"<b>✔ [선택됨]</b>  {label}" : label;
+                text.color = selected ? selectedTextColor : unselectedTextColor;
+                text.fontStyle = selected ? FontStyle.Bold : FontStyle.Normal;
+            }
             if (button.targetGraphic != null) button.targetGraphic.color = selected ? selectedColor : unselectedColor;
+            // 버튼 틴트(ColorBlock)가 선택 대비를 흐리지 않게 normal을 흰색으로 고정한다.
+            var colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.95f, 0.95f, 0.95f);
+            colors.selectedColor = Color.white;
+            button.colors = colors;
         }
 
         private void EnsureRows()
@@ -144,8 +184,8 @@ namespace KBOManager.Controllers
                     OptionB = rowObject.transform.Find("OptionB")?.GetComponent<Button>(),
                 };
                 int threshold = bracket.Threshold;
-                if (row.OptionA != null) row.OptionA.onClick.AddListener(() => GameManager.Instance?.SetSetDeckOption(threshold, false));
-                if (row.OptionB != null) row.OptionB.onClick.AddListener(() => GameManager.Instance?.SetSetDeckOption(threshold, true));
+                if (row.OptionA != null) row.OptionA.onClick.AddListener(() => Choose(threshold, false));
+                if (row.OptionB != null) row.OptionB.onClick.AddListener(() => Choose(threshold, true));
                 rows.Add(row);
             }
         }
