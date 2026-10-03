@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -71,6 +71,36 @@ namespace KBOManager.Controllers
         /// PlayBallController처럼 "재생이 끝난 뒤에 보상 지급/시즌 기록/다음 경기 스케줄 진행" 등 UI가
         /// 아닌 게임 상태 처리를 이어서 해야 하는 외부 오케스트레이터를 위한 것이다.</summary>
         public event Action<MatchResult> OnPlaybackFinished;
+
+        /// <summary>[TASK-KBO-179] 재생이 시작될 때(LoadEvents 직후, 첫 이벤트 재생 전) 1회 발생한다 - 컴프야V26 중계형
+        /// 뷰(CompyaMatchView)가 라인업/전광판을 초기화하는 데 쓴다.</summary>
+        public event Action OnPlaybackStarted;
+
+        /// <summary>[TASK-KBO-179] 이벤트 1개를 재생(PlayOneEvent)한 직후 발생한다(이벤트, eventLog 인덱스).</summary>
+        public event Action<PlayEvent, int> OnEventPlayed;
+
+        /// <summary>[TASK-KBO-179] 다음 이벤트를 재생하기 "직전"에 호출되는 게이트. true를 반환하면 ReleaseHold()가 불릴
+        /// 때까지(또는 스킵될 때까지) 재생을 멈춘다 - 승부처 직접 플레이 선택, 이닝 종료 중간 화면, 일시정지 버튼이 쓴다.
+        /// 경기 결과(이미 계산 완료된 큐)는 전혀 바뀌지 않는다 - 공개 시점만 늦춘다.</summary>
+        public Func<PlayEvent, int, bool> HoldBeforeEvent;
+
+        private bool isHeld;
+
+        /// <summary>[TASK-KBO-179] 현재 게이트에 걸려 재생이 멈춰 있는지.</summary>
+        public bool IsHeld => isHeld;
+
+        /// <summary>[TASK-KBO-179] 재생 커서(다음에 재생할 이벤트 인덱스).</summary>
+        public int PlaybackCursor => playbackCursor;
+
+        /// <summary>[TASK-KBO-179] 이벤트 간 딜레이(초) - 중계 속도 조절(풀 플레이/하이라이트 등).</summary>
+        public float PerEventDelaySeconds
+        {
+            get => perEventDelaySeconds;
+            set => perEventDelaySeconds = Mathf.Max(0.02f, value);
+        }
+
+        /// <summary>[TASK-KBO-179] HoldBeforeEvent로 멈춘 재생을 이어 간다.</summary>
+        public void ReleaseHold() => isHeld = false;
 
         private void Awake()
         {
@@ -190,6 +220,8 @@ namespace KBOManager.Controllers
             }
 
             State = BroadcastPlaybackState.Playing;
+            isHeld = false;
+            OnPlaybackStarted?.Invoke();
             playbackHandle = StartCoroutine(PlaybackRoutine());
         }
 
@@ -203,7 +235,19 @@ namespace KBOManager.Controllers
         {
             while (playbackCursor < eventLog.Count && State == BroadcastPlaybackState.Playing)
             {
+                // [TASK-KBO-179] 게이트(승부처/이닝 종료 화면/일시정지) - 걸리면 해제 또는 스킵까지 대기하고, 해제 후 다시 평가한다
+                // (이닝 종료 화면이 끝난 직후 바로 승부처 타석이 오는 경우처럼 연속된 사유를 놓치지 않기 위함).
+                bool aborted = false;
+                while (HoldBeforeEvent != null && HoldBeforeEvent(eventLog[playbackCursor], playbackCursor))
+                {
+                    isHeld = true;
+                    while (isHeld && State == BroadcastPlaybackState.Playing) yield return null;
+                    if (State != BroadcastPlaybackState.Playing) { aborted = true; break; }
+                }
+                if (aborted) break;
+
                 PlayOneEvent(eventLog[playbackCursor]);
+                OnEventPlayed?.Invoke(eventLog[playbackCursor], playbackCursor);
                 playbackCursor++;
 
                 if (playbackCursor < eventLog.Count && State == BroadcastPlaybackState.Playing)
@@ -270,6 +314,7 @@ namespace KBOManager.Controllers
             if (State != BroadcastPlaybackState.Playing) return;
 
             State = BroadcastPlaybackState.Skipping;
+            isHeld = false;
 
             if (playbackHandle != null)
             {

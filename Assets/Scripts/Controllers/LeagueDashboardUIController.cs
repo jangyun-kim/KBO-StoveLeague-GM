@@ -198,6 +198,16 @@ namespace KBOManager.Controllers
         {
             if (playBallController == null) return;
 
+            // [TASK-KBO-179] 컴프야V26 중계형 뷰가 씬에 있으면 "경기 유형 선택(빠른 진행/하이라이트/풀 플레이)" 화면을 먼저
+            // 띄우고, START를 눌렀을 때 그 뷰가 playBallController.StartMatch()를 호출한다. 없으면 기존 즉시 시작 경로.
+            var compyaView = FindAnyObjectByType<CompyaMatchView>(FindObjectsInactive.Include);
+            if (compyaView != null)
+            {
+                UIManager.Instance?.ShowScreen(ScreenType.InGame);
+                compyaView.ShowTypeSelect();
+                return;
+            }
+
             playBallController.StartMatch();
             UIManager.Instance?.ShowScreen(ScreenType.InGame);
         }

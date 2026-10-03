@@ -69,6 +69,10 @@ namespace KBOManager.Controllers
 
         private readonly List<Text> spawnedLogEntries = new List<Text>();
 
+        /// <summary>[TASK-KBO-179] true면 ShowMatchResult()가 구 결과 팝업(matchEndPanelRoot)을 열지 않는다 - 컴프야V26
+        /// 결과 화면 3종(CompyaMatchView)이 대신 표시한다. 보상 텍스트 갱신 등 나머지 동작은 그대로다.</summary>
+        public bool SuppressLegacyResultPanel { get; set; }
+
         private void Awake()
         {
             if (returnToLobbyButton != null) returnToLobbyButton.onClick.AddListener(ReturnToLobby);
@@ -214,7 +218,7 @@ namespace KBOManager.Controllers
         /// </summary>
         public void ShowMatchResult(MatchResult result)
         {
-            if (matchEndPanelRoot != null) matchEndPanelRoot.SetActive(true);
+            if (matchEndPanelRoot != null && !SuppressLegacyResultPanel) matchEndPanelRoot.SetActive(true);
 
             if (matchResultSummaryText != null && result != null)
             {
