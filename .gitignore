@@ -47,3 +47,4 @@ ExportedObj/
 
 ## [TASK-KBO-179] 레퍼런스 원본 캡처(빌드/커밋 제외)
 ReferenceImages/
+__pycache__/

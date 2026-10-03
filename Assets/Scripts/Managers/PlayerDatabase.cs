@@ -523,7 +523,7 @@ namespace KBOManager.Managers
             float.TryParse(raw?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0f;
 
         private static bool IsPitcherPosition(string position) =>
-            position == "SP" || position == "RP" || position == "CP";
+            position == "SP" || position == "RP" || position == "CP" || position == "LR" || position == "MR"; // [TASK-KBO-180] LR/MR
 
         /// <summary>players.csv의 position 컬럼은 투수를 SP/RP/CP 3종으로만 구분한다 - PitcherRole(5종:
         /// 선발/승리조/추격조/롱릴리프/마무리)만큼 세분화되어 있지 않아, RP는 잠정적으로
@@ -533,6 +533,9 @@ namespace KBOManager.Managers
         {
             "SP" => PitcherRole.StartingPitcher,
             "CP" => PitcherRole.Closer,
+            // [TASK-KBO-180] 불펜 세부 보직 - 생성기가 2026 현역 불펜을 필승조(RP)/롱릴리프(LR)/추격조(MR)로 나눠 기록한다.
+            "LR" => PitcherRole.LongReliever,
+            "MR" => PitcherRole.MopUpReliever,
             _ => PitcherRole.WinningReliever,
         };
 

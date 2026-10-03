@@ -11,7 +11,7 @@ C# 런타임과 같은 규칙으로 모든 카드의 최종 세부 스탯을 재
 검사 항목:
   1) 5개 세부 스탯이 전부 같은 카드 0장
   2) 카드 최종 OVR(같은 공식) == cards_*.csv base_ovr (전 카드)
-  3) (선택) 이전 DB 폴더를 인자로 주면 player_id·card_id·base_ovr가 1개도 바뀌지 않았는지
+  3) (선택) 이전 DB 폴더를 인자로 주면 player_id·card_id·등급·연도가 1개도 바뀌지 않았는지(+ base_ovr 변경 내역 보고)
 사용: python ValidatePlayerStats180.py [이전 Data 폴더]
 """
 import csv
@@ -84,10 +84,13 @@ def main():
 
     if len(sys.argv) > 1:
         old_players, old_cards = load(sys.argv[1])
-        old_map = {c["card_id"]: (c["player_id"], c["base_ovr"], c["grade_name"], c["year"]) for c in old_cards}
-        new_map = {c["card_id"]: (c["player_id"], c["base_ovr"], c["grade_name"], c["year"]) for c in cards}
+        old_map = {c["card_id"]: (c["player_id"], c["grade_name"], c["year"]) for c in old_cards}
+        new_map = {c["card_id"]: (c["player_id"], c["grade_name"], c["year"]) for c in cards}
         id_ok = old_map == new_map and set(old_players) == set(players)
-        print(f"[3] card_id/player_id/base_ovr/등급/연도 보존: {'OK' if id_ok else 'CHANGED'} (카드 {len(old_map)} -> {len(new_map)})")
+        print(f"[3] card_id/player_id/등급/연도 보존: {'OK' if id_ok else 'CHANGED'} (카드 {len(old_map)} -> {len(new_map)})")
+        old_ovr = {c["card_id"]: c["base_ovr"] for c in old_cards}
+        changed = [(c["card_id"], old_ovr.get(c["card_id"]), c["base_ovr"]) for c in cards if old_ovr.get(c["card_id"]) != c["base_ovr"]]
+        print(f"    base_ovr 변경(의도된 밸런스 보정만 허용 - 보고용): {len(changed)}장 {changed[:5]}")
         ok = ok and id_ok
 
     print("ALL PASS" if ok else "FAIL")

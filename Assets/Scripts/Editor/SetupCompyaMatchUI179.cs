@@ -31,16 +31,19 @@ namespace KBOManager.EditorTools
             Debug.Log("[SetupCompyaMatchUI179] 컴프야V26 경기 화면(9종) + 하단 5탭 홈 전용 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
-        public static void ConfigureTextureImporters()
+        public static void ConfigureTextureImporters() => ConfigureTextureImporters(TextureFolder);
+
+        /// <summary>[TASK-KBO-180] 폴더 인자형 - Broadcast180(라이온즈 파크)도 같은 설정을 쓴다.</summary>
+        public static void ConfigureTextureImporters(string textureFolder)
         {
-            if (!AssetDatabase.IsValidFolder(TextureFolder))
+            if (!AssetDatabase.IsValidFolder(textureFolder))
             {
-                Debug.LogWarning($"[SetupCompyaMatchUI179] {TextureFolder} 폴더가 없습니다 - 프로젝트 루트에서 CropBroadcastAssets179.py를 실행하십시오.");
+                Debug.LogWarning($"[SetupCompyaMatchUI179] {textureFolder} 폴더가 없습니다 - 프로젝트 루트의 크롭 스크립트(CropBroadcastAssets179.py / CropLionsParkAssets180.py)를 실행하십시오.");
                 return;
             }
 
             int changed = 0;
-            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { TextureFolder }))
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { textureFolder }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!(AssetImporter.GetAtPath(path) is TextureImporter importer)) continue;
@@ -63,7 +66,7 @@ namespace KBOManager.EditorTools
                 importer.SaveAndReimport();
                 changed++;
             }
-            Debug.Log($"[SetupCompyaMatchUI179] Broadcast179 텍스처 임포트 설정 {changed}개 갱신.");
+            Debug.Log($"[SetupCompyaMatchUI179] {textureFolder} 텍스처 임포트 설정 {changed}개 갱신.");
         }
 
         public static void AttachMatchView()

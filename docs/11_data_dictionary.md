@@ -70,7 +70,8 @@ DCL-055 당시 확인된 실제 인덱스와 완전히 동일하게 유지, 신�
   그대로 사용한다. `docs/18_player_schema_policy.md` 0절 참고)
 - `year` (Int): 시즌 연도
 - `pa_ip` (Int): 타석수(타자) 또는 이닝수(투수) - 현재 `PlayerDatabase.ParseCsv()`가 읽지는 않는다(**[TBD]**).
-- `position` (String): SP, RP, CP, C, 1B, 2B, 3B, SS, LF, CF, RF, DH
+- `position` (String): SP, RP, CP, LR, MR, C, 1B, 2B, 3B, SS, LF, CF, RF, DH - **[TASK-KBO-180]** LR(롱릴리프)/MR(추격조) 추가. RP = 필승조(WinningReliever). 2026 현역 투수는 구단별 선발 5 · 마무리 1 · 필승조 4 · 롱 2 · 추격조로 배정된다.
+- **[TASK-KBO-180] z_* 세부 스탯 편차:** 한 선수의 z 컬럼은 더 이상 같은 값의 반복이 아니다 - 포지션/보직 프로파일 + 수상 부문 특화 + player_id 고정 편차로 스탯마다 다르며, OVR 구성 스탯(타자 파워·정확·선구 / 투수 구위·구속·변화·제구)의 평균은 기본 OVR과 정확히 같다(`GenerateKBODatabase.py` 5-M절, 검증: `ValidatePlayerStats180.py`).
 - `z_contact, z_eye, z_power, z_speed, z_def, z_stamina` (Float): 베이지안 K 보정이 끝난 타자/공통 Z-Score
   수치 (소수점 4자리 권장). D절 확정 공식/매핑표 참고.
 - `active` (Bool): 현재 `PlayerDatabase.ParseCsv()`가 읽지는 않는다(**[TBD]**).

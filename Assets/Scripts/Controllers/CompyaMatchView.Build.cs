@@ -343,9 +343,11 @@ namespace KBOManager.Controllers
             var p = CompyaUiKit.Fill(root, "Relay");
             CompyaUiKit.Paint(p, PanelGray, true);
 
-            // 상단 부감도 그라운드 + 타구 궤적
-            CompyaUiKit.Picture(p, "Ground", 0, 0, 1248, 850, "Broadcast179/ground_highangle");
-            arcRect = CompyaUiKit.Place(p, "Trajectory", 0, 0, 1248, 850);
+            // 상단 하이앵글 그라운드 + 타구 궤적. [TASK-KBO-180] 대구 삼성 라이온즈 파크(홈플레이트 뒤 하이앵글, 1248x910)로 교체 -
+            // 텍스처가 없으면 TASK-179 고척 부감도로 폴백.
+            var groundTexture = Resources.Load<Texture2D>(GroundTexture);
+            CompyaUiKit.Picture(p, "Ground", 0, 0, 1248, GroundHeight, groundTexture != null ? GroundTexture : "Broadcast179/ground_highangle");
+            arcRect = CompyaUiKit.Place(p, "Trajectory", 0, 0, 1248, GroundHeight);
             arcGlow = arcRect.gameObject.AddComponent<ArcLineGraphic>();
             arcGlow.color = new Color(0.45f, 0.75f, 1f, 0.35f);
             arcGlow.Thickness = 14f;
@@ -817,12 +819,15 @@ namespace KBOManager.Controllers
 
         // ---- 타구 궤적(홈 -> 낙구 지점 파란 포물선 + 바운드)
 
-        private static readonly Vector2 HomePlate = new Vector2(622f, 730f);
-        private static readonly Vector2 LeftFoulEnd = new Vector2(0f, 440f);
-        private static readonly Vector2 CenterFence = new Vector2(622f, 330f);
-        private static readonly Vector2 RightFoulEnd = new Vector2(1248f, 440f);
+        // [TASK-KBO-180] 라이온즈 파크 그라운드(CropLionsParkAssets180.py) 실측 좌표 - 1248x910 텍스처 기준.
+        private const string GroundTexture = "Broadcast180/ground_lionspark";
+        private const float GroundHeight = 910f;
+        private static readonly Vector2 HomePlate = new Vector2(622f, 703f);
+        private static readonly Vector2 LeftFoulEnd = new Vector2(0f, 435f);
+        private static readonly Vector2 CenterFence = new Vector2(622f, 318f);
+        private static readonly Vector2 RightFoulEnd = new Vector2(1248f, 435f);
 
-        /// <summary>그라운드 텍스처(1248x850) 기준 필드 좌표: angle -45(3루 파울라인) ~ 45(1루 파울라인), dist 1 = 펜스.</summary>
+        /// <summary>그라운드 텍스처(1248x910) 기준 필드 좌표: angle -45(3루 파울라인) ~ 45(1루 파울라인), dist 1 = 펜스.</summary>
         private static Vector2 FieldPoint(float angle, float dist)
         {
             var center = CenterFence - HomePlate;
@@ -876,7 +881,7 @@ namespace KBOManager.Controllers
 
             var size = arcRect.rect.size;
             for (int i = 0; i < pts.Count; i++)
-                pts[i] = new Vector2((pts[i].x / 1248f - 0.5f) * size.x, (0.5f - pts[i].y / 850f) * size.y);
+                pts[i] = new Vector2((pts[i].x / 1248f - 0.5f) * size.x, (0.5f - pts[i].y / GroundHeight) * size.y);
             arcGlow.SetPoints(pts);
             arcCore.SetPoints(pts);
             arcRoutine = StartCoroutine(AnimateArc());

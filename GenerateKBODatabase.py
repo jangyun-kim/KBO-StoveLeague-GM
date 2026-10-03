@@ -1185,6 +1185,63 @@ for rec in player_records:
     stat_recalibration_report.append((rec.name, rec.player_id, before, target, len(award_ledger[rec.player_id])))
 
 # ---------------------------------------------------------------------------
+# 5-L2. [TASK-KBO-180] 컴프야V26 공식 보드(board/37 "라이브 선수 카드 정보 안내", 2024 V3 기준) 반영 - 2026 현역 1군 풀 정교화.
+#   - LIVE 카드는 "직전/현 시즌 KBO 1군 성적" 기반이며 OVR 범위는 50~82다. 수상 경력이 없는 현역(수상 장부 없음)의 기본 OVR이
+#     무작위 z로 이 범위를 벗어나던 18명(최저 31)을 50~82로 보정한다(수상 경력자는 5-L 위상 기준 그대로).
+#   - 투수 보직: 2026 등록 명단 순서대로 순환 배정(SP 6 : RP 4 : CP 1)하던 탓에 구단마다 선발 8~11명 / 불펜 3~5명 / 롱·추격조 0명이라
+#     AI 로스터 불펜이 가상 절차 생성 투수로 채워졌다. 구단별 대표 선발(최대 5)·마무리는 실제 2025~2026 보직으로 지정하고, 나머지는
+#     명단 순서대로 필승조(RP) 4 → 롱릴리프(LR) 2 → 추격조(MR)로 배정한다(LR/MR은 C# PlayerDatabase.ParsePitcherRole이 읽는다).
+#     player_id/card_id/카드 연도·등급은 그대로다(포지션 컬럼과 세부 스탯 프로파일만 바뀐다 - 난수 미사용).
+# ---------------------------------------------------------------------------
+LIVE_OVR_RANGE = (50, 82)
+ROSTER_2026_STARTERS = {
+    "SAMSUNG": ["원태인", "후라도", "최원태", "이승현", "페덱"],
+    "KT": ["고영표", "배제성", "스기모토", "대니엘", "로건"],
+    "LG": ["임찬규", "손주영", "톨허스트", "케네디", "이정용"],
+    "KIA": ["양현종", "올러", "네일", "이의리", "김태형"],
+    "DOOSAN": ["최승용", "잭로그", "벤자민", "이영하", "타카다"],
+    "NC": ["라일리", "토다", "클레빈저", "구창모", "신영우"],
+    "SSG": ["김건우", "문승원", "타케다", "아빌라", "김민"],
+    "LOTTE": ["박세웅", "나균안", "비슬리", "로드리게스", "이이무라"],
+    "HANWHA": ["류현진", "화이트", "짐머맨", "황준서", "박준영"],
+    "KIWOOM": ["안우진", "하영민", "김윤하", "박준현", "유토"],
+}
+ROSTER_2026_CLOSERS = {"SAMSUNG": "김재윤", "KT": "박영현", "KIA": "정해영", "DOOSAN": "김택연", "LOTTE": "김원중", "HANWHA": "김서현",
+                       "LG": "고우석", "NC": "이용준", "SSG": "이로운", "KIWOOM": "원종현"}
+live_clamp_report = []
+for _rec in {r.player_id: r for r in real_2026_records}.values():
+    if award_ledger.get(_rec.player_id):
+        continue
+    _ovr = max(1, min(100, round(float(f"{_rec.z_value:.3f}") * 15 + 50)))
+    _target = max(LIVE_OVR_RANGE[0], min(LIVE_OVR_RANGE[1], _ovr))
+    if _target != _ovr:
+        _rec.z_value = overall_to_z(_target)
+        live_clamp_report.append((_rec.name, _ovr, _target))
+
+pitching_role_report = {}
+for _team in ROSTER_2026:
+    _pitchers = [r for r in real_2026_records if r.team_token == _team and r.is_pitcher]
+    _seen = set()
+    _ordered = []
+    for r in _pitchers:
+        if r.player_id not in _seen:
+            _seen.add(r.player_id)
+            _ordered.append(r)
+    _starters = set(ROSTER_2026_STARTERS.get(_team, []))
+    _closer = ROSTER_2026_CLOSERS.get(_team)
+    _bullpen_index = 0
+    for r in _ordered:
+        raw = r.name.split("(")[0]
+        if raw in _starters:
+            r.position = "SP"
+        elif raw == _closer:
+            r.position = "CP"
+        else:
+            r.position = "RP" if _bullpen_index < 4 else ("LR" if _bullpen_index < 6 else "MR")
+            _bullpen_index += 1
+    pitching_role_report[_team] = Counter(r.position for r in _ordered)
+
+# ---------------------------------------------------------------------------
 # 5-M. [TASK-KBO-180] 세부 능력치 편차(분포) 복원 - "OVR 89 = 5개 스탯 전부 89" 평준화 버그 수정.
 # 원인: 6절이 한 선수의 z_* 컬럼(타자 6 / 투수 5)에 같은 rec.z_value를 반복 기록했고(TASK-153 sample 관례), C#
 # PlayerDatabase는 카드 base_ovr 차이만큼 전 항목을 "균등 이동"하므로 편차가 영영 생기지 않았다.
@@ -1203,8 +1260,9 @@ BATTER_POSITION_PROFILE = {  # (파워, 정확, 선구 | 합 0), 주력, 수비
     "SS": (-5, 3, 2, 7, 8), "LF": (3, 1, -4, 0, -2), "CF": (-5, 3, 2, 10, 7), "RF": (3, 0, -3, 1, 2),
     "DH": (6, 0, -6, -12, -15),
 }
-PITCHER_ROLE_PROFILE = {  # (구위, 구속, 변화, 제구 | 합 0), 체력
+PITCHER_ROLE_PROFILE = {  # (구위, 구속, 변화, 제구 | 합 0), 체력 - C# StatProfiles.PitcherOffsets와 동일
     "SP": (1, -1, -1, 1, 10), "RP": (3, 4, -3, -4, -18), "CP": (6, 6, -5, -7, -25),
+    "LR": (-1, -2, 2, 1, -5), "MR": (3, 4, -3, -4, -18),
 }
 # 부문 특화 오프셋(OVR 구성 스탯은 합 0)
 BATTER_CATEGORY_BONUS = {
@@ -1292,7 +1350,12 @@ def stat_line(rec):
     cats = player_categories.get(rec.player_id, set())
     pid = rec.player_id
     if rec.is_pitcher:
-        role = "CP" if ("세이브" in cats or rec.position == "CP") else ("RP" if ("홀드" in cats or rec.position == "RP") else "SP")
+        if "세이브" in cats or rec.position == "CP":
+            role = "CP"
+        elif "홀드" in cats or rec.position == "RP":
+            role = "RP"
+        else:
+            role = rec.position if rec.position in ("LR", "MR") else "SP"
         base = list(PITCHER_ROLE_PROFILE[role])
         for cat in sorted(cats):
             if cat in PITCHER_CATEGORY_BONUS:
@@ -1866,6 +1929,8 @@ print(f"총 선수 수(출력, 1군 검증 인물만): {len(players_rows)}명 / 
 print(f"  - [TASK-179] 폐기된 확률 발급 카드(가상/비검증 인물): {len(discarded_random_cards)}장 "
       f"{dict(Counter(r[3] for r in discarded_random_cards))}")
 print(f"  - [TASK-179] 검증 풀 LIVE_EPIC(2026 현역 수상 경력자): {live_epic_card_count}장")
+print(f"  - [TASK-180] LIVE OVR 50~82 보정(비수상 현역): {len(live_clamp_report)}명 {live_clamp_report[:6]}")
+print(f"  - [TASK-180] 2026 투수 보직: { {t: dict(c) for t, c in pitching_role_report.items()} }")
 _out_ids = {row[0] for row in players_rows}
 for _, _, team_token in TEAMS:
     team_player_count = sum(1 for r in player_records if r.team_token == team_token and r.player_id in _out_ids)
