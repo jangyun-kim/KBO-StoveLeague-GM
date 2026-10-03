@@ -17,6 +17,10 @@ namespace KBOManager.Controllers
     ///   - 필터 바: 전체 / 구단(누를 때마다 보유 구단 순환) / LIVE / ICON / LEGEND.
     ///   - 목록: 고정 높이 카드(티어 뱃지 · 이름 · 구단·활동기간 · 버프 · 장착/해제 - CheerleaderSlotUI).
     /// 장착 슬롯은 게임 규칙상 1개(GameManager.EquippedCheerleader)다. 레이아웃은 SetupThemeUI178(구 SetupMobileUI177)이 조립한다.
+    ///
+    /// [TASK-KBO-180] 6인 역할 편성으로 전면 개편: 상단 CheerSquadPanel(3x2 - 1.응원단장 ~ 6.위기 응원)에서 슬롯을 고르면
+    /// 아래 보유 목록의 [장착]이 그 슬롯에 배치한다(GameManager.TryEquipCheerleader - 동일 인물 중복 편성 금지).
+    /// 이미 어느 슬롯에든 편성된 카드는 [해제]로 그 슬롯에서 뺀다. 요약 줄(equippedSummaryText)은 선택 슬롯·시너지 인원·마지막 안내를 보여 준다.
     /// </summary>
     public class CheerleaderInventoryUIController : MonoBehaviour
     {
@@ -45,11 +49,28 @@ namespace KBOManager.Controllers
         [SerializeField] private Color filterActiveColor = new Color(1f, 0.84f, 0f);
         [SerializeField] private Color filterIdleColor = new Color(0.9f, 0.9f, 0.9f);
 
+        [Header("Cheer Squad (TASK-KBO-180)")]
+        [Tooltip("6인 역할 편성 3x2 그리드. 비우면 자식에서 자동 탐색한다(SetupCheerSquadUI180이 배치).")]
+        [SerializeField] private CheerSquadPanel squadPanel;
+
         private CheerleaderGrade? tierFilter;
         private Team teamFilter = Team.None;
+        private CheerRole selectedRole = CheerRole.Leader;
+        private string statusMessage;
 
         private void Awake()
         {
+            if (squadPanel == null) squadPanel = GetComponentInChildren<CheerSquadPanel>(true);
+            if (squadPanel != null)
+            {
+                squadPanel.OnSlotSelected += role =>
+                {
+                    selectedRole = role;
+                    statusMessage = $"{(int)role + 1}.{CheerSquad.RoleName(role)} 슬롯 선택 - 아래 목록에서 [장착]을 누르십시오.";
+                    RefreshInventory();
+                };
+                squadPanel.OnSlotCleared += role => GameManager.Instance?.UnequipCheerleader(role);
+            }
             if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
             if (filterAllButton != null) filterAllButton.onClick.AddListener(() => { tierFilter = null; teamFilter = Team.None; RefreshInventory(); });
             if (filterTeamButton != null) filterTeamButton.onClick.AddListener(CycleTeamFilter);
@@ -135,7 +156,6 @@ namespace KBOManager.Controllers
             }
 
             if (gm == null) return;
-            var equipped = gm.EquippedCheerleader;
 
             foreach (var cheerleader in filtered)
             {
@@ -144,10 +164,20 @@ namespace KBOManager.Controllers
                 var slot = slotObject.GetComponent<CheerleaderSlotUI>();
                 if (slot == null) continue;
 
-                bool isEquipped = IsSameCheerleader(equipped, cheerleader);
-                slot.Initialize(cheerleader, isEquipped,
-                    onEquip: target => GameManager.Instance.EquipCheerleader(target),
-                    onUnequip: () => GameManager.Instance.UnequipCheerleader());
+                // [TASK-KBO-180] 어느 슬롯에든 편성돼 있으면 "해제"(그 슬롯에서 제거), 아니면 선택 슬롯에 "장착".
+                var equippedRole = gm.FindSlotOf(cheerleader);
+                slot.Initialize(cheerleader, equippedRole.HasValue,
+                    onEquip: target =>
+                    {
+                        statusMessage = GameManager.Instance.TryEquipCheerleader(selectedRole, target, out var reason)
+                            ? $"{(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}에 {target.Name} 배치 완료"
+                            : reason;
+                        RefreshInventory();
+                    },
+                    onUnequip: () =>
+                    {
+                        if (equippedRole.HasValue) GameManager.Instance.UnequipCheerleader(equippedRole.Value);
+                    });
             }
         }
 
@@ -156,6 +186,22 @@ namespace KBOManager.Controllers
             if (ownedCountText != null)
             {
                 ownedCountText.text = shownCount == ownedCount ? $"보유 {ownedCount}명" : $"보유 {ownedCount}명 (표시 {shownCount}명)";
+            }
+
+            if (gm != null && squadPanel != null)
+            {
+                // [TASK-KBO-180] 6인 편성 그리드 + 요약 줄.
+                string favorite = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
+                var deck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favorite, gm.SetDeckSelection).DeckTeam;
+                squadPanel.Refresh(gm.CheerSquadSlots, deck, selectedRole);
+                if (equippedSummaryText != null)
+                {
+                    int filled = CheerSquad.Filled(gm.CheerSquadSlots).Count();
+                    int active = CheerSquad.Filled(gm.CheerSquadSlots).Count(c => CheerleaderSynergy.IsActive(c, deck));
+                    equippedSummaryText.text = $"편성 {filled}/6 · 시너지 발동 {active}명 (세트덱 {deck}) · 배치 대상: {(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}" +
+                        (string.IsNullOrEmpty(statusMessage) ? "" : $"\n{statusMessage}");
+                }
+                return;
             }
 
             if (equippedSummaryText == null) return;

@@ -128,7 +128,10 @@ namespace KBOManager.Managers
         // 자체의 null 처리 한계에 대한 방어다.
         // v6: 세트덱 선택형 구간 옵션/연도 선택(SetDeckSelection) 추가(TASK-KBO-176). 필드가 없는 구버전 JSON은
         // 기본 인스턴스(전 구간 A안 + 연도 자동)로 역직렬화되므로 별도 분기가 필요 없다.
-        public int SaveVersion = 6;
+        // v7: 치어리더 6인 역할 편성(CheerSquad, 6칸 - 빈 칸은 InstanceId가 빈 객체) 추가(TASK-KBO-180). CheerSquad가 비어 있는
+        // 구버전(v5~v6) 세이브는 EquippedCheerleader(단일 슬롯)를 1번 응원단장 슬롯으로 이관한다. EquippedCheerleader는
+        // 구버전 빌드 호환을 위해 계속 응원단장 슬롯 값을 함께 기록한다.
+        public int SaveVersion = 7;
         public string SavedAtUtc;
 
         // GameManager
@@ -157,6 +160,7 @@ namespace KBOManager.Managers
         public Cheerleader EquippedCheerleader; // null 여부는 ApplySaveData()에서 InstanceId로 판별(위 v5 주석 참고)
         public List<Cheerleader> OwnedCheerleaders = new List<Cheerleader>();
         public SetDeckSelection SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] v6
+        public List<Cheerleader> CheerSquad = new List<Cheerleader>(); // [TASK-KBO-180] v7 - 인덱스 = (int)CheerRole
 
         // LeagueManager
         public bool HasLeagueData;
@@ -281,6 +285,8 @@ namespace KBOManager.Managers
                 data.SetDeckSelection.CopyFrom(gm.SetDeckSelection);
                 data.EquippedCheerleader = gm.EquippedCheerleader;
                 data.OwnedCheerleaders = new List<Cheerleader>(gm.OwnedCheerleaders);
+                // [TASK-KBO-180] 6인 편성 - JsonUtility는 리스트의 null을 못 쓰므로 빈 슬롯은 빈 객체로 저장한다.
+                data.CheerSquad = gm.CheerSquadSlots.Select(c => c ?? new Cheerleader()).ToList();
             }
 
             if (LeagueManager.Instance != null)
@@ -418,6 +424,27 @@ namespace KBOManager.Managers
                 {
                     foreach (var owned in data.OwnedCheerleaders) CheerleaderCatalog.Hydrate(owned); // [TASK-KBO-175]
                     gm.OwnedCheerleaders.AddRange(data.OwnedCheerleaders);
+                }
+
+                // [TASK-KBO-180] 6인 편성 복원. v7 세이브는 CheerSquad를, 구버전은 위에서 응원단장 슬롯에 넣은 단일 장착을 그대로 쓴다.
+                // 같은 카드를 보유 목록과 같은 인스턴스로 맞춰(InstanceId) 이후 장착/해제 비교가 어긋나지 않게 한다.
+                if (data.CheerSquad != null && data.CheerSquad.Any(c => c != null && !string.IsNullOrEmpty(c.InstanceId)))
+                {
+                    var restored = new List<Cheerleader>();
+                    for (int i = 0; i < KBOManager.Models.CheerSquad.SlotCount; i++)
+                    {
+                        var saved = i < data.CheerSquad.Count ? data.CheerSquad[i] : null;
+                        if (saved == null || string.IsNullOrEmpty(saved.InstanceId)) { restored.Add(null); continue; }
+                        var owned = gm.OwnedCheerleaders.FirstOrDefault(c => c != null && c.InstanceId == saved.InstanceId);
+                        if (owned == null) CheerleaderCatalog.Hydrate(saved);
+                        restored.Add(owned ?? saved);
+                    }
+                    gm.RestoreCheerSquad(restored);
+                }
+                else if (hasEquippedCheerleader)
+                {
+                    var owned = gm.OwnedCheerleaders.FirstOrDefault(c => c != null && c.InstanceId == data.EquippedCheerleader.InstanceId);
+                    if (owned != null) gm.EquippedCheerleader = owned; // 구버전 단일 슬롯 -> 응원단장(마이그레이션)
                 }
             }
 

@@ -53,8 +53,11 @@ namespace KBOManager.Controllers
         private bool directResultActive;
         private bool awaitingDirectReveal;
         private int pendingChoiceIndex = -1;
+        private int pendingPlateAppearance = -1;
         private int directPlayCount;
+        // [TASK-KBO-180] 승부처 판정은 "타석 번호" 기준 - 작전 재계산으로 이벤트 인덱스가 밀려도(도루 이벤트 삽입) 같은 타석을 다시 묻지 않는다.
         private readonly HashSet<int> resolvedChoices = new HashSet<int>();
+        private MatchTactic selectedTactic = MatchTactic.None;
 
         private IReadOnlyList<PlayEvent> events;
         private Team awayTeam, homeTeam;
@@ -82,6 +85,7 @@ namespace KBOManager.Controllers
             {
                 broadcastUIManager.OnPlaybackStarted += HandlePlaybackStarted;
                 broadcastUIManager.OnEventPlayed += HandleEventPlayed;
+                broadcastUIManager.OnEventsReplaced += HandleEventsReplaced;
                 broadcastUIManager.HoldBeforeEvent = HoldGate;
             }
             if (playBallController != null) playBallController.OnMatchCompleted += HandleMatchCompleted;
@@ -95,6 +99,7 @@ namespace KBOManager.Controllers
             {
                 broadcastUIManager.OnPlaybackStarted -= HandlePlaybackStarted;
                 broadcastUIManager.OnEventPlayed -= HandleEventPlayed;
+                broadcastUIManager.OnEventsReplaced -= HandleEventsReplaced;
                 if (broadcastUIManager.HoldBeforeEvent == (System.Func<PlayEvent, int, bool>)HoldGate) broadcastUIManager.HoldBeforeEvent = null;
             }
             if (playBallController != null) playBallController.OnMatchCompleted -= HandleMatchCompleted;
@@ -217,6 +222,12 @@ namespace KBOManager.Controllers
             }
         }
 
+        /// <summary>[TASK-KBO-180] 작전 재계산으로 이벤트 목록이 바뀌면 새 목록을 참조한다.</summary>
+        private void HandleEventsReplaced()
+        {
+            events = broadcastUIManager != null ? broadcastUIManager.EventLog : events;
+        }
+
         /// <summary>BroadcastUIManager 게이트 - true면 재생을 멈춘다.</summary>
         private bool HoldGate(PlayEvent evt, int index)
         {
@@ -243,13 +254,15 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// 승부처 판정(직접 플레이 자동 선택). 하이라이트: 우리 팀 공격 · 5회 이후 · 3점 차 이내 · (득점권 주자 또는 8회 이후), 최대 4회.
-        /// 풀 플레이: 우리 팀 공격 · 득점권 주자, 최대 12회. 빠른 진행은 직접 플레이가 없다.
+        /// 승부처 판정(직접 플레이 자동 선택). 하이라이트: 5회 이후 · 3점 차 이내 · (득점권 주자 또는 8회 이후), 최대 4회.
+        /// 풀 플레이: 득점권 주자, 최대 12회. 빠른 진행은 직접 플레이가 없다.
+        /// [TASK-KBO-180] 우리 팀 공격(공격 작전)뿐 아니라 우리 팀 수비(상대 타석 - 투수 교체/정면 승부/고의사구) 승부처도 고른다.
         /// </summary>
         private bool IsClutch(PlayEvent evt, int index)
         {
-            if (mode == PlayMode.Quick || resolvedChoices.Contains(index)) return false;
-            if (!IsUserBatting(evt.IsTopHalf)) return false;
+            if (mode == PlayMode.Quick || evt.PlateAppearance < 0 || resolvedChoices.Contains(evt.PlateAppearance)) return false;
+            var user = LeagueManager.Instance != null ? LeagueManager.Instance.UserTeam : Team.None;
+            if (awayTeam != user && homeTeam != user) return false;
 
             var before = CompyaGameTracker.Build(events, index - 1);
             int diff = Mathf.Abs(before.AwayScore - before.HomeScore);
@@ -296,13 +309,14 @@ namespace KBOManager.Controllers
         {
             choiceActive = true;
             pendingChoiceIndex = index;
+            pendingPlateAppearance = evt.PlateAppearance;
             FillChoice(evt, CompyaGameTracker.Build(events, index - 1));
             choicePanel.SetActive(true);
         }
 
         private void OnChoiceSkip()
         {
-            resolvedChoices.Add(pendingChoiceIndex);
+            resolvedChoices.Add(pendingPlateAppearance);
             choicePanel.SetActive(false);
             choiceActive = false;
             TryRelease();
@@ -316,17 +330,19 @@ namespace KBOManager.Controllers
             directPanel.SetActive(true);
         }
 
-        private void OnDirectSwing(bool bunt)
+        private void OnDirectPlayBall()
         {
             if (!choiceActive) return;
-            StartCoroutine(DirectSwingRoutine(bunt));
+            StartCoroutine(DirectSwingRoutine(selectedTactic));
         }
 
-        private IEnumerator DirectSwingRoutine(bool bunt)
+        private IEnumerator DirectSwingRoutine(MatchTactic tactic)
         {
             directPlayButton.interactable = false;
-            directBuntButton.interactable = false;
-            directSubtitleText.text = bunt ? "번트 작전! 타자가 배트를 눕힙니다." : "투수, 와인드업... 던졌습니다!";
+            foreach (var button in tacticButtons) button.interactable = false;
+            directSubtitleText.text = tactic == MatchTactic.None
+                ? "투수, 와인드업... 던졌습니다!"
+                : $"작전 [{MatchEngine.TacticLabel(tactic)}]! 투수, 와인드업... 던졌습니다!";
 
             // 공이 마운드에서 스트라이크 존으로 날아오는 연출(0.45초)
             directBall.gameObject.SetActive(true);
@@ -340,8 +356,11 @@ namespace KBOManager.Controllers
                 yield return null;
             }
 
-            resolvedChoices.Add(pendingChoiceIndex);
+            resolvedChoices.Add(pendingPlateAppearance);
             directPlayCount++;
+            // [TASK-KBO-180] 작전을 실제 판정에 반영: 같은 시드로 경기를 다시 계산해 이 타석부터 결과를 바꾼다(이전 결과는 동일).
+            if (tactic != MatchTactic.None && playBallController != null)
+                playBallController.ReplayWithTactic(pendingPlateAppearance, tactic);
             awaitingDirectReveal = true;
             choiceActive = false;
             TryRelease(); // -> 해당 타석 이벤트 재생 -> HandleEventPlayed -> DirectResultRoutine
@@ -358,13 +377,13 @@ namespace KBOManager.Controllers
             directBall.gameObject.SetActive(false);
             directPanel.SetActive(false);
             directPlayButton.interactable = true;
-            directBuntButton.interactable = true;
             directResultActive = false;
             TryRelease();
         }
 
         private static string DirectResultHeadline(PlayEvent evt)
         {
+            if (evt.Tactic == MatchTactic.Bunt && evt.Result == AtBatResult.Groundout) return "희생번트 성공";
             switch (evt.Result)
             {
                 case AtBatResult.HomeRun: return "HOME RUN!";

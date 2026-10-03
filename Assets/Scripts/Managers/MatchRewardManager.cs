@@ -160,7 +160,8 @@ namespace KBOManager.Managers
             int fanSentiment = GameManager.Instance.FanSentiment;
             float sentimentPenaltyMultiplier = fanSentiment < FanSentimentPenaltyThreshold ? FanSentimentPenaltyMultiplier : 1.0f;
 
-            float economicBonusRate = won ? (GameManager.Instance.EquippedCheerleader?.EconomicBonusRate ?? 1.0f) : 1.0f;
+            // [TASK-KBO-180] 6인 편성: 관중 수익은 5.홈 응원 슬롯 치어리더 담당.
+            float economicBonusRate = won ? (GameManager.Instance.GetCheerleaderInSlot(CheerRole.Home)?.EconomicBonusRate ?? 1.0f) : 1.0f;
 
             int finalReward = Mathf.RoundToInt((baseReward * sentimentPenaltyMultiplier) * economicBonusRate);
 
@@ -194,7 +195,7 @@ namespace KBOManager.Managers
 
             if (GameManager.Instance.LosingStreak < losingStreakThresholdForFanSentimentDrop) return;
 
-            int sentimentDefense = GameManager.Instance.EquippedCheerleader?.SentimentDefense ?? 0;
+            int sentimentDefense = GameManager.Instance.GetCheerleaderInSlot(CheerRole.MoodMaker)?.SentimentDefense ?? 0; // [TASK-KBO-180] 4.분위기 메이커 = 연패 대응
             int actualDrop = Mathf.Max(0, baseFanSentimentDropOnLosingStreak - sentimentDefense);
 
 #if UNITY_EDITOR

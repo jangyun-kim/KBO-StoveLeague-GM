@@ -19,8 +19,10 @@ namespace KBOManager.Controllers
     {
         public class BatLine
         {
-            public int AtBats, Hits, Walks, HomeRuns;
+            public int AtBats, Hits, Walks, HomeRuns, Sacrifices;
             public readonly List<AtBatResult> Results = new List<AtBatResult>();
+            /// <summary>[TASK-KBO-180] 뱃지 표기(희생번트 등 작전 결과 포함)와 색(출루/진루 = true).</summary>
+            public readonly List<(string Label, bool Positive)> Badges = new List<(string, bool)>();
             public float Average => AtBats == 0 ? 0f : (float)Hits / AtBats;
         }
 
@@ -33,6 +35,7 @@ namespace KBOManager.Controllers
         {
             public readonly List<int> Runs = new List<int>();
             public int R, H, B, HR, K, DP;
+            public int SB, CS; // [TASK-KBO-180] 도루 성공/실패(승부처 도루 작전)
         }
 
         public readonly TeamLine Away = new TeamLine();
@@ -109,7 +112,10 @@ namespace KBOManager.Controllers
 
                         var bat = t.BatOf(e.Batter);
                         bat.Results.Add(e.Result);
+                        bool sacrifice = e.Tactic == MatchTactic.Bunt && e.Result == AtBatResult.Groundout;
+                        bat.Badges.Add(sacrifice ? ("희생번트", true) : (ResultLabel(e.Result), IsPositive(e.Result)));
                         if (e.Result == AtBatResult.Walk) { bat.Walks++; team.B++; }
+                        else if (sacrifice) bat.Sacrifices++; // 희생번트는 타수에 넣지 않는다
                         else bat.AtBats++;
                         if (IsHit(e.Result)) { bat.Hits++; team.H++; }
                         if (e.Result == AtBatResult.HomeRun) { bat.HomeRuns++; team.HR++; }
@@ -155,7 +161,20 @@ namespace KBOManager.Controllers
                     case PlayEventType.RunnerAdvance:
                         if (e.FromBase >= 1 && e.FromBase <= 3) t.Bases[e.FromBase] = false;
                         if (e.ToBase >= 1 && e.ToBase <= 3) t.Bases[e.ToBase] = true;
-                        if (e.ToBase == -1)
+                        if (e.IsSteal)
+                        {
+                            // [TASK-KBO-180] 타석 전 도루: 성공 = 도루, 실패 = 도루자(아웃, 병살 아님). 아직 이 타석 투수가 정해지기 전이라
+                            // 같은 타석 번호의 AtBatResult에서 투수를 찾아 아웃을 준다.
+                            var team = e.IsTopHalf ? t.Away : t.Home;
+                            if (e.ToBase == -1)
+                            {
+                                t.Outs++;
+                                team.CS++;
+                                t.PitchOf(FindPitcherOfPlateAppearance(events, i, e.PlateAppearance) ?? currentPitcher).Outs++;
+                            }
+                            else team.SB++;
+                        }
+                        else if (e.ToBase == -1)
                         {
                             t.Outs++;
                             t.PitchOf(currentPitcher).Outs++;
@@ -193,6 +212,15 @@ namespace KBOManager.Controllers
                 if (winners.Count > 0) t.WinningPitcher = winners[0];
             }
             return t;
+        }
+
+        private static Player FindPitcherOfPlateAppearance(IReadOnlyList<PlayEvent> events, int from, int plateAppearance)
+        {
+            for (int j = from + 1; j < events.Count && j < from + 6; j++)
+            {
+                if (events[j].Type == PlayEventType.AtBatResult && events[j].PlateAppearance == plateAppearance) return events[j].Pitcher;
+            }
+            return null;
         }
 
         /// <summary>이닝 표기 "2/3", "5", "5 1/3"(레퍼런스 ON THE MOUND 이닝 칸).</summary>

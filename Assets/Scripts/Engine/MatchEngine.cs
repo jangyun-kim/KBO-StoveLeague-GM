@@ -21,6 +21,24 @@ namespace KBOManager.Engine
         HomeRun
     }
 
+    /// <summary>
+    /// [TASK-KBO-180] 승부처 직접 플레이 작전. MatchEngine.Tactics[타석 번호]에 넣으면 그 타석의 판정 확률/주자 처리에 실제로 반영된다.
+    /// 공격: 강공(파워↑ 정확·선구↓) / 컨택(정확·선구↑ 파워↓) / 번트(희생번트 위주 분포 + 주자 1루씩 진루) / 도루(타석 전 1루 주자 2루 도루 판정).
+    /// 수비: 정면 승부(투수 구위·구속↑ 제구↓) / 투수 교체(가용 불펜 중 최고 OVR로 즉시 교체) / 고의사구(볼넷 확정).
+    /// 정수값은 저장/로그 호환을 위해 끝에만 추가한다.
+    /// </summary>
+    public enum MatchTactic
+    {
+        None = 0,
+        PowerSwing = 1,
+        ContactSwing = 2,
+        Bunt = 3,
+        Steal = 4,
+        FullForce = 5,
+        PitchingChange = 6,
+        IntentionalWalk = 7,
+    }
+
     /// <summary>한 경기의 스코어보드 결과.</summary>
     public class MatchResult
     {
@@ -99,6 +117,13 @@ namespace KBOManager.Engine
         /// <summary>이 타석에서 실제로 발생한 주자 이동(득점 포함) 목록. 아웃으로 주자 변화가 없으면 빈 리스트.
         /// PlayFullMatchAsEventQueue()가 이걸 그대로 RunnerAdvance PlayEvent로 변환한다.</summary>
         public List<RunnerMovement> RunnerMovements = new List<RunnerMovement>();
+
+        /// <summary>[TASK-KBO-180] 경기 전체 기준 타석 번호(0부터) - 작전 지정 키(MatchEngine.Tactics).</summary>
+        public int PlateAppearance = -1;
+        /// <summary>[TASK-KBO-180] 이 타석에 적용된 작전(없으면 None).</summary>
+        public MatchTactic Tactic;
+        /// <summary>[TASK-KBO-180] 타석 "전"에 일어난 주자 이동(도루 성공 1→2 / 도루 실패 1→-1).</summary>
+        public List<RunnerMovement> PreAtBatMovements = new List<RunnerMovement>();
     }
 
     /// <summary>
@@ -162,6 +187,13 @@ namespace KBOManager.Engine
         // ----- Type == RunnerAdvance 일 때만 유효 -----
         public int FromBase;
         public int ToBase;
+
+        /// <summary>[TASK-KBO-180] 경기 전체 기준 타석 번호(AtBatResult와 그 타석의 RunnerAdvance가 공유). 작전 재계산 키.</summary>
+        public int PlateAppearance = -1;
+        /// <summary>[TASK-KBO-180] AtBatResult: 적용된 작전. 번트 + 땅볼은 희생번트(타수 미포함)다.</summary>
+        public MatchTactic Tactic;
+        /// <summary>[TASK-KBO-180] RunnerAdvance: 타석 전 도루 이동(성공 1→2, 실패 1→-1 = 도루자, 병살 아님).</summary>
+        public bool IsSteal;
     }
 
     /// <summary>
@@ -185,22 +217,27 @@ namespace KBOManager.Engine
         /// <summary>[TASK-KBO-172] 세트덱 버프 구간 중 "모든 능력치" 균등 가산(SynergyBuff에 이미 포함) 외의
         /// 대상 한정 효과(타자/투수 전용, 타순, 선택 연도, 선발/불펜, 부분 스탯). null이면 효과 없음.</summary>
         public readonly SetDeckBuffProfile SetDeckProfile;
+        /// <summary>[TASK-KBO-180] 치어리더 6인 편성 효과(유저 구단 전용, 없으면 null). 상황(홈/연패/열세/후반 접전)별 적용은
+        /// MatchEngine이 타석마다 판정한다.</summary>
+        public readonly CheerSquadEffects Cheer;
         public int TotalBuff => SynergyBuff + ConditionBuff;
 
         public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f,
-            SetDeckBuffProfile setDeckProfile = null)
+            SetDeckBuffProfile setDeckProfile = null, CheerSquadEffects cheer = null)
         {
             SynergyBuff = synergyBuff;
             ConditionBuff = conditionBuff;
             ClutchMultiplier = clutchMultiplier;
             SetDeckProfile = setDeckProfile;
+            Cheer = cheer;
         }
 
         /// <summary>[TASK-KBO-172] 세트덱 평가 결과로 보정치를 만든다 - SynergyBuff = "모든 능력치" 누적합,
         /// SetDeckProfile = 그 외 대상 한정 효과. 세 경기 진입 호출부(LeagueManager/PlayBallController/
         /// PostSeasonManager)가 공통으로 쓴다.</summary>
-        public static TeamPowerModifiers FromSetDeck(SetDeckResult setDeck, int conditionBuff, float clutchMultiplier) =>
-            new TeamPowerModifiers(setDeck?.AllPlayersFlatBuff ?? 0, conditionBuff, clutchMultiplier, setDeck?.Profile);
+        public static TeamPowerModifiers FromSetDeck(SetDeckResult setDeck, int conditionBuff, float clutchMultiplier,
+            CheerSquadEffects cheer = null) =>
+            new TeamPowerModifiers(setDeck?.AllPlayersFlatBuff ?? 0, conditionBuff, clutchMultiplier, setDeck?.Profile, cheer);
 
         /// <summary>버프 없음(0, 0, 1.0f = 클러치 효과 없음). 치어리더/홈 어드밴티지가 없는 호출부
         /// (BatchSimulator 등)가 쓴다.</summary>
@@ -363,6 +400,13 @@ namespace KBOManager.Engine
 
         public MatchResult Result { get; private set; }
         public bool IsGameOver { get; private set; }
+
+        /// <summary>[TASK-KBO-180] 타석 번호 -> 작전. 같은 시드(randomSeed)로 다시 계산하면 지정 타석 직전까지는 결과가 같고, 그 타석부터
+        /// 작전이 실제 확률에 반영된다(PlayBallController.ReplayWithTactic).</summary>
+        public Dictionary<int, MatchTactic> Tactics { get; } = new Dictionary<int, MatchTactic>();
+        private int plateAppearanceCounter;
+        private MatchTactic currentTactic = MatchTactic.None;
+        private const double StealSuccessChance = 0.72; // KBO 리그 도루 성공률 근사(약 70%대)
         public MatchState CurrentState => currentAtBatState;
         public int CurrentInning => currentInning;
         public bool IsAwayBatting => isTopHalf;
@@ -494,10 +538,18 @@ namespace KBOManager.Engine
                 return new AtBatStepResult { HalfInningEnded = true, GameEnded = true };
             }
 
+            // [TASK-KBO-180] 이 타석의 작전(승부처 직접 플레이). 투수 교체는 타석 전에 실행한다.
+            int plateAppearance = plateAppearanceCounter++;
+            currentTactic = Tactics.TryGetValue(plateAppearance, out var tactic) ? tactic : MatchTactic.None;
+            string tacticNote = null;
+            if (currentTactic == MatchTactic.PitchingChange) tacticNote = TryTacticalPitchingChange();
+
             bool wasTopHalf = isTopHalf; // AdvanceAfterHalfInning()이 isTopHalf를 바꾸기 전에 이 타석 시점 값을 보존
             var pitcherForThisAtBat = currentHalfInningPitcher; // AdvanceAfterHalfInning()이 다음 하프이닝 투수로 바꾸기 전에 보존
 
             var batter = GetNextBatter(battingTeam);
+            var preAtBatMovements = new List<RunnerMovement>();
+            if (currentTactic == MatchTactic.Steal) tacticNote = ResolveSteal(currentAtBatState, preAtBatMovements);
             currentAtBatState.ResetCount();
             RollPitchCount(currentAtBatState);
 
@@ -530,6 +582,14 @@ namespace KBOManager.Engine
             // "이 타석 종료 직후" 상태도 독립 스냅샷으로 떠 둔다 - AtBatStepResult.State/하이라이트 조건이 이걸 쓴다.
             var stateSnapshot = currentAtBatState.Clone();
             string logMessage = MatchLogger.BuildLog(situationBeforePlay, wasTopHalf, batter, result, runs, isDoublePlay);
+            if (currentTactic != MatchTactic.None)
+            {
+                // [TASK-KBO-180] 작전 표기 - 번트 + 땅볼은 희생번트(주자 진루는 ResolveAtBatEffect가 처리).
+                string note = currentTactic == MatchTactic.Bunt && result == AtBatResult.Groundout && situationBeforePlay.HasAnyRunner
+                    ? "희생번트 성공"
+                    : tacticNote;
+                logMessage = $"[작전: {TacticLabel(currentTactic)}{(string.IsNullOrEmpty(note) ? "" : " - " + note)}] {logMessage}";
+            }
 
             runsThisHalfInning += runs;
             if (isTopHalf) { Result.AwayTotalScore += runs; awayState.RunsScored += runs; }
@@ -565,6 +625,9 @@ namespace KBOManager.Engine
                 IsTopHalf = wasTopHalf,
                 LogMessage = logMessage,
                 RunnerMovements = runnerMovements,
+                PlateAppearance = plateAppearance,
+                Tactic = ConsumeTactic(),
+                PreAtBatMovements = preAtBatMovements,
             };
         }
 
@@ -681,6 +744,22 @@ namespace KBOManager.Engine
 
                 var (flavorBalls, flavorStrikes) = RollFlavorCount(step.Result, random);
 
+                foreach (var movement in step.PreAtBatMovements)
+                {
+                    queue.Enqueue(new PlayEvent
+                    {
+                        Type = PlayEventType.RunnerAdvance,
+                        Inning = step.State?.Inning ?? currentInning,
+                        IsTopHalf = step.IsTopHalf,
+                        HomeScore = step.HomeScore - (step.IsTopHalf ? 0 : step.RunsScoredThisPlay),
+                        AwayScore = step.AwayScore - (step.IsTopHalf ? step.RunsScoredThisPlay : 0),
+                        FromBase = movement.FromBase,
+                        ToBase = movement.ToBase,
+                        PlateAppearance = step.PlateAppearance,
+                        IsSteal = true,
+                    });
+                }
+
                 queue.Enqueue(new PlayEvent
                 {
                     Type = PlayEventType.AtBatResult,
@@ -696,6 +775,8 @@ namespace KBOManager.Engine
                     LogMessage = step.LogMessage,
                     Balls = flavorBalls,
                     Strikes = flavorStrikes,
+                    PlateAppearance = step.PlateAppearance,
+                    Tactic = step.Tactic,
                 });
 
                 foreach (var movement in step.RunnerMovements)
@@ -709,6 +790,7 @@ namespace KBOManager.Engine
                         AwayScore = step.AwayScore,
                         FromBase = movement.FromBase,
                         ToBase = movement.ToBase,
+                        PlateAppearance = step.PlateAppearance,
                     });
                 }
 
@@ -770,6 +852,10 @@ namespace KBOManager.Engine
 
             state ??= new MatchState();
 
+            // [TASK-KBO-180] 작전 - 고의사구는 볼넷 확정, 번트는 희생번트 위주의 별도 분포(타자 정확도가 번트 안타/실패에 영향).
+            if (currentTactic == MatchTactic.IntentionalWalk) return AtBatResult.Walk;
+            if (currentTactic == MatchTactic.Bunt) return RollBunt(batter);
+
             var batterStats = ResolveEffectiveBatterStats(batter, pitcher, state);
             var pitcherStats = ResolveEffectivePitcherStats(pitcher, batter, state);
 
@@ -793,6 +879,15 @@ namespace KBOManager.Engine
             bool isScoringPosition = state.HasRunnerInScoringPosition;
             float batterClutchMultiplier = GetModifiersFor(batter).ClutchMultiplier;
 
+            // [TASK-KBO-180] 6. 위기 응원 - 후반(7회~) 접전(2점 차 이내)이면 타자 긍정 결과 배율, 후반 득점권이면 카드 고유 클러치 배율.
+            var batterCheer = GetModifiersFor(batter).Cheer;
+            float closeLateMultiplier = 1f;
+            if (batterCheer != null && state.Inning >= batterCheer.CloseLateFromInning)
+            {
+                if (Mathf.Abs(TeamScoreDiff(batter)) <= batterCheer.CloseLateMaxDiff) closeLateMultiplier *= batterCheer.CloseLateMultiplier;
+                if (isScoringPosition) batterClutchMultiplier = Mathf.Max(batterClutchMultiplier, batterCheer.LateRispMultiplier);
+            }
+
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
@@ -815,6 +910,7 @@ namespace KBOManager.Engine
                 {
                     weight *= batterClutchMultiplier; // 기존 로지스틱/가중치 계산 결과에 단순 곱셈으로만 개입
                 }
+                if (isBatterPositive && closeLateMultiplier > 1f) weight *= closeLateMultiplier; // [TASK-KBO-180] 위기 응원
 
                 weights[i] = weight;
                 total += weight;
@@ -832,6 +928,82 @@ namespace KBOManager.Engine
         }
 
         private float NormalizeDiff(float diff) => Mathf.Clamp(diff / StatDiffNormalizer, -1f, 1f);
+
+        // ----- [TASK-KBO-180] 작전/치어리더 상황 판정 헬퍼 -----
+
+        /// <summary>player 소속 팀 기준 현재 점수차(+ 리드 / - 열세).</summary>
+        private int TeamScoreDiff(Player player)
+        {
+            if (Result == null) return 0;
+            bool isHome = player != null && homeRoster.Contains(player);
+            return isHome ? Result.HomeTotalScore - Result.AwayTotalScore : Result.AwayTotalScore - Result.HomeTotalScore;
+        }
+
+        private MatchTactic ConsumeTactic()
+        {
+            var used = currentTactic;
+            currentTactic = MatchTactic.None;
+            return used;
+        }
+
+        public static string TacticLabel(MatchTactic tactic)
+        {
+            switch (tactic)
+            {
+                case MatchTactic.PowerSwing: return "강공";
+                case MatchTactic.ContactSwing: return "컨택";
+                case MatchTactic.Bunt: return "번트";
+                case MatchTactic.Steal: return "도루";
+                case MatchTactic.FullForce: return "정면 승부";
+                case MatchTactic.PitchingChange: return "투수 교체";
+                case MatchTactic.IntentionalWalk: return "고의사구";
+                default: return "일반";
+            }
+        }
+
+        /// <summary>번트 분포: 희생번트(땅볼 처리) / 번트 안타 / 번트 실패 삼진 / 뜬공. 타자 정확이 높을수록 성공·안타가 늘어난다.</summary>
+        private AtBatResult RollBunt(Player batter)
+        {
+            float contact = batter?.GetEffectiveBatterStats().Contact ?? 50;
+            double skill = Mathf.Clamp((contact - 50f) / 100f, -0.2f, 0.3f);
+            double single = 0.1 + skill * 0.15, strikeout = 0.1 - skill * 0.1, flyout = 0.1 - skill * 0.05;
+            double roll = random.NextDouble();
+            if (roll < single) return AtBatResult.Single;
+            if (roll < single + strikeout) return AtBatResult.Strikeout;
+            if (roll < single + strikeout + flyout) return AtBatResult.Flyout;
+            return AtBatResult.Groundout;
+        }
+
+        /// <summary>도루: 1루 주자만 있고 2아웃 미만일 때 2루 도루 판정(성공률 StealSuccessChance). 그 외 상황은 시도하지 않는다.</summary>
+        private string ResolveSteal(MatchState state, List<RunnerMovement> movements)
+        {
+            if (!state.RunnerOnFirst || state.RunnerOnSecond || state.Outs >= 2) return "도루 시도 불가 상황";
+            state.RunnerOnFirst = false;
+            if (random.NextDouble() < StealSuccessChance)
+            {
+                state.RunnerOnSecond = true;
+                movements.Add(new RunnerMovement(1, 2));
+                return "도루 성공";
+            }
+            state.Outs++;
+            movements.Add(new RunnerMovement(1, -1));
+            return "도루 실패";
+        }
+
+        /// <summary>투수 교체: 수비 팀 가용 투수(교체되지 않았고 체력이 남은) 중 마무리(8회 이후) → 승리조 → 롱릴리프 → 추격조 순, 같은 그룹은 OVR 순.</summary>
+        private string TryTacticalPitchingChange()
+        {
+            var team = isTopHalf ? homeState : awayState;
+            if (team == null) return null;
+            IEnumerable<Player> ordered = currentInning >= 8
+                ? team.Closers.Concat(team.WinningRelief).Concat(team.LongRelief).Concat(team.MopUpRelief)
+                : team.WinningRelief.Concat(team.LongRelief).Concat(team.Closers).Concat(team.MopUpRelief);
+            var pick = ordered.Where(p => p != null && p != currentHalfInningPitcher && !subbedOutList.Contains(p) && p.CurrentStamina > 0)
+                .OrderByDescending(p => (float)p.CurrentStamina / Mathf.Max(1, p.MaxStamina) >= MinStaminaPercentToPitch)
+                .FirstOrDefault();
+            if (pick == null) return "가용 불펜 없음";
+            return SubstitutePitcher(pick) ? $"{pick.Template.PlayerName} 등판" : "교체 실패";
+        }
 
         // ----- 팀 상태 구성 -----
 
@@ -922,6 +1094,22 @@ namespace KBOManager.Engine
                 stats = AddTeamBuff(stats, batterModifiers.SetDeckProfile.GetBatterBonus(batter, BattingOrderSlotOf(batter)));
             }
 
+            var cheer = batterModifiers.Cheer;
+            if (cheer != null)
+            {
+                // [TASK-KBO-180] 치어리더 6인 편성: 응원단장(세트덱 적용률 보강분) + 직접 보정(스탯별 합계 DirectStatCap 상한).
+                // 전 스탯(홈 응원·연패 대응·응원단장 보강) 합계는 GeneralStatCap, 담당 스탯(정확·선구)은 DirectStatCap까지.
+                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + cheer.SetDeckAmplifyBonus;
+                int contactEye = all + cheer.BatterContactDiscipline
+                    + (TeamScoreDiff(batter) <= -cheer.TrailingThreshold ? cheer.TrailingBatterBonus : 0);
+                int a = CheerSquadEffects.CapGeneral(all), ce = CheerSquadEffects.Cap(contactEye);
+                stats = AddTeamBuff(stats, new BatterStats(a, ce, ce, a, a));
+            }
+
+            // [TASK-KBO-180] 공격 작전(강공/컨택) - 이번 타석만.
+            if (currentTactic == MatchTactic.PowerSwing) stats = AddTeamBuff(stats, new BatterStats(8, -3, -4, 0, 0));
+            else if (currentTactic == MatchTactic.ContactSwing) stats = AddTeamBuff(stats, new BatterStats(-6, 6, 2, 0, 0));
+
             return stats;
         }
 
@@ -948,6 +1136,24 @@ namespace KBOManager.Engine
             {
                 stats = AddTeamBuff(stats, pitcherModifiers.SetDeckProfile.GetPitcherBonus(pitcher)); // [TASK-KBO-172]
             }
+
+            var cheer = pitcherModifiers.Cheer;
+            if (cheer != null)
+            {
+                // [TASK-KBO-180] 치어리더 6인 편성(투수 쪽): 응원단장 + 직접 보정(스탯별 DirectStatCap 상한).
+                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + cheer.SetDeckAmplifyBonus;
+                int a = CheerSquadEffects.CapGeneral(all), cs = CheerSquadEffects.Cap(all + cheer.PitcherControlStuff);
+                stats = AddTeamBuff(stats, new PitcherStats(cs, a, a, cs, a));
+            }
+            // [TASK-KBO-180] 5. 홈 응원(상대 팀) - 팬 압박으로 이 투수의 제구가 떨어진다.
+            var opponentCheer = GetModifiersFor(batter).Cheer;
+            if (opponentCheer != null && opponentCheer.OpponentControlPenalty > 0)
+            {
+                stats = AddTeamBuff(stats, new PitcherStats(0, 0, 0, -opponentCheer.OpponentControlPenalty, 0));
+            }
+
+            // [TASK-KBO-180] 수비 작전(정면 승부) - 이번 타석만.
+            if (currentTactic == MatchTactic.FullForce) stats = AddTeamBuff(stats, new PitcherStats(5, 4, 0, -3, 0));
 
             return stats;
         }
@@ -1127,6 +1333,22 @@ namespace KBOManager.Engine
         private (int runs, List<RunnerMovement> movements) ResolveAtBatEffect(AtBatResult result, MatchState state)
         {
             bool isOut = result == AtBatResult.Strikeout || result == AtBatResult.Groundout || result == AtBatResult.Flyout;
+
+            if (currentTactic == MatchTactic.Bunt && result == AtBatResult.Groundout && state.HasAnyRunner)
+            {
+                // [TASK-KBO-180] 희생번트: 타자 아웃, 모든 주자 한 루씩 진루(병살 없음).
+                var moves = new List<RunnerMovement>();
+                int scored = 0;
+                if (state.RunnerOnThird) { moves.Add(new RunnerMovement(3, 4)); scored++; }
+                if (state.RunnerOnSecond) moves.Add(new RunnerMovement(2, 3));
+                if (state.RunnerOnFirst) moves.Add(new RunnerMovement(1, 2));
+                state.RunnerOnThird = state.RunnerOnSecond;
+                state.RunnerOnSecond = state.RunnerOnFirst;
+                state.RunnerOnFirst = false;
+                state.Outs++;
+                if (state.Outs >= 3) { scored = 0; moves.RemoveAll(m => m.ToBase == 4); } // 3아웃이면 득점 불인정
+                return (scored, moves);
+            }
 
             if (!isOut)
             {

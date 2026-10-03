@@ -57,11 +57,94 @@ namespace KBOManager.Managers
                  "버프(ConditionBuff/ClutchMultiplier)가 전혀 적용되지 않는다. 가챠/획득/세이브 시스템은 " +
                  "이번 작업 범위 밖이라, 실제 장착 UI가 생기기 전까지는 아래 에디터 전용 더미 데이터나 " +
                  "인스펙터 직접 할당으로만 값이 채워진다.")]
-        [SerializeField] private Cheerleader equippedCheerleader;
+        [SerializeField] private Cheerleader equippedCheerleader; // [TASK-KBO-180] 구 단일 슬롯 - 로드/Awake 시 1번 응원단장 슬롯으로 이관
+
+        [Tooltip("[TASK-KBO-180] 치어리더 6인 역할 편성(0 응원단장 / 1 타격 응원 / 2 투수 응원 / 3 분위기 메이커 / 4 홈 응원 / 5 위기 응원). " +
+                 "InstanceId가 빈 항목은 빈 슬롯이다.")]
+        [SerializeField] private Cheerleader[] cheerSquad = new Cheerleader[CheerSquad.SlotCount];
+
+        /// <summary>[TASK-KBO-180] 6인 편성 슬롯(길이 6, 빈 슬롯은 null). 인덱스 = (int)CheerRole.</summary>
+        public IReadOnlyList<Cheerleader> CheerSquadSlots => EnsureSquad();
+
+        /// <summary>[TASK-KBO-180 호환] 구 단일 장착 API = 1번 응원단장 슬롯.</summary>
         public Cheerleader EquippedCheerleader
         {
-            get => equippedCheerleader;
-            set => equippedCheerleader = value;
+            get => GetCheerleaderInSlot(CheerRole.Leader);
+            set => EnsureSquad()[(int)CheerRole.Leader] = CheerSquad.IsEmpty(value) ? null : value;
+        }
+
+        private Cheerleader[] EnsureSquad()
+        {
+            if (cheerSquad == null || cheerSquad.Length != CheerSquad.SlotCount)
+            {
+                var resized = new Cheerleader[CheerSquad.SlotCount];
+                if (cheerSquad != null) System.Array.Copy(cheerSquad, resized, Mathf.Min(cheerSquad.Length, resized.Length));
+                cheerSquad = resized;
+            }
+            for (int i = 0; i < cheerSquad.Length; i++)
+            {
+                if (CheerSquad.IsEmpty(cheerSquad[i])) cheerSquad[i] = null; // 직렬화된 빈 객체 정리
+            }
+            // 구 단일 슬롯(TASK-048~179) 데이터는 비어 있는 응원단장 슬롯으로 이관한다.
+            if (cheerSquad[(int)CheerRole.Leader] == null && !CheerSquad.IsEmpty(equippedCheerleader))
+            {
+                cheerSquad[(int)CheerRole.Leader] = equippedCheerleader;
+            }
+            equippedCheerleader = null;
+            return cheerSquad;
+        }
+
+        public Cheerleader GetCheerleaderInSlot(CheerRole role) => EnsureSquad()[(int)role];
+
+        /// <summary>[TASK-KBO-180] 같은 카드(InstanceId)가 들어 있는 슬롯. 없으면 null.</summary>
+        public CheerRole? FindSlotOf(Cheerleader cheerleader)
+        {
+            if (CheerSquad.IsEmpty(cheerleader)) return null;
+            var squad = EnsureSquad();
+            for (int i = 0; i < squad.Length; i++)
+            {
+                if (squad[i] != null && squad[i].InstanceId == cheerleader.InstanceId) return (CheerRole)i;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-180] role 슬롯에 치어리더를 배치한다. 다른 슬롯에 같은 인물(이름 기준 - 연도/구단/티어가 다른 카드 포함)이 있으면
+        /// 거부한다(reason). 같은 카드가 다른 슬롯에 있으면 그 슬롯에서 옮겨 온다. 성공 시 OnCheerleaderChanged.
+        /// </summary>
+        public bool TryEquipCheerleader(CheerRole role, Cheerleader target, out string reason)
+        {
+            var squad = EnsureSquad();
+            var current = FindSlotOf(target);
+            if (current.HasValue && current.Value == role) { reason = null; return true; }
+            if (current.HasValue) squad[(int)current.Value] = null; // 같은 카드 이동(중복 판정 전에 비워 둔다)
+            if (!CheerSquad.CanAssign(squad, role, target, out reason))
+            {
+                if (current.HasValue) squad[(int)current.Value] = target; // 원상 복구
+                return false;
+            }
+            squad[(int)role] = target;
+            OnCheerleaderChanged?.Invoke();
+            return true;
+        }
+
+        public void UnequipCheerleader(CheerRole role)
+        {
+            EnsureSquad()[(int)role] = null;
+            OnCheerleaderChanged?.Invoke();
+        }
+
+        /// <summary>[TASK-KBO-180] 세이브 복원용 - 6슬롯을 한 번에 교체한다(중복 인물은 뒤 슬롯을 비운다).</summary>
+        public void RestoreCheerSquad(IList<Cheerleader> slots)
+        {
+            cheerSquad = new Cheerleader[CheerSquad.SlotCount];
+            equippedCheerleader = null;
+            for (int i = 0; i < CheerSquad.SlotCount && slots != null && i < slots.Count; i++)
+            {
+                if (CheerSquad.IsEmpty(slots[i])) continue;
+                if (CheerSquad.CanAssign(cheerSquad, (CheerRole)i, slots[i], out _)) cheerSquad[i] = slots[i];
+            }
+            OnCheerleaderChanged?.Invoke();
         }
 
         /// <summary>[TASK-KBO-056] 치어리더 장착 상태(EquippedCheerleader)가 바뀔 때마다 발생한다.
@@ -78,16 +161,12 @@ namespace KBOManager.Managers
                 return;
             }
 
-            equippedCheerleader = target;
-            OnCheerleaderChanged?.Invoke();
+            // [TASK-KBO-180] 구 API = 1번 응원단장 슬롯 배치(동일 인물 중복 규칙 적용).
+            if (!TryEquipCheerleader(CheerRole.Leader, target, out var reason)) Debug.LogWarning($"[GameManager] {reason}");
         }
 
-        /// <summary>현재 장착된 치어리더를 해제한다(미장착 상태로 되돌림).</summary>
-        public void UnequipCheerleader()
-        {
-            equippedCheerleader = null;
-            OnCheerleaderChanged?.Invoke();
-        }
+        /// <summary>현재 장착된 치어리더를 해제한다(미장착 상태로 되돌림). [TASK-KBO-180] = 1번 응원단장 슬롯 해제.</summary>
+        public void UnequipCheerleader() => UnequipCheerleader(CheerRole.Leader);
 
         /// <summary>[TASK-KBO-057] 유저가 영구적으로 보유한 치어리더 목록(장착 여부와 무관). 가챠/보상
         /// 등으로 새 치어리더를 얻으면 AddCheerleader()로 여기 추가된다.</summary>
@@ -297,9 +376,9 @@ namespace KBOManager.Managers
         private void InitializeDevOnlyTestCheerleader()
         {
             if (!devAutoEquipTestCheerleader) return;
-            if (equippedCheerleader != null) return;
+            if (EquippedCheerleader != null) return; // [TASK-KBO-180] 응원단장 슬롯 기준
 
-            equippedCheerleader = new Cheerleader(
+            EquippedCheerleader = new Cheerleader(
                 instanceId: "DEV_TEST_CHEER_001",
                 name: "[개발용] 테스트 치어리더",
                 grade: CheerleaderGrade.TEST,

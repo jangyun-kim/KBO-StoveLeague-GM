@@ -45,7 +45,11 @@ namespace KBOManager.EditorTools
         /// [TASK-KBO-179] 메뉴 이름을 TASK-168~179로 갱신. 마지막 단계로 SetupCompyaMatchUI179.ApplyAll()을 실행한다 - Broadcast179
         /// 텍스처 임포트 설정, InGamePanel에 컴프야V26 1:1 경기 화면 9종(CompyaMatchView) 조립, 로비 하단 5탭 홈 전용 고정(LobbyOnlyNav).
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~179)")]
+        /// <remarks>
+        /// [TASK-KBO-180] 메뉴 이름을 TASK-168~180으로 갱신. 마지막 단계로 SetupTask180.ApplyAll()을 실행한다 - 치어리더 관리 화면
+        /// 6인 역할 편성 3x2 그리드(CheerSquadPanel), 메인 홈(로비) 메인 홈.jpg 1:1 레이아웃 + 대구 삼성 라이온즈 파크 배경.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~180)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -63,7 +67,8 @@ namespace KBOManager.EditorTools
             AutoBindAllMissingReferences();
             SetupThemeUI178.ApplyAll();
             SetupCompyaMatchUI179.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~179 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask180.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~180 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

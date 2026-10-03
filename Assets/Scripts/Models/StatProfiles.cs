@@ -47,7 +47,10 @@ namespace KBOManager.Models
             var o = BatterOffsets(position);
             int j1 = Jitter(seed, 1), j2 = Jitter(seed, 2);
             int[] core = Distribute(level, new[] { o.p + j1, o.c - j1 + j2, o.d - j2 });
-            return new BatterStats(core[0], core[1], core[2], Clamp(level + o.speed + Jitter(seed, 3)), Clamp(level + o.def + Jitter(seed, 4)));
+            int speed = Clamp(level + o.speed + Jitter(seed, 3)), defense = Clamp(level + o.def + Jitter(seed, 4));
+            // 극단값(레벨 100 등)에서 OVR 구성 스탯이 전부 상한에 붙으면 보조 스탯으로 편차를 남긴다(전 스탯 동일 금지).
+            if (core[0] == core[1] && core[1] == core[2] && speed == core[0] && defense == core[0]) speed = Clamp(speed - 3);
+            return new BatterStats(core[0], core[1], core[2], speed, defense);
         }
 
         public static PitcherStats SpreadPitcher(int level, PitcherRole role, int seed = 0)
@@ -55,7 +58,9 @@ namespace KBOManager.Models
             var o = PitcherOffsets(role);
             int j1 = Jitter(seed, 1), j2 = Jitter(seed, 2);
             int[] core = Distribute(level, new[] { o.stuff + j1, o.velocity - j1, o.movement + j2, o.control - j2 });
-            return new PitcherStats(core[0], core[1], core[2], core[3], Clamp(level + o.stamina + Jitter(seed, 3)));
+            int stamina = Clamp(level + o.stamina + Jitter(seed, 3));
+            if (core[0] == core[1] && core[1] == core[2] && core[2] == core[3] && stamina == core[0]) stamina = Clamp(stamina - 3);
+            return new PitcherStats(core[0], core[1], core[2], core[3], stamina);
         }
 
         /// <summary>OVR 구성 스탯: level + 오프셋을 1~100으로 자르고, 잘린 만큼을 다른 스탯에 1씩 되돌려 합(= 평균 OVR)을 정확히 보존한다.</summary>

@@ -91,7 +91,10 @@ namespace KBOManager.Controllers
         private readonly Text[] directPitcherSkills = new Text[3];
         private RectTransform directStamina;
         private RectTransform directBall;
-        private Button directPlayButton, directBuntButton;
+        private Button directPlayButton;
+        private readonly Button[] tacticButtons = new Button[4];
+        private readonly MatchTactic[] tacticOptions = new MatchTactic[4];
+        private Text directTacticHint;
 
         // ---- 결과 1
         private RawImage r1AwayRow, r1HomeRow, r1AwayLogo, r1HomeLogo, r1AwayWatermark, r1HomeWatermark;
@@ -753,13 +756,13 @@ namespace KBOManager.Controllers
             box.RowValues[0].text = CompyaGameTracker.FormatAverage(line.Average);
             for (int r = 1; r < 3; r++) { box.RowLabels[r].text = ""; box.RowValues[r].text = ""; }
 
-            var recent = line.Results.Skip(Mathf.Max(0, line.Results.Count - 6)).ToList();
+            var recent = line.Badges.Skip(Mathf.Max(0, line.Badges.Count - 6)).ToList();
             for (int b = 0; b < 6; b++)
             {
                 bool on = b < recent.Count;
                 box.Badges[b].enabled = on;
-                box.BadgeTexts[b].text = on ? CompyaGameTracker.ResultLabel(recent[b]) : "";
-                if (on) box.Badges[b].color = CompyaGameTracker.IsPositive(recent[b]) ? BadgeBlue : BadgeRed;
+                box.BadgeTexts[b].text = on ? recent[b].Label : "";
+                if (on) box.Badges[b].color = recent[b].Positive ? BadgeBlue : BadgeRed;
             }
         }
 
@@ -798,17 +801,17 @@ namespace KBOManager.Controllers
                 row.Ovr.text = player != null ? Ovr(player).ToString() : "";
                 row.OvrBox.enabled = player != null;
 
-                bool hasResult = player != null && line.Results.Count > 0 && !highlighted;
+                bool hasResult = player != null && line.Badges.Count > 0 && !highlighted;
                 row.Badge.enabled = hasResult;
-                row.BadgeText.text = hasResult ? CompyaGameTracker.ResultLabel(line.Results[line.Results.Count - 1]) : "";
-                if (hasResult) row.Badge.color = CompyaGameTracker.IsPositive(line.Results[line.Results.Count - 1]) ? BadgeBlue : BadgeRed;
+                row.BadgeText.text = hasResult ? line.Badges[line.Badges.Count - 1].Label : "";
+                if (hasResult) row.Badge.color = line.Badges[line.Badges.Count - 1].Positive ? BadgeBlue : BadgeRed;
             }
         }
 
         private void ShowToast(PlayEvent evt, CompyaGameTracker t)
         {
             toastRoot.gameObject.SetActive(true);
-            toastText.text = CompyaGameTracker.ResultLabel(evt.Result);
+            toastText.text = evt.Tactic == MatchTactic.Bunt && evt.Result == AtBatResult.Groundout ? "희생번트" : CompyaGameTracker.ResultLabel(evt.Result);
             toastValue.text = t.PitchOf(evt.Pitcher).Pitches.ToString();
         }
 
@@ -975,12 +978,15 @@ namespace KBOManager.Controllers
 
         private void FillChoice(PlayEvent evt, CompyaGameTracker t)
         {
+            // [TASK-KBO-180] 왼쪽 = 우리 선수(공격이면 타자, 수비면 투수), 점수도 우리 팀 기준.
+            bool offense = IsUserBatting(evt.IsTopHalf);
             choiceTitle.text = mode == PlayMode.Full ? "풀 플레이" : "하이라이트";
-            choiceSubtitle.text = mode == PlayMode.Full ? "FULL PLAY" : "HIGHLIGHT";
-            FillCard(choiceBatterCard, evt.Batter);
-            FillCard(choicePitcherCard, evt.Pitcher);
-            int userScore = evt.IsTopHalf ? t.AwayScore : t.HomeScore;
-            int opponentScore = evt.IsTopHalf ? t.HomeScore : t.AwayScore;
+            choiceSubtitle.text = (mode == PlayMode.Full ? "FULL PLAY" : "HIGHLIGHT") + (offense ? " · 공격 찬스" : " · 수비 위기");
+            FillCard(choiceBatterCard, offense ? evt.Batter : evt.Pitcher);
+            FillCard(choicePitcherCard, offense ? evt.Pitcher : evt.Batter);
+            bool userAway = LeagueManager.Instance != null && awayTeam == LeagueManager.Instance.UserTeam;
+            int userScore = userAway ? t.AwayScore : t.HomeScore;
+            int opponentScore = userAway ? t.HomeScore : t.AwayScore;
             choiceLeftScore.text = userScore.ToString();
             choiceRightScore.text = opponentScore.ToString();
             choiceInning.text = InningLabel(evt.Inning, evt.IsTopHalf);
@@ -1034,9 +1040,9 @@ namespace KBOManager.Controllers
             directCount = kit.Label(p, "Count", "0 - 0", 612, 45, 700, 113, 46, TextAnchor.MiddleCenter, White, true);
             directOuts = kit.Label(p, "Outs", "0 OUTS", 612, 118, 700, 186, 34, TextAnchor.MiddleCenter, White, true);
 
-            // 번트 원형 버튼 + 자막 + 결과 배너(타석 뷰 위)
-            directBuntButton = kit.Button(p, "Bunt", "번트", 1040, 1150, 1210, 1260, new Color(0.13f, 0.14f, 0.18f, 0.92f), White, 46);
-            directBuntButton.onClick.AddListener(() => OnDirectSwing(true));
+            // 자막 + 결과 배너(타석 뷰 위). [TASK-KBO-180] 작전 안내 줄(선택 작전 효과).
+            directTacticHint = kit.Label(p, "TacticHint", "", 110, 1212, 1138, 1268, 30, TextAnchor.MiddleCenter, Gold, true);
+            CompyaUiKit.Outline(directTacticHint, new Color(0f, 0f, 0f, 0.8f), 2f);
             CompyaUiKit.Box(p, "SubtitleBar", 110, 1272, 1138, 1330, new Color(0.08f, 0.08f, 0.1f, 0.85f));
             directSubtitleText = kit.Label(p, "Subtitle", "", 130, 1272, 1120, 1330, 32, TextAnchor.MiddleLeft, White);
             directResultText = kit.Label(p, "ResultBanner", "", 74, 520, 1174, 760, 130, TextAnchor.MiddleCenter, Gold, true, true);
@@ -1065,11 +1071,17 @@ namespace KBOManager.Controllers
             directStamina = CompyaUiKit.Norm(stamina, "Fill", 0f, 0f, 1f, 1f);
             kit.Gradient(directStamina, new Color(0.9f, 0.2f, 0.15f), new Color(0.3f, 0.85f, 0.35f), true);
 
-            kit.Button(p, "BatterInfo", "타자\n정보", 300, 1830, 470, 1945, new Color(0.18f, 0.19f, 0.23f), White, 32);
-            kit.Button(p, "Tactics", "작전", 482, 1830, 652, 1945, new Color(0.18f, 0.19f, 0.23f), White, 36);
+            // [TASK-KBO-180] 작전 버튼 4개(공격: 강공/컨택/번트/도루, 수비: 정면 승부/투수 교체/고의사구/일반) - 실제 판정에 반영된다.
+            for (int i = 0; i < 4; i++)
+            {
+                int index = i;
+                float x0 = 20 + i * 158f;
+                tacticButtons[i] = kit.Button(p, $"Tactic{i}", "", x0, 1830, x0 + 150, 1945, new Color(0.18f, 0.19f, 0.23f), White, 34);
+                tacticButtons[i].onClick.AddListener(() => SelectTactic(index));
+            }
             directPlayButton = kit.GradientButton(p, "PlayBall", "PLAY BALL", 665, 1830, 1228, 1945,
                 new Color(0.82f, 0.36f, 1f), new Color(0.6f, 0.14f, 0.95f), White, 64, true);
-            directPlayButton.onClick.AddListener(() => OnDirectSwing(false));
+            directPlayButton.onClick.AddListener(OnDirectPlayBall);
             return p.gameObject;
         }
 
@@ -1078,7 +1090,7 @@ namespace KBOManager.Controllers
             directResultText.gameObject.SetActive(false);
             directBall.gameObject.SetActive(false);
             directPlayButton.interactable = true;
-            directBuntButton.interactable = true;
+            ConfigureTacticButtons(evt, t);
 
             var awayColor = CompyaUiKit.TeamColor(awayTeam);
             var homeColor = CompyaUiKit.TeamColor(homeTeam);
@@ -1120,6 +1132,62 @@ namespace KBOManager.Controllers
             directSubtitleText.text = today.AtBats + today.Walks == 0
                 ? $"{name} 선수, 오늘 첫 타석입니다. 승부처에서 직접 플레이합니다."
                 : $"{name} 선수입니다. 오늘 {today.AtBats}타수 {today.Hits}안타를 기록하고 있습니다.";
+        }
+
+        /// <summary>[TASK-KBO-180] 공격(우리 팀 타석)/수비(상대 타석) 작전 버튼 구성. 상황상 불가능한 작전(주자 없는 번트 등)은 비활성.</summary>
+        private void ConfigureTacticButtons(PlayEvent evt, CompyaGameTracker t)
+        {
+            bool offense = evt != null && IsUserBatting(evt.IsTopHalf);
+            var options = offense
+                ? new[] { MatchTactic.PowerSwing, MatchTactic.ContactSwing, MatchTactic.Bunt, MatchTactic.Steal }
+                : new[] { MatchTactic.FullForce, MatchTactic.PitchingChange, MatchTactic.IntentionalWalk, MatchTactic.None };
+            for (int i = 0; i < 4; i++)
+            {
+                tacticOptions[i] = options[i];
+                bool available = options[i] switch
+                {
+                    MatchTactic.Bunt => t.Bases[1] || t.Bases[2] || t.Bases[3] ? t.Outs < 2 : false,
+                    MatchTactic.Steal => t.Bases[1] && !t.Bases[2] && t.Outs < 2,
+                    _ => true,
+                };
+                tacticButtons[i].interactable = available;
+                CompyaUiKit.SetButtonText(tacticButtons[i], MatchEngine.TacticLabel(options[i]));
+            }
+            selectedTactic = offense ? MatchTactic.PowerSwing : MatchTactic.FullForce;
+            if (!offense) selectedTactic = MatchTactic.FullForce;
+            RefreshTacticButtons();
+        }
+
+        private void SelectTactic(int index)
+        {
+            if (!tacticButtons[index].interactable) return;
+            selectedTactic = tacticOptions[index];
+            RefreshTacticButtons();
+        }
+
+        private void RefreshTacticButtons()
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                var image = tacticButtons[i].targetGraphic as Image;
+                if (image != null) image.color = tacticOptions[i] == selectedTactic ? new Color(0.55f, 0.25f, 0.95f) : new Color(0.18f, 0.19f, 0.23f);
+            }
+            directTacticHint.text = TacticHint(selectedTactic);
+        }
+
+        private static string TacticHint(MatchTactic tactic)
+        {
+            switch (tactic)
+            {
+                case MatchTactic.PowerSwing: return "강공: 파워 +8 / 정확 -3 / 선구 -4 (장타 노림)";
+                case MatchTactic.ContactSwing: return "컨택: 정확 +6 / 선구 +2 / 파워 -6 (출루 노림)";
+                case MatchTactic.Bunt: return "번트: 희생번트 위주 - 성공 시 모든 주자 한 루씩 진루";
+                case MatchTactic.Steal: return "도루: 타석 전 1루 주자 2루 도루(성공률 약 72%)";
+                case MatchTactic.FullForce: return "정면 승부: 구위 +5 / 구속 +4 / 제구 -3";
+                case MatchTactic.PitchingChange: return "투수 교체: 가용 불펜 중 최적 투수 즉시 등판";
+                case MatchTactic.IntentionalWalk: return "고의사구: 타자를 1루로 내보냅니다";
+                default: return "일반: 작전 없이 승부";
+            }
         }
 
         private static void FillSkills(Text[] slots, Player player)
@@ -1269,7 +1337,7 @@ namespace KBOManager.Controllers
             SetVerdict(r1AwayVerdictBg, r1AwayVerdict, verdict == -1, verdict == 0);
             SetVerdict(r1HomeVerdictBg, r1HomeVerdict, verdict == 1, verdict == 0);
 
-            var pairs = new[] { (t.Away.H, t.Home.H), (t.Away.HR, t.Home.HR), (0, 0), (t.Away.K, t.Home.K), (t.Away.DP, t.Home.DP), (0, 0) };
+            var pairs = new[] { (t.Away.H, t.Home.H), (t.Away.HR, t.Home.HR), (t.Away.SB, t.Home.SB), (t.Away.K, t.Home.K), (t.Away.DP, t.Home.DP), (0, 0) };
             for (int i = 0; i < 6; i++) SetStatBar(r1Stats[i], pairs[i].Item1, pairs[i].Item2);
 
             var winner = verdict == -1 ? awayTeam : verdict == 1 ? homeTeam : Team.None;

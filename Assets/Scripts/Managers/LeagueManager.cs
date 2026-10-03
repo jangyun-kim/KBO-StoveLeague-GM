@@ -611,14 +611,15 @@ namespace KBOManager.Managers
             var setDeck = GameManager.EvaluateSetDeck(roster, favoriteTeam,
                 isUserTeam ? GameManager.Instance?.SetDeckSelection : null);
 
-            bool isUserTeamHome = isUserTeam && isHome;
-            var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
-            int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
-                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
-            // [TASK-KBO-175] 치어리더 소속 구단 == 세트덱 기준 구단일 때만 시너지(경기 버프) 발동.
-            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
+            // [TASK-KBO-180] 치어리더 6인 역할 편성(응원단장/타격/투수/분위기 메이커/홈/위기 응원) - 유저 구단만. 슬롯별로 치어리더 소속 구단 ==
+            // 세트덱 기준 구단일 때 100% 발동하며, 홈/연패/열세/후반 접전 판정은 MatchEngine이 타석마다 한다(구 단일 슬롯 ConditionBuff/Clutch 대체).
+            var gm = GameManager.Instance;
+            var cheer = isUserTeam && gm != null
+                ? CheerSquad.BuildEffects(gm.CheerSquadSlots, setDeck.DeckTeam, isHome, gm.LosingStreak, setDeck.AllPlayersFlatBuff)
+                : null;
+            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
 
-            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, clutchMultiplier);
+            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer);
         }
 
         /// <summary>

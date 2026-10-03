@@ -102,6 +102,30 @@ namespace KBOManager.Controllers
         /// <summary>[TASK-KBO-179] HoldBeforeEvent로 멈춘 재생을 이어 간다.</summary>
         public void ReleaseHold() => isHeld = false;
 
+        /// <summary>[TASK-KBO-180] 작전 재계산으로 이벤트 목록이 바뀌었을 때 발생한다(새 목록은 EventLog).</summary>
+        public event Action OnEventsReplaced;
+
+        /// <summary>
+        /// [TASK-KBO-180] 재생 중인 경기의 이벤트 목록을 교체한다(PlayBallController.ReplayWithTactic). 같은 시드 재계산이라 현재 재생
+        /// 위치(playbackCursor) 이전 이벤트는 동일해야 한다 - 다르면 경고만 남기고(표시 일관성) 교체는 진행한다. 커서는 그대로라 재생은
+        /// "다음 이벤트"부터 새 결과로 이어진다.
+        /// </summary>
+        public void ReplaceEvents(List<PlayEvent> newEvents)
+        {
+            if (newEvents == null) return;
+            int mismatch = -1;
+            for (int i = 0; i < playbackCursor && i < eventLog.Count && i < newEvents.Count; i++)
+            {
+                var a = eventLog[i];
+                var b = newEvents[i];
+                if (a.Type != b.Type || a.Result != b.Result || a.Batter != b.Batter || a.ToBase != b.ToBase) { mismatch = i; break; }
+            }
+            if (mismatch >= 0) Debug.LogWarning($"[BroadcastUIManager] 재계산 결과가 이미 재생한 {mismatch}번 이벤트부터 다릅니다 - 표시를 새 결과로 이어 갑니다.");
+            eventLog = newEvents;
+            if (playbackCursor > eventLog.Count) playbackCursor = eventLog.Count;
+            OnEventsReplaced?.Invoke();
+        }
+
         private void Awake()
         {
             FindOrBindUIComponents();

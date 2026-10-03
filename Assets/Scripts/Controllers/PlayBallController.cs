@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Data;
 using KBOManager.Engine;
 using KBOManager.Managers;
@@ -42,6 +43,16 @@ namespace KBOManager.Controllers
         [SerializeField] private BroadcastUIManager broadcastUIManager;
 
         private MatchEngine engine;
+
+        // [TASK-KBO-180] 승부처 작전 재계산용 - 같은 로스터/보정치/시드로 다시 계산하면 작전 지정 타석 직전까지는 결과가 동일하다.
+        private List<Player> matchHomeRoster, matchAwayRoster;
+        private TeamPowerModifiers matchHomeModifiers, matchAwayModifiers;
+        private string matchHomeName, matchAwayName;
+        private bool matchIsPostSeason;
+        private int matchSeed;
+        private readonly Dictionary<Player, int> staminaAtStart = new Dictionary<Player, int>();
+        private readonly Dictionary<int, MatchTactic> matchTactics = new Dictionary<int, MatchTactic>();
+        private List<PlayEvent> matchEvents = new List<PlayEvent>();
 
         public bool IsMatchInProgress { get; private set; }
         public MatchResult LastResult { get; private set; }
@@ -109,14 +120,15 @@ namespace KBOManager.Controllers
             var setDeck = GameManager.EvaluateSetDeck(roster, favoriteTeam,
                 isUserTeam ? GameManager.Instance?.SetDeckSelection : null);
 
-            bool isUserTeamHome = isUserTeam && isHome;
-            var equippedCheerleader = GameManager.Instance?.EquippedCheerleader;
-            int conditionBuff = (isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0)
-                + GameManager.ResolveCheerleaderConditionBuff(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
-            // [TASK-KBO-175] 치어리더 소속 구단 == 세트덱 기준 구단일 때만 시너지(경기 버프) 발동.
-            float clutchMultiplier = GameManager.ResolveCheerleaderClutchMultiplier(isUserTeamHome, equippedCheerleader, setDeck.DeckTeam);
+            // [TASK-KBO-180] 치어리더 6인 역할 편성(응원단장/타격/투수/분위기 메이커/홈/위기 응원) - 유저 구단만. 슬롯별로 치어리더 소속 구단 ==
+            // 세트덱 기준 구단일 때 100% 발동하며, 홈/연패/열세/후반 접전 판정은 MatchEngine이 타석마다 한다(구 단일 슬롯 ConditionBuff/Clutch 대체).
+            var gm = GameManager.Instance;
+            var cheer = isUserTeam && gm != null
+                ? CheerSquad.BuildEffects(gm.CheerSquadSlots, setDeck.DeckTeam, isHome, gm.LosingStreak, setDeck.AllPlayersFlatBuff)
+                : null;
+            int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
 
-            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, clutchMultiplier);
+            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer);
         }
 
         private void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,
@@ -129,15 +141,30 @@ namespace KBOManager.Controllers
                 return;
             }
 
-            engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
+            // [TASK-KBO-180] 작전 재계산을 위해 경기 입력(로스터/보정치/시드/투수 체력 시작값)을 보관한다.
+            matchHomeRoster = homeRoster;
+            matchAwayRoster = awayRoster;
+            matchHomeModifiers = homeModifiers;
+            matchAwayModifiers = awayModifiers;
+            matchHomeName = homeTeamName;
+            matchAwayName = awayTeamName;
+            matchIsPostSeason = isPostSeason;
+            matchSeed = new System.Random().Next();
+            matchTactics.Clear();
+            staminaAtStart.Clear();
+            foreach (var player in homeRoster.Concat(awayRoster))
+                if (player != null) staminaAtStart[player] = player.CurrentStamina;
+
+            engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig, matchSeed);
             IsMatchInProgress = true;
 
             // 경기 전체를 즉시 계산한다(랜덤 판정은 이 한 번의 호출 안에서만 일어난다 - 재생은 그 결과를
             // "보여주기"만 할 뿐 시뮬레이션을 다시 돌리지 않는다). engine.Result는 이 시점에 이미 최종값이다.
+            // [TASK-KBO-180] 단, 승부처 작전이 들어오면 ReplayWithTactic()이 같은 시드로 다시 계산해 그 타석부터 결과를 바꾼다 -
+            // 그래서 시즌 기록은 재생이 끝난 뒤(FinishMatch) 최종 확정 이벤트로 기록한다.
             var queue = engine.PlayFullMatchAsEventQueue(homeTeamName, awayTeamName, isPostSeason);
             var events = new List<PlayEvent>(queue);
-
-            RecordSeasonStatsFromEvents(events);
+            matchEvents = events;
 
             if (broadcastUIManager != null)
             {
@@ -208,8 +235,32 @@ namespace KBOManager.Controllers
             }
         }
 
+        /// <summary>
+        /// [TASK-KBO-180] 승부처 직접 플레이 작전을 실제 판정에 반영한다. 투수 체력을 경기 시작값으로 되돌리고 같은 시드로 경기를 다시
+        /// 계산하되 plateAppearance 타석에 tactic을 지정한다(이전에 지정한 작전도 유지). 지정 타석 직전까지의 결과는 동일하고 그 타석부터
+        /// 작전이 확률/주자 처리에 반영된 새 결과가 나온다. 새 이벤트 목록은 BroadcastUIManager가 현재 재생 위치부터 이어서 재생한다.
+        /// </summary>
+        public bool ReplayWithTactic(int plateAppearance, MatchTactic tactic)
+        {
+            if (!IsMatchInProgress || plateAppearance < 0 || matchHomeRoster == null) return false;
+            if (tactic == MatchTactic.None) matchTactics.Remove(plateAppearance); else matchTactics[plateAppearance] = tactic;
+
+            foreach (var pair in staminaAtStart) pair.Key.CurrentStamina = pair.Value;
+            var replay = new MatchEngine(matchHomeRoster, matchAwayRoster, matchHomeModifiers, matchAwayModifiers, skillDB, engineConfig, matchSeed);
+            foreach (var pair in matchTactics) replay.Tactics[pair.Key] = pair.Value;
+            var events = new List<PlayEvent>(replay.PlayFullMatchAsEventQueue(matchHomeName, matchAwayName, matchIsPostSeason));
+
+            engine = replay;
+            matchEvents = events;
+            broadcastUIManager?.ReplaceEvents(events);
+            return true;
+        }
+
         private void FinishMatch()
         {
+            // [TASK-KBO-180] 작전 재계산까지 반영된 최종 이벤트로 시즌 기록을 남긴다(이전에는 경기 시작 시 1회 기록).
+            RecordSeasonStatsFromEvents(matchEvents);
+
             LastResult = engine.Result;
             IsMatchInProgress = false;
 

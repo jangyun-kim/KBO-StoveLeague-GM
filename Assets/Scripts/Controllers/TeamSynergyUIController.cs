@@ -57,15 +57,23 @@ namespace KBOManager.Controllers
         {
             if (cheerleaderText == null) return;
 
+            // [TASK-KBO-180] 6인 역할 편성 요약 - 편성 인원 / 구단 시너지 발동 인원.
+            int filled = CheerSquad.Filled(gm.CheerSquadSlots).Count();
+            int active = CheerSquad.Filled(gm.CheerSquadSlots).Count(c => CheerleaderSynergy.IsActive(c, setDeck.DeckTeam));
             var cheerleader = gm.EquippedCheerleader;
+            if (filled == 0)
+            {
+                cheerleaderText.text = "편성 0/6";
+                return;
+            }
             if (cheerleader == null)
             {
-                cheerleaderText.text = "미장착";
+                cheerleaderText.text = $"편성 {filled}/6 · 시너지 {active}명 (응원단장 공석)";
                 return;
             }
 
             int bonusPercent = Mathf.RoundToInt(cheerleader.EconomicBonusRate * 100f);
-            string text = $"장착됨 (관중 수익 {bonusPercent}%)";
+            string text = $"편성 {filled}/6 · 시너지 {active}명 · 응원단장 {cheerleader.Name} (관중 수익 {bonusPercent}%)";
 
             // [TASK-KBO-175] 구단 시너지 - 치어리더 소속 구단(활동 기간 기준)이 세트덱 기준 구단과 같을 때만 경기 버프 발동.
             if (cheerleader.Team != Team.None)
