@@ -224,12 +224,13 @@ namespace KBOManager.Managers
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
+                // [TASK-KBO-180] 평준화 버그 수정 - 같은 OVR이라도 포지션/보직 프로파일로 세부 스탯 편차를 준다(평균 = 목표 레벨 유지).
+                template.PitcherStats = StatProfiles.SpreadPitcher(FranchiseStarStatLevel, template.PitcherRole, template.TemplateId.GetHashCode());
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel, FranchiseStarStatLevel);
+                template.BatterStats = StatProfiles.SpreadBatter(FranchiseStarStatLevel, template.BatterPosition, template.TemplateId.GetHashCode());
             }
 
             return template;
@@ -283,12 +284,13 @@ namespace KBOManager.Managers
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
+                // [TASK-KBO-180] 평준화 버그 수정 - 같은 OVR이라도 포지션/보직 프로파일로 세부 스탯 편차를 준다(평균 = 목표 레벨 유지).
+                template.PitcherStats = StatProfiles.SpreadPitcher(StarterCardStatLevel, template.PitcherRole, template.TemplateId.GetHashCode());
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel, StarterCardStatLevel);
+                template.BatterStats = StatProfiles.SpreadBatter(StarterCardStatLevel, template.BatterPosition, template.TemplateId.GetHashCode());
             }
 
             return template;

@@ -1185,6 +1185,145 @@ for rec in player_records:
     stat_recalibration_report.append((rec.name, rec.player_id, before, target, len(award_ledger[rec.player_id])))
 
 # ---------------------------------------------------------------------------
+# 5-M. [TASK-KBO-180] 세부 능력치 편차(분포) 복원 - "OVR 89 = 5개 스탯 전부 89" 평준화 버그 수정.
+# 원인: 6절이 한 선수의 z_* 컬럼(타자 6 / 투수 5)에 같은 rec.z_value를 반복 기록했고(TASK-153 sample 관례), C#
+# PlayerDatabase는 카드 base_ovr 차이만큼 전 항목을 "균등 이동"하므로 편차가 영영 생기지 않았다.
+# 복원: OVR 공식은 그대로(C# Player.AverageOf - 타자 = 파워·정확·선구 평균, 투수 = 구위·구속·변화·제구 평균) 두고,
+# "OVR 구성 스탯의 오프셋 합 = 0"인 프로파일로 분배해 평균(= 기존 기본 OVR, base_ovr 계산 기준)을 정확히 보존한다.
+#   1) 포지션/보직 기본 프로파일(C# StatProfiles와 같은 수치)
+#   2) 실제 수상 부문 특화(홈런왕 = 파워, 타격왕/최다안타 = 정확, 출루율왕 = 선구, 도루/득점왕 = 주력, 골든글러브 = 수비,
+#      탈삼진왕 = 구위·구속, 평균자책점/승률 = 제구·변화, 다승 = 체력, 세이브/홀드 = 마무리·불펜형)
+#   3) player_id 해시 기반 고정 편차(±2, 난수 스트림 비사용 - player_id/card_id/base_ovr 1바이트도 안 바뀜)
+# 주력·수비(타자)/체력(투수)은 OVR에 들어가지 않으므로 자유롭게 편차를 준다. 모든 값은 1~100.
+# ---------------------------------------------------------------------------
+import hashlib
+
+BATTER_POSITION_PROFILE = {  # (파워, 정확, 선구 | 합 0), 주력, 수비
+    "C": (3, -1, -2, -14, 6), "1B": (6, -1, -5, -10, -2), "2B": (-6, 4, 2, 6, 5), "3B": (3, 0, -3, -3, 4),
+    "SS": (-5, 3, 2, 7, 8), "LF": (3, 1, -4, 0, -2), "CF": (-5, 3, 2, 10, 7), "RF": (3, 0, -3, 1, 2),
+    "DH": (6, 0, -6, -12, -15),
+}
+PITCHER_ROLE_PROFILE = {  # (구위, 구속, 변화, 제구 | 합 0), 체력
+    "SP": (1, -1, -1, 1, 10), "RP": (3, 4, -3, -4, -18), "CP": (6, 6, -5, -7, -25),
+}
+# 부문 특화 오프셋(OVR 구성 스탯은 합 0)
+BATTER_CATEGORY_BONUS = {
+    "홈런": (7, -3, -4, -4, 0), "타점": (4, 0, -4, -2, 0), "장타율": (5, -1, -4, -2, 0),
+    "타율": (-4, 7, -3, 2, 0), "안타": (-4, 6, -2, 3, 0), "출루율": (-3, 0, 3, 0, 0),
+    "도루": (-5, 3, 2, 14, 2), "득점": (-2, 2, 0, 7, 0),
+}
+PITCHER_CATEGORY_BONUS = {
+    "탈삼진": (5, 4, -4, -5, 0), "평균자책점": (-2, -2, 2, 2, 3), "승률": (-1, -1, 1, 1, 2),
+    "다승": (0, -1, 0, 1, 8),
+}
+# 2013~2025 개인 타이틀은 TITLE_HOLDER_HISTORY가 부문을 담지 않아(연도당 1장으로 축약) 대표 부문만 따로 적는다
+# (KBO 역대 타이틀홀더 공개 기록 기준 - 1986~2012는 TITLE_HOLDER_HISTORY_1986_2012의 부문을 그대로 쓴다).
+TITLE_CATEGORIES_2013_2025 = {
+    "홈런": ["박병호", "테임즈", "최정", "김재환", "로하스", "노시환", "데이비슨", "디아즈"],
+    "타율": ["이병규", "서건창", "테임즈", "최형우", "김선빈", "김현수", "양의지", "이정후", "손아섭", "에레디아"],
+    "안타": ["서건창", "전준우", "레이예스", "이정후", "손아섭"],
+    "출루율": ["홍창기", "안현민"],
+    "도루": ["김종호", "김상수", "박해민", "박찬호", "심우준", "김혜성", "정수빈", "조수행"],
+    "득점": ["구자욱", "박병호"],
+    "탈삼진": ["리즈", "밴덴헐크", "차우찬", "보우덴", "메릴 켈리", "샘슨", "린드블럼", "스트레일리", "미란다",
+              "안우진", "페디", "하트", "폰세"],
+    "평균자책점": ["밴헤켄", "양현종", "니퍼트", "피어밴드", "린드블럼", "요키시", "미란다", "폰세", "네일"],
+    "다승": ["배영수", "밴헤켄", "해커", "니퍼트", "양현종", "후랭코프", "알칸타라", "뷰캐넌", "케이시 켈리", "페디", "원태인", "곽빈"],
+    "세이브": ["손승락", "오승환", "임창용", "김세현", "정우람", "하재훈", "조상우", "고우석", "서진용", "박영현", "정해영"],
+    "홀드": ["한현희", "안지만", "이보근", "진해수", "오현택", "주권", "장현식", "정우영", "노경은"],
+}
+player_categories = {}  # player_id -> set(부문)
+for _cat, _names in TITLE_CATEGORIES_2013_2025.items():
+    for _n in _names:
+        _rec = real_player_records.get(_n)
+        if _rec is not None:
+            player_categories.setdefault(_rec.player_id, set()).add(_cat)
+for _rec_or_alias, _year, _team in title_holder_1986_2012_to_issue:
+    if _rec_or_alias == "김상엽":
+        continue
+    for _n, _t, _cat in TITLE_HOLDER_HISTORY_1986_2012[_year]:
+        if _n == _rec_or_alias.name:
+            player_categories.setdefault(_rec_or_alias.player_id, set()).add(_cat)
+_gg_ids = {r.player_id for r, _, _ in golden_glove_cards_to_issue}
+
+
+def _hash_jitter(player_id, salt):
+    """player_id 고정 편차 -2~+2(전역 random 미사용)."""
+    h = hashlib.md5(f"{player_id}:{salt}".encode("utf-8")).digest()
+    return h[0] % 5 - 2
+
+
+def _distribute(level, offsets):
+    """level + offsets를 1~100으로 자르고 잘린 만큼을 되돌려 합(= 평균 OVR)을 정확히 보존한다(C# StatProfiles.Distribute와 동일)."""
+    level = max(1, min(100, level))
+    stats = [max(1, min(100, level + o)) for o in offsets]
+    target = level * len(offsets)
+    guard = 0
+    while sum(stats) != target and guard < 1000:
+        i = guard % len(stats)
+        if sum(stats) < target and stats[i] < 100:
+            stats[i] += 1
+        elif sum(stats) > target and stats[i] > 1:
+            stats[i] -= 1
+        guard += 1
+    return stats
+
+
+def _center(values):
+    """OVR 구성 오프셋을 합 0으로 재정렬(정수 유지)."""
+    values = list(values)
+    excess = sum(values)
+    i = 0
+    while excess != 0:
+        step = -1 if excess > 0 else 1
+        values[i % len(values)] += step
+        excess += step
+        i += 1
+    return values
+
+
+def _clamp_stat(v):
+    return max(1, min(100, v))
+
+
+def stat_line(rec):
+    """rec의 세부 스탯 dict(players.csv 컬럼명 -> 정수 스탯). 평균(OVR 구성) = 기존 기본 OVR."""
+    level = max(1, min(100, round(float(f"{rec.z_value:.3f}") * 15 + 50)))
+    cats = player_categories.get(rec.player_id, set())
+    pid = rec.player_id
+    if rec.is_pitcher:
+        role = "CP" if ("세이브" in cats or rec.position == "CP") else ("RP" if ("홀드" in cats or rec.position == "RP") else "SP")
+        base = list(PITCHER_ROLE_PROFILE[role])
+        for cat in sorted(cats):
+            if cat in PITCHER_CATEGORY_BONUS:
+                base = [a + b for a, b in zip(base, PITCHER_CATEGORY_BONUS[cat])]
+        core = _center([base[0] + _hash_jitter(pid, 1), base[1] - _hash_jitter(pid, 1),
+                        base[2] + _hash_jitter(pid, 2), base[3] - _hash_jitter(pid, 2)])
+        stuff, velocity, movement, control = _distribute(level, core)
+        stamina = _clamp_stat(level + base[4] + _hash_jitter(pid, 3))
+        return {"z_stuff": stuff, "z_speed": velocity, "z_movement": movement, "z_control": control, "z_stamina": stamina}
+    base = list(BATTER_POSITION_PROFILE.get(rec.position, BATTER_POSITION_PROFILE["DH"]))
+    for cat in sorted(cats):
+        if cat in BATTER_CATEGORY_BONUS:
+            base = [a + b for a, b in zip(base, BATTER_CATEGORY_BONUS[cat])]
+    if pid in _gg_ids:
+        base[4] += 6  # 골든글러브 = 포지션 수비 반영
+    core = _center([base[0] + _hash_jitter(pid, 1), base[1] - _hash_jitter(pid, 1) + _hash_jitter(pid, 2),
+                    base[2] - _hash_jitter(pid, 2)])
+    power, contact, eye = _distribute(level, core)
+    speed = _clamp_stat(level + base[3] + _hash_jitter(pid, 3))
+    defense = _clamp_stat(level + base[4] + _hash_jitter(pid, 4))
+    return {"z_power": power, "z_contact": contact, "z_eye": eye, "z_speed": speed, "z_def": defense}
+
+
+def stat_to_z(stat):
+    """정수 스탯 -> players.csv z(3자리). C# ConvertZScoreToStat(z) = round(z*15+50)이 정확히 stat으로 돌아오게 한다."""
+    z = round((stat - 50) / 15.0, 3)
+    assert max(1, min(100, round(z * 15 + 50))) == stat
+    return f"{z:.3f}"
+
+
+# ---------------------------------------------------------------------------
 # 6. players.csv 행 생성 (16컬럼 - PlayerDatabase.ParsePlayersCsv() 고정 스키마)
 # ---------------------------------------------------------------------------
 PLAYERS_HEADER = [
@@ -1195,15 +1334,17 @@ PLAYERS_HEADER = [
 
 players_rows = []
 for rec in player_records:
-    z = f"{rec.z_value:.3f}"
     zero = "0.000"
     active = "TRUE" if rec.career_start <= MAX_YEAR <= rec.career_end else "FALSE"
+    line = {k: stat_to_z(v) for k, v in stat_line(rec).items()}  # [TASK-KBO-180] 스탯별 z(편차 보존)
     if rec.is_pitcher:
         row = [rec.player_id, rec.team_id, rec.name, rec.career_start, rec.position, rec.pa_ip,
-               zero, zero, zero, z, zero, z, active, z, z, z]
+               zero, zero, zero, line["z_speed"], zero, line["z_stamina"], active,
+               line["z_stuff"], line["z_control"], line["z_movement"]]
     else:
         row = [rec.player_id, rec.team_id, rec.name, rec.career_start, rec.position, rec.pa_ip,
-               z, z, z, z, z, z, active, zero, zero, zero]
+               line["z_contact"], line["z_eye"], line["z_power"], line["z_speed"], line["z_def"], zero, active,
+               zero, zero, zero]
     players_rows.append(row)
 
 # ---------------------------------------------------------------------------
@@ -1391,11 +1532,14 @@ _kim_before = round(1.7 * 15 + 50)
 kim_sangyeop.z_value = overall_to_z(stature_base_overall(KIM_SANGYEOP_ID))
 stat_recalibration_report.append(("김상엽", KIM_SANGYEOP_ID, _kim_before, player_base_overall(kim_sangyeop),
                                   len(award_ledger[KIM_SANGYEOP_ID])))
-_kim_z = f"{kim_sangyeop.z_value:.3f}"
+kim_sangyeop.is_pitcher = True
+kim_sangyeop.position = "SP"
+player_categories.setdefault(KIM_SANGYEOP_ID, set()).add("탈삼진")  # 1993 탈삼진왕(TITLE_HOLDER_HISTORY_1986_2012)
+_kim = {k: stat_to_z(v) for k, v in stat_line(kim_sangyeop).items()}  # [TASK-KBO-180] 편차 보존
 players_rows.append([
     kim_sangyeop.player_id, "TEM_002", "김상엽", 1990, "SP", 170,
-    "0.000", "0.000", "0.000", _kim_z, "0.000", _kim_z, "FALSE",
-    _kim_z, _kim_z, _kim_z,
+    "0.000", "0.000", "0.000", _kim["z_speed"], "0.000", _kim["z_stamina"], "FALSE",
+    _kim["z_stuff"], _kim["z_control"], _kim["z_movement"],
 ])
 
 forced_card_count = 0

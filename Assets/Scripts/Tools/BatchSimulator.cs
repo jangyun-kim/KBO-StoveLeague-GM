@@ -263,12 +263,13 @@ namespace KBOManager.Tools
             if (isPitcher)
             {
                 template.PitcherRole = pitcherRole ?? PitcherRole.StartingPitcher;
-                template.PitcherStats = new PitcherStats(targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel);
+                // [TASK-KBO-180] 평준화 버그 수정 - 같은 OVR이라도 포지션/보직 프로파일로 세부 스탯 편차를 준다(평균 = 목표 레벨 유지).
+                template.PitcherStats = StatProfiles.SpreadPitcher(targetStatLevel, template.PitcherRole, template.TemplateId?.GetHashCode() ?? 0);
             }
             else
             {
                 template.BatterPosition = batterPosition ?? BatterPosition.DesignatedHitter;
-                template.BatterStats = new BatterStats(targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel, targetStatLevel);
+                template.BatterStats = StatProfiles.SpreadBatter(targetStatLevel, template.BatterPosition, template.TemplateId?.GetHashCode() ?? 0);
             }
 
             return new Player(Guid.NewGuid().ToString(), template);

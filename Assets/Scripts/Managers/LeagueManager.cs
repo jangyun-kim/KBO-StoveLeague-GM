@@ -290,11 +290,12 @@ namespace KBOManager.Managers
             // 유지한다(다른 필드와 동일하게 균등 난수 생성 - 신규 필드만 0으로 남는 불일치 방지).
             if (isPitcher)
             {
-                template.PitcherStats = new PitcherStats(statLevel, statLevel, statLevel, statLevel, statLevel);
+                // [TASK-KBO-180] 평준화 버그 수정 - 같은 OVR이라도 포지션/보직 프로파일로 세부 스탯 편차를 준다(평균 = 목표 레벨 유지).
+                template.PitcherStats = StatProfiles.SpreadPitcher(statLevel, template.PitcherRole, template.TemplateId.GetHashCode());
             }
             else
             {
-                template.BatterStats = new BatterStats(statLevel, statLevel, statLevel, statLevel, statLevel);
+                template.BatterStats = StatProfiles.SpreadBatter(statLevel, template.BatterPosition, template.TemplateId.GetHashCode());
             }
 
             return template;
