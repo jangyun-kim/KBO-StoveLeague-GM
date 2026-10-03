@@ -1257,6 +1257,7 @@ def make_card_row(rec, year, grade, team_token_override=None, rng=random):
     ]
 
 cards_by_team = {token: [] for _, _, token in TEAMS}
+discarded_random_cards = []  # [TASK-KBO-179] 확률 발급분(스트림 보존용으로만 계산, CSV 미출력)
 
 for rec in player_records:
     issued_year_grade = set()
@@ -1295,7 +1296,12 @@ for rec in player_records:
         if grade == "SIGNATURE" and sum(1 for (_, g) in issued_year_grade if g == "SIGNATURE") > 2:
             random.randint(*GRADE_META[grade]["ovr"])
             continue
-        cards_by_team[rec.team_token].append(make_card_row(rec, year, grade))
+        # [TASK-KBO-179, P0 DB 정화] 확률(roll_grade) 카드는 더 이상 발급하지 않는다. 이 루프의 대상은 성 30 x 이름 40
+        # 조합 생성기(make_player_name)로 만든 가상 인물(팀당 400명)과 수상 기록이 없는 왕조 로스터 인물인데, 조합
+        # 이름이 실존 2군/육성 선수(예: 2013~2017 롯데 "안준영"(개명 후 안우택))와 우연히 겹쳐 "1군 기록이 없는
+        # 선수가 SIGNATURE/GOLDEN_GLOVE/TITLE_HOLDER를 가진" 것처럼 보이는 결함이 있었다(SIG 1,149장 중 약 1,100장이
+        # 이 경로). make_card_row()는 그대로 호출해 난수 스트림(=기존 player_id/card_id)을 보존하고 결과만 폐기한다.
+        discarded_random_cards.append(make_card_row(rec, year, grade))
 
 # ---------------------------------------------------------------------------
 # 7-B. [TASK-KBO-156] 실제 검증된 2025시즌 수상 카드 생성 - 확률(roll_grade)이 아니라 REAL_AWARDS_2025에
@@ -1420,53 +1426,47 @@ for rec, year, team_token in dynasty_cards_to_issue:
     cards_by_team[team_token].append(make_card_row(rec, year, "DYNASTY", team_token_override=team_token, rng=rng172))
     dynasty_card_count += 1
 
-# (4) FRANCHISE(프랜차이즈) 신설 1986~2026(명령서 STEP 3-1). "무관이지만 구단 핵심 주전" - 27인 세트덱
-# 로스터의 포지션 사각지대(필승조 불펜 RP x2, 마무리 CP x1, 수비형 포수 C x1, 수비형 내야수 SS/2B x1)를
-# 구단-연도마다 5장씩 채운다. 선발 규칙:
-#   - 후보: 그 해 그 구단에서 커리어가 이어지는 "가상 로스터" 선수만(실존 인물은 연도별 실제 소속/보직을
-#     이 스크립트가 검증할 수 없어 사실과 다른 카드가 생기는 것을 막기 위해 제외).
-#   - 무관 조건: 그 해 ALLSTAR 이상(FRANCHISE 제외) 카드를 하나라도 받은 선수는 제외.
-#   - 우선순위: 재능치(z_value) 내림차순(=구단 핵심 주전), 동일 선수는 최대 FRANCHISE_MAX_PER_PLAYER(2)장.
-#   - 구단 창단 연도 존중: NC 2013(1군), KT 2015(1군), SSG 1991(쌍방울 1군 - 승계 매핑 기준).
-FRANCHISE_SLOTS = [("RP",), ("RP",), ("CP",), ("C",), ("SS", "2B")]
-FRANCHISE_MAX_PER_PLAYER = 2
-FRANCHISE_TEAM_FIRST_YEAR = {"NC": 2013, "KT": 2015, "SSG": 1991}
+# (4) FRANCHISE(프랜차이즈) - [TASK-KBO-179 재정의] 예전(TASK-172)에는 구단-연도마다 "가상 로스터" 선수 5명
+# (RP2/CP1/C1/SS·2B1)에게 발급해 1,670장 전부가 1군 기록이 없는 조합형 인물이었다. 이제 "검증된 1군 실존 인물"
+# 안에서만 발급한다:
+#   - 후보: 같은 구단에서 검증 수상 시즌(ALLSTAR BEST12/TH/GG/RN/SIG/DYN)이 FRANCHISE_MIN_VERIFIED_SEASONS(2)개
+#     이상인 실존 인물(= 그 구단의 검증된 1군 핵심 주전).
+#   - 연도: 그 구단에서의 검증 시즌 중 "올스타(BEST12)만 받고 TH/GG/RN/SIG/DYN은 없는" 가장 이른 시즌 - 팬/선수단
+#     투표로 1군 주전임이 검증됐지만 개인 타이틀은 없던 시즌이라 "무관이지만 구단 핵심 주전" 정의와 일치한다.
+#   - 동일 (선수, 구단)당 1장.
+FRANCHISE_MIN_VERIFIED_SEASONS = 2
 _AWARD_GRADES = {"ALLSTAR", "TITLE_HOLDER", "RETIRED_NUMBER", "SIGNATURE", "GOLDEN_GLOVE", "DYNASTY"}
-_awarded_player_years = set()
-for _rows in cards_by_team.values():
-    for _row in _rows:
-        if _row[3] in _AWARD_GRADES:
-            _awarded_player_years.add((_row[1], _row[9]))
+_TOP_AWARD_GRADES = _AWARD_GRADES - {"ALLSTAR"}
 _real_ids = {r.player_id for r in real_player_records.values()}
-_synthetic_by_team = {}
-for rec in player_records:
-    if rec.player_id in _real_ids or rec.is_dynasty_member or rec.skip_random_cards:
-        continue
-    _synthetic_by_team.setdefault(rec.team_token, []).append(rec)
-for _team_token in _synthetic_by_team:
-    _synthetic_by_team[_team_token].sort(key=lambda r: (-r.z_value, r.player_id))
+_rec_by_id = {r.player_id: r for r in player_records}
+_verified_seasons = {}  # (player_id, team) -> {year: {grade}}
+for _team, _rows in cards_by_team.items():
+    for _row in _rows:
+        if _row[3] in _AWARD_GRADES and _row[1] in _rec_by_id:
+            _verified_seasons.setdefault((_row[1], _team), {}).setdefault(int(_row[9]), set()).add(_row[3])
 
 franchise_card_count = 0
-_franchise_per_player = {}
-for _, _, team_token in TEAMS:
-    first_year = FRANCHISE_TEAM_FIRST_YEAR.get(team_token, MIN_YEAR)
-    for year in range(first_year, MAX_YEAR + 1):
-        picked_this_year = set()
-        for slot_positions in FRANCHISE_SLOTS:
-            for rec in _synthetic_by_team.get(team_token, []):
-                if rec.position not in slot_positions or rec.player_id in picked_this_year:
-                    continue
-                if not (rec.career_start <= year <= rec.career_end):
-                    continue
-                if (rec.player_id, year) in _awarded_player_years:
-                    continue
-                if _franchise_per_player.get(rec.player_id, 0) >= FRANCHISE_MAX_PER_PLAYER:
-                    continue
-                cards_by_team[team_token].append(make_card_row(rec, year, "FRANCHISE", rng=rng172))
-                picked_this_year.add(rec.player_id)
-                _franchise_per_player[rec.player_id] = _franchise_per_player.get(rec.player_id, 0) + 1
-                franchise_card_count += 1
-                break
+for (_pid, _team), _seasons in sorted(_verified_seasons.items()):
+    if len(_seasons) < FRANCHISE_MIN_VERIFIED_SEASONS:
+        continue
+    _as_only_years = sorted(y for y, gs in _seasons.items() if not (gs & _TOP_AWARD_GRADES))
+    if not _as_only_years:
+        continue
+    cards_by_team[_team].append(make_card_row(_rec_by_id[_pid], _as_only_years[0], "FRANCHISE",
+                                              team_token_override=_team, rng=rng172))
+    franchise_card_count += 1
+
+# (4-B) [TASK-KBO-179] LIVE_EPIC(라이브 에픽) - 확률 풀 폐지로 비게 된 등급을 검증 풀에서 채운다. 2026 현역 1군
+# 등록 선수(ROSTER_2026) 중 검증 수상 이력(수상 장부)이 하나라도 있는 선수 = "검증된 현역 1군 주전"에게 2026
+# LIVE_EPIC 1장을 추가 발급한다(기존 2026 LIVE_NORMAL 카드 ID는 그대로 보존 - 같은 시즌 다른 SKU).
+live_epic_card_count = 0
+_epic_seen = set()
+for rec in real_2026_records:
+    if rec.player_id in _epic_seen or not award_ledger.get(rec.player_id):
+        continue
+    _epic_seen.add(rec.player_id)
+    cards_by_team[rec.team_token].append(make_card_row(rec, MAX_YEAR, "LIVE_EPIC", rng=rng172))
+    live_epic_card_count += 1
 
 # (5) 발급 결과 무결성 검증 - 카드 ID 중복, SIGNATURE 선정 기준, DYNASTY 1인 1장.
 _card_id_counts = Counter(row[0] for rows in cards_by_team.values() for row in rows)
@@ -1678,6 +1678,22 @@ def save_csv(path, header, rows):
         writer.writerow(header)
         writer.writerows(rows)
 
+# [TASK-KBO-179] 1군 검증 인물 전용 DB - 출력 직전 정화/검증.
+#   (1) 모든 카드의 player_id는 검증 실존 인물(real_player_records + 강제 주입 김상엽)이어야 한다 - 가상 인물이나
+#       수상 기록 없는 왕조 로스터 인물의 카드가 하나라도 섞이면 즉시 실패시킨다.
+#   (2) players.csv에는 카드가 1장 이상 있는 검증 인물만 남긴다(가상 인물 4,000명은 난수 스트림 보존용으로 메모리에서만
+#       생성되고 출력되지 않는다 - player_id 시퀀스에 빈 번호가 생기지만 기존 ID(구자욱 PLY_004038 등)는 그대로다).
+VERIFIED_PLAYER_IDS = _real_ids | {r.player_id for r in real_2026_records} | {KIM_SANGYEOP_ID}  # 2026 KBO 등록 명단(동명이인 접미사 포함)도 실명 검증 인물
+_unverified_cards = [row[0] for rows in cards_by_team.values() for row in rows if row[1] not in VERIFIED_PLAYER_IDS]
+if _unverified_cards:
+    raise ValueError(f"[TASK-KBO-179] 비검증 인물 카드 발견 {len(_unverified_cards)}장: {_unverified_cards[:10]}")
+_carded_player_ids = {row[1] for rows in cards_by_team.values() for row in rows}
+purged_player_rows = [row for row in players_rows if row[0] not in _carded_player_ids]
+players_rows = [row for row in players_rows if row[0] in _carded_player_ids]
+for _pid, _label in (("PLY_004038", "구자욱"), (KIM_SANGYEOP_ID, "김상엽")):
+    if _pid not in _carded_player_ids:
+        raise ValueError(f"[TASK-KBO-179] ID 보존 위반: {_label}({_pid}) 누락")
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 save_csv(os.path.join(OUTPUT_DIR, "players.csv"), PLAYERS_HEADER, players_rows)
@@ -1702,9 +1718,13 @@ if os.path.exists(legacy_cards_path):
 print("=" * 60)
 print("[GenerateKBODatabase] KBO 마스터 DB 생성 완료")
 print("=" * 60)
-print(f"총 선수 수: {len(player_records)}명")
+print(f"총 선수 수(출력, 1군 검증 인물만): {len(players_rows)}명 / 정화 제외 {len(purged_player_rows)}명")
+print(f"  - [TASK-179] 폐기된 확률 발급 카드(가상/비검증 인물): {len(discarded_random_cards)}장 "
+      f"{dict(Counter(r[3] for r in discarded_random_cards))}")
+print(f"  - [TASK-179] 검증 풀 LIVE_EPIC(2026 현역 수상 경력자): {live_epic_card_count}장")
+_out_ids = {row[0] for row in players_rows}
 for _, _, team_token in TEAMS:
-    team_player_count = sum(1 for r in player_records if r.team_token == team_token)
+    team_player_count = sum(1 for r in player_records if r.team_token == team_token and r.player_id in _out_ids)
     print(f"  - {team_token}: 선수 {team_player_count}명, 카드 {len(cards_by_team[team_token])}장")
 print(f"총 카드 수(전 구단 합계): {total_cards}장")
 print(f"  - 이 중 2025시즌 실제 검증 수상 카드: {real_card_count}장")
@@ -1720,7 +1740,7 @@ print(f"  - [TASK-172] 1986~2012 개인 타이틀 확정 카드: {title_1986_201
 print(f"  - [TASK-172] SIGNATURE 쿼터 보강 카드: {len(signature_quota_cards_to_issue)}장, 실존 불펜 SIG {signature_bullpen_count}장")
 print(f"  - [TASK-172] 실존 인물 SIGNATURE 구단별 (전체/투수/야수): {signature_quota_report}")
 print(f"  - [TASK-172] DYNASTY 1인 1연도 정예 카드: {dynasty_card_count}장")
-print(f"  - [TASK-172] FRANCHISE 신설 카드: {franchise_card_count}장 (구단-연도당 RP2/CP1/C1/SS·2B1)")
+print(f"  - [TASK-172] FRANCHISE 카드: {franchise_card_count}장 (TASK-179: 동일 구단 검증 시즌 2개 이상 실존 인물, 올스타 단독 시즌)")
 _grade_totals = Counter(row[3] for rows in cards_by_team.values() for row in rows)
 print(f"  - [TASK-172] 등급별 총계: {dict(sorted(_grade_totals.items(), key=lambda kv: GRADE_ID[kv[0]]))}")
 _raised = [r for r in stat_recalibration_report if r[3] > r[2]]
