@@ -62,7 +62,7 @@ namespace KBOManager.UI
                     int live = gm != null ? gm.Inventory.Count(p => p?.Template != null && p.Template.Grade == Grade.LIVE_NORMAL) : 0;
                     string note = OnboardingManager.Instance != null ? OnboardingManager.Instance.LastGiftPlacementNote : "";
                     SetMessage("① 라인업 확인",
-                        $"하단 <b>[라인업]</b> 탭에서 지급받은 <b>{team} 2026 LIVE 선수단 {live}명</b>과 '24 골든글러브 정착 지원 선수를 확인하고 배치해 보세요." +
+                        $"하단 [라인업] 탭에서 지급받은 {team} 2026 LIVE 선수단 {live}명과 '24 골든글러브 정착 지원 선수를 확인하고 배치해 보세요." +
                         (string.IsNullOrEmpty(note) ? "" : $"\n<color=#FFD54A>{note}</color>"),
                         "라인업 확인하기");
                     break;
@@ -71,15 +71,15 @@ namespace KBOManager.UI
                         ? GameManager.EvaluateSetDeck(gm.Roster.ToList(), gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null, gm.SetDeckSelection)
                         : null;
                     SetMessage("② 세트덱 스코어",
-                        $"라인업 27인(주전 9 · 후보 6 · 투수)의 <b>내 구단 카드</b>(골든글러브는 구단 무관) 스코어를 합산합니다. " +
-                        $"현재 <color=#5FE3FF><b>{setDeck?.Score ?? 0}P</b></color> - 30P부터 구간(27단계)마다 버프가 누적되고" +
+                        $"라인업 27인(주전 9 · 후보 6 · 투수)의 내 구단 카드(골든글러브는 구단 무관) 스코어를 합산합니다. " +
+                        $"현재 <color=#5FE3FF>{setDeck?.Score ?? 0}P</color> - 30P부터 구간(27단계)마다 버프가 누적되고" +
                         $"{SetDeckBuffTable.MinimumGoalScore}P(1차 목표) · {SetDeckBuffTable.FinalGoalScore}P(최종 목표)를 노리십시오. " +
                         "[라인업] 하단 [세트덱 버프 선택]에서 선택형 구간 옵션을 고를 수 있습니다.",
                         "다음");
                     break;
                 default:
                     SetMessage("③ 첫 경기 시작",
-                        "준비가 끝났습니다! <b>[플레이 볼 ⚾]</b>을 눌러 첫 경기를 바로 시작하십시오. 경기 유형(빠른 진행 / 하이라이트 / 풀 플레이)을 고를 수 있습니다.",
+                        "준비가 끝났습니다! [플레이 볼 ⚾]을 눌러 첫 경기를 바로 시작하십시오. 경기 유형(빠른 진행 / 하이라이트 / 풀 플레이)을 고를 수 있습니다.",
                         "플레이 볼 ⚾");
                     break;
             }

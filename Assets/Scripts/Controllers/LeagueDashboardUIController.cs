@@ -116,7 +116,21 @@ namespace KBOManager.Controllers
         {
             if (seasonProgressText == null) return;
 
-            seasonProgressText.text = $"{leagueManager.CurrentPhase} - {leagueManager.PlayedGameCount} / {LeagueManager.TotalUserGames} 경기";
+            seasonProgressText.text = SeasonProgressLabel(leagueManager.CurrentTier, leagueManager.CurrentPhase, leagueManager.PlayedGameCount);
+        }
+
+        /// <summary>[TASK-KBO-191] 로비 NEXT MATCH 진행도 - 영문 enum("REGULAR_OPEN - 0 / 144 경기") 대신 "{리그명} · 정규시즌 N / 144 경기".</summary>
+        public static string SeasonProgressLabel(LeagueTier tier, LeaguePhase phase, int played)
+        {
+            string league = LeagueTierTable.DisplayName(tier);
+            int total = LeagueManager.TotalUserGames;
+            switch (phase)
+            {
+                case LeaguePhase.POST_PREP: return $"{league} · 정규시즌 종료 ({played} / {total} 경기)";
+                case LeaguePhase.POST_SEASON: return $"{league} · 포스트시즌";
+                case LeaguePhase.STOVE_LEAGUE: return $"{league} · 스토브리그 · 정규시즌 {played} / {total} 경기";
+                default: return $"{league} · 정규시즌 {played} / {total} 경기";
+            }
         }
 
         private void RefreshStandings()
@@ -140,7 +154,7 @@ namespace KBOManager.Controllers
 
                     bool isFavoriteTeam = favoriteTeam != Team.None && team.Team == favoriteTeam;
                     standingsRowTexts[i].text = isFavoriteTeam
-                        ? $"<b><color={favoriteTeamHighlightColor}>{line}</color></b>"
+                        ? $"<color={favoriteTeamHighlightColor}>{line}</color>"
                         : line;
                 }
                 else

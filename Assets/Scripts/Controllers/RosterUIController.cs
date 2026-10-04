@@ -314,7 +314,7 @@ namespace KBOManager.Controllers
             }
             else
             {
-                CellLabel(holderRect, $"{entry.Header}\n\n<b>[+ 선수 배치]</b>", TextAnchor.MiddleCenter, new Color(0.78f, 0.85f, 0.98f), false);
+                CellLabel(holderRect, $"{entry.Header}\n\n[+ 선수 배치]", TextAnchor.MiddleCenter, new Color(0.78f, 0.85f, 0.98f), false);
                 var slot = entry.ToPlacementSlot();
                 button.onClick.AddListener(() => OpenPlacementPopup(slot));
             }
@@ -337,6 +337,7 @@ namespace KBOManager.Controllers
             label.fontSize = 30;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
             label.verticalOverflow = VerticalWrapMode.Truncate;
+            TextTidy.Normalize(label, false, slotFont); // [TASK-KBO-191] Bold 해제 · 계층 크기(30 → 19~) · 자간
         }
 
         private void ClearCells()
@@ -615,7 +616,7 @@ namespace KBOManager.Controllers
             label.text = text;
             label.alignment = TextAnchor.MiddleCenter;
             label.color = new Color(0.08f, 0.1f, 0.18f);
-            label.fontStyle = FontStyle.Bold;
+            label.fontStyle = FontStyle.Normal;
             label.raycastTarget = false;
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = 10;

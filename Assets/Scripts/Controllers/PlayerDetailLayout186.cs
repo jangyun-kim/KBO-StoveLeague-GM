@@ -108,7 +108,7 @@ namespace KBOManager.Controllers
     {
         public const string RootName = "Detail186";
         public const float RefW = 1080f, RefH = 1920f;
-        public const int MinFont = 18;
+        public const int MinFont = TextTidy.AutoMin; // [TASK-KBO-191] 18 → 11(좁은 칸에서 넘치지 않고 줄어든다)
 
         private static readonly Color Bg = new Color(0.043f, 0.071f, 0.125f);          // #0B1220
         private static readonly Color HeaderBg = new Color(0.067f, 0.102f, 0.18f);     // #111A2E
@@ -178,9 +178,9 @@ namespace KBOManager.Controllers
         {
             Box("Header", 0, 0, 1080, 110, HeaderBg);
             logo = CompyaUiKit.Logo(Root, "TeamLogo", 20, 15, 100, 95);
-            title = Label("Title", 116, 6, 950, 62, 36, TextAnchor.MiddleLeft, White, true);
-            subtitle = Label("Subtitle", 116, 62, 950, 106, 24, TextAnchor.MiddleLeft, Muted, false);
-            CloseX = MakeButton("CloseX", "X", 980, 15, 1060, 95, Grey, White, 36);
+            title = Label("Title", 116, 6, 950, 62, 26, TextAnchor.MiddleLeft, White, true);
+            subtitle = Label("Subtitle", 116, 62, 950, 106, 16, TextAnchor.MiddleLeft, Muted, false);
+            CloseX = MakeButton("CloseX", "X", 980, 15, 1060, 95, Grey, White, 24);
         }
 
         // ------------------------------------------------------------------ 2단 카드 + 요약
@@ -200,18 +200,18 @@ namespace KBOManager.Controllers
             }
 
             Box("SummaryBox", 376, 125, 1060, 585, CardBg);
-            ovrText = Label("Ovr", 396, 133, 1044, 196, 44, TextAnchor.MiddleLeft, Gold, true);
-            breakdownText = Label("OvrBreakdown", 396, 196, 1044, 236, 24, TextAnchor.MiddleLeft, White, false);
+            ovrText = Label("Ovr", 396, 133, 1044, 196, 40, TextAnchor.MiddleLeft, Gold, true);
+            breakdownText = Label("OvrBreakdown", 396, 196, 1044, 236, 16, TextAnchor.MiddleLeft, White, false);
             Box("SdBadge", 396, 246, 1044, 300, new Color(0.17f, 0.24f, 0.4f));
-            sdText = Label("SdText", 412, 246, 1032, 300, 26, TextAnchor.MiddleLeft, White, true);
+            sdText = Label("SdText", 412, 246, 1032, 300, 18, TextAnchor.MiddleLeft, White, true);
 
             for (int i = 0; i < 4; i++)
             {
                 float x0 = i % 2 == 0 ? 396 : 724, x1 = x0 + 320;
                 float y0 = i < 2 ? 314 : 448, y1 = y0 + 124;
                 Box($"GrowthCell{i}", x0, y0, x1, y1, Capsule);
-                growthTitles[i] = Label($"GrowthTitle{i}", x0 + 16, y0 + 8, x1 - 16, y0 + 50, 22, TextAnchor.MiddleLeft, Muted, true);
-                growthValues[i] = Label($"GrowthValue{i}", x0 + 16, y0 + 52, x1 - 16, y1 - 10, 24, TextAnchor.MiddleLeft, Gold, true);
+                growthTitles[i] = Label($"GrowthTitle{i}", x0 + 16, y0 + 8, x1 - 16, y0 + 50, 15, TextAnchor.MiddleLeft, Muted, true);
+                growthValues[i] = Label($"GrowthValue{i}", x0 + 16, y0 + 52, x1 - 16, y1 - 10, 17, TextAnchor.MiddleLeft, Gold, true);
             }
         }
 
@@ -219,18 +219,18 @@ namespace KBOManager.Controllers
 
         private void BuildStats()
         {
-            Label("StatsTitle", 24, 600, 1060, 650, 28, TextAnchor.MiddleLeft, White, true).text = "세부 능력치";
+            Label("StatsTitle", 24, 600, 1060, 650, 20, TextAnchor.MiddleLeft, White, true).text = "세부 능력치";
             for (int i = 0; i < 5; i++)
             {
                 float y0 = 656 + i * 86, y1 = y0 + 78, cy = (y0 + y1) / 2f;
                 Box($"StatRow{i}", 20, y0, 1060, y1, HeaderBg);
-                statNames[i] = Label($"StatName{i}", 36, y0, 156, y1, 28, TextAnchor.MiddleLeft, White, true);
+                statNames[i] = Label($"StatName{i}", 36, y0, 156, y1, 17, TextAnchor.MiddleLeft, White, true);
                 var track = Place($"StatTrack{i}", 166, cy - 14, 640, cy + 14);
                 Paint(track, Track);
                 statFillRects[i] = CompyaUiKit.Norm(track, "Fill", 0f, 0f, 0.5f, 1f);
                 statFills[i] = Paint(statFillRects[i], PlayerDetailRules.BarColor(PlayerDetailRules.BarTier.Sky));
-                statValues[i] = Label($"StatValue{i}", 652, y0, 760, y1, 32, TextAnchor.MiddleCenter, White, true);
-                statSubs[i] = Label($"StatSub{i}", 764, y0, 1052, y1, 22, TextAnchor.MiddleLeft, Muted, false);
+                statValues[i] = Label($"StatValue{i}", 652, y0, 760, y1, 18, TextAnchor.MiddleCenter, White, true);
+                statSubs[i] = Label($"StatSub{i}", 764, y0, 1052, y1, 15, TextAnchor.MiddleLeft, Muted, false);
             }
         }
 
@@ -238,7 +238,7 @@ namespace KBOManager.Controllers
 
         private void BuildSkills()
         {
-            Label("SkillsTitle", 24, 1095, 1060, 1145, 28, TextAnchor.MiddleLeft, White, true).text = "보유 스킬 · 특성";
+            Label("SkillsTitle", 24, 1095, 1060, 1145, 20, TextAnchor.MiddleLeft, White, true).text = "보유 스킬 · 특성";
             for (int i = 0; i < 3; i++)
             {
                 float x0 = 20 + i * 352, x1 = x0 + 336;
@@ -246,13 +246,13 @@ namespace KBOManager.Controllers
                 var icon = Place($"SkillIconBg{i}", x0 + 128, 1176, x0 + 208, 1256);
                 Paint(icon, Capsule);
                 CompyaUiKit.Outline(icon.GetComponent<Image>(), Gold, 2f);
-                skillIcons[i] = Label($"SkillIcon{i}", x0 + 128, 1176, x0 + 208, 1256, 34, TextAnchor.MiddleCenter, Gold, true);
-                skillNames[i] = Label($"SkillName{i}", x0 + 14, 1268, x1 - 14, 1340, 26, TextAnchor.MiddleCenter, Gold, true);
-                skillDescs[i] = Label($"SkillDesc{i}", x0 + 18, 1346, x1 - 18, 1748, 22, TextAnchor.UpperLeft, White, false);
+                skillIcons[i] = Label($"SkillIcon{i}", x0 + 128, 1176, x0 + 208, 1256, 24, TextAnchor.MiddleCenter, Gold, true);
+                skillNames[i] = Label($"SkillName{i}", x0 + 14, 1268, x1 - 14, 1340, 17, TextAnchor.MiddleCenter, Gold, true);
+                skillDescs[i] = Label($"SkillDesc{i}", x0 + 18, 1346, x1 - 18, 1748, 15, TextAnchor.UpperLeft, White, false);
             }
 
-            ManageButton = MakeButton("ManageButton", "선수 관리 (성장 센터로 이동)", 20, 1800, 700, 1890, Blue, White, 30);
-            CloseButton = MakeButton("CloseButton", "닫기", 720, 1800, 1060, 1890, Grey, White, 30);
+            ManageButton = MakeButton("ManageButton", "선수 관리 (성장 센터로 이동)", 20, 1800, 700, 1890, Blue, White, 20);
+            CloseButton = MakeButton("CloseButton", "닫기", 720, 1800, 1060, 1890, Grey, White, 20);
         }
 
         // ------------------------------------------------------------------ 채우기
@@ -335,7 +335,7 @@ namespace KBOManager.Controllers
         {
             label.font = isBold ? bold : regular;
             label.fontSize = size;
-            label.fontStyle = isBold ? FontStyle.Bold : FontStyle.Normal;
+            label.fontStyle = FontStyle.Normal;
             label.alignment = anchor;
             label.color = color;
             label.raycastTarget = false;
@@ -345,7 +345,8 @@ namespace KBOManager.Controllers
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = Mathf.Min(MinFont, size);
             label.resizeTextMaxSize = size;
-            return label;
+            // [TASK-KBO-191] 계층 크기(타이틀 26 · OVR 40 · 섹션 20 · 본문 16~18 · 보조 15 · 버튼 20) Normal 고정 + 자간
+            return TextTidy.Exact(label, size, MinFont, regular);
         }
 
         private Button MakeButton(string name, string text, float x0, float y0, float x1, float y1, Color bg, Color fg, int size)

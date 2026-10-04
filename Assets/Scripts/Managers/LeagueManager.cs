@@ -133,8 +133,12 @@ namespace KBOManager.Managers
             if (LeagueCalendar.Instance != null)
             {
                 LeagueCalendar.Instance.OnDayAdvanced += HandleDayAdvanced;
+                calendarSubscribed = true;
             }
         }
+
+        // [TASK-KBO-191] 캘린더 구독 여부 - 캘린더가 없거나(헤드리스 시뮬레이션 · 테스트 하네스) 구독 전이면 경기마다 직접 하루치 회복을 한다.
+        private bool calendarSubscribed;
 
         private void OnDestroy()
         {
@@ -519,6 +523,9 @@ namespace KBOManager.Managers
             // 날짜를 넘기고, 그 결과로 발생하는 OnDayAdvanced 이벤트(HandleDayAdvanced)가 회복/컨디션
             // 갱신을 담당한다. 여기서는 오직 "경기 1건 = 하루 경과"를 캘린더에 통지만 한다.
             LeagueCalendar.Instance?.AdvanceToNextGameDay();
+            // [TASK-KBO-191] 캘린더 이벤트를 못 받는 경우(캘린더 없음/미구독) 회복이 통째로 빠져 선발이 체력 0으로 1회 만에 내려가고
+            // 불펜이 매 경기 8이닝을 떠안았다(시즌 723탈삼진 구원 투수). 그때는 하루치 회복 · 컨디션 갱신을 직접 처리한다.
+            if (!calendarSubscribed || LeagueCalendar.Instance == null) HandleDayAdvanced(DateTime.Today, false);
 
             if (fixture.GameNumber == RegularOpenGames && CurrentPhase == LeaguePhase.REGULAR_OPEN)
             {

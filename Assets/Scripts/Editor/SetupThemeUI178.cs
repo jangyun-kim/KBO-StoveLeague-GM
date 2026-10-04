@@ -153,7 +153,7 @@ namespace KBOManager.EditorTools
             text.fontSize = fontSize;
             text.alignment = alignment;
             text.color = color;
-            text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+            text.fontStyle = FontStyle.Normal;
             text.resizeTextForBestFit = true;
             text.resizeTextMinSize = Mathf.Max(10, fontSize - 8);
             text.resizeTextMaxSize = fontSize;
@@ -203,7 +203,7 @@ namespace KBOManager.EditorTools
             // NEXT MATCH 카드
             var next = Box(root, "NextMatchCard", new Vector2(0.03f, 0.69f), new Vector2(0.97f, 0.852f), CardDark);
             AccentBar(next, AccentRed);
-            Label(next, "Title", "NEXT MATCH", new Vector2(0.05f, 0.56f), new Vector2(0.95f, 0.95f), 44, TextAnchor.MiddleCenter, TextWhite, true).fontStyle = FontStyle.BoldAndItalic;
+            Label(next, "Title", "NEXT MATCH", new Vector2(0.05f, 0.56f), new Vector2(0.95f, 0.95f), 44, TextAnchor.MiddleCenter, TextWhite, true).fontStyle = FontStyle.Italic;
             var nextText = Label(next, "NextMatchupText", "예정된 경기가 없습니다.", new Vector2(0.05f, 0.08f), new Vector2(0.95f, 0.54f), 26, TextAnchor.MiddleCenter, TextMutedOnDark, true);
 
             // 순위표 카드(헤더 띠 + 10행)
@@ -470,7 +470,7 @@ namespace KBOManager.EditorTools
 
             Paint(popup, new Color(0.04f, 0.05f, 0.07f, 0.97f));
             var title = Label(popup.transform, "ScoutResultTitle178", "SCOUT RESULT", new Vector2(0.05f, 0.84f), new Vector2(0.95f, 0.93f), 64, TextAnchor.MiddleCenter, TextWhite, true);
-            title.fontStyle = FontStyle.BoldAndItalic;
+            title.fontStyle = FontStyle.Italic;
 
             if (so.FindProperty("cardContainer").objectReferenceValue is Transform cards)
             {
@@ -843,7 +843,7 @@ namespace KBOManager.EditorTools
                 text.text = label;
             }
             StyleExistingText(text, fontSize, textColor);
-            text.fontStyle = FontStyle.Bold;
+            text.fontStyle = FontStyle.Normal;
         }
 
         private static void StyleChildText(Transform parent, string name, int fontSize, Color color)
@@ -979,7 +979,7 @@ namespace KBOManager.EditorTools
             label.text = text;
             label.font = KBOFonts.Default;
             label.fontSize = fontSize;
-            label.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+            label.fontStyle = FontStyle.Normal;
             label.alignment = alignment;
             label.color = color;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;

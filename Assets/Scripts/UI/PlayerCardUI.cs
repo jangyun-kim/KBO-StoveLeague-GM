@@ -565,7 +565,7 @@ namespace KBOManager.UI
                 }
                 growthBadgeText = textRect.GetComponent<Text>();
                 if (font != null) growthBadgeText.font = font;
-                growthBadgeText.fontStyle = FontStyle.Bold;
+                growthBadgeText.fontStyle = FontStyle.Normal;
                 growthBadgeText.text = badge;
                 growthBadgeText.color = transcend ? new Color(1f, 0.86f, 0.35f) : Color.white;
                 FitText(growthBadgeText, 0.04f, 0f, 0.96f, 1f, TextAnchor.MiddleCenter, 18);

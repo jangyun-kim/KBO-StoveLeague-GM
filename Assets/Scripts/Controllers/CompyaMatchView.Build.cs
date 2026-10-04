@@ -629,7 +629,7 @@ namespace KBOManager.Controllers
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
             label.verticalOverflow = VerticalWrapMode.Truncate;
             label.resizeTextForBestFit = true;
-            label.resizeTextMinSize = 14;
+            label.resizeTextMinSize = 12; // [TASK-KBO-191] 14 → 12
             return label;
         }
 
@@ -861,7 +861,7 @@ namespace KBOManager.Controllers
             label.horizontalOverflow = HorizontalWrapMode.Wrap; // 자동 크기가 줄바꿈 없이 들어가는 크기까지 줄인다
             label.verticalOverflow = VerticalWrapMode.Truncate;
             label.resizeTextForBestFit = true;
-            label.resizeTextMinSize = 18;
+            label.resizeTextMinSize = 12; // [TASK-KBO-191] 18 → 12(자동 크기 최소 11~12)
             return label;
         }
 
@@ -1519,7 +1519,7 @@ namespace KBOManager.Controllers
         private void SetVerdict(RawImage bg, Text label, bool win, bool draw)
         {
             label.text = draw ? "DRAW" : win ? "WIN" : "LOSE";
-            label.fontStyle = win ? FontStyle.BoldAndItalic : FontStyle.Bold;
+            label.fontStyle = win ? FontStyle.Italic : FontStyle.Normal;
             label.color = win ? White : new Color(0.93f, 0.93f, 0.95f);
             bg.texture = win ? kit.GradientTexture(BlueTop, BlueBottom, false)
                 : kit.GradientTexture(new Color(0.62f, 0.64f, 0.68f), new Color(0.44f, 0.46f, 0.5f), false);
@@ -1665,9 +1665,10 @@ namespace KBOManager.Controllers
             var winRed = new Color(0.9f, 0.2f, 0.27f);
             row.AwayScore.color = awayValue > homeValue ? winRed : Navy;
             row.HomeScore.color = homeValue > awayValue ? winRed : Navy;
-            int size = isUserGame ? Mathf.RoundToInt(104 * 0.9f) : Mathf.RoundToInt(80 * 0.9f); // 우리 경기 점수는 크게, 시즌 승수는 작게
-            row.AwayScore.fontSize = row.HomeScore.fontSize = size;
-            row.AwayScore.resizeTextMaxSize = row.HomeScore.resizeTextMaxSize = size;
+            // 우리 경기 점수는 크게, 시즌 승수는 작게 - [TASK-KBO-191] 대형 점수 상한 42pt(94/72 → 42/34, Normal)
+            int size = isUserGame ? TextTidy.MaxSize : 34;
+            TextTidy.Exact(row.AwayScore, size);
+            TextTidy.Exact(row.HomeScore, size);
             row.Venue.text = venue;
             row.UserBadge.gameObject.SetActive(isUserGame);
         }
@@ -1850,7 +1851,7 @@ namespace KBOManager.Controllers
 
         private static void AppendBox(System.Text.StringBuilder sb, Team team, List<Player> order, List<Player> pitchers, CompyaGameTracker t)
         {
-            sb.AppendLine($"<b><color=#FFD84A>{CompyaUiKit.FullName(team)}</color></b>");
+            sb.AppendLine($"<color=#FFD84A>{CompyaUiKit.FullName(team)}</color>");
             sb.AppendLine("<color=#8C93A3>타자              타수  안타  홈런  볼넷  타율</color>");
             for (int i = 0; i < order.Count; i++)
             {

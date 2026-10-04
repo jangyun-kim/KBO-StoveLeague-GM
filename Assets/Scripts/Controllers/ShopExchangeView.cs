@@ -213,7 +213,7 @@ namespace KBOManager.Controllers
                 productTitles[i] = kit.Label(productGroup, $"ProductTitle{i}", "", 44, y0 + 8, 900, y0 + 66, 32, TextAnchor.MiddleLeft, Gold, true);
                 productDescs[i] = kit.Label(productGroup, $"ProductDesc{i}", "", 44, y0 + 68, 900, y0 + 158, 23, TextAnchor.UpperLeft, White);
                 productDescs[i].resizeTextForBestFit = true;
-                productDescs[i].resizeTextMinSize = 14;
+                productDescs[i].resizeTextMinSize = 12;
                 productDescs[i].resizeTextMaxSize = productDescs[i].fontSize;
                 int index = i;
                 buyButtons[i] = kit.GradientButton(productGroup, $"Buy{i}", "구매", 920, y0 + 28, 1208, y0 + 138, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 32);
@@ -230,7 +230,7 @@ namespace KBOManager.Controllers
             // ---- 획득처 안내
             guideText = kit.Label(root, "Guide", "", 36, 410, 1212, 1640, 27, TextAnchor.UpperLeft, White);
             guideText.resizeTextForBestFit = true;
-            guideText.resizeTextMinSize = 14;
+            guideText.resizeTextMinSize = 12;
             guideText.resizeTextMaxSize = guideText.fontSize;
 
             resultText = kit.Label(root, "Result", "", 28, 1648, 1220, 1712, 26, TextAnchor.MiddleCenter, Green, true);

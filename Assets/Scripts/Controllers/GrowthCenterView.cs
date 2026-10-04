@@ -39,6 +39,11 @@ namespace KBOManager.Controllers
         private static readonly Color RowOff = new Color(0.2f, 0.24f, 0.38f, 0.95f);
         private static readonly Color RowLineup = new Color(0.17f, 0.32f, 0.62f, 0.95f);
 
+        // [TASK-KBO-191] 성장 센터 글씨 계층(Normal) - 화면 타이틀 26 · 섹션 헤더 19 · 본문 16 · 보조 15 · 각성 사다리 14 · 헤더 버튼 17
+        public const int TitlePt = 26, SectionPt = 19, ButtonPt = 17, BodyPt = 16, SmallPt = 15, LadderPt = 14;
+        public const int SkillHeaderPt = 15, SkillButtonPt = 14, SkillSlotTitlePt = 16, SkillSlotDescPt = 13;
+        public const int TargetLine1Pt = 17, TargetLine2Pt = 14, MaterialLine1Pt = 16, MaterialLine2Pt = 14;
+
         private CompyaUiKit kit;
         private RectTransform root;
         private CardHolderFit cardHolder;
@@ -137,31 +142,39 @@ namespace KBOManager.Controllers
 
             // ---- 헤더
             kit.GradientBox(root, "Header", 0, 0, 1248, 140, new Color(0.13f, 0.3f, 0.66f), new Color(0.07f, 0.16f, 0.4f), false);
-            kit.Button(root, "BackButton", "◀ 뒤로", 20, 30, 230, 112, new Color(0f, 0f, 0f, 0.25f), White, 34).onClick.AddListener(Close);
-            kit.Label(root, "Title", "선수 관리 · 성장 센터", 240, 20, 770, 120, 42, TextAnchor.MiddleCenter, White, true);
+            var back = kit.Button(root, "BackButton", "◀ 뒤로", 20, 30, 230, 112, new Color(0f, 0f, 0f, 0.25f), White, 34);
+            back.onClick.AddListener(Close);
+            TextTidy.ExactButton(back, ButtonPt);
+            TextTidy.Exact(kit.Label(root, "Title", "선수 관리 · 성장 센터", 240, 20, 770, 120, 42, TextAnchor.MiddleCenter, White, true), TitlePt);
             // [TASK-KBO-189] 재료 획득처 / 포지션 재조합 바로가기(스카우트 허브 [상점 · 교환소])
             sourceButton = kit.Button(root, "SourceButton", "재료 획득처 ▸", 780, 30, 1000, 112, new Color(0.98f, 0.76f, 0.2f, 0.9f), new Color(0.12f, 0.08f, 0.02f), 28);
             sourceButton.onClick.AddListener(() => ShopExchangeView.OpenShop(ShopSubTab.Guide));
-            kit.Button(root, "DetailButton", "상세 정보", 1010, 30, 1228, 112, new Color(1f, 1f, 1f, 0.15f), White, 32).onClick.AddListener(OpenDetail);
+            TextTidy.ExactButton(sourceButton, ButtonPt);
+            var detail = kit.Button(root, "DetailButton", "상세 정보", 1010, 30, 1228, 112, new Color(1f, 1f, 1f, 0.15f), White, 32);
+            detail.onClick.AddListener(OpenDetail);
+            TextTidy.ExactButton(detail, ButtonPt);
 
             // ---- 대상 선수
             CompyaUiKit.Box(root, "TargetPanel", 20, 155, 1228, 800, Panel);
             var holderRect = CompyaUiKit.Place(root, "CardHolder", 36, 170, 420, 785);
             cardHolder = holderRect.gameObject.AddComponent<CardHolderFit>();
             cardHolder.Configure(cardPrefab != null ? CardHolderFit.NativeSizeOf(cardPrefab) : CardHolderFit.DefaultCardSize, 1f);
-            nameText = kit.Label(root, "Name", "", 440, 170, 1210, 240, 46, TextAnchor.MiddleLeft, White, true);
-            subText = kit.Label(root, "Sub", "", 440, 242, 1210, 292, 28, TextAnchor.MiddleLeft, Muted);
-            ovrText = kit.Label(root, "Ovr", "", 440, 296, 1210, 400, 64, TextAnchor.MiddleLeft, Gold, true);
-            breakdownText = kit.Label(root, "Breakdown", "", 440, 404, 1210, 600, 27, TextAnchor.UpperLeft, White);
-            kit.Label(root, "LadderTitle", "각성 단계 (3각 · 6각 · 9각 = 임계점)", 440, 604, 1210, 640, 24, TextAnchor.MiddleLeft, Muted, true);
+            // [TASK-KBO-191] 계층별 적정 크기(Normal) - 선수명 24 · 메인 OVR 40 · 본문 16~17 · 보조 15
+            nameText = TextTidy.Exact(kit.Label(root, "Name", "", 440, 170, 1210, 240, 46, TextAnchor.MiddleLeft, White, true), 24);
+            subText = TextTidy.Exact(kit.Label(root, "Sub", "", 440, 242, 1210, 292, 28, TextAnchor.MiddleLeft, Muted), 17);
+            ovrText = TextTidy.Exact(kit.Label(root, "Ovr", "", 440, 296, 1210, 400, 64, TextAnchor.MiddleLeft, Gold, true), 40);
+            breakdownText = TextTidy.Exact(kit.Label(root, "Breakdown", "", 440, 404, 1210, 600, 27, TextAnchor.UpperLeft, White), BodyPt);
+            breakdownText.lineSpacing = 1.1f;
+            TextTidy.Exact(kit.Label(root, "LadderTitle", "각성 단계 (3각 · 6각 · 9각 = 임계점)", 440, 604, 1210, 640, 24, TextAnchor.MiddleLeft, Muted, true), SmallPt);
             const float lx0 = 440f, lw = 69f;
             for (int i = 0; i <= 10; i++)
             {
                 float x0 = lx0 + i * lw;
                 ladderBoxes[i] = CompyaUiKit.Box(root, $"Ladder{i}", x0 + 2, 645, x0 + lw - 2, 715, PanelLight);
-                ladderLabels[i] = kit.LabelOn(CompyaUiKit.Fill(ladderBoxes[i].transform, "Text"), i == 0 ? "명함" : i == 10 ? "초월" : $"{i}각", 22, TextAnchor.MiddleCenter, White, true);
+                // [TASK-KBO-191] 칸(약 60px)에 비해 컸던 22pt Bold → 14pt Normal(명함 · 초월 뭉개짐 해소)
+                ladderLabels[i] = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Fill(ladderBoxes[i].transform, "Text"), i == 0 ? "명함" : i == 10 ? "초월" : $"{i}각", 22, TextAnchor.MiddleCenter, White), LadderPt);
             }
-            ladderNoteText = kit.Label(root, "LadderNote", "", 440, 720, 1210, 790, 24, TextAnchor.MiddleLeft, Gold);
+            ladderNoteText = TextTidy.Exact(kit.Label(root, "LadderNote", "", 440, 720, 1210, 790, 24, TextAnchor.MiddleLeft, Gold), SmallPt);
 
             // ---- 성장 탭 5개([TASK-KBO-189] 초월 추가)
             for (int i = 0; i < GrowthCenterRules.Tabs.Length; i++)
@@ -170,48 +183,84 @@ namespace KBOManager.Controllers
                 float x0 = 20 + i * 242f;
                 tabButtons[i] = kit.Button(root, $"Tab_{t}", GrowthCenterRules.TabName(t), x0, 815, x0 + 238, 905, TabOff, White, 36);
                 tabButtons[i].onClick.AddListener(() => SelectTab(t));
+                TextTidy.ExactButton(tabButtons[i], 20);
             }
-            descText = kit.Label(root, "Desc", "", 28, 915, 890, 1020, 26, TextAnchor.MiddleLeft, White);
-            descText.resizeTextForBestFit = true;
-            descText.resizeTextMinSize = 14;
-            descText.resizeTextMaxSize = descText.fontSize;
+            descText = TextTidy.Exact(kit.Label(root, "Desc", "", 28, 915, 890, 1020, 26, TextAnchor.MiddleLeft, White), BodyPt);
+            descText.verticalOverflow = VerticalWrapMode.Truncate;
             // [TASK-KBO-189] 상황 버튼 - [강화 탭으로 이동] / [각성 보조권 +1각] / [핵심 대체권 사용] / [각성 탭으로 이동]
             contextButton = kit.Button(root, "ContextButton", "", 900, 925, 1228, 1012, new Color(0.15f, 0.33f, 0.88f), White, 28);
             contextButton.onClick.AddListener(OnContextButton);
+            TextTidy.ExactButton(contextButton, SmallPt);
 
             // ---- 스탯 변화 미리보기 / 재료 선택
             CompyaUiKit.Box(root, "StatPanel", 20, 1028, 600, 1420, Panel);
-            kit.Label(root, "StatTitle", "세부 스탯 변화 미리보기", 40, 1035, 590, 1085, 28, TextAnchor.MiddleLeft, Gold, true);
-            statText = kit.Label(root, "Stats", "", 40, 1090, 590, 1410, 32, TextAnchor.UpperLeft, White);
+            TextTidy.Exact(kit.Label(root, "StatTitle", "세부 스탯 변화 미리보기", 40, 1035, 590, 1085, 28, TextAnchor.MiddleLeft, Gold, true), SectionPt);
+            statText = TextTidy.Exact(kit.Label(root, "Stats", "", 40, 1090, 590, 1410, 32, TextAnchor.UpperLeft, White), 17);
+            statText.lineSpacing = 1.1f;
 
             CompyaUiKit.Box(root, "MaterialPanel", 612, 1028, 1228, 1420, Panel);
-            materialTitleText = kit.Label(root, "MaterialTitle", "재료 카드 선택", 628, 1035, 1220, 1085, 28, TextAnchor.MiddleLeft, Gold, true);
-            materialContent = ScrollList(root, "MaterialScroll", 624, 1090, 1216, 1350);
-            autoButton = kit.Button(root, "AutoSelect", "자동 선택", 624, 1358, 916, 1412, new Color(0.15f, 0.33f, 0.88f), White, 28);
+            // [TASK-KBO-191] 헤더(1035~1085, 한 줄 고정 · 칸 밖으로 넘치지 않음)와 목록(1092~)을 분리하고, 하단 버튼 줄을 76px로 키워 두 줄 버튼이 들어가게 했다.
+            materialTitleText = TextTidy.Exact(kit.Label(root, "MaterialTitle", "재료 카드 선택", 628, 1035, 1220, 1085, 28, TextAnchor.MiddleLeft, Gold, true), SectionPt);
+            materialTitleText.verticalOverflow = VerticalWrapMode.Truncate;
+            materialContent = ScrollList(root, "MaterialScroll", 624, 1092, 1216, 1330);
+            autoButton = kit.Button(root, "AutoSelect", "자동 선택", 624, 1336, 916, 1412, new Color(0.15f, 0.33f, 0.88f), White, 28);
             autoButton.onClick.AddListener(AutoSelect);
-            clearButton = kit.Button(root, "ClearSelect", "선택 해제", 924, 1358, 1216, 1412, PanelLight, White, 28);
+            TextTidy.ExactButton(autoButton, 17);
+            clearButton = kit.Button(root, "ClearSelect", "선택 해제", 924, 1336, 1216, 1412, PanelLight, White, 28);
             clearButton.onClick.AddListener(() => { selected.Clear(); useCoreTicket = false; Refresh(); });
-            // [TASK-KBO-190] 훈련·특훈 탭 스킬 버튼(자동 선택/선택 해제 자리)
-            skillRerollButton = kit.Button(root, "SkillReroll", "스킬 변경", 624, 1358, 818, 1412, new Color(0.15f, 0.33f, 0.88f), White, 22);
+            TextTidy.ExactButton(clearButton, 17);
+            // [TASK-KBO-190] 훈련·특훈 탭 스킬 버튼(자동 선택/선택 해제 자리) - [TASK-KBO-191] 두 줄 문구 14pt Normal · 줄간격 1.1
+            skillRerollButton = SkillButton("SkillReroll", "스킬 변경", 624, 818, new Color(0.15f, 0.33f, 0.88f));
             skillRerollButton.onClick.AddListener(() => RerollSkills(false));
-            skillPremiumButton = kit.Button(root, "SkillPremium", "고급 스킬 변경", 822, 1358, 1016, 1412, new Color(0.55f, 0.2f, 0.62f), White, 22);
+            skillPremiumButton = SkillButton("SkillPremium", "고급 변경(A~S)", 822, 1016, new Color(0.55f, 0.2f, 0.62f));
             skillPremiumButton.onClick.AddListener(() => RerollSkills(true));
-            skillLevelButton = kit.Button(root, "SkillLevelUp", "스킬 레벨업", 1020, 1358, 1216, 1412, new Color(0.12f, 0.55f, 0.35f), White, 22);
+            skillLevelButton = SkillButton("SkillLevelUp", "스킬 레벨업", 1020, 1216, new Color(0.12f, 0.55f, 0.35f));
             skillLevelButton.onClick.AddListener(() => LevelUpSkill());
 
             // ---- 실행
-            resultText = kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true);
+            resultText = TextTidy.Exact(kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true), 17);
             actionButton = kit.GradientButton(root, "Action", "실행", 20, 1495, 1228, 1600, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), new Color(0.12f, 0.08f, 0.02f), 46);
             actionButton.onClick.AddListener(Execute);
+            TextTidy.ExactButton(actionButton, 21);
 
             // ---- 대상 선수 변경
-            targetTitleText = kit.Label(root, "TargetTitle", "대상 선수 변경", 28, 1615, 860, 1675, 32, TextAnchor.MiddleLeft, White, true);
+            targetTitleText = TextTidy.Exact(kit.Label(root, "TargetTitle", "대상 선수 변경", 28, 1615, 860, 1675, 32, TextAnchor.MiddleLeft, White, true), SectionPt);
             scopeButton = kit.Button(root, "TargetScope", "라인업", 870, 1615, 1228, 1675, PanelLight, White, 28);
             scopeButton.onClick.AddListener(() => { lineupOnly = !lineupOnly; Refresh(); });
+            TextTidy.ExactButton(scopeButton, SmallPt);
             targetContent = ScrollList(root, "TargetScroll", 20, 1682, 1228, 1966);
 
             if (Application.isPlaying) Refresh();
         }
+
+        /// <summary>[TASK-KBO-191] 스킬 버튼 - 두 줄 문구(동작 + 비용)가 버튼(76px) 안에 들어가도록 14pt Normal · 줄간격 1.1 · 위아래 여백.</summary>
+        private Button SkillButton(string name, string text, float x0, float x1, Color color)
+        {
+            var button = kit.Button(root, name, text, x0, 1336, x1, 1412, color, White, 22);
+            var label = TextTidy.ExactButton(button, SkillButtonPt);
+            label.lineSpacing = 1.1f;
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+            var rect = (RectTransform)label.transform;
+            rect.offsetMin = new Vector2(4f, 3f);
+            rect.offsetMax = new Vector2(-4f, -3f);
+            return button;
+        }
+
+        /// <summary>[TASK-KBO-191] 훈련·특훈 탭 헤더 - "보유 스킬 (3슬롯) · 변경권 N / 고급 M / 특훈권 K".</summary>
+        public static string SkillHeaderText(int changeTickets, int premiumTickets, int trainingTickets) =>
+            $"보유 스킬 (3슬롯) · 변경권 {changeTickets} / 고급 {premiumTickets} / 특훈권 {trainingTickets}";
+
+        /// <summary>[TASK-KBO-191] 스킬 버튼 두 줄 문구. 포인트는 만 단위("1.5만P").</summary>
+        public static string SkillRerollLabel() => $"스킬 변경\n(변경권 1 / {Man(PlayerSkillRules.RerollPointCost)}P)";
+
+        public static string SkillPremiumLabel() => "고급 변경(A~S)\n(고급권 1)";
+
+        public static string SkillLevelUpLabel(PlayerSkillSlot slot) =>
+            slot == null || slot.Level >= PlayerSkillRules.MaxLevel
+                ? "스킬 레벨업\n(최대 Lv.6)"
+                : $"스킬 레벨업\n(특훈권 {PlayerSkillRules.LevelUpTicketCost(slot.Level)} / {Man(PlayerSkillRules.LevelUpPointCost(slot.Level))}P)";
+
+        private static string Man(int points) => (points / 10000f).ToString("0.#") + "만";
 
         /// <summary>세로 스크롤 목록(행 = HorizontalLayoutGroup 3칸) - 픽셀 크기를 몰라도 되게 레이아웃 그룹으로만 배치한다.</summary>
         private static RectTransform ScrollList(Transform parent, string name, float x0, float y0, float x1, float y1)
@@ -274,7 +323,7 @@ namespace KBOManager.Controllers
                 nameText.text = "보유 선수가 없습니다";
                 subText.text = ovrText.text = breakdownText.text = ladderNoteText.text = statText.text = "";
                 descText.text = GrowthCenterRules.Describe(tab, null, gold);
-                RebuildRows(materialContent, new List<(string, Color, UnityEngine.Events.UnityAction)>());
+                RebuildRows(materialContent, new List<(string, Color, UnityEngine.Events.UnityAction)>(), 2, MaterialLine1Pt, MaterialLine2Pt);
                 RebuildTargets(gm);
                 actionButton.interactable = false;
                 return;
@@ -328,8 +377,10 @@ namespace KBOManager.Controllers
 
             int maxMaterials = GrowthCenterRules.MaxMaterials(tab);
             int trainingTickets = gm != null ? gm.TrainingTicket : 0;
+            // [TASK-KBO-191] 훈련·특훈 헤더는 짧게 다듬고 15pt로 줄여 한 줄에 고정(첫 스킬 박스와 겹치던 2줄 줄바꿈 제거)
+            TextTidy.Exact(materialTitleText, tab == GrowthTab.Training ? SkillHeaderPt : SectionPt);
             materialTitleText.text = tab == GrowthTab.Training
-                ? $"스킬 변경 · 훈련 (3슬롯) · 변경권 {(gm != null ? gm.SkillChangeTicket : 0)} · 고급 {(gm != null ? gm.PremiumSkillChangeTicket : 0)} · 특훈권 {trainingTickets}"
+                ? SkillHeaderText(gm != null ? gm.SkillChangeTicket : 0, gm != null ? gm.PremiumSkillChangeTicket : 0, trainingTickets)
                 : tab == GrowthTab.Transcend
                     ? $"초월 재료 {TranscendRules.SlotSummary(target, CurrentTranscendSelection())} (후보 {candidates.Count}장)"
                     : $"재료 카드 선택 {selected.Count}/{maxMaterials} (후보 {candidates.Count}장)";
@@ -363,7 +414,8 @@ namespace KBOManager.Controllers
                         i == skillSlotIndex ? RowLineup : RowOff, () => { skillSlotIndex = captured; Refresh(); }));
                 }
             }
-            RebuildRows(materialContent, rows, columns: tab == GrowthTab.Training ? 1 : 2);
+            if (tab == GrowthTab.Training) RebuildRows(materialContent, rows, 1, SkillSlotTitlePt, SkillSlotDescPt, rowHeight: 104f, split: 0.6f);
+            else RebuildRows(materialContent, rows, 2, MaterialLine1Pt, MaterialLine2Pt);
             RefreshSkillButtons(gm);
             autoButton.interactable = tab != GrowthTab.Training && (candidates.Count > 0 || (tab == GrowthTab.Transcend && gm != null && gm.TranscendTicket > 0));
             CompyaUiKit.SetButtonText(autoButton, tab == GrowthTab.Transcend ? "초월 재료 자동 등록" : "자동 선택");
@@ -408,14 +460,16 @@ namespace KBOManager.Controllers
             {
                 var captured = p;
                 bool current = p == target;
-                // [TASK-KBO-188] 1줄 "구자욱'24 (RF)" 24pt Bold · 2줄 "GG · 3각 · OVR 98" - 줄마다 별도 Text(줄바꿈 잘림으로 이름이 사라지던 문제)
+                // [TASK-KBO-188] 1줄 "구자욱'24 (RF)" · 2줄 "GG · 3각 · OVR 98" - 줄마다 별도 Text(줄바꿈 잘림으로 이름이 사라지던 문제)
+                // [TASK-KBO-191] 24pt Bold / 19pt → 17pt / 14pt Normal
                 rows.Add(($"{CardDisplay.TargetLine1(p)}\n{CardDisplay.TargetLine2(p, p.CalculateNeutralOVR())}",
                     current ? RowOn : inLineup.Contains(p) ? RowLineup : RowOff, () => { SetTarget(captured); if (resultText != null) resultText.text = ""; }));
             }
-            RebuildRows(targetContent, rows, columns: 3);
+            RebuildRows(targetContent, rows, 3, TargetLine1Pt, TargetLine2Pt);
         }
 
-        private void RebuildRows(RectTransform content, List<(string text, Color color, UnityEngine.Events.UnityAction onClick)> items, int columns = 2)
+        private void RebuildRows(RectTransform content, List<(string text, Color color, UnityEngine.Events.UnityAction onClick)> items, int columns,
+            int line1Pt, int line2Pt, float rowHeight = 92f, float split = 0.5f)
         {
             if (content == null) return;
             for (int i = content.childCount - 1; i >= 0; i--)
@@ -432,7 +486,7 @@ namespace KBOManager.Controllers
                 h.spacing = 6f;
                 h.childControlWidth = h.childControlHeight = true;
                 h.childForceExpandWidth = h.childForceExpandHeight = true;
-                row.GetComponent<LayoutElement>().preferredHeight = 92f;
+                row.GetComponent<LayoutElement>().preferredHeight = rowHeight;
                 for (int c = 0; c < columns; c++)
                 {
                     int index = start + c;
@@ -446,21 +500,20 @@ namespace KBOManager.Controllers
                     button.targetGraphic = image;
                     button.onClick.AddListener(item.onClick);
                     var textColor = item.color == RowOn ? new Color(0.12f, 0.08f, 0.02f) : White;
-                    int split = item.text.IndexOf('\n');
-                    if (split < 0)
+                    int newline = item.text.IndexOf('\n');
+                    if (newline < 0)
                     {
-                        var label = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Text", 0.04f, 0.04f, 0.96f, 0.96f), item.text, 26, TextAnchor.MiddleCenter, textColor, true);
+                        var label = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Text", 0.04f, 0.04f, 0.96f, 0.96f), item.text, 26, TextAnchor.MiddleCenter, textColor), line1Pt);
                         label.verticalOverflow = VerticalWrapMode.Truncate;
                         continue;
                     }
-                    // [TASK-KBO-188] 두 줄은 각각 한 줄짜리 Text로 - 1줄(선수명) 24pt Bold, 2줄(등급 · 성장 · OVR) 19pt
-                    var line1 = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line1", 0.03f, 0.5f, 0.97f, 0.97f), item.text.Substring(0, split), 24, TextAnchor.MiddleCenter, textColor, true);
-                    var line2 = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line2", 0.03f, 0.04f, 0.97f, 0.5f), item.text.Substring(split + 1), 19, TextAnchor.MiddleCenter, textColor, false);
+                    // [TASK-KBO-188] 두 줄은 각각 Text로 - 1줄(선수명 · 스킬 제목), 2줄(등급 · 성장 · OVR / 스킬 설명). [TASK-KBO-191] 크기는 호출부가 정한다(Normal).
+                    var line1 = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line1", 0.03f, split, 0.97f, 0.97f), item.text.Substring(0, newline), 24, TextAnchor.MiddleCenter, textColor), line1Pt);
+                    var line2 = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line2", 0.03f, 0.04f, 0.97f, split), item.text.Substring(newline + 1), 19, TextAnchor.MiddleCenter, textColor), line2Pt);
                     foreach (var line in new[] { line1, line2 })
                     {
                         line.horizontalOverflow = HorizontalWrapMode.Wrap;
                         line.verticalOverflow = VerticalWrapMode.Truncate;
-                        line.resizeTextMinSize = 10;
                     }
                 }
             }
@@ -620,13 +673,14 @@ namespace KBOManager.Controllers
             foreach (var b in new[] { skillRerollButton, skillPremiumButton, skillLevelButton }) if (b != null) b.gameObject.SetActive(skillTab);
             if (!skillTab || skillRerollButton == null) return;
             int tickets = gm != null ? gm.SkillChangeTicket : 0, premium = gm != null ? gm.PremiumSkillChangeTicket : 0, points = gm != null ? gm.GameGold : 0;
-            CompyaUiKit.SetButtonText(skillRerollButton, tickets > 0 ? $"스킬 변경 (변경권 {tickets})" : $"스킬 변경 ({PlayerSkillRules.RerollPointCost:N0}P)");
+            // [TASK-KBO-191] 두 줄(동작 / 비용) 문구 - 보유 수량은 헤더(보유 스킬 · 변경권 / 고급 / 특훈권)에 표시
+            CompyaUiKit.SetButtonText(skillRerollButton, SkillRerollLabel());
             skillRerollButton.interactable = gm != null && (tickets > 0 || points >= PlayerSkillRules.RerollPointCost);
-            CompyaUiKit.SetButtonText(skillPremiumButton, $"고급 변경 ({premium}) A~S 확정");
+            CompyaUiKit.SetButtonText(skillPremiumButton, SkillPremiumLabel());
             skillPremiumButton.interactable = gm != null && premium > 0;
             var slots = PlayerSkillRules.SlotsOf(target);
             var slot = skillSlotIndex < slots.Count ? slots[skillSlotIndex] : null;
-            CompyaUiKit.SetButtonText(skillLevelButton, slot == null || slot.Level >= PlayerSkillRules.MaxLevel ? "최대 Lv.6" : $"Lv업 ({PlayerSkillRules.LevelUpCostLabel(slot)})");
+            CompyaUiKit.SetButtonText(skillLevelButton, SkillLevelUpLabel(slot));
             skillLevelButton.interactable = gm != null && slot != null && slot.Level < PlayerSkillRules.MaxLevel
                 && (gm.TrainingTicket >= PlayerSkillRules.LevelUpTicketCost(slot.Level) || points >= PlayerSkillRules.LevelUpPointCost(slot.Level));
         }

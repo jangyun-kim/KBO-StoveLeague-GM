@@ -275,7 +275,7 @@ namespace KBOManager.EditorTests
         }
 
         [Test]
-        public void DetailLayout_HidesLegacy_UsesLargeFonts_NoOverlappingText()
+        public void DetailLayout_HidesLegacy_UsesTieredFonts_NoOverlappingText()
         {
             var canvasGo = new GameObject("TestCanvas186", typeof(RectTransform), typeof(Canvas));
             created.Add(canvasGo);
@@ -289,18 +289,20 @@ namespace KBOManager.EditorTests
 
             layout.Fill(Batter("구자욱", BatterPosition.LeftField, 95), 3, null);
             var root = layout.Root;
-            Assert.AreEqual(36, root.Find("Title").GetComponent<Text>().fontSize);
-            Assert.AreEqual(44, root.Find("Ovr").GetComponent<Text>().fontSize);
-            Assert.AreEqual(32, root.Find("StatValue0").GetComponent<Text>().fontSize);
-            Assert.AreEqual(30, layout.ManageButton.GetComponentInChildren<Text>().fontSize);
-            Assert.AreEqual(36, layout.CloseX.GetComponentInChildren<Text>().fontSize);
+            // [TASK-KBO-191] 계층 크기(Normal): 타이틀 26 · 메인 OVR 40 · 능력치 18 · 버튼 20 · 닫기 24
+            Assert.AreEqual(26, root.Find("Title").GetComponent<Text>().fontSize);
+            Assert.AreEqual(40, root.Find("Ovr").GetComponent<Text>().fontSize);
+            Assert.AreEqual(18, root.Find("StatValue0").GetComponent<Text>().fontSize);
+            Assert.AreEqual(20, layout.ManageButton.GetComponentInChildren<Text>().fontSize);
+            Assert.AreEqual(24, layout.CloseX.GetComponentInChildren<Text>().fontSize);
+            Assert.IsTrue(root.GetComponentsInChildren<Text>(true).All(t => t.fontStyle == FontStyle.Normal), "Bold 해제");
             var x = (RectTransform)layout.CloseX.transform;
             Assert.AreEqual(80f, (x.anchorMax.x - x.anchorMin.x) * PlayerDetailLayout186.RefW, 0.5f);
             Assert.AreEqual("파워", root.Find("StatName0").GetComponent<Text>().text);
             StringAssert.StartsWith("OVR ", root.Find("Ovr").GetComponent<Text>().text);
 
             var texts = root.GetComponentsInChildren<Text>(true).Where(t => t.transform.parent == root).ToList();
-            Assert.IsTrue(texts.All(t => t.fontSize >= 22), "상세정보 텍스트 최소 22pt");
+            Assert.IsTrue(texts.All(t => t.fontSize >= 15 && t.fontSize <= 42), "[TASK-KBO-191] 상세정보 텍스트 15~42pt");
             Assert.IsTrue(texts.All(t => t.resizeTextMinSize >= PlayerDetailLayout186.MinFont));
             var boxes = texts.Select(t => (RectTransform)t.transform).ToList();
             for (int i = 0; i < boxes.Count; i++)
@@ -315,8 +317,9 @@ namespace KBOManager.EditorTests
 
         // ------------------------------------------------------------------ C. 가독성 패스
 
+        /// <summary>[TASK-KBO-191] 가독성 패스 = 확대가 아니라 정리 - Bold 해제 · 과대 크기 계층 축소 · 작은 글씨 유지 · 멱등.</summary>
         [Test]
-        public void ReadableFontPass_RaisesSmallText_KeepsLargeText()
+        public void ReadableFontPass_TidiesBoldAndOversizedText_KeepsSmallText()
         {
             var root = new GameObject("FontRoot186", typeof(RectTransform));
             created.Add(root);
@@ -334,13 +337,13 @@ namespace KBOManager.EditorTests
             fitSmall.resizeTextForBestFit = true;
             fitSmall.resizeTextMaxSize = 12;
 
-            Assert.AreEqual(3, ReadableFontPass.Apply(root.transform));
-            Assert.AreEqual(ReadableFontPass.BodySize, body.fontSize);
-            Assert.AreEqual(ReadableFontPass.EmphasisSize, boldStat.fontSize);
-            Assert.AreEqual(30, big.fontSize);
-            Assert.AreEqual(ReadableFontPass.BodySize, fitSmall.resizeTextMaxSize);
-            Assert.IsTrue(body.resizeTextForBestFit);
-            Assert.AreEqual(14, body.resizeTextMinSize, "원래보다 작게 줄어들지 않음(최소 18 또는 원래 크기)");
+            Assert.AreEqual(4, ReadableFontPass.Apply(root.transform));
+            Assert.AreEqual(14, body.fontSize, "작은 글씨는 그대로");
+            Assert.AreEqual(16, boldStat.fontSize);
+            Assert.AreEqual(FontStyle.Normal, boldStat.fontStyle, "Bold 해제");
+            Assert.AreEqual(TextTidy.Tier(30, false), big.fontSize);
+            Assert.Less(big.fontSize, 30, "과대 글씨 축소");
+            Assert.AreEqual(12, fitSmall.resizeTextMaxSize);
             Assert.AreEqual(0, ReadableFontPass.Apply(root.transform), "두 번째 실행은 변화 없음");
         }
 
@@ -375,7 +378,7 @@ namespace KBOManager.EditorTests
             Assert.Less(CenterX("AwayCard"), 0.5f);
             var ar0 = (RectTransform)result.Find("AR0");
             Assert.GreaterOrEqual((ar0.anchorMax.x - ar0.anchorMin.x) * CompyaUiKit.RefWidth, 60f, "R/H/E/B 칸 폭 확장");
-            Assert.AreEqual(18, ar0.GetComponent<Text>().resizeTextMinSize);
+            Assert.AreEqual(12, ar0.GetComponent<Text>().resizeTextMinSize, "[TASK-KBO-191] 자동 크기 최소 12");
             var awayRecord = (RectTransform)result.Find("AwayRecord");
             var awayName = (RectTransform)result.Find("AwayPitcherName");
             var homeRecord = (RectTransform)result.Find("HomeRecord");

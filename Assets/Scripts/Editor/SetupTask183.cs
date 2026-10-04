@@ -104,7 +104,7 @@ namespace KBOManager.EditorTools
             summary.fontSize = reinforce.fontSize;
             summary.alignment = reinforce.alignment;
             summary.color = Gold;
-            summary.fontStyle = FontStyle.Bold;
+            summary.fontStyle = FontStyle.Normal;
             summary.resizeTextForBestFit = true;
             summary.resizeTextMinSize = 12;
             summary.resizeTextMaxSize = Mathf.Max(14, reinforce.fontSize);

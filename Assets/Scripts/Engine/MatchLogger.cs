@@ -93,7 +93,7 @@ namespace KBOManager.Engine
         private static string Colorize(string text, string hexColor, bool bold, bool italic)
         {
             string wrapped = text;
-            if (bold) wrapped = $"<b>{wrapped}</b>";
+            // [TASK-KBO-191] <b> 가짜 볼드는 KBO Dia Gothic 획을 뭉개 bold 인자는 무시한다(강조는 색상으로만).
             if (italic) wrapped = $"<i>{wrapped}</i>";
             return $"<color={hexColor}>{wrapped}</color>";
         }

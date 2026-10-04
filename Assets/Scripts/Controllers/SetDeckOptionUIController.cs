@@ -181,9 +181,9 @@ namespace KBOManager.Controllers
             if (text != null)
             {
                 text.supportRichText = true;
-                text.text = selected ? $"<b>✔ [선택됨]</b>  {label}" : label;
+                text.text = selected ? $"✔ [선택됨]  {label}" : label;
                 text.color = selected ? selectedTextColor : unselectedTextColor;
-                text.fontStyle = selected ? FontStyle.Bold : FontStyle.Normal;
+                text.fontStyle = FontStyle.Normal;
             }
             if (button.targetGraphic != null) button.targetGraphic.color = selected ? selectedColor : unselectedColor;
             // 버튼 틴트(ColorBlock)가 선택 대비를 흐리지 않게 normal을 흰색으로 고정한다.

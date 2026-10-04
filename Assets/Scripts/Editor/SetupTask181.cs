@@ -265,10 +265,12 @@ namespace KBOManager.EditorTools
             var headerBg = Box(root, "HeaderBg", 0, 0, W, 176, Blue);
             Box(root, "LogoPlate", 22, 18, 162, 158, new Color(1f, 1f, 1f, 0.14f));
             var teamLogo = Img(root, "TeamLogo", 30, 26, 154, 150);
-            var teamName = Label(root, "TeamName", "", 182, 16, 780, 78, 46, TextAnchor.MiddleLeft, White, true);
-            var manager = Label(root, "ManagerName", "", 182, 78, 780, 120, 30, TextAnchor.MiddleLeft, new Color(0.9f, 0.93f, 1f));
-            var headerStats = Label(root, "HeaderStats", "", 182, 120, 790, 164, 28, TextAnchor.MiddleLeft, White);
+            // [TASK-KBO-191] 로비 글씨 계층(Normal) - 구단명 26 · 본문 16 · 보조 13~15 · 대형 숫자 32~40
+            var teamName = Pt(Label(root, "TeamName", "", 182, 16, 780, 78, 46, TextAnchor.MiddleLeft, White, true), 26);
+            var manager = Pt(Label(root, "ManagerName", "", 182, 78, 780, 120, 30, TextAnchor.MiddleLeft, new Color(0.9f, 0.93f, 1f)), 16);
+            var headerStats = Pt(Label(root, "HeaderStats", "", 182, 120, 790, 164, 28, TextAnchor.MiddleLeft, White), 16);
             var change = Btn(root, "ChangeManagerButton", "구단/단장 변경", 800, 48, 1058, 128, new Color(0f, 0f, 0f, 0.35f), White, 28);
+            TextTidy.ExactButton(change, 15, TextTidy.AutoMin, KBOFonts.Medium);
 
             // ---- 2단 재화
             var currencyNames = new[] { "포인트", "싸인볼", "트로피", "픽업권 / 티켓" };
@@ -277,24 +279,26 @@ namespace KBOManager.EditorTools
             {
                 float x0 = 22 + i * 261, x1 = x0 + 249;
                 Box(root, $"Currency{i}", x0, 190, x1, 266, new Color(1f, 1f, 1f, 0.07f));
-                Label(root, $"Currency{i}_Label", currencyNames[i], x0 + 14, 194, x1 - 10, 224, 22, TextAnchor.MiddleLeft, Muted);
-                currencyTexts[i] = Label(root, $"Currency{i}_Value", "0", x0 + 14, 222, x1 - 14, 262, 32, TextAnchor.MiddleRight, White, true);
+                // [TASK-KBO-191] 좌상단 라벨 13pt(#CBD5E1) / 우하단 숫자 18pt(#FFFFFF) - 상하 칸을 분리해 겹치지 않는다.
+                Pt(Label(root, $"Currency{i}_Label", currencyNames[i], x0 + 14, 194, x1 - 10, 222, 22, TextAnchor.UpperLeft, CurrencyLabel), CurrencyLabelPt);
+                currencyTexts[i] = Pt(Label(root, $"Currency{i}_Value", "0", x0 + 14, 230, x1 - 14, 262, 32, TextAnchor.LowerRight, Color.white, true), CurrencyValuePt);
             }
 
             // ---- 3단 대시보드: NEXT MATCH
             Box(root, "MatchCard", 22, 282, 1058, 664, Card);
             Box(root, "MatchAccent", 22, 282, 32, 664, Accent);
-            Label(root, "MatchTitle", "<color=#E5303C>NEXT</color> MATCH", 50, 292, 620, 350, 44, TextAnchor.MiddleLeft, White, true);
-            var progress = Label(root, "SeasonProgress", "", 50, 350, 620, 392, 24, TextAnchor.MiddleLeft, Muted);
+            Pt(Label(root, "MatchTitle", "<color=#E5303C>NEXT</color> MATCH", 50, 292, 620, 350, 44, TextAnchor.MiddleLeft, White, true), 26);
+            var progress = Pt(Label(root, "SeasonProgress", "", 50, 352, 620, 392, 24, TextAnchor.MiddleLeft, Muted), 15);
             var myLogo = Img(root, "MyLogo", 70, 405, 220, 555);
-            Label(root, "Versus", "VS", 220, 440, 330, 520, 50, TextAnchor.MiddleCenter, Gold, true);
+            Pt(Label(root, "Versus", "VS", 220, 440, 330, 520, 50, TextAnchor.MiddleCenter, Gold, true), 32);
             var oppLogo = Img(root, "OpponentLogo", 330, 405, 480, 555);
-            var myName = Label(root, "MyName", "", 40, 560, 250, 604, 28, TextAnchor.MiddleCenter, White, true);
-            var oppName = Label(root, "OpponentName", "", 300, 560, 510, 604, 28, TextAnchor.MiddleCenter, White, true);
-            var venue = Label(root, "Venue", "", 50, 610, 630, 652, 22, TextAnchor.MiddleLeft, Muted);
+            var myName = Pt(Label(root, "MyName", "", 40, 560, 250, 604, 28, TextAnchor.MiddleCenter, White, true), 17);
+            var oppName = Pt(Label(root, "OpponentName", "", 300, 560, 510, 604, 28, TextAnchor.MiddleCenter, White, true), 17);
+            var venue = Pt(Label(root, "Venue", "", 50, 606, 640, 660, 22, TextAnchor.MiddleLeft, Muted), VenuePt); // 경기장 / 예고 선발 2줄
+            venue.lineSpacing = 1.05f;
             var play = Btn(root, "PlayBallButton", "", 650, 318, 1036, 640, PlayOrange, White, 10);
-            Label(root, "PlayBallTitle", "플레이 볼", 670, 360, 1016, 470, 66, TextAnchor.MiddleCenter, White, true);
-            Label(root, "PlayBallSub", "PLAY BALL · 경기 시작", 670, 470, 1016, 520, 26, TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.85f));
+            Pt(Label(root, "PlayBallTitle", "플레이 볼", 670, 360, 1016, 470, 66, TextAnchor.MiddleCenter, White, true), 34);
+            Pt(Label(root, "PlayBallSub", "PLAY BALL · 경기 시작", 670, 470, 1016, 520, 26, TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.85f)), 15);
             var ball = Img(root, "PlayBallIcon", 800, 530, 886, 616);
             ball.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
             ball.color = White;
@@ -302,29 +306,34 @@ namespace KBOManager.EditorTools
 
             // ---- 3단 대시보드: 대표 스타 카드
             Box(root, "StarCard", 22, 680, 532, 1300, Card);
-            Label(root, "StarTitle", "내 구단 대표 스타", 42, 690, 512, 740, 30, TextAnchor.MiddleLeft, Gold, true);
+            Pt(Label(root, "StarTitle", "내 구단 대표 스타", 42, 690, 512, 740, 30, TextAnchor.MiddleLeft, Gold, true), 19);
             var starHolder = Place(root, "StarCardHolder", 36, 750, 266, 1080);
-            var starName = Label(root, "StarName", "", 278, 756, 522, 816, 34, TextAnchor.MiddleLeft, White, true);
-            var starDetail = Label(root, "StarDetail", "", 278, 820, 522, 980, 26, TextAnchor.UpperLeft, new Color(0.85f, 0.89f, 0.97f));
+            // [TASK-KBO-191] 우측 정보 = 칸 분리(이름 / 구단 · 포지션 · 등급 / OVR 라벨 / 큰 숫자 / SD) - 한 Text에 <size=150%>를 섞어 겹치던 문제
+            var starName = Pt(Label(root, "StarName", "", 278, 756, 522, 806, 34, TextAnchor.MiddleLeft, White, true), 18);
+            var starDetail = Pt(Label(root, "StarDetail", "", 278, 812, 522, 846, 26, TextAnchor.MiddleLeft, new Color(0.85f, 0.89f, 0.97f)), 15);
+            Pt(Label(root, "StarOvrLabel", "OVR", 278, 856, 522, 880, 22, TextAnchor.MiddleLeft, Muted), 14);
+            var starOvr = Pt(Label(root, "StarOvrValue", "", 278, 882, 522, 940, 60, TextAnchor.MiddleLeft, Gold, true), 40);
+            var starSd = Pt(Label(root, "StarSd", "", 278, 948, 522, 980, 26, TextAnchor.MiddleLeft, new Color(0.37f, 0.89f, 1f)), 15);
             Box(root, "StarStatsBg", 36, 1096, 518, 1286, new Color(1f, 1f, 1f, 0.06f));
-            var starStats = Label(root, "StarStats", "", 50, 1100, 506, 1282, 30, TextAnchor.MiddleCenter, White);
+            var starStats = Pt(Label(root, "StarStats", "", 50, 1100, 506, 1282, 30, TextAnchor.MiddleCenter, White), 17);
+            starStats.lineSpacing = 1.2f;
 
             // ---- 3단 대시보드: KBO 10구단 순위표
             Box(root, "StandingsCard", 548, 680, 1058, 1300, Card);
-            Label(root, "StandingsTitle", "KBO 순위", 566, 690, 1040, 740, 30, TextAnchor.MiddleLeft, Gold, true);
+            Pt(Label(root, "StandingsTitle", "KBO 순위", 566, 690, 1040, 740, 30, TextAnchor.MiddleLeft, Gold, true), 19);
             float[] cols = { 556, 616, 746, 930, 1050 };
             string[] heads = { "순위", "구단", "승-무-패", "승률" };
-            for (int c = 0; c < 4; c++) Label(root, $"StandingsHead{c}", heads[c], cols[c], 742, cols[c + 1], 784, 22, TextAnchor.MiddleCenter, Muted, true);
+            for (int c = 0; c < 4; c++) Pt(Label(root, $"StandingsHead{c}", heads[c], cols[c], 742, cols[c + 1], 784, 22, TextAnchor.MiddleCenter, Muted, true), 14);
             var rowBgs = new Image[10];
             var rank = new Text[10]; var teamCol = new Text[10]; var record = new Text[10]; var rate = new Text[10];
             for (int r = 0; r < 10; r++)
             {
                 float y0 = 788 + r * 50.5f, y1 = y0 + 48;
                 rowBgs[r] = Box(root, $"StandingRow{r + 1}", 556, y0, 1050, y1, new Color(1f, 1f, 1f, 0.05f));
-                rank[r] = Label(root, $"StandingRank{r + 1}", "", cols[0], y0, cols[1], y1, 26, TextAnchor.MiddleCenter, White, true);
-                teamCol[r] = Label(root, $"StandingTeam{r + 1}", "", cols[1], y0, cols[2], y1, 26, TextAnchor.MiddleCenter, White);
-                record[r] = Label(root, $"StandingRecord{r + 1}", "", cols[2], y0, cols[3], y1, 24, TextAnchor.MiddleCenter, White);
-                rate[r] = Label(root, $"StandingRate{r + 1}", "", cols[3], y0, cols[4], y1, 24, TextAnchor.MiddleCenter, White);
+                rank[r] = Pt(Label(root, $"StandingRank{r + 1}", "", cols[0], y0, cols[1], y1, 26, TextAnchor.MiddleCenter, White, true), 16);
+                teamCol[r] = Pt(Label(root, $"StandingTeam{r + 1}", "", cols[1], y0, cols[2], y1, 26, TextAnchor.MiddleCenter, White), 16);
+                record[r] = Pt(Label(root, $"StandingRecord{r + 1}", "", cols[2], y0, cols[3], y1, 24, TextAnchor.MiddleCenter, White), 15);
+                rate[r] = Pt(Label(root, $"StandingRate{r + 1}", "", cols[3], y0, cols[4], y1, 24, TextAnchor.MiddleCenter, White), 15);
             }
 
             // ---- 4단 메뉴 타일
@@ -341,8 +350,8 @@ namespace KBOManager.EditorTools
                 float y0 = 1318 + (i / 2) * 136, y1 = y0 + 124;
                 var tile = Btn(root, $"MenuTile{i}", "", x0, y0, x1, y1, tileDefs[i].color, White, 10);
                 Box(root, $"MenuTile{i}_Accent", x0 + 16, y0 + 30, x0 + 24, y1 - 30, Gold);
-                Label(root, $"MenuTile{i}_Title", tileDefs[i].title, x0 + 40, y0 + 10, x1 - 16, y0 + 74, 38, TextAnchor.MiddleLeft, White, true);
-                Label(root, $"MenuTile{i}_Sub", tileDefs[i].sub, x0 + 42, y0 + 74, x1 - 16, y1 - 10, 24, TextAnchor.MiddleLeft, new Color(0.85f, 0.88f, 0.95f));
+                Pt(Label(root, $"MenuTile{i}_Title", tileDefs[i].title, x0 + 40, y0 + 10, x1 - 16, y0 + 74, 38, TextAnchor.MiddleLeft, White, true), 21);
+                Pt(Label(root, $"MenuTile{i}_Sub", tileDefs[i].sub, x0 + 42, y0 + 74, x1 - 16, y1 - 10, 24, TextAnchor.MiddleLeft, new Color(0.85f, 0.88f, 0.95f)), 14);
                 Relay(tile, tileDefs[i].screen);
             }
 
@@ -357,6 +366,8 @@ namespace KBOManager.EditorTools
                     Undo.RecordObject(synergyRect, "Move Synergy");
                     SetBox(synergyRect, 36, 1606, 1044, 1768);
                     synergyRect.SetAsLastSibling();
+                    // [TASK-KBO-191] 하단 요약(세트덱 / 치어리더 / 팬심) 안내 글씨 14pt Normal
+                    foreach (var t in synergyRect.GetComponentsInChildren<Text>(true)) Pt(t, LogPt);
                 }
             }
 
@@ -374,8 +385,8 @@ namespace KBOManager.EditorTools
                 bool home = navDefs[i].field == null;
                 var cell = Btn(nav.transform, $"Nav{i}", "", i * 216f, 1790, (i + 1) * 216f, H, home ? new Color(0.07f, 0.16f, 0.4f) : new Color(0f, 0f, 0f, 0.001f), White, 10, true);
                 var color = home ? White : new Color(0.75f, 0.84f, 0.98f);
-                Label(cell.transform, "Icon", navDefs[i].icon, i * 216f, 1798, (i + 1) * 216f, 1860, 42, TextAnchor.MiddleCenter, color, true, true);
-                Label(cell.transform, "Label", navDefs[i].label, i * 216f, 1858, (i + 1) * 216f, 1908, 30, TextAnchor.MiddleCenter, color, home, true);
+                Pt(Label(cell.transform, "Icon", navDefs[i].icon, i * 216f, 1798, (i + 1) * 216f, 1860, 42, TextAnchor.MiddleCenter, color, true, true), 26);
+                Pt(Label(cell.transform, "Label", navDefs[i].label, i * 216f, 1858, (i + 1) * 216f, 1908, 30, TextAnchor.MiddleCenter, color, home, true), 15);
                 if (home)
                 {
                     var bar = Box(cell.transform, "ActiveBar", i * 216f + 54, 1910, (i + 1) * 216f - 54, H, White);
@@ -412,6 +423,8 @@ namespace KBOManager.EditorTools
             hso.FindProperty("starCardHolder").objectReferenceValue = starHolder;
             hso.FindProperty("starNameText").objectReferenceValue = starName;
             hso.FindProperty("starDetailText").objectReferenceValue = starDetail;
+            hso.FindProperty("starOvrText").objectReferenceValue = starOvr;
+            hso.FindProperty("starSdText").objectReferenceValue = starSd;
             hso.FindProperty("starStatsText").objectReferenceValue = starStats;
             SetArray(hso.FindProperty("standingRowBackgrounds"), rowBgs);
             SetArray(hso.FindProperty("standingRankTexts"), rank);
@@ -692,6 +705,13 @@ namespace KBOManager.EditorTools
             image.preserveAspect = true;
             return image;
         }
+
+        // [TASK-KBO-191] 로비 재화 바 · NEXT MATCH · 하단 요약 글씨 크기
+        public const int CurrencyLabelPt = 13, CurrencyValuePt = 18, VenuePt = 14, LogPt = 14;
+        internal static readonly Color CurrencyLabel = new Color(0xCB / 255f, 0xD5 / 255f, 0xE1 / 255f); // #CBD5E1
+
+        /// <summary>[TASK-KBO-191] 크기 고정(Normal · 18pt 이하는 Medium 서체 · 자간) - 정리 패스가 다시 줄이지 않는다.</summary>
+        internal static Text Pt(Text label, int size) => TextTidy.Exact(label, size, TextTidy.AutoMin, KBOFonts.Medium);
 
         internal static Text Label(Transform parent, string name, string text, float x0, float y0, float x1, float y1,
             int size, TextAnchor anchor, Color color, bool bold = false, bool absoluteInNav = false)

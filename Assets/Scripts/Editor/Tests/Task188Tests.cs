@@ -279,12 +279,13 @@ namespace KBOManager.EditorTests
             var rebuild = typeof(GrowthCenterView).GetMethod("RebuildRows", BindingFlags.Instance | BindingFlags.NonPublic);
             var p = Card(Grade.GOLDEN_GLOVE, "구자욱", 2024, awaken: 3);
             var items = new List<(string, Color, UnityEngine.Events.UnityAction)> { ($"{CardDisplay.TargetLine1(p)}\n{CardDisplay.TargetLine2(p, 98)}", Color.gray, () => { }) };
-            rebuild.Invoke(view, new object[] { content, items, 3 });
+            rebuild.Invoke(view, new object[] { content, items, 3, GrowthCenterView.TargetLine1Pt, GrowthCenterView.TargetLine2Pt, 92f, 0.5f });
             var texts = content.GetComponentsInChildren<Text>(true);
             var line1 = texts.First(t => t.name == "Line1");
             var line2 = texts.First(t => t.name == "Line2");
             Assert.AreEqual("구자욱'24 (RF)", line1.text, "1번째 줄 = 선수명'연도 (포지션)");
-            Assert.AreEqual(FontStyle.Bold, line1.fontStyle);
+            Assert.AreEqual(FontStyle.Normal, line1.fontStyle, "[TASK-KBO-191] Bold 해제");
+            Assert.AreEqual((17, 14), (line1.fontSize, line2.fontSize), "[TASK-KBO-191] 17pt / 14pt");
             Assert.AreEqual("GG · 3각 · OVR 98", line2.text);
             Assert.IsFalse(line1.text.Contains("\n"), "한 줄씩 별도 Text - 줄바꿈 잘림으로 이름이 사라지지 않는다");
             Assert.GreaterOrEqual(line1.rectTransform.anchorMin.y, line2.rectTransform.anchorMax.y, "1줄이 2줄 위");

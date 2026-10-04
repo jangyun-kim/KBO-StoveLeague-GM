@@ -246,7 +246,7 @@ namespace KBOManager.Controllers
             if (label != null)
             {
                 label.color = active ? activeTabTextColor : inactiveTabTextColor;
-                label.fontStyle = active ? FontStyle.Bold : FontStyle.Normal;
+                label.fontStyle = FontStyle.Normal;
             }
         }
 

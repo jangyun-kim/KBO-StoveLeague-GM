@@ -318,7 +318,7 @@ namespace KBOManager.EditorTools
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.black;
             text.fontSize = 13;
-            text.fontStyle = FontStyle.Bold;
+            text.fontStyle = FontStyle.Normal;
             text.font = KBOFonts.Default;
             text.raycastTarget = false;
             return text;

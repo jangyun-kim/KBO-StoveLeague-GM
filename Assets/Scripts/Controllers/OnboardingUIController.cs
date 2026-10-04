@@ -189,7 +189,7 @@ namespace KBOManager.Controllers
                 if (entry?.Background == null) continue;
                 bool selected = entry.Team == selectedTeam;
                 entry.Background.color = selected ? CompyaUiKit.TeamColor(entry.Team) : tileIdleColor;
-                if (entry.TeamNameText != null) entry.TeamNameText.fontStyle = selected ? FontStyle.Bold : FontStyle.Normal;
+                if (entry.TeamNameText != null) entry.TeamNameText.fontStyle = FontStyle.Normal;
             }
 
             bool ready = selectedTeam != Team.None && Nickname != null;
@@ -230,7 +230,7 @@ namespace KBOManager.Controllers
                 {
                     slot.CaptionText.text = player?.Template == null
                         ? "카드 데이터 없음"
-                        : $"<b>{OnboardingRules.CardTitle(player.Template)}</b>\n{CompyaUiKit.ShortName(player.Template.Team)} · " +
+                        : $"{OnboardingRules.CardTitle(player.Template)}\n{CompyaUiKit.ShortName(player.Template.Team)} · " +
                           $"{CompyaMatchView.PositionLabel(player)} · OVR {player.CalculateOVR(false)}";
                 }
                 if (slot.Button != null) slot.Button.interactable = player != null;

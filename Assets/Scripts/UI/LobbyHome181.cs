@@ -45,6 +45,10 @@ namespace KBOManager.UI
         [SerializeField] private Text starNameText;
         [SerializeField] private Text starDetailText;
         [SerializeField] private Text starStatsText;
+        [Tooltip("[TASK-KBO-191] 큰 OVR 숫자(작은 'OVR' 라벨은 별도 고정 텍스트)")]
+        [SerializeField] private Text starOvrText;
+        [Tooltip("[TASK-KBO-191] 세트덱 스코어(SD)")]
+        [SerializeField] private Text starSdText;
 
         [Header("3단 순위표 (10행 x 순위/구단/승패/승률)")]
         [SerializeField] private Image[] standingRowBackgrounds = new Image[10];
@@ -84,7 +88,7 @@ namespace KBOManager.UI
             if (gm != null && headerStatsText != null)
             {
                 var setDeck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), team != Team.None ? team.ToString() : null, gm.SetDeckSelection);
-                headerStatsText.text = $"팀 OVR <b>{gm.CalculateTeamOVR()}</b>   ·   세트덱 <b><color=#5FE3FF>{setDeck.Score}P</color></b> / {SetDeckBuffTable.FinalGoalScore}P";
+                headerStatsText.text = $"팀 OVR {gm.CalculateTeamOVR()}   ·   세트덱 <color=#5FE3FF>{setDeck.Score}P</color> / {SetDeckBuffTable.FinalGoalScore}P";
             }
             if (changeManagerButton != null && changeManagerButton.targetGraphic != null)
                 changeManagerButton.targetGraphic.color = CompyaUiKit.Darken(theme, 0.6f);
@@ -141,10 +145,12 @@ namespace KBOManager.UI
             if (starNameText != null) starNameText.text = hero != null ? CompyaMatchView.DisplayName(hero) : "대표 선수 없음";
             if (starDetailText != null)
             {
-                starDetailText.text = hero != null
-                    ? $"{CompyaUiKit.ShortName(hero.Template.Team)} · {CompyaMatchView.PositionLabel(hero)} · {hero.Template.Grade}\nOVR <size=150%><b>{hero.CalculateOVR(false)}</b></size>  SD {hero.SetDeckScore}"
-                    : "[라인업]에서 선수단을 편성하십시오";
+                // [TASK-KBO-191] 한 줄 = 구단 · 포지션 · 등급(한글). OVR 숫자 · SD는 각자 칸(겹침 제거)
+                starDetailText.text = hero != null ? StarDetailLine(hero) : "[라인업]에서 선수단을 편성하십시오";
+                if (starOvrText == null && hero != null) starDetailText.text += $"  ·  OVR {hero.CalculateOVR(false)}  ·  SD {hero.SetDeckScore}"; // 칸 분리 전 씬 호환
             }
+            if (starOvrText != null) starOvrText.text = hero != null ? hero.CalculateOVR(false).ToString() : "-";
+            if (starSdText != null) starSdText.text = hero != null ? $"SD {hero.SetDeckScore}" : "";
             if (starStatsText != null)
             {
                 if (hero == null) starStatsText.text = "";
@@ -183,12 +189,16 @@ namespace KBOManager.UI
             }
         }
 
+        /// <summary>[TASK-KBO-191] 대표 스타 정보 줄 - "삼성 · RF · 골든글러브"(등급 enum GOLDEN_GLOVE 대신 한글 표기).</summary>
+        public static string StarDetailLine(Player hero) =>
+            $"{CompyaUiKit.ShortName(hero.Template.Team)} · {CompyaMatchView.PositionLabel(hero)} · {CardGrowthRules.DisplayName(hero.Template.Grade)}";
+
         private static void SetCell(Text[] column, int index, string value, Color color)
         {
             if (column == null || index >= column.Length || column[index] == null) return;
             column[index].text = value;
             column[index].color = color;
-            column[index].fontStyle = color.b < 0.5f ? FontStyle.Bold : FontStyle.Normal;
+            column[index].fontStyle = FontStyle.Normal;
         }
     }
 }

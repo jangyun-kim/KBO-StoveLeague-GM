@@ -265,7 +265,9 @@ namespace KBOManager.Engine
         // 배치 시뮬레이션(수학적 추적)에서 선발/불펜 모두 동일하게 4를 쓰면 불펜이 단발 등판 + 평일
         // 회복(+15)만으로 거의 매번 100%에 가깝게 리셋돼 30% 페널티 구간이 사실상 발동하지 않는다는
         // 결론이 나왔다 - 불펜만 6으로 올려 "짧고 굵게 쓰면 확실히 지친다"는 체감을 만든다.
-        private const int StaminaCostPerBatterFacedStarter = 4;
+        // [TASK-KBO-191] 선발 4 → 3: 4면 체력 35% 퀵후크가 16~17타자(약 4이닝)에서 걸려 선발이 매 경기 4회 전후에 내려가고, 그 뒤를 1명뿐인
+        // 롱릴리프가 매일 떠안았다(시즌 723탈삼진 독식). 3이면 22타자 전후(약 5~6이닝)에서 내려가 KBO 선발 평균(5~7이닝)에 맞는다.
+        private const int StaminaCostPerBatterFacedStarter = 3;
         private const int StaminaCostPerBatterFacedBullpen = 6;
 
         // 퀵후크(조기 강판) 기준: 이 둘 중 하나라도 해당하면, 이닝 수와 무관하게 선발을 다음 하프이닝부터
@@ -274,7 +276,14 @@ namespace KBOManager.Engine
         // 흉내낸다 - 그래서 AI 자동 로테이션에서는 -15% 페널티 구간에 거의 진입하지 않고, 대신 유저가
         // 직접 개입해 무리하게 더 끌고 가는 경우에만 그 페널티를 실제로 감수하게 된다.
         private const float QuickHookStaminaPercent = 0.35f;
-        private const int QuickHookRunsAllowedThreshold = 4;
+        private const int QuickHookRunsAllowedThreshold = 5; // [TASK-KBO-191] 4 → 5(4실점 즉시 강판이 잦아 롱릴리프 의존이 커졌다)
+        // [TASK-KBO-191] 선발 강판 체력 기준(30%) - 타자당 3 소모와 함께 23타자 전후(약 5~6이닝)에서 내려간다. 구원은 QuickHookStaminaPercent(35%).
+        private const float StarterHookStaminaPercent = 0.3f;
+
+        // [TASK-KBO-191] 선발 최대 7이닝(8회부터는 불펜), 구원 1회 등판당 최대 하프이닝(롱릴리프 3 · 추격조 2 · 승리조/마무리 1).
+        public const int StarterMaxInnings = 7;
+        public const int LongReliefMaxInnings = 3;
+        public const int MopUpMaxInnings = 2;
 
         // SelectPitcherForInning()이 투수를 고를 때 "체력이 이 비율 이상인 투수"를 최우선으로 취급한다.
         private const float MinStaminaPercentToPitch = 0.6f;
@@ -378,6 +387,11 @@ namespace KBOManager.Engine
             public List<Player> MopUpRelief = new List<Player>();
             public List<Player> Closers = new List<Player>();
             public HashSet<Player> UsedPitchers = new HashSet<Player>();
+            // [TASK-KBO-191] 불펜 운용 - 직전 투수 · 투수별 이번 경기 등판 하프이닝 수 · 이미 내려간 투수(자동 로테이션 재등판 금지)
+            public Player StartedToday;
+            public Player LastPitcher;
+            public readonly Dictionary<Player, int> InningsThisGame = new Dictionary<Player, int>();
+            public readonly HashSet<Player> Finished = new HashSet<Player>();
 
             public int RunsScored;
         }
@@ -544,6 +558,9 @@ namespace KBOManager.Engine
 
             currentHalfInningPitcher = newPitcher;
             pitchingTeam.UsedPitchers.Add(newPitcher); // 이후 자동 로테이션에서 재선택되지 않도록 등록
+            if (outgoingPitcher != null) pitchingTeam.Finished.Add(outgoingPitcher);
+            pitchingTeam.LastPitcher = newPitcher; // [TASK-KBO-191] 다음 이닝 이어 던지기 판정 대상
+            pitchingTeam.InningsThisGame[newPitcher] = Mathf.Max(1, pitchingTeam.InningsThisGame.TryGetValue(newPitcher, out int n) ? n : 0);
 
             return true;
         }
@@ -1478,116 +1495,141 @@ namespace KBOManager.Engine
         }
 
         /// <summary>
-        /// candidates 중에서 "아직 이 경기에 등판하지 않았고 체력도 충분한" 투수를 최우선으로,
-        /// 그다음 "아직 등판하지 않은" 투수를, 그래도 없으면 아무나(순서 유지)를 반환한다.
-        /// 이 3단계 우선순위 하나로 SelectPitcherForInning() 전체(선호 롤 후보/전체 폴백 후보)를 통일해서 처리한다.
+        /// 선발이 StarterHookStaminaPercent(30%) 미만이거나 QuickHookRunsAllowedThreshold(5점) 이상을 이미 내줬거나,
+        /// [TASK-KBO-191] StarterMaxInnings(7이닝)를 다 던졌다면(8회부터) 내린다(조기 강판/퀵후크 + 투구 이닝 상한).
         /// </summary>
-        private static Player PickByStaminaThenUsage(List<Player> candidates, HashSet<Player> usedPitchers)
-        {
-            return candidates.FirstOrDefault(p => !usedPitchers.Contains(p) && HasSufficientStamina(p))
-                ?? candidates.FirstOrDefault(p => !usedPitchers.Contains(p))
-                ?? candidates.FirstOrDefault();
-        }
-
-        /// <summary>
-        /// 선발이 QuickHookStaminaPercent(35%) 미만이거나 QuickHookRunsAllowedThreshold(4점) 이상을
-        /// 이미 내줬다면 더 이상 믿고 맡기지 않는다(조기 강판/퀵후크) - 이닝 수와 무관하다.
-        /// </summary>
-        private bool ShouldPullStarter(Player starter)
+        private bool ShouldPullStarter(Player starter, TeamGameState team, int inning)
         {
             if (starter == null || starter.MaxStamina <= 0) return true;
-            if ((float)starter.CurrentStamina / starter.MaxStamina < QuickHookStaminaPercent) return true;
+            if ((float)starter.CurrentStamina / starter.MaxStamina < StarterHookStaminaPercent) return true;
+            if (inning > StarterMaxInnings) return true;
+            if (team != null && team.InningsThisGame.TryGetValue(starter, out int innings) && innings >= StarterMaxInnings) return true;
 
             runsAllowedByPitcher.TryGetValue(starter, out int runsAllowed);
             return runsAllowed >= QuickHookRunsAllowedThreshold;
         }
 
+        /// <summary>[TASK-KBO-191] 이 팀 투수진에서의 보직(선발 칸 → 선발, 불펜 칸 → 그 그룹). 어디에도 없으면 카드 보직.</summary>
+        private static PitcherRole StaffRole(TeamGameState team, Player p)
+        {
+            if (team.Starters.Contains(p) || p == team.DesignatedStarter) return PitcherRole.StartingPitcher;
+            if (team.LongRelief.Contains(p)) return PitcherRole.LongReliever;
+            if (team.WinningRelief.Contains(p)) return PitcherRole.WinningReliever;
+            if (team.MopUpRelief.Contains(p)) return PitcherRole.MopUpReliever;
+            if (team.Closers.Contains(p)) return PitcherRole.Closer;
+            return p?.Template != null ? p.Template.PitcherRole : PitcherRole.MopUpReliever;
+        }
+
+        private static float StaminaRatio(Player p) =>
+            p?.Template == null || p.MaxStamina <= 0 ? 1f : (float)p.CurrentStamina / p.MaxStamina;
+
         /// <summary>
-        /// 유연화된 불펜 운용 규칙: 선발은 더 이상 "이닝 1~5"라는 고정 상한 없이, 퀵후크 조건
-        /// (ShouldPullStarter - 체력 35% 미만 또는 4실점 이상)에 걸리기 전까지는 6~8회까지도 계속
-        /// 던질 수 있다. 일단 강판되면(또는 애초에 대량 실점으로 조기 강판되면) 그 시점 이닝을 기준으로
-        /// 롱릴리프(~6회)/승리·추격조(7~8회)/마무리·추격조(9회+)로 넘어간다.
-        /// 체력 기반 우선순위(PickByStaminaThenUsage - 체력 60% 이상 우선, 그다음 미사용, 그다음 아무나)는
-        /// 불펜 후보를 고를 때 그대로 유지한다. SubbedOutList에 등록된(유저가 명시적으로 강판시킨) 투수는
-        /// 이 자동 로테이션에서도 절대 재선택되지 않는다 - UsedPitchers(소프트 선호도)/체력(소프트
-        /// 우선순위)과 별개로 SubbedOutList는 하드 제외 규칙이다.
+        /// [TASK-KBO-191] 구원 투수가 다음 이닝도 이어 던질 수 있는가 - 롱릴리프는 7회까지 최대 3이닝, 추격조는 지고 있을 때 최대 2이닝,
+        /// 승리조 · 마무리는 1이닝. 체력이 퀵후크 기준(35%) 미만이면 무조건 교체한다.
+        /// </summary>
+        private bool CanContinueRelief(TeamGameState team, Player p, int inning, int scoreDiff)
+        {
+            if (p == null || subbedOutList.Contains(p) || StaminaRatio(p) < QuickHookStaminaPercent) return false;
+            team.InningsThisGame.TryGetValue(p, out int innings);
+            switch (StaffRole(team, p))
+            {
+                case PitcherRole.LongReliever: return inning <= 7 && innings < LongReliefMaxInnings;
+                case PitcherRole.MopUpReliever: return scoreDiff < 0 && inning < RegulationInnings && innings < MopUpMaxInnings;
+                default: return false;
+            }
+        }
+
+        /// <summary>[TASK-KBO-191] 상황별 불펜 그룹 우선순위(앞 그룹부터 신선한 투수를 찾는다).</summary>
+        private static IEnumerable<List<Player>> BullpenPriority(TeamGameState team, int inning, int scoreDiff)
+        {
+            if (inning >= RegulationInnings)
+                return scoreDiff >= 0
+                    ? new[] { team.Closers, team.WinningRelief, team.MopUpRelief, team.LongRelief }
+                    : new[] { team.MopUpRelief, team.LongRelief, team.WinningRelief, team.Closers };
+            if (inning >= 7)
+                return scoreDiff >= 0
+                    ? new[] { team.WinningRelief, team.MopUpRelief, team.LongRelief, team.Closers }
+                    : new[] { team.MopUpRelief, team.LongRelief, team.WinningRelief, team.Closers };
+            return new[] { team.LongRelief, team.MopUpRelief, team.WinningRelief, team.Closers };
+        }
+
+        /// <summary>
+        /// [TASK-KBO-191] 새 구원 투수 선택. 예전에는 선호 그룹(롱릴리프 = 1명)에 신선한 투수가 없으면 "그 그룹의 아무나"로 돌아가 같은 롱릴리프가
+        /// 체력 0인 채로 매 경기 4~6회를 떠안았다(AI 구단 시즌 723탈삼진). 이제는
+        ///   1) 우선순위 그룹 순서대로 이번 경기 미등판 · 체력 60% 이상 → 2) 불펜 전체에서 미등판 · 체력 35% 이상 중 체력이 가장 많은 투수
+        ///   → 3) 미등판 불펜 중 체력 최다 → 4) 오늘 선발이 아닌 선발진(체력 60% 이상, 긴급 롱릴리프) → 5) 직전 투수 연투 → 6) 남은 아무나.
+        /// 한 번 내려간 투수(Finished)와 유저가 교체한 투수(SubbedOutList)는 다시 오르지 않는다.
+        /// </summary>
+        private Player PickReliever(TeamGameState team, int inning, int scoreDiff, Player startedToday)
+        {
+            bool Available(Player p) => p?.Template != null && !subbedOutList.Contains(p) && !team.Finished.Contains(p)
+                                        && !team.UsedPitchers.Contains(p) && p != startedToday && p != team.DesignatedStarter;
+            var bullpen = BullpenPriority(team, inning, scoreDiff).SelectMany(g => g).Where(p => !team.Starters.Contains(p)).Distinct().ToList();
+
+            var pick = bullpen.FirstOrDefault(p => Available(p) && StaminaRatio(p) >= MinStaminaPercentToPitch)
+                       ?? bullpen.Where(p => Available(p) && StaminaRatio(p) >= QuickHookStaminaPercent).OrderByDescending(StaminaRatio).FirstOrDefault()
+                       ?? bullpen.Where(Available).OrderByDescending(StaminaRatio).FirstOrDefault()
+                       ?? team.Starters.Where(p => Available(p) && StaminaRatio(p) >= MinStaminaPercentToPitch).OrderByDescending(StaminaRatio).FirstOrDefault();
+            if (pick != null) return pick;
+
+            if (team.LastPitcher != null && !subbedOutList.Contains(team.LastPitcher)) return team.LastPitcher;
+            var everyone = team.Starters.Concat(bullpen).Where(p => p?.Template != null).ToList();
+            pick = everyone.Where(p => !subbedOutList.Contains(p) && !team.Finished.Contains(p)).OrderByDescending(StaminaRatio).FirstOrDefault();
+            if (pick == null)
+            {
+                // 이 팀의 등판 가능한 투수가 전원 교체되어 나간 극단적 상황. 경기가 멈추지 않도록 마지막 수단으로 아무나 재사용한다.
+                Debug.LogWarning($"[MatchEngine] {team.TeamName}: 등판 가능한 투수가 모두 소진되어 SubbedOutList를 무시하고 재사용합니다.");
+                pick = everyone.FirstOrDefault();
+            }
+            return pick;
+        }
+
+        /// <summary>
+        /// 하프이닝 시작 시 수비 팀 투수 결정.
+        ///   선발: 1회는 예고 선발(1~5선발 로테이션), 이후 퀵후크(체력 35% 미만 · 5실점) 또는 7이닝 상한에 걸릴 때까지 이어 던진다.
+        ///   [TASK-KBO-191] 구원: 직전 구원이 이어 던질 수 있으면(CanContinueRelief) 유지, 아니면 PickReliever - 상황별 그룹 우선순위 +
+        ///   체력 · 미등판 우선으로 불펜 전원이 이닝을 나눠 맡는다. SubbedOutList(유저 교체)는 하드 제외 규칙이다.
         /// </summary>
         private Player SelectPitcherForInning(TeamGameState pitchingTeam, TeamGameState battingTeam, int inning)
         {
             int scoreDiff = pitchingTeam.RunsScored - battingTeam.RunsScored; // 0 이상이면 투수팀이 동점 이상
+            var last = pitchingTeam.LastPitcher;
+            // 오늘 선발 = 이 경기 첫 투수(선발 칸 또는 예고 선발). 불펜으로 시작한 경기면 null.
+            var startedToday = pitchingTeam.StartedToday;
 
-            List<Player> preferred;
-            if (inning >= RegulationInnings)
+            Player pick = null;
+            if (last == null)
             {
-                preferred = scoreDiff >= 0 ? pitchingTeam.Closers : pitchingTeam.MopUpRelief;
-            }
-            else
-            {
-                var startedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p))
-                                   ?? (pitchingTeam.DesignatedStarter != null && pitchingTeam.UsedPitchers.Contains(pitchingTeam.DesignatedStarter) ? pitchingTeam.DesignatedStarter : null);
-
-                if (startedToday != null && !subbedOutList.Contains(startedToday) && !ShouldPullStarter(startedToday))
-                {
-                    // 아직 믿고 맡길 만하다 - 이닝 상한 없이 계속 그 선발로 이어간다.
-                    preferred = new List<Player> { startedToday };
-                }
-                else if (startedToday == null && inning <= 5 && pitchingTeam.DesignatedStarter != null && !subbedOutList.Contains(pitchingTeam.DesignatedStarter))
+                if (pitchingTeam.DesignatedStarter != null && !subbedOutList.Contains(pitchingTeam.DesignatedStarter))
                 {
                     // [TASK-KBO-187] 1~5선발 순차 로테이션 - NEXT MATCH에 예고된 바로 그 투수가 선발 등판한다.
-                    preferred = new List<Player> { pitchingTeam.DesignatedStarter };
+                    pick = pitchingTeam.DesignatedStarter;
                 }
-                else if (startedToday == null && inning <= 5 && pitchingTeam.Starters.Count > 0)
+                else
                 {
-                    // 이번 경기에서 아직 아무도 선발로 등판하지 않은, 경기 최초의 투수 결정. 체력이 가장
-                    // 넉넉한 선발이 우선 선택되도록 Starters 전체를 후보로 넘긴다 - 이게 곧 "선발 5명을
-                    // 강제로 돌려쓰게 만드는" 로테이션이다(기존에는 항상 Starters[0](최고 OVR)만 고정으로
-                    // 선발 등판했다 - 체력과 무관하게 매 경기 동일 인물이 선발이었던 것을 여기서 고쳤다).
-                    preferred = pitchingTeam.Starters;
+                    // 경기 최초의 투수 - 체력이 넉넉한 선발(선발 5명을 강제로 돌려쓰는 로테이션).
+                    var fresh = pitchingTeam.Starters.Where(p => !subbedOutList.Contains(p)).ToList();
+                    pick = fresh.FirstOrDefault(HasSufficientStamina) ?? fresh.OrderByDescending(StaminaRatio).FirstOrDefault();
                 }
-                else if (inning <= 6)
-                {
-                    // 선발이 이미 강판됐거나(퀵후크), 6회 진입 - 롱릴리프가 이어받는다.
-                    preferred = pitchingTeam.LongRelief;
-                }
-                else // 7~8회, 선발은 이미 내려간 상태
-                {
-                    preferred = scoreDiff >= 0 ? pitchingTeam.WinningRelief : pitchingTeam.MopUpRelief;
-                }
+                pitchingTeam.StartedToday = pick;
+                startedToday = pick;
             }
-
-            var eligiblePreferred = preferred.Where(p => !subbedOutList.Contains(p)).ToList();
-            var pick = PickByStaminaThenUsage(eligiblePreferred, pitchingTeam.UsedPitchers);
-
-            if (pick == null)
+            else if (last == startedToday && !subbedOutList.Contains(startedToday) && !ShouldPullStarter(startedToday, pitchingTeam, inning))
             {
-                // [Fallback] 선호 롤에 가용 투수가 없으면 전체 투수 풀에서 체력 우선 -> 미사용 -> 재사용 순으로 배정한다.
-                var allPitchers = pitchingTeam.Starters
-                    .Concat(pitchingTeam.LongRelief)
-                    .Concat(pitchingTeam.WinningRelief)
-                    .Concat(pitchingTeam.MopUpRelief)
-                    .Concat(pitchingTeam.Closers)
-                    .Where(p => !subbedOutList.Contains(p))
-                    .ToList();
-
-                pick = PickByStaminaThenUsage(allPitchers, pitchingTeam.UsedPitchers);
-
-                if (pick == null)
-                {
-                    // 이 팀의 등판 가능한 투수가 전원 교체되어 나간 극단적 상황. 경기가 멈추지 않도록
-                    // 마지막 수단으로 SubbedOutList를 무시하고 가장 최근에 쓴 투수를 재사용한다.
-                    Debug.LogWarning($"[MatchEngine] {pitchingTeam.TeamName}: 등판 가능한 투수가 모두 소진되어 " +
-                                      "SubbedOutList를 무시하고 재사용합니다.");
-                    var anyPitcher = pitchingTeam.Starters
-                        .Concat(pitchingTeam.LongRelief)
-                        .Concat(pitchingTeam.WinningRelief)
-                        .Concat(pitchingTeam.MopUpRelief)
-                        .Concat(pitchingTeam.Closers)
-                        .ToList();
-                    pick = anyPitcher.FirstOrDefault();
-                }
+                // 아직 믿고 맡길 만하다 - 퀵후크 · 이닝 상한 전이면 계속 그 선발로 이어간다.
+                pick = startedToday;
             }
 
-            if (pick != null) pitchingTeam.UsedPitchers.Add(pick);
+            if (pick == null && last != null && last != startedToday && CanContinueRelief(pitchingTeam, last, inning, scoreDiff)) pick = last;
+            if (pick == null) pick = PickReliever(pitchingTeam, inning, scoreDiff, startedToday);
+
+            if (pick != null)
+            {
+                if (last != null && last != pick) pitchingTeam.Finished.Add(last);
+                pitchingTeam.LastPitcher = pick;
+                pitchingTeam.UsedPitchers.Add(pick);
+                pitchingTeam.InningsThisGame[pick] = (pitchingTeam.InningsThisGame.TryGetValue(pick, out int n) ? n : 0) + 1;
+            }
             return pick;
         }
 

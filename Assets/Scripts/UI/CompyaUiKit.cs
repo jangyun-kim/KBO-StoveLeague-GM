@@ -192,7 +192,7 @@ namespace KBOManager.UI
             label.text = text;
             int size = Mathf.Max(8, Mathf.RoundToInt(refFontSize * FontScale));
             label.fontSize = size;
-            label.fontStyle = bold && italic ? FontStyle.BoldAndItalic : bold ? FontStyle.Bold : italic ? FontStyle.Italic : FontStyle.Normal;
+            label.fontStyle = italic ? FontStyle.Italic : FontStyle.Normal;
             label.alignment = anchor;
             label.color = color;
             label.raycastTarget = false;
@@ -202,6 +202,8 @@ namespace KBOManager.UI
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = Mathf.Max(8, size / 2);
             label.resizeTextMaxSize = size;
+            // [TASK-KBO-191] Bold 해제(서체 굵기만 사용) · 역할별 적정 크기(Tier) · Best Fit 최소 11 · 자간 2.0. 정확한 크기가 필요한 곳은 TextTidy.Exact로 덮는다.
+            TextTidy.Normalize(label, false, Regular);
             return label;
         }
 

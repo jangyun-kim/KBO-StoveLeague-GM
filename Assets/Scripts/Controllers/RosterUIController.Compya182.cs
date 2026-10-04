@@ -383,7 +383,7 @@ namespace KBOManager.Controllers
             {
                 var empty = CompyaUiKit.Norm(holderRect, "Empty", 0.12f, 0.04f, 0.88f, 0.96f);
                 CompyaUiKit.Paint(empty, new Color(0.25f, 0.28f, 0.36f, 0.75f));
-                CellLabel(empty, $"{entry.Header}\n\n<b>[+ 선수 배치]</b>", TextAnchor.MiddleCenter, Color.white, false);
+                CellLabel(empty, $"{entry.Header}\n\n[+ 선수 배치]", TextAnchor.MiddleCenter, Color.white, false);
                 var slot = entry.ToPlacementSlot();
                 button.onClick.AddListener(() => OpenPlacementPopup(slot));
                 return;
@@ -418,7 +418,7 @@ namespace KBOManager.Controllers
                 var shape = CompyaUiKit.Norm(diamond, "Shape", 0.15f, 0.15f, 0.85f, 0.85f);
                 CompyaUiKit.Paint(shape, mode == LineupMode.BattingOrder && orderFirstPick == player ? SelectGold : new Color(0.75f, 0.12f, 0.2f));
                 shape.localRotation = Quaternion.Euler(0f, 0f, 45f);
-                CellLabel(diamond, $"<b>{entry.BattingOrder}</b>", TextAnchor.MiddleCenter, Color.white, true);
+                CellLabel(diamond, $"{entry.BattingOrder}", TextAnchor.MiddleCenter, Color.white, true);
             }
 
             var frame = CompyaUiKit.Norm(deco, "SelectFrame", -0.03f, -0.02f, 1.03f, 1.02f);
@@ -544,7 +544,7 @@ namespace KBOManager.Controllers
 
             var t = player.Template;
             if (trayTitleText != null)
-                trayTitleText.text = $"<b>{CompyaMatchView.DisplayName(player)}</b>  {CompyaUiKit.ShortName(t.Team)} · {CompyaMatchView.PositionLabel(player)} · " +
+                trayTitleText.text = $"{CompyaMatchView.DisplayName(player)}  {CompyaUiKit.ShortName(t.Team)} · {CompyaMatchView.PositionLabel(player)} · " +
                                      $"OVR <color=#FFD54A>{player.CalculateOVR(false)}</color> · SD {player.SetDeckScore}" +
                                      (isStorage ? "  <color=#9AA6BF>(보관)</color>" : "");
 
@@ -721,9 +721,9 @@ namespace KBOManager.Controllers
             if (gm == null) return;
             string favorite = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
             var setDeck = GameManager.EvaluateSetDeck(gm.Roster.ToList(), favorite, gm.SetDeckSelection);
-            if (teamOvrText != null) teamOvrText.text = $"<size=70%>OVR</size> <b>{gm.CalculateTeamOVR()}</b>";
+            if (teamOvrText != null) teamOvrText.text = $"<size=70%>OVR</size> {gm.CalculateTeamOVR()}";
             if (setDeckScoreText != null)
-                setDeckScoreText.text = $"{CompyaUiKit.ShortName(setDeck.DeckTeam)} <color=#3D7BFF><b>{setDeck.Score}</b></color> <size=70%>POINT</size>";
+                setDeckScoreText.text = $"{CompyaUiKit.ShortName(setDeck.DeckTeam)} <color=#3D7BFF>{setDeck.Score}</color> <size=70%>POINT</size>";
 
             var (_, markers) = GaugeWindow(setDeck.Score);
             for (int i = 0; i < 6; i++)
@@ -800,7 +800,7 @@ namespace KBOManager.Controllers
         }
 
         private static string BuildHelpText() =>
-            "라인업 27인(주전 타자 9 · 후보 타자 6 · 선발 5 · 불펜 7)의 <b>선택 구단 카드</b>(골든글러브는 구단 무관) 개인 스코어를 합산합니다.\n\n" +
+            "라인업 27인(주전 타자 9 · 후보 타자 6 · 선발 5 · 불펜 7)의 선택 구단 카드(골든글러브는 구단 무관) 개인 스코어를 합산합니다.\n\n" +
             "30P부터 구간마다 능력치 버프가 누적되고, 150P(1차 목표) · 185/190P(핵심 버프) · 200P(최종 목표)가 주요 목표입니다.\n" +
             "선택형 구간은 [세트덱 버프 선택]에서 A/B 중 하나를 고를 수 있습니다.\n\n" +
             "[자동 교체]는 선택 구단 선수를 최우선으로 편성하며, 같은 선수의 다른 카드는 한 장만 들어갑니다.";
@@ -817,7 +817,7 @@ namespace KBOManager.Controllers
             sb.AppendLine($"팀 OVR {gm.CalculateTeamOVR()} · 1군 {roster.Count}/28 · {CompyaUiKit.ShortName(gm.FavoriteTeam)} 소속 {own}명");
             sb.AppendLine($"타선 평균 OVR {Avg(lineup.Select(e => e.Player))} · 선발 {Avg(starters.Select(e => e.Player))} · 불펜 {Avg(bullpen.Select(e => e.Player))}");
             sb.AppendLine();
-            sb.AppendLine("<b>타순</b>" + (gm.BattingOrderOverride.Count > 0 ? " (유저 지정)" : " (기본)"));
+            sb.AppendLine("타순" + (gm.BattingOrderOverride.Count > 0 ? " (유저 지정)" : " (기본)"));
             foreach (var e in lineup)
                 sb.AppendLine($"{e.BattingOrder}. {e.Player.Template.PlayerName} ({RosterSlotLayout.PositionLabel(e.Position)}) OVR {e.Player.CalculateOVR(false)}");
             return sb.ToString();
@@ -840,7 +840,7 @@ namespace KBOManager.Controllers
             sb.AppendLine($"합산 카드 {setDeck.CountedPlayers.Count}장 / 세트덱 {setDeck.SlotPlayers.Count}인" +
                           (setDeck.SelectedYear > 0 ? $" · 선택 연도 {setDeck.SelectedYear}" : ""));
             sb.AppendLine();
-            sb.AppendLine("<b>적용 중인 구간 버프</b>");
+            sb.AppendLine("적용 중인 구간 버프");
             foreach (var bracket in setDeck.ReachedBrackets.OrderBy(b => b.Threshold))
                 sb.AppendLine($"{bracket.Threshold}P · {bracket.Resolve(gm.SetDeckSelection).Label}");
             if (setDeck.ReachedBrackets.Count == 0) sb.AppendLine("아직 도달한 구간이 없습니다.");
