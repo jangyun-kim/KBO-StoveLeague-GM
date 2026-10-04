@@ -566,7 +566,7 @@ namespace KBOManager.Managers
             {
                 if (player?.Template == null || !player.Template.IsPitcher) continue;
 
-                int recoveryAmount = player.Template.PitcherRole == PitcherRole.StartingPitcher
+                int recoveryAmount = LineupAssignment.RoleOf(player) == PitcherRole.StartingPitcher
                     ? StarterStaminaRecoveryPerDay
                     : BullpenStaminaRecoveryPerDay;
                 if (restDayBonus) recoveryAmount += RestDayRecoveryBonus;

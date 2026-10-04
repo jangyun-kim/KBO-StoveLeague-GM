@@ -72,7 +72,11 @@ namespace KBOManager.EditorTools
         /// (흰 게이지 막대 · 리스너 없는 [세트덱 버프 선택] · 미바인딩 [자동 교체]) 정리, 로비 [세트덱 &amp; 버프 선택] 타일 → 버프 팝업 직행,
         /// 스카우트 허브 3탭 + [특별 영입(골글·시그니처)] 섹션.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~185)")]
+        /// <remarks>
+        /// [TASK-KBO-186] 메뉴 이름을 TASK-168~186으로 갱신. 마지막 단계로 SetupTask186.ApplyAll()을 실행한다 - 선수 상세정보 4단 카드 레이아웃
+        /// (Detail186), 로비 · 경기 중계 · 라인업 · 스카우트 · 선수 관리 화면 가독성 패스(ReadableFontPass).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~186)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -96,7 +100,8 @@ namespace KBOManager.EditorTools
             SetupTask183.ApplyAll();
             SetupTask184.ApplyAll();
             SetupTask185.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~185 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask186.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~186 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

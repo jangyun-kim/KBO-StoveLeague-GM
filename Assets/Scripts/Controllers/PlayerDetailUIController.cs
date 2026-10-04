@@ -1,4 +1,5 @@
 using System;
+using KBOManager.Data;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -32,6 +33,10 @@ namespace KBOManager.Controllers
     /// 있으므로(TASK-145) 이 메서드를 직접 호출하는 쪽이 명령서 의도(허브로 정상 진입)에 더 정확히
     /// 부합한다. TASK-148이 만든 "허브 상단 초상화 클릭 → 이 상세 창" 역방향 경로(뒤로 가기)는 명령서
     /// 5항 지시대로 전혀 건드리지 않았다.
+    ///
+    /// [TASK-KBO-186] 탭형 구성(늘어난 배경 이미지 · 밝은 회색 박스 위 흰 글씨 · 같은 좌표에 겹친 노란 능력치 텍스트 5개 · 12~16pt 글씨)을
+    /// 화면에서 철거하고 PlayerDetailLayout186(1080×1920 4단 카드 레이아웃)으로 전면 재구축했다. 아래 탭/텍스트 직렬화 필드는 구 씬 호환용으로만
+    /// 남아 있고(Build가 구 자식을 모두 숨긴다), 표시는 전부 새 레이아웃이 맡는다. [선수 관리] → 성장 센터 이동 흐름은 그대로다.
     /// </summary>
     public class PlayerDetailUIController : MonoBehaviour
     {
@@ -86,6 +91,14 @@ namespace KBOManager.Controllers
         [Header("닫기")]
         [SerializeField] private Button closeButton;
 
+        [Header("TASK-KBO-186 4단 레이아웃 (Setup이 KBO Dia Gothic · SkillDB 주입)")]
+        [SerializeField] private Font boldFont;
+        [SerializeField] private Font regularFont;
+        [SerializeField] private SkillDB skillDB;
+
+        private PlayerDetailLayout186 layout;
+        public PlayerDetailLayout186 Layout => layout;
+
         /// <summary>내부 닫기 버튼(X)을 눌러 패널이 닫혔을 때 발생 - InventoryUIController가 구독해
         /// 메인 닫기 버튼(로비로 돌아가기)을 다시 보이게 한다.</summary>
         public event Action OnClosed;
@@ -104,7 +117,27 @@ namespace KBOManager.Controllers
             if (playerManagementButton != null) playerManagementButton.onClick.AddListener(OnClickPlayerManagement);
             if (closeButton != null) closeButton.onClick.AddListener(HandleCloseClicked);
 
+            BuildLayout();
             Hide();
+        }
+
+        /// <summary>Setup 메뉴 전용 - 에디터에서 폰트/스킬 DB를 주입한다.</summary>
+        public void Configure(Font bold, Font regular, SkillDB skills)
+        {
+            boldFont = bold;
+            regularFont = regular;
+            if (skills != null) skillDB = skills;
+        }
+
+        /// <summary>[TASK-KBO-186] panelRoot 아래 4단 레이아웃(Detail186)을 새로 만들고 구 탭형 자식은 숨긴다(Setup과 런타임 Awake 공용).</summary>
+        public void BuildLayout()
+        {
+            if (panelRoot == null || !(panelRoot.transform is RectTransform panel)) return;
+            layout = new PlayerDetailLayout186(boldFont, regularFont);
+            layout.Build(panel, previewCard, transform);
+            layout.CloseX.onClick.AddListener(HandleCloseClicked);
+            layout.CloseButton.onClick.AddListener(HandleCloseClicked);
+            layout.ManageButton.onClick.AddListener(OnClickPlayerManagement);
         }
 
         /// <summary>인벤토리(또는 추후 다른 화면)에서 카드를 선택했을 때 호출한다.</summary>
@@ -123,6 +156,15 @@ namespace KBOManager.Controllers
             }
 
             if (previewCard != null) previewCard.Setup(player);
+            if (layout != null)
+            {
+                int synergy = GameManager.Instance != null ? GameManager.Instance.CurrentTeamSynergyOvr : 0;
+                layout.Fill(player, synergy, skillDB);
+                if (layout.CardHolder != null) layout.CardHolder.Refit();
+                return;
+            }
+
+            // 레이아웃을 만들 수 없는(panelRoot 미배선) 구 씬 폴백
             if (nameText != null) nameText.text = player.Template.PlayerName;
             if (teamGradeText != null) teamGradeText.text = $"{player.Template.Team} · {CardGrowthRules.DisplayName(player.Template.Grade)}";
 

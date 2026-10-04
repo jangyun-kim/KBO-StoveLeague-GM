@@ -75,25 +75,14 @@ namespace KBOManager.Models
         /// <summary>[TASK-KBO-182] overrideIds = 유저 지정 타순(LineupOrder, GameManager.BattingOrderOverride).</summary>
         public static List<Entry> BuildLineup(IEnumerable<Player> roster, IReadOnlyList<string> overrideIds)
         {
-            var batters = Valid(roster).Where(p => !p.Template.IsPitcher).ToList();
-            SetDeckEvaluator.ClassifyBatters(batters, out var starters, out _);
-            var remaining = batters.Except(starters).OrderByDescending(p => p.CalculateOVR(false)).ToList();
-
+            // [TASK-KBO-186] 주전 9칸 = LineupAssignment(유저 맞교환 고정 → 포지션 최고 OVR → 빈 칸 대체). 엔진 타순과 같은 기준.
             var entries = new List<Entry>();
-            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
+            foreach (var slot in LineupAssignment.AssignStarters(Valid(roster)))
             {
-                var player = starters.FirstOrDefault(p => p.Template.BatterPosition == position);
-                bool isFill = false;
-                if (player == null && remaining.Count > 0)
-                {
-                    player = remaining[0];
-                    remaining.RemoveAt(0);
-                    isFill = true;
-                }
                 entries.Add(new Entry
                 {
-                    Kind = RosterSlotLayout.SlotKind.StarterBatter, Position = position, Player = player, IsFill = isFill,
-                    Header = $"{RosterSlotLayout.PositionLabel(position)} {PositionName(position)}",
+                    Kind = RosterSlotLayout.SlotKind.StarterBatter, Position = slot.Position, Player = slot.Player, IsFill = slot.IsFill,
+                    Header = $"{RosterSlotLayout.PositionLabel(slot.Position)} {PositionName(slot.Position)}",
                 });
             }
 
@@ -136,7 +125,8 @@ namespace KBOManager.Models
             var pitchers = Valid(roster).Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
             var overflow = new List<Player>();
 
-            var starterPool = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).ToList();
+            // [TASK-KBO-186] 보직 = LineupAssignment.RoleOf(유저 선발 ↔ 불펜 맞교환 반영)
+            var starterPool = pitchers.Where(p => LineupAssignment.RoleOf(p) == PitcherRole.StartingPitcher).ToList();
             var starters = new List<Entry>();
             for (int i = 0; i < StartingPitcherSize; i++)
             {
@@ -151,7 +141,7 @@ namespace KBOManager.Models
             var bullpen = new List<Entry>();
             foreach (var (role, count, group) in BullpenGroups)
             {
-                var ofRole = pitchers.Where(p => p.Template.PitcherRole == role).ToList();
+                var ofRole = pitchers.Where(p => LineupAssignment.RoleOf(p) == role).ToList();
                 for (int i = 0; i < count; i++)
                 {
                     bullpen.Add(new Entry
@@ -177,7 +167,7 @@ namespace KBOManager.Models
             {
                 bullpen.Add(new Entry
                 {
-                    Kind = RosterSlotLayout.SlotKind.Pitcher, Role = extra.Template.PitcherRole, Group = "추가",
+                    Kind = RosterSlotLayout.SlotKind.Pitcher, Role = LineupAssignment.RoleOf(extra), Group = "추가",
                     Header = "투수 추가", Player = extra, IsExtra = true,
                 });
             }

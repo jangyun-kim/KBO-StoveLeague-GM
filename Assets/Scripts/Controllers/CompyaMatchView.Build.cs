@@ -108,10 +108,12 @@ namespace KBOManager.Controllers
         private RawImage r1AwayVerdictBg, r1HomeVerdictBg;
         private Text r1AwayVerdict, r1HomeVerdict;
         private readonly StatBar[] r1Stats = new StatBar[6];
-        private Image r1WinPanel, r1LosePanel, r1WinNameBar, r1LoseNameBar;
-        private RawImage r1WinLogo, r1LoseLogo;
-        private MiniCard r1WinCard, r1LoseCard;
-        private Text r1WinTag, r1LoseTag, r1WinName, r1WinRecord, r1LoseName, r1LoseRecord;
+        // [TASK-KBO-186] 승/패 투수 카드도 좌측 열 = AWAY, 우측 열 = HOME(위 점수 카드 · 경기 결과 막대와 같은 열).
+        private Image r1AwayPitcherPanel, r1HomePitcherPanel, r1AwayNameBar, r1HomeNameBar;
+        private RawImage r1AwayPitcherLogo, r1HomePitcherLogo;
+        private MiniCard r1AwayPitcherCard, r1HomePitcherCard;
+        private PolygonGraphic r1AwayTagBg, r1HomeTagBg;
+        private Text r1AwayTag, r1HomeTag, r1AwayPitcherName, r1AwayRecord, r1HomePitcherName, r1HomeRecord;
 
         // ---- 결과 2
         private Text r2Title, r2NextTeam, r2NextPitcher, r2Ball;
@@ -168,6 +170,7 @@ namespace KBOManager.Controllers
             public float CenterY;
             public RectTransform LeftBar, RightBar, LeftValueRect, RightValueRect;
             public Text LeftValue, RightValue;
+            public Image LeftFill, RightFill; // [TASK-KBO-186] 승리 팀 쪽 = 파랑, 패배 팀 쪽 = 회색
         }
 
         private class RoundRow
@@ -438,24 +441,26 @@ namespace KBOManager.Controllers
             awayUserBadge = UserBadge(p, "AwayUserBadge", 168, 102, 198, 140);
             homeUserBadge = UserBadge(p, "HomeUserBadge", 168, 167, 198, 205);
 
-            CompyaUiKit.Box(p, "AwayLine", 462, 112, 922, 160, new Color(0.96f, 0.96f, 0.97f));
-            CompyaUiKit.Box(p, "InningStrip", 462, 160, 922, 187, new Color(0.11f, 0.12f, 0.15f));
-            CompyaUiKit.Box(p, "HomeLine", 462, 187, 922, 235, new Color(0.96f, 0.96f, 0.97f));
+            // [TASK-KBO-186] 두 자릿수 R/H/E/B가 겹치지 않게 이닝 칸 38.33 → 35px, R/H/E/B 칸 42 → 52px.
+            const float inningWidth = 35f, rhebLeft = 462 + 12 * inningWidth, rhebWidth = 52f;
+            CompyaUiKit.Box(p, "AwayLine", 462, 112, rhebLeft, 160, new Color(0.96f, 0.96f, 0.97f));
+            CompyaUiKit.Box(p, "InningStrip", 462, 160, rhebLeft, 187, new Color(0.11f, 0.12f, 0.15f));
+            CompyaUiKit.Box(p, "HomeLine", 462, 187, rhebLeft, 235, new Color(0.96f, 0.96f, 0.97f));
             for (int i = 0; i < 12; i++)
             {
-                float x0 = 462 + i * 38.33f, x1 = x0 + 38.33f;
+                float x0 = 462 + i * inningWidth, x1 = x0 + inningWidth;
                 kit.Label(p, $"No{i + 1}", (i + 1).ToString(), x0, 160, x1, 187, 22, TextAnchor.MiddleCenter, new Color(0.72f, 0.73f, 0.78f));
                 awayCells[i] = kit.Label(p, $"A{i + 1}", "", x0, 112, x1, 160, 42, TextAnchor.MiddleCenter, Ink, true);
                 homeCells[i] = kit.Label(p, $"H{i + 1}", "", x0, 187, x1, 235, 42, TextAnchor.MiddleCenter, Ink, true);
             }
-            CompyaUiKit.Box(p, "Rheb", 922, 110, 1090, 237, new Color(0.04f, 0.04f, 0.06f));
+            CompyaUiKit.Box(p, "Rheb", rhebLeft, 110, rhebLeft + 4 * rhebWidth, 237, new Color(0.04f, 0.04f, 0.06f));
             var heads = new[] { "R", "H", "E", "B" };
             for (int i = 0; i < 4; i++)
             {
-                float x0 = 922 + i * 42f, x1 = x0 + 42f;
-                kit.Label(p, $"Head{heads[i]}", heads[i], x0, 160, x1, 187, 22, TextAnchor.MiddleCenter, i == 0 ? Gold : new Color(0.72f, 0.73f, 0.78f), true);
-                awayRheb[i] = kit.Label(p, $"AR{i}", "0", x0, 112, x1, 160, 46, TextAnchor.MiddleCenter, White, true);
-                homeRheb[i] = kit.Label(p, $"HR{i}", "0", x0, 187, x1, 235, 46, TextAnchor.MiddleCenter, White, true);
+                float x0 = rhebLeft + i * rhebWidth, x1 = x0 + rhebWidth;
+                kit.Label(p, $"Head{heads[i]}", heads[i], x0, 160, x1, 187, 24, TextAnchor.MiddleCenter, i == 0 ? Gold : new Color(0.72f, 0.73f, 0.78f), true);
+                awayRheb[i] = RhebCell(kit.Label(p, $"AR{i}", "0", x0 + 2, 112, x1 - 2, 160, 42, TextAnchor.MiddleCenter, White, true));
+                homeRheb[i] = RhebCell(kit.Label(p, $"HR{i}", "0", x0 + 2, 187, x1 - 2, 235, 42, TextAnchor.MiddleCenter, White, true));
             }
         }
 
@@ -739,6 +744,16 @@ namespace KBOManager.Controllers
             SetProgress(relayProgress, AchievementCount(t));
         }
 
+        /// <summary>[TASK-KBO-186] R/H/E/B 숫자 칸 - 두 자릿수가 줄바꿈되어 위아래로 겹치지 않게 자동 크기(최소 18) + 세로 잘림(넘쳐 겹치지 않음).</summary>
+        private static Text RhebCell(Text label)
+        {
+            label.horizontalOverflow = HorizontalWrapMode.Wrap; // 자동 크기가 줄바꿈 없이 들어가는 크기까지 줄인다
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 18;
+            return label;
+        }
+
         private static void SetRheb(Text[] cells, CompyaGameTracker.TeamLine line)
         {
             cells[0].text = line.R.ToString();
@@ -903,7 +918,7 @@ namespace KBOManager.Controllers
 
         private System.Collections.IEnumerator AnimateArc()
         {
-            for (float t = 0f; t < 1f; t += Time.deltaTime / 0.6f)
+            for (float t = 0f; t < 1f; t += Time.deltaTime / MatchTempo.ArcSeconds) // [TASK-KBO-186] 0.6초 → 0.4초
             {
                 arcGlow.Progress = t;
                 arcCore.Progress = t;
@@ -1220,24 +1235,26 @@ namespace KBOManager.Controllers
             r1HomeLogo = CompyaUiKit.Logo(p, "HomeLogo", 140, 199, 212, 271);
             r1AwayName = kit.Label(p, "AwayName", "", 214, 105, 330, 190, 46, TextAnchor.MiddleCenter, White, true);
             r1HomeName = kit.Label(p, "HomeName", "", 214, 192, 330, 278, 46, TextAnchor.MiddleCenter, White, true);
-            CompyaUiKit.Box(p, "AwayLine", 332, 105, 893, 170, White);
-            CompyaUiKit.Box(p, "NumberStrip", 332, 170, 893, 212, new Color(0.11f, 0.12f, 0.15f));
-            CompyaUiKit.Box(p, "HomeLine", 332, 212, 893, 278, White);
+            // [TASK-KBO-186] 두 자릿수 R/H/E/B(10~99)가 겹치지 않게 이닝 칸을 46.75 → 42px로 줄이고 R/H/E/B 칸을 55 → 70px로 넓힌다.
+            const float inningWidth = 42f, rhebLeft = 332 + 12 * inningWidth, rhebWidth = 70f;
+            CompyaUiKit.Box(p, "AwayLine", 332, 105, rhebLeft, 170, White);
+            CompyaUiKit.Box(p, "NumberStrip", 332, 170, rhebLeft, 212, new Color(0.11f, 0.12f, 0.15f));
+            CompyaUiKit.Box(p, "HomeLine", 332, 212, rhebLeft, 278, White);
             for (int i = 0; i < 12; i++)
             {
-                float x0 = 332 + i * 46.75f, x1 = x0 + 46.75f;
+                float x0 = 332 + i * inningWidth, x1 = x0 + inningWidth;
                 kit.Label(p, $"No{i + 1}", (i + 1).ToString(), x0, 170, x1, 212, 26, TextAnchor.MiddleCenter, new Color(0.72f, 0.73f, 0.78f));
                 r1AwayCells[i] = kit.Label(p, $"A{i + 1}", "", x0, 105, x1, 170, 54, TextAnchor.MiddleCenter, Ink, true);
                 r1HomeCells[i] = kit.Label(p, $"H{i + 1}", "", x0, 212, x1, 278, 54, TextAnchor.MiddleCenter, Ink, true);
             }
-            CompyaUiKit.Box(p, "Rheb", 893, 105, 1115, 278, new Color(0.04f, 0.04f, 0.05f));
+            CompyaUiKit.Box(p, "Rheb", rhebLeft, 105, rhebLeft + 4 * rhebWidth + 4, 278, new Color(0.04f, 0.04f, 0.05f));
             var heads = new[] { "R", "H", "E", "B" };
             for (int i = 0; i < 4; i++)
             {
-                float x0 = 895 + i * 55f, x1 = x0 + 55f;
-                kit.Label(p, $"Head{heads[i]}", heads[i], x0, 170, x1, 212, 26, TextAnchor.MiddleCenter, i == 0 ? Gold : new Color(0.72f, 0.73f, 0.78f), true);
-                r1AwayRheb[i] = kit.Label(p, $"AR{i}", "0", x0, 105, x1, 170, 56, TextAnchor.MiddleCenter, White, true);
-                r1HomeRheb[i] = kit.Label(p, $"HR{i}", "0", x0, 212, x1, 278, 56, TextAnchor.MiddleCenter, White, true);
+                float x0 = rhebLeft + 2 + i * rhebWidth, x1 = x0 + rhebWidth;
+                kit.Label(p, $"Head{heads[i]}", heads[i], x0, 170, x1, 212, 28, TextAnchor.MiddleCenter, i == 0 ? Gold : new Color(0.72f, 0.73f, 0.78f), true);
+                r1AwayRheb[i] = RhebCell(kit.Label(p, $"AR{i}", "0", x0 + 3, 105, x1 - 3, 170, 52, TextAnchor.MiddleCenter, White, true));
+                r1HomeRheb[i] = RhebCell(kit.Label(p, $"HR{i}", "0", x0 + 3, 212, x1 - 3, 278, 52, TextAnchor.MiddleCenter, White, true));
             }
 
             // AWAY / HOME 큰 점수 카드 + 구단 컬러 블록 + WIN/LOSE
@@ -1272,35 +1289,36 @@ namespace KBOManager.Controllers
                 kit.Label(p, $"StatName{i}", names[i], 570, cy - 30, 680, cy + 30, 40, TextAnchor.MiddleCenter, new Color(0.4f, 0.42f, 0.48f));
                 var bar = new StatBar { CenterY = cy };
                 bar.LeftBar = CompyaUiKit.Place(p, $"LeftBar{i}", 400, cy - 9, 562, cy + 9);
-                CompyaUiKit.Paint(bar.LeftBar, new Color(0.36f, 0.68f, 0.98f));
+                bar.LeftFill = CompyaUiKit.Paint(bar.LeftBar, StatWinBar);
                 bar.RightBar = CompyaUiKit.Place(p, $"RightBar{i}", 686, cy - 9, 800, cy + 9);
-                CompyaUiKit.Paint(bar.RightBar, new Color(0.6f, 0.63f, 0.7f));
+                bar.RightFill = CompyaUiKit.Paint(bar.RightBar, StatLoseBar);
                 bar.LeftValueRect = CompyaUiKit.Place(p, $"LeftValue{i}", 300, cy - 32, 390, cy + 32);
-                bar.LeftValue = kit.LabelOn(bar.LeftValueRect, "0", 56, TextAnchor.MiddleRight, new Color(0.17f, 0.4f, 0.85f), true);
+                bar.LeftValue = kit.LabelOn(bar.LeftValueRect, "0", 56, TextAnchor.MiddleRight, StatWinValue, true);
                 bar.RightValueRect = CompyaUiKit.Place(p, $"RightValue{i}", 810, cy - 32, 900, cy + 32);
-                bar.RightValue = kit.LabelOn(bar.RightValueRect, "0", 56, TextAnchor.MiddleLeft, new Color(0.55f, 0.58f, 0.65f), true);
+                bar.RightValue = kit.LabelOn(bar.RightValueRect, "0", 56, TextAnchor.MiddleLeft, StatLoseValue, true);
                 r1Stats[i] = bar;
             }
 
-            // 승리/패전 투수
-            r1WinPanel = CompyaUiKit.Box(p, "WinPanel", 160, 1407, 623, 1825, Color.blue);
-            r1LosePanel = CompyaUiKit.Box(p, "LosePanel", 623, 1407, 1087, 1825, new Color(0.37f, 0.39f, 0.46f));
-            r1WinLogo = CompyaUiKit.Logo(p, "WinLogo", 190, 1420, 595, 1690);
-            r1LoseLogo = CompyaUiKit.Logo(p, "LoseLogo", 653, 1420, 1058, 1690);
-            r1WinCard = BuildCard(p, "WinCard", 300, 1425, 486, 1688, false);
-            r1LoseCard = BuildCard(p, "LoseCard", 762, 1425, 948, 1688, false);
-            CompyaUiKit.Polygon(p, "WinTag", 160, 1695, 335, 1750, AccentRed,
+            // 승리/패전 투수 - [TASK-KBO-186] 좌측 열 = AWAY 팀 투수, 우측 열 = HOME 팀 투수(승/패에 따라 태그 · 색만 바뀐다).
+            r1AwayPitcherPanel = CompyaUiKit.Box(p, "AwayPitcherPanel", 160, 1407, 623, 1825, Color.blue);
+            r1HomePitcherPanel = CompyaUiKit.Box(p, "HomePitcherPanel", 623, 1407, 1087, 1825, new Color(0.37f, 0.39f, 0.46f));
+            r1AwayPitcherLogo = CompyaUiKit.Logo(p, "AwayPitcherLogo", 190, 1420, 595, 1690);
+            r1HomePitcherLogo = CompyaUiKit.Logo(p, "HomePitcherLogo", 653, 1420, 1058, 1690);
+            r1AwayPitcherCard = BuildCard(p, "AwayPitcherCard", 300, 1425, 486, 1688, false);
+            r1HomePitcherCard = BuildCard(p, "HomePitcherCard", 762, 1425, 948, 1688, false);
+            r1AwayTagBg = CompyaUiKit.Polygon(p, "AwayTag", 160, 1695, 335, 1750, AccentRed,
                 new Vector2(0f, 1f), new Vector2(0.86f, 1f), new Vector2(1f, 0f), new Vector2(0f, 0f));
-            r1WinTag = kit.Label(p, "WinTagText", "승리 투수", 168, 1695, 320, 1750, 40, TextAnchor.MiddleCenter, White, true);
-            CompyaUiKit.Polygon(p, "LoseTag", 912, 1695, 1087, 1750, new Color(0.27f, 0.28f, 0.32f),
+            r1AwayTag = kit.Label(p, "AwayTagText", "승리 투수", 168, 1695, 320, 1750, 40, TextAnchor.MiddleCenter, White, true);
+            r1HomeTagBg = CompyaUiKit.Polygon(p, "HomeTag", 912, 1695, 1087, 1750, new Color(0.27f, 0.28f, 0.32f),
                 new Vector2(0.14f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f), new Vector2(0f, 0f));
-            r1LoseTag = kit.Label(p, "LoseTagText", "패전 투수", 928, 1695, 1080, 1750, 40, TextAnchor.MiddleCenter, White, true);
-            r1WinNameBar = CompyaUiKit.Box(p, "WinNameBar", 160, 1750, 623, 1825, Color.blue);
-            r1LoseNameBar = CompyaUiKit.Box(p, "LoseNameBar", 623, 1750, 1087, 1825, new Color(0.3f, 0.31f, 0.36f));
-            r1WinName = kit.Label(p, "WinName", "", 175, 1750, 430, 1825, 48, TextAnchor.MiddleLeft, White, true);
-            r1WinRecord = kit.Label(p, "WinRecord", "", 420, 1750, 612, 1825, 46, TextAnchor.MiddleRight, White, true);
-            r1LoseRecord = kit.Label(p, "LoseRecord", "", 638, 1750, 820, 1825, 46, TextAnchor.MiddleLeft, White, true);
-            r1LoseName = kit.Label(p, "LoseName", "", 810, 1750, 1075, 1825, 48, TextAnchor.MiddleRight, White, true);
+            r1HomeTag = kit.Label(p, "HomeTagText", "패전 투수", 928, 1695, 1080, 1750, 40, TextAnchor.MiddleCenter, White, true);
+            r1AwayNameBar = CompyaUiKit.Box(p, "AwayNameBar", 160, 1750, 623, 1825, Color.blue);
+            r1HomeNameBar = CompyaUiKit.Box(p, "HomeNameBar", 623, 1750, 1087, 1825, new Color(0.3f, 0.31f, 0.36f));
+            // 이름 / 시즌 기록을 같은 명판 안의 겹치지 않는 두 칸으로 나눈다(예전 W-L 라벨이 가운데에서 서로 겹쳐 찍혔다).
+            r1AwayPitcherName = kit.Label(p, "AwayPitcherName", "", 176, 1750, 418, 1825, 46, TextAnchor.MiddleLeft, White, true);
+            r1AwayRecord = kit.Label(p, "AwayRecord", "", 424, 1750, 610, 1825, 34, TextAnchor.MiddleRight, White, true);
+            r1HomePitcherName = kit.Label(p, "HomePitcherName", "", 830, 1750, 1072, 1825, 46, TextAnchor.MiddleRight, White, true);
+            r1HomeRecord = kit.Label(p, "HomeRecord", "", 636, 1750, 824, 1825, 34, TextAnchor.MiddleLeft, White, true);
 
             kit.Button(p, "Record", "경기 기록", 165, 1838, 410, 1940, new Color(0.36f, 0.38f, 0.43f), White, 42).onClick.AddListener(() => ShowPopup(true));
             kit.Button(p, "Timeline", "타임 라인", 432, 1838, 678, 1940, new Color(0.36f, 0.38f, 0.43f), White, 42).onClick.AddListener(() => ShowPopup(false));
@@ -1346,26 +1364,31 @@ namespace KBOManager.Controllers
             SetVerdict(r1HomeVerdictBg, r1HomeVerdict, verdict == 1, verdict == 0);
 
             var pairs = new[] { (t.Away.H, t.Home.H), (t.Away.HR, t.Home.HR), (t.Away.SB, t.Home.SB), (t.Away.K, t.Home.K), (t.Away.DP, t.Home.DP), (0, 0) };
-            for (int i = 0; i < 6; i++) SetStatBar(r1Stats[i], pairs[i].Item1, pairs[i].Item2);
+            for (int i = 0; i < 6; i++) SetStatBar(r1Stats[i], pairs[i].Item1, pairs[i].Item2, ResultColumns.LeftWins(verdict), ResultColumns.RightWins(verdict));
 
-            var winner = verdict == -1 ? awayTeam : verdict == 1 ? homeTeam : Team.None;
-            var loser = verdict == -1 ? homeTeam : verdict == 1 ? awayTeam : Team.None;
+            // [TASK-KBO-186] 좌측 열 = AWAY 팀 투수, 우측 열 = HOME 팀 투수. 무승부면 양 팀 선발.
             bool draw = verdict == 0;
-            var winColor = CompyaUiKit.TeamColor(draw ? awayTeam : winner);
-            r1WinPanel.color = winColor;
-            r1WinNameBar.color = CompyaUiKit.Darken(winColor, 0.82f);
-            CompyaUiKit.SetLogo(r1WinLogo, draw ? awayTeam : winner, 0.25f);
-            CompyaUiKit.SetLogo(r1LoseLogo, draw ? homeTeam : loser, 0.2f);
-            var winP = draw ? t.AwayPitchers.FirstOrDefault() : t.WinningPitcher;
-            var loseP = draw ? t.HomePitchers.FirstOrDefault() : t.LosingPitcher;
-            FillCard(r1WinCard, winP);
-            FillCard(r1LoseCard, loseP);
-            r1WinTag.text = draw ? "선발 투수" : "승리 투수";
-            r1LoseTag.text = draw ? "선발 투수" : "패전 투수";
-            r1WinName.text = winP != null ? DisplayName(winP) : "-";
-            r1LoseName.text = loseP != null ? DisplayName(loseP) : "-";
-            r1WinRecord.text = winP != null ? $"<color=#0B1E6E>W-L</color> {PitcherRecord(winP, draw ? 0 : 1, 0)}" : "";
-            r1LoseRecord.text = loseP != null ? PitcherRecord(loseP, 0, draw ? 0 : 1) : "";
+            var awayP = draw ? t.AwayPitchers.FirstOrDefault() : ResultColumns.PitcherFor(true, verdict, t.WinningPitcher, t.LosingPitcher);
+            var homeP = draw ? t.HomePitchers.FirstOrDefault() : ResultColumns.PitcherFor(false, verdict, t.WinningPitcher, t.LosingPitcher);
+            FillPitcherColumn(awayTeam, awayP, ResultColumns.LeftWins(verdict), draw, r1AwayPitcherPanel, r1AwayNameBar, r1AwayPitcherLogo, r1AwayPitcherCard,
+                r1AwayTagBg, r1AwayTag, r1AwayPitcherName, r1AwayRecord);
+            FillPitcherColumn(homeTeam, homeP, ResultColumns.RightWins(verdict), draw, r1HomePitcherPanel, r1HomeNameBar, r1HomePitcherLogo, r1HomePitcherCard,
+                r1HomeTagBg, r1HomeTag, r1HomePitcherName, r1HomeRecord);
+        }
+
+        private void FillPitcherColumn(Team team, Player pitcher, bool win, bool draw, Image panel, Image nameBar, RawImage logo, MiniCard card,
+            PolygonGraphic tagBg, Text tag, Text nameText, Text record)
+        {
+            bool bright = win || draw;
+            var teamColor = CompyaUiKit.TeamColor(team);
+            panel.color = bright ? teamColor : new Color(0.37f, 0.39f, 0.46f);
+            nameBar.color = bright ? CompyaUiKit.Darken(teamColor, 0.82f) : new Color(0.3f, 0.31f, 0.36f);
+            CompyaUiKit.SetLogo(logo, team, bright ? 0.25f : 0.2f);
+            FillCard(card, pitcher);
+            tag.text = draw ? "선발 투수" : win ? "승리 투수" : "패전 투수";
+            tagBg.color = win ? AccentRed : new Color(0.27f, 0.28f, 0.32f);
+            nameText.text = pitcher != null ? DisplayName(pitcher) : "-";
+            record.text = pitcher != null ? PitcherRecord(pitcher, draw ? 0 : win ? 1 : 0, draw ? 0 : win ? 0 : 1) : "";
         }
 
         private void SetVerdict(RawImage bg, Text label, bool win, bool draw)
@@ -1375,6 +1398,22 @@ namespace KBOManager.Controllers
             label.color = win ? White : new Color(0.93f, 0.93f, 0.95f);
             bg.texture = win ? kit.GradientTexture(BlueTop, BlueBottom, false)
                 : kit.GradientTexture(new Color(0.62f, 0.64f, 0.68f), new Color(0.44f, 0.46f, 0.5f), false);
+        }
+
+        private static readonly Color StatWinBar = new Color(0.36f, 0.68f, 0.98f);
+        private static readonly Color StatLoseBar = new Color(0.6f, 0.63f, 0.7f);
+        private static readonly Color StatWinValue = new Color(0.17f, 0.4f, 0.85f);
+        private static readonly Color StatLoseValue = new Color(0.55f, 0.58f, 0.65f);
+
+        /// <summary>[TASK-KBO-186] 좌/우 막대 색은 그 열 팀의 승패를 따른다(승리 = 파랑, 패배 = 회색, 무승부 = 양쪽 파랑).</summary>
+        private static void SetStatBar(StatBar bar, int left, int right, bool leftWin, bool rightWin)
+        {
+            bool draw = !leftWin && !rightWin;
+            if (bar.LeftFill != null) bar.LeftFill.color = leftWin || draw ? StatWinBar : StatLoseBar;
+            if (bar.RightFill != null) bar.RightFill.color = rightWin || draw ? StatWinBar : StatLoseBar;
+            bar.LeftValue.color = leftWin || draw ? StatWinValue : StatLoseValue;
+            bar.RightValue.color = rightWin || draw ? StatWinValue : StatLoseValue;
+            SetStatBar(bar, left, right);
         }
 
         private static void SetStatBar(StatBar bar, int left, int right)
@@ -1396,8 +1435,8 @@ namespace KBOManager.Controllers
         private static string PitcherRecord(Player pitcher, int gameWins, int gameLosses)
         {
             var season = SeasonStatManager.Instance != null ? SeasonStatManager.Instance.GetPitcherStats(pitcher) : null;
-            if (season != null && season.Wins + season.Losses > 0) return $"{season.Wins}-{season.Losses}";
-            return $"{gameWins}-{gameLosses}";
+            if (season != null && season.Wins + season.Losses > 0) return ResultColumns.SeasonRecord(season.Wins, season.Losses);
+            return ResultColumns.SeasonRecord(gameWins, gameLosses);
         }
 
         // ------------------------------------------------------------------ 7. 결과 2(라운드 결과 + NEXT MATCH)

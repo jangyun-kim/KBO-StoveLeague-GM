@@ -189,7 +189,7 @@ namespace KBOManager.Controllers
             if (!modeChosen) mode = PlayMode.Highlight; // 디버그 등 유형 선택 없이 시작된 경기
             modeChosen = false;
             if (broadcastUIManager != null)
-                broadcastUIManager.PerEventDelaySeconds = mode == PlayMode.Full ? fullPlayEventDelay : highlightEventDelay;
+                broadcastUIManager.PerEventDelaySeconds = MatchTempo.Scaled(mode == PlayMode.Full ? fullPlayEventDelay : highlightEventDelay); // [TASK-KBO-186] 33% 단축
 
             BuildBattingOrders();
             HideAll();
@@ -300,7 +300,7 @@ namespace KBOManager.Controllers
             splashActive = true;
             FillSplash(tracker, inning);
             splashPanel.SetActive(true);
-            yield return new WaitForSeconds(inningSplashSeconds);
+            yield return new WaitForSeconds(MatchTempo.Scaled(inningSplashSeconds));
             splashPanel.SetActive(false);
             splashActive = false;
             TryRelease();
@@ -351,7 +351,7 @@ namespace KBOManager.Controllers
             directBall.gameObject.SetActive(true);
             var from = new Vector2(0.497f, 0.68f);
             var to = new Vector2(Random.Range(0.4f, 0.52f), Random.Range(0.42f, 0.56f));
-            for (float t = 0f; t < 1f; t += Time.deltaTime / 0.45f)
+            for (float t = 0f; t < 1f; t += Time.deltaTime / MatchTempo.PitchSeconds)
             {
                 var p = Vector2.Lerp(from, to, t);
                 directBall.anchorMin = directBall.anchorMax = p;
@@ -375,7 +375,7 @@ namespace KBOManager.Controllers
             directResultText.text = DirectResultHeadline(evt);
             directResultText.gameObject.SetActive(true);
             directSubtitleText.text = evt.LogMessage ?? "";
-            yield return new WaitForSeconds(directResultSeconds);
+            yield return new WaitForSeconds(MatchTempo.Scaled(directResultSeconds));
             directResultText.gameObject.SetActive(false);
             directBall.gameObject.SetActive(false);
             directPanel.SetActive(false);

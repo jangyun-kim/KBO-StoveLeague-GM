@@ -312,8 +312,6 @@ namespace KBOManager.Engine
         // TASK-KBO-037: 팀 버프 가산 후 세부 스탯이 0 이하로 떨어지지 않도록 하는 하한선(7항 방어 코드).
         private const int MinEffectiveStatValue = 1;
 
-        private static readonly BatterPosition[] StarterBatterPositions =
-            (BatterPosition[])Enum.GetValues(typeof(BatterPosition));
 
         private readonly SkillDB skillDB;
         private readonly EngineConfig config;
@@ -578,7 +576,7 @@ namespace KBOManager.Engine
             // 짧고 굵게 쓰는 만큼 더 빨리 지친다). SimulateAtBat()이 이미 "이번 타석 시작 시점"의 체력을
             // 기준으로 페널티(IsLowStamina) 여부를 판정한 뒤이므로, 소모는 그 판정 이후에 반영해야
             // "이번 타석 도중 지쳐서 이번 타석 결과에도 소급 적용되는" 부자연스러움이 없다.
-            bool pitcherIsStarter = pitcherForThisAtBat.Template.PitcherRole == PitcherRole.StartingPitcher;
+            bool pitcherIsStarter = LineupAssignment.RoleOf(pitcherForThisAtBat) == PitcherRole.StartingPitcher; // [TASK-KBO-186] 맞교환 보직
             pitcherForThisAtBat.ConsumeStamina(pitcherIsStarter ? StaminaCostPerBatterFacedStarter : StaminaCostPerBatterFacedBullpen);
 
             // 로그의 "[3회초 2사 1,3루]" 부분은 배터가 타석에 "들어선 시점"의 상황이어야 하므로,
@@ -1041,35 +1039,19 @@ namespace KBOManager.Engine
             {
                 TeamName = teamName,
                 BattingOrder = BuildBattingOrder(valid),
-                Starters = valid.Where(p => p.Template.IsPitcher && p.Template.PitcherRole == PitcherRole.StartingPitcher)
+                Starters = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.StartingPitcher)
                     .OrderByDescending(GetBaseOvr).ToList(),
-                LongRelief = valid.Where(p => p.Template.IsPitcher && p.Template.PitcherRole == PitcherRole.LongReliever).ToList(),
-                WinningRelief = valid.Where(p => p.Template.IsPitcher && p.Template.PitcherRole == PitcherRole.WinningReliever).ToList(),
-                MopUpRelief = valid.Where(p => p.Template.IsPitcher && p.Template.PitcherRole == PitcherRole.MopUpReliever).ToList(),
-                Closers = valid.Where(p => p.Template.IsPitcher && p.Template.PitcherRole == PitcherRole.Closer).ToList(),
+                LongRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.LongReliever).ToList(),
+                WinningRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.WinningReliever).ToList(),
+                MopUpRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.MopUpReliever).ToList(),
+                Closers = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.Closer).ToList(),
             };
         }
 
         private static List<Player> BuildBattingOrder(List<Player> teamRoster)
         {
-            var batters = teamRoster.Where(p => !p.Template.IsPitcher).ToList();
-            var order = new List<Player>(9);
-
-            // 포지션당 1명, OVR 최우선으로 우선 배정
-            foreach (var position in StarterBatterPositions)
-            {
-                var pick = batters.Where(p => p.Template.BatterPosition == position && !order.Contains(p))
-                    .OrderByDescending(p => p.CalculateOVR(false))
-                    .FirstOrDefault();
-                if (pick != null) order.Add(pick);
-            }
-
-            // [Fallback] 포지션 후보가 없어 9자리가 안 채워지면 남은 타자 중 OVR 상위로 채운다.
-            foreach (var extra in batters.Where(p => !order.Contains(p)).OrderByDescending(p => p.CalculateOVR(false)))
-            {
-                if (order.Count >= 9) break;
-                order.Add(extra);
-            }
+            // [TASK-KBO-186] 포지션당 1명(유저 맞교환 고정 → OVR 최우선) + 빈 포지션은 남은 타자 OVR 상위로 대체(LineupAssignment - 라인업 화면과 같은 기준).
+            var order = LineupAssignment.DefaultBattingOrder(teamRoster);
 
             // [TASK-KBO-182] 라인업 [타순 변경] 유저 지정 타순 - 유저 구단 InstanceId에만 매칭되므로 AI 로스터는 그대로다.
             return LineupOrder.Apply(order, KBOManager.Managers.GameManager.Instance != null ? KBOManager.Managers.GameManager.Instance.BattingOrderOverride : null);

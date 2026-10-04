@@ -69,6 +69,27 @@ namespace KBOManager.Managers
             if (instanceIds != null) battingOrderOverride.AddRange(instanceIds.Where(id => !string.IsNullOrEmpty(id)));
         }
 
+        [Tooltip("[TASK-KBO-186] 라인업 선발(주전) ↔ 후보 맞교환으로 고정한 주전 자리/투수 보직(InstanceId). 비어 있으면 기본 OVR 편성.")]
+        [SerializeField] private LineupAssignment lineupAssignment = new LineupAssignment();
+        public LineupAssignment LineupAssignment => lineupAssignment ?? (lineupAssignment = new LineupAssignment());
+
+        /// <summary>[TASK-KBO-186] 로스터 안 두 선수(주전 ↔ 후보, 선발 ↔ 불펜)의 자리를 1:1로 맞바꾼다. 타자는 타순 지정 자리도 함께 바꾼다.</summary>
+        public bool SwapLineupPositions(Player a, Player b)
+        {
+            if (!LineupAssignment.Swap(roster, a, b)) return false;
+            if (!a.Template.IsPitcher && battingOrderOverride.Count > 0)
+            {
+                for (int i = 0; i < battingOrderOverride.Count; i++)
+                {
+                    if (battingOrderOverride[i] == a.InstanceId) battingOrderOverride[i] = b.InstanceId;
+                    else if (battingOrderOverride[i] == b.InstanceId) battingOrderOverride[i] = a.InstanceId;
+                }
+            }
+            return true;
+        }
+
+        public void RestoreLineupAssignment(LineupAssignment data) => LineupAssignment.CopyFrom(data);
+
         [Tooltip("[TASK-KBO-181] 신규 단장 튜토리얼(라인업 → 세트덱 → 플레이 볼) 완료/건너뛰기 여부. " +
                  "온보딩 완료 시 false로 내려 첫 로비 진입에서 가이드를 띄운다. 기존 세이브는 true(가이드 없음).")]
         [SerializeField] private bool tutorialCompleted = true;
@@ -374,6 +395,7 @@ namespace KBOManager.Managers
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            LineupAssignment.Active = LineupAssignment; // [TASK-KBO-186] 라인업 화면 · 경기 엔진이 유저 맞교환 고정을 읽는다
 
             // [TASK-KBO-068] 치어리더 가챠 카탈로그(cheerleaders.csv)를 게임 시작 시 1회 로드한다.
             // CheerleaderCatalog.Initialize() 자체가 이미 초기화됐으면 재실행을 건너뛰므로, 씬 재로드
@@ -488,6 +510,7 @@ namespace KBOManager.Managers
             favoriteTeam = Team.None;
             managerNickname = "";
             battingOrderOverride.Clear();
+            LineupAssignment.Clear();
             isFirstLogin = true;
             tutorialCompleted = false;
             fanSentiment = 100;
@@ -555,6 +578,10 @@ namespace KBOManager.Managers
 
             roster.Clear();
             roster.AddRange(swapped);
+            // [TASK-KBO-186] 같은 자리에 들어온 카드가 맞교환 고정 자리 · 보직 · 지정 타순을 그대로 물려받는다.
+            LineupAssignment.ReplaceId(outgoing.InstanceId, incoming.InstanceId);
+            for (int i = 0; i < battingOrderOverride.Count; i++)
+                if (battingOrderOverride[i] == outgoing.InstanceId) battingOrderOverride[i] = incoming.InstanceId;
             return true;
         }
 

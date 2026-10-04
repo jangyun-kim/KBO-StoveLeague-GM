@@ -123,6 +123,7 @@ namespace KBOManager.Controllers
 
         private Player swapOutgoing;
         private Player swapSelectedIncoming;
+        private RosterSwapRules.Candidate swapSelectedCandidate;
         private List<RosterSwapRules.Candidate> swapCandidates = new List<RosterSwapRules.Candidate>();
 
         private void Awake()
@@ -420,6 +421,7 @@ namespace KBOManager.Controllers
 
             CloseSwapPopup();
             GameManager.Instance?.SetBattingOrderOverride(null); // [TASK-KBO-182] 새 라인업은 기본 타순부터
+            GameManager.Instance?.LineupAssignment.Clear(); // [TASK-KBO-186] 맞교환 고정도 초기화(자동 편성 = OVR 기준)
             gameActionController.ExecuteAutoRoster();
             var gm = GameManager.Instance;
             if (gm != null && gm.Roster.Count == 0 && gm.Inventory.Count > 0)
@@ -514,6 +516,12 @@ namespace KBOManager.Controllers
             {
                 if (card == null) continue;
                 if (card.TryGetComponent<Button>(out var button)) button.onClick.RemoveAllListeners();
+                var badge = card.transform.Find(SwapBadgeName); // [TASK-KBO-186] 맞교환 배지가 풀 카드에 남지 않게
+                if (badge != null)
+                {
+                    badge.SetParent(null, false);
+                    if (Application.isPlaying) Destroy(badge.gameObject); else DestroyImmediate(badge.gameObject);
+                }
                 CardHolderFit.ResetCard(card); // [TASK-KBO-181] 슬롯 칸 스케일이 다른 화면 재사용에 새지 않게
 
                 if (CardPoolManager.Instance != null) CardPoolManager.Instance.Release(card);
@@ -542,7 +550,9 @@ namespace KBOManager.Controllers
             swapOutgoing = outgoing;
             placementSlot = null;
             string favoriteTeamName = gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null;
-            var candidates = RosterSwapRules.GetCandidates(gm.Inventory, gm.Roster, outgoing, favoriteTeamName, gm.SetDeckSelection);
+            // [TASK-KBO-186] 로스터 안 맞교환 대상(주전 ↔ 후보, 선발 ↔ 불펜)을 목록 최상단에, 그 아래 보유 카드 교체 후보.
+            var candidates = RosterSwapRules.GetLineupSwapCandidates(gm.Roster, outgoing, favoriteTeamName, gm.SetDeckSelection);
+            candidates.AddRange(RosterSwapRules.GetCandidates(gm.Inventory, gm.Roster, outgoing, favoriteTeamName, gm.SetDeckSelection));
 
             bool isBench = RosterSwapRules.IsBenchBatter(gm.Roster, outgoing);
             string slotLabel = outgoing.Template.IsPitcher ? "투수" : isBench ? "후보 타자" : "주전 타자";
@@ -573,10 +583,13 @@ namespace KBOManager.Controllers
         private void ShowCandidatePopup(List<RosterSwapRules.Candidate> candidates, string header)
         {
             swapSelectedIncoming = null;
-            swapCandidates = candidates.Take(Mathf.Max(1, maxSwapCandidates)).ToList();
+            swapSelectedCandidate = null;
+            int inRoster = candidates.Count(c => c.InRoster);
+            swapCandidates = candidates.Take(Mathf.Max(1, maxSwapCandidates) + inRoster).ToList();
             if (swapTitleText != null)
             {
-                swapTitleText.text = $"{header}\n가능 {candidates.Count}장 (세트덱 스코어 높은 순{(candidates.Count > swapCandidates.Count ? $", 상위 {swapCandidates.Count}장 표시" : "")})";
+                int owned = candidates.Count - inRoster, shown = swapCandidates.Count - inRoster;
+                swapTitleText.text = $"{header}\n{(inRoster > 0 ? $"위치 맞교환 {inRoster}명 · " : "")}보유 카드 {owned}장 (세트덱 스코어 높은 순{(owned > shown ? $", 상위 {shown}장 표시" : "")})";
             }
 
             ClearCards(spawnedSwapCards);
@@ -584,6 +597,7 @@ namespace KBOManager.Controllers
             {
                 var card = SpawnCard(candidate.Player, swapCandidateContainer, spawnedSwapCards);
                 if (card == null) continue;
+                if (candidate.InRoster) AttachSwapBadge(card, candidate.Badge);
                 var captured = candidate;
                 BindCardClick(card, () => SelectSwapCandidate(captured));
             }
@@ -593,8 +607,29 @@ namespace KBOManager.Controllers
             swapPopupRoot.SetActive(true);
         }
 
+        private const string SwapBadgeName = "SwapBadge186";
+
+        /// <summary>[TASK-KBO-186] 로스터 안 맞교환 대상 카드 상단 배지([현재 후보 · 위치 맞교환] 등). 풀 반납 전 ClearCards()가 지운다.</summary>
+        private static void AttachSwapBadge(PlayerCardUI card, string text)
+        {
+            var rect = CompyaUiKit.Norm(card.transform, SwapBadgeName, 0f, 0.86f, 1f, 1f);
+            CompyaUiKit.Paint(rect, new Color(0.98f, 0.76f, 0.2f, 0.95f));
+            var label = CompyaUiKit.Fill(rect, "Text").gameObject.AddComponent<Text>();
+            var themed = card.GetComponentInChildren<Text>(true);
+            label.font = themed != null && themed.font != null ? themed.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.text = text;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = new Color(0.08f, 0.1f, 0.18f);
+            label.fontStyle = FontStyle.Bold;
+            label.raycastTarget = false;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 10;
+            label.resizeTextMaxSize = 22;
+        }
+
         private void SelectSwapCandidate(RosterSwapRules.Candidate candidate)
         {
+            swapSelectedCandidate = candidate;
             swapSelectedIncoming = candidate?.Player;
             foreach (var card in spawnedSwapCards)
             {
@@ -611,6 +646,13 @@ namespace KBOManager.Controllers
             if (candidate == null || (swapOutgoing == null && placementSlot == null))
             {
                 swapPreviewText.text = placementSlot != null ? "배치할 카드를 선택하십시오." : "교체할 카드를 선택하십시오.";
+                return;
+            }
+
+            if (candidate.InRoster && swapOutgoing != null)
+            {
+                swapPreviewText.text = $"위치 맞교환: {swapOutgoing.Template.PlayerName} ↔ {candidate.Player.Template.PlayerName} " +
+                                       $"(OVR {swapOutgoing.CalculateOVR(false)} ↔ {candidate.Player.CalculateOVR(false)}) · 로스터 구성 · 세트덱 {candidate.ProjectedScore}P 유지";
                 return;
             }
 
@@ -648,6 +690,20 @@ namespace KBOManager.Controllers
 
             if (swapOutgoing == null) return;
             string outName = swapOutgoing.Template.PlayerName;
+            if (swapSelectedCandidate != null && swapSelectedCandidate.InRoster)
+            {
+                // [TASK-KBO-186] 로스터 안 1:1 맞교환 - 빈 슬롯/중복 없이 두 선수의 자리(주전 ↔ 후보, 선발 ↔ 불펜)만 바뀐다.
+                if (!gm.SwapLineupPositions(swapOutgoing, swapSelectedIncoming))
+                {
+                    Debug.LogWarning($"[RosterUIController] 위치 맞교환 실패: {outName} ↔ {inName}");
+                    return;
+                }
+                CloseSwapPopup();
+                RefreshRoster();
+                if (setDeckOptionController != null) setDeckOptionController.Refresh();
+                Debug.Log($"[RosterUIController] 위치 맞교환: {outName} ↔ {inName}");
+                return;
+            }
             if (!gm.SwapRosterPlayer(swapOutgoing, swapSelectedIncoming))
             {
                 Debug.LogWarning($"[RosterUIController] 교체 실패: {outName} -> {inName} (교체 규칙 위반 또는 미보유 카드)");
@@ -666,6 +722,7 @@ namespace KBOManager.Controllers
             swapOutgoing = null;
             placementSlot = null;
             swapSelectedIncoming = null;
+            swapSelectedCandidate = null;
             if (swapPopupRoot != null) swapPopupRoot.SetActive(false);
         }
     }

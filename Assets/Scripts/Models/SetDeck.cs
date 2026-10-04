@@ -340,6 +340,46 @@ namespace KBOManager.Models
             public Player Player;
             public int ProjectedScore;
             public int ScoreDelta;
+            /// <summary>[TASK-KBO-186] 이미 로스터에 있는 선수(주전 ↔ 후보 / 선발 ↔ 불펜 위치 맞교환 대상).</summary>
+            public bool InRoster;
+            public string Badge = "";
+        }
+
+        public const string BenchSwapBadge = "현재 후보 · 위치 맞교환";
+        public const string StarterSwapBadge = "현재 주전 · 위치 맞교환";
+        public const string BullpenSwapBadge = "현재 불펜 · 위치 맞교환";
+        public const string RotationSwapBadge = "현재 선발 · 위치 맞교환";
+
+        /// <summary>[TASK-KBO-186] 로스터 안에서 outgoing과 자리를 맞바꿀 수 있는 선수 - 주전 타자면 현재 후보 전원, 후보면 현재 주전 9인,
+        /// 선발 투수면 불펜 전원, 불펜이면 선발 전원. 맞교환은 로스터 구성이 같아 세트덱 스코어 변화가 없다(ScoreDelta 0). 교체 팝업 최상단에 놓인다.</summary>
+        public static List<Candidate> GetLineupSwapCandidates(IReadOnlyList<Player> roster, Player outgoing,
+            string favoriteTeam = null, SetDeckSelection selection = null)
+        {
+            var result = new List<Candidate>();
+            if (roster == null || outgoing?.Template == null || !roster.Contains(outgoing)) return result;
+            int score = SetDeckEvaluator.Evaluate(roster, favoriteTeam, selection).Score;
+
+            IEnumerable<Player> partners;
+            string badge;
+            if (outgoing.Template.IsPitcher)
+            {
+                bool rotation = LineupAssignment.IsStartingPitcher(outgoing);
+                partners = roster.Where(p => p?.Template != null && p.Template.IsPitcher && p != outgoing && LineupAssignment.IsStartingPitcher(p) != rotation);
+                badge = rotation ? BullpenSwapBadge : RotationSwapBadge;
+            }
+            else
+            {
+                var starters = LineupAssignment.AssignStarters(roster).Where(s => s.Player != null).Select(s => s.Player).ToList();
+                bool starter = starters.Contains(outgoing);
+                partners = starter
+                    ? roster.Where(p => p?.Template != null && !p.Template.IsPitcher && !starters.Contains(p))
+                    : starters.Where(p => p != outgoing);
+                badge = starter ? BenchSwapBadge : StarterSwapBadge;
+            }
+
+            foreach (var partner in partners.Distinct().OrderByDescending(p => p.CalculateOVR(false)))
+                result.Add(new Candidate { Player = partner, ProjectedScore = score, ScoreDelta = 0, InRoster = true, Badge = badge });
+            return result;
         }
 
         public static bool IsBenchBatter(IEnumerable<Player> roster, Player player)
@@ -588,12 +628,8 @@ namespace KBOManager.Models
                 .Where(p => p?.Template != null && !p.Template.IsPitcher).Distinct()
                 .OrderByDescending(p => p.CalculateOVR(false)).ToList();
 
-            var picked = new List<Player>();
-            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
-            {
-                var pick = batters.FirstOrDefault(p => p.Template.BatterPosition == position && !picked.Contains(p));
-                if (pick != null) picked.Add(pick);
-            }
+            // [TASK-KBO-186] 유저 맞교환 고정(LineupAssignment) → 포지션별 최고 OVR. 빈 포지션 대체 타자(IsFill)는 기존처럼 후보로 센다.
+            var picked = LineupAssignment.AssignStarters(batters).Where(s => s.Player != null && !s.IsFill).Select(s => s.Player).ToList();
             starters = picked;
             bench = batters.Except(picked).Take(BenchBatterSlots).ToList();
         }

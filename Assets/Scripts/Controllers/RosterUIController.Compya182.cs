@@ -84,6 +84,7 @@ namespace KBOManager.Controllers
         private bool fullView;
         private LineupMode mode = LineupMode.None;
         private Player orderFirstPick;
+        private Player defenseFirstPick; // [TASK-KBO-186] [수비 위치 변경] 맞교환 첫 선택
         private Player selectedPlayer;
         private readonly List<PlayerCardUI> spawnedTrayCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedStorageCards = new List<PlayerCardUI>();
@@ -203,6 +204,7 @@ namespace KBOManager.Controllers
             if (next == LineupMode.BattingOrder && compyaTab != CompyaTab.Batter) ShowCompyaTab(CompyaTab.Batter);
             mode = mode == next ? LineupMode.None : next;
             orderFirstPick = null;
+            defenseFirstPick = null;
             Deselect();
             PaintToolbar(defenseChangeButton, mode == LineupMode.Defense);
             PaintToolbar(battingOrderButton, mode == LineupMode.BattingOrder);
@@ -226,7 +228,7 @@ namespace KBOManager.Controllers
                 LineupMode.BattingOrder => orderFirstPick == null
                     ? "<color=#FFD54A>타순 변경</color>: 순서를 바꿀 첫 번째 주전 타자를 누르십시오."
                     : $"<color=#FFD54A>타순 변경</color>: {orderFirstPick.Template.PlayerName}와 바꿀 타자를 누르십시오.",
-                LineupMode.Defense => "<color=#FFD54A>수비 위치 변경</color>: 포지션을 누르면 그 자리에 들어갈 수 있는 선수 목록이 바로 열립니다.",
+                LineupMode.Defense => "<color=#FFD54A>수비 위치 변경</color>: 두 선수를 차례로 누르면 자리가 맞바뀝니다(주전 ↔ 후보 · 선발 ↔ 불펜). 같은 선수를 두 번 누르면 교체 후보 목록.",
                 _ => compyaTab == CompyaTab.Storage ? "보관 선수를 누르면 [상세 정보] / [선수 관리] / [라인업 투입]을 할 수 있습니다."
                     : "선수를 누르면 하단에 [상세 정보] / [선수 관리] / [교체] 메뉴가 열립니다.",
             });
@@ -445,7 +447,7 @@ namespace KBOManager.Controllers
 
             if (mode == LineupMode.Defense && !isStorage)
             {
-                OpenSwapPopup(player); // 수비 위치 변경 모드: 해당 자리 후보를 바로 연다
+                HandleDefenseClick(player); // [TASK-KBO-186] 두 선수를 차례로 누르면 즉시 맞교환(주전 ↔ 후보 포함)
                 return;
             }
 
@@ -458,6 +460,38 @@ namespace KBOManager.Controllers
             selectedPlayer = player;
             ShowSelection(player);
             ShowTray(player, isStorage);
+        }
+
+        /// <summary>[TASK-KBO-186] [수비 위치 변경] - 첫 클릭으로 선수를 고르고 두 번째 클릭한 선수와 자리를 1:1 맞교환한다
+        /// (주전 ↔ 후보, 주전 ↔ 주전, 선발 ↔ 불펜). 같은 선수를 다시 누르면 기존처럼 그 자리 교체 후보 목록을 연다.</summary>
+        private void HandleDefenseClick(Player player)
+        {
+            if (defenseFirstPick == null)
+            {
+                defenseFirstPick = player;
+                ShowSelection(player);
+                UpdateToolbarHint($"<color=#FFD54A>수비 위치 변경</color>: {player.Template.PlayerName}와 자리를 바꿀 선수를 누르십시오. (다시 누르면 교체 후보 목록)");
+                return;
+            }
+
+            var first = defenseFirstPick;
+            defenseFirstPick = null;
+            ShowSelection(null);
+            if (first == player)
+            {
+                OpenSwapPopup(player);
+                return;
+            }
+
+            var gm = GameManager.Instance;
+            if (gm != null && gm.SwapLineupPositions(first, player))
+            {
+                RefreshRoster();
+                if (setDeckOptionController != null) setDeckOptionController.Refresh();
+                UpdateToolbarHint($"<color=#FFD54A>수비 위치 변경</color>: {first.Template.PlayerName} ↔ {player.Template.PlayerName} 맞교환 완료 (경기에 바로 반영).");
+                return;
+            }
+            UpdateToolbarHint("<color=#FFD54A>수비 위치 변경</color>: 타자끼리(주전 ↔ 후보/주전) 또는 선발 ↔ 불펜 투수끼리만 맞교환할 수 있습니다.");
         }
 
         private void HandleBattingOrderClick(LineupView.Entry entry)

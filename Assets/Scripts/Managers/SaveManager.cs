@@ -139,7 +139,8 @@ namespace KBOManager.Managers
         // v9: 라인업 [타순 변경] 유저 지정 타순(BattingOrder, InstanceId 목록) 추가(TASK-KBO-182). 없으면 빈 목록 = 기본 타순.
         // v10: 카드 한계 돌파/훈련 단계(PlayerSaveData.LimitBreakLevel/TrainingLevel)와 12단계 리그 현재 단계(LeagueTier) 추가(TASK-KBO-183).
         //      LeagueTier가 없는 구버전 세이브(-1)는 저장된 구단 OVR의 권장 리그(최소 아마추어)로 복원한다.
-        public int SaveVersion = 10;
+        // v11: 라인업 선발(주전) ↔ 후보 맞교환 고정(LineupAssignment - 주전 자리/투수 보직 InstanceId 핀) 추가(TASK-KBO-186). 없으면 기본 OVR 편성.
+        public int SaveVersion = 11;
         public string SavedAtUtc;
 
         // GameManager
@@ -172,6 +173,7 @@ namespace KBOManager.Managers
         public string ManagerNickname = ""; // [TASK-KBO-181] v8
         public bool TutorialCompleted = true; // [TASK-KBO-181] v8 - 구버전 세이브는 가이드 생략
         public List<string> BattingOrder = new List<string>(); // [TASK-KBO-182] v9
+        public LineupAssignment Lineup = new LineupAssignment(); // [TASK-KBO-186] v11
 
         // LeagueManager
         public bool HasLeagueData;
@@ -326,6 +328,8 @@ namespace KBOManager.Managers
                 data.ManagerNickname = gm.ManagerNickname;
                 data.TutorialCompleted = gm.TutorialCompleted;
                 data.BattingOrder = gm.BattingOrderOverride.ToList();
+                data.Lineup = new LineupAssignment();
+                data.Lineup.CopyFrom(gm.LineupAssignment);
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
                 data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
@@ -452,6 +456,7 @@ namespace KBOManager.Managers
                 gm.ManagerNickname = data.ManagerNickname ?? "";
                 gm.TutorialCompleted = data.TutorialCompleted;
                 gm.SetBattingOrderOverride(data.BattingOrder);
+                gm.RestoreLineupAssignment(data.Lineup);
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
                 gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)
