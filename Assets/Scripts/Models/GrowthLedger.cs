@@ -16,6 +16,10 @@ namespace KBOManager.Models
         int TranscendTicket { get; set; }
         /// <summary>특훈권 - 훈련·특훈 1단계를 볼 대신 1장으로 진행한다.</summary>
         int TrainingTicket { get; set; }
+        /// <summary>[TASK-KBO-190] 스킬 변경권 - 3슬롯 스킬 재추첨 1회(없으면 15,000P).</summary>
+        int SkillChangeTicket { get; set; }
+        /// <summary>[TASK-KBO-190] 고급 스킬 변경권 - 재추첨 + 최소 1슬롯 A~S 확정.</summary>
+        int PremiumSkillChangeTicket { get; set; }
     }
 
     /// <summary>[TASK-KBO-189] 메모리 원장(단위 테스트 · 검증 리포트용).</summary>
@@ -32,6 +36,8 @@ namespace KBOManager.Models
         public int AwakenTicket { get; set; }
         public int TranscendTicket { get; set; }
         public int TrainingTicket { get; set; }
+        public int SkillChangeTicket { get; set; }
+        public int PremiumSkillChangeTicket { get; set; }
         public void RemoveCard(Player player) { Lineup.Remove(player); Cards.Remove(player); }
         public void AddCard(Player player) { if (player != null) Cards.Add(player); }
     }

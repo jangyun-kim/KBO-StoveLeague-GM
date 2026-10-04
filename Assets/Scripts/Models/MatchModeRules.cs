@@ -2,7 +2,7 @@ namespace KBOManager.Models
 {
     /// <summary>
     /// [TASK-KBO-188] 경기 진행 방식 3종의 규칙 SSOT(단위 테스트 대상).
-    ///   - 빠른 진행: 중계 없이 N경기(1/3/5/10 또는 -/+ 지정, 남은 정규시즌 경기 수로 클램프)를 연속 자동 진행한다.
+    ///   - 빠른 진행: 중계 없이 N경기(1/3/5/10/30/시즌 완주 또는 -/+ 지정, 남은 정규시즌 경기 수로 클램프)를 연속 자동 진행한다.
     ///                매 경기는 1경기 진행과 같은 경로(PlayBallController.StartMatch → 스킵 → FinishMatch)를 그대로 탄다 -
     ///                선발 로테이션 · 타 구장 4경기 · 시즌 기록 · 보상이 경기마다 똑같이 처리된다.
     ///   - 하이라이트: (구 풀 플레이 흐름) 전체 이닝 중계 + 승부처(우리 팀 공격·수비의 득점권 주자 상황)에서만 작전 개입, 최대 12회.
@@ -13,8 +13,18 @@ namespace KBOManager.Models
     {
         public enum Mode { Quick = 0, Highlight = 1, Full = 2 }
 
-        /// <summary>빠른 진행 경기 수 프리셋 버튼.</summary>
-        public static readonly int[] QuickCountPresets = { 1, 3, 5, 10 };
+        /// <summary>[TASK-KBO-190] 빠른 진행 "시즌 완주(잔여 경기 전체)" 프리셋 값 - ClampQuickCount가 남은 경기 수로 자른다.</summary>
+        public const int SeasonAll = 999;
+
+        /// <summary>빠른 진행 경기 수 프리셋 버튼([TASK-KBO-190] 30경기 · 시즌 완주 추가).</summary>
+        public static readonly int[] QuickCountPresets = { 1, 3, 5, 10, 30, SeasonAll };
+
+        /// <summary>[TASK-KBO-190] 프리셋 버튼 문구("10경기" / "시즌 완주").</summary>
+        public static string PresetLabel(int preset) => preset >= SeasonAll ? "시즌 완주" : $"{preset}경기";
+
+        /// <summary>[TASK-KBO-190] 프리셋이 현재 선택 경기 수와 같은지(시즌 완주 = 남은 경기 전부).</summary>
+        public static bool IsPresetSelected(int preset, int quickCount, int remainingGames) =>
+            preset >= SeasonAll ? remainingGames > 0 && quickCount == remainingGames : preset == quickCount;
 
         /// <summary>하이라이트(구 풀 플레이) 승부처 최대 개입 횟수.</summary>
         public const int HighlightMaxInterventions = 12;

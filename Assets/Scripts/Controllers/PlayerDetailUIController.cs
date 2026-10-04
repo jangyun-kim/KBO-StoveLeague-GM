@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KBOManager.Data;
 using KBOManager.Managers;
 using KBOManager.Models;
@@ -310,8 +311,9 @@ namespace KBOManager.Controllers
         {
             if (skillListText == null || currentPlayer == null) return;
 
-            skillListText.text = currentPlayer.AcquiredSkillIds.Count > 0
-                ? string.Join("\n", currentPlayer.AcquiredSkillIds)
+            var skillSlots = PlayerSkillRules.SlotsOf(currentPlayer); // [TASK-KBO-190]
+            skillListText.text = skillSlots.Count > 0
+                ? string.Join("\n", skillSlots.Select(s => $"{PlayerSkillRules.SlotLabel(s)} - {PlayerSkillRules.EffectText(s)}"))
                 : "보유 스킬 없음";
         }
     }

@@ -68,6 +68,9 @@ namespace KBOManager.Managers
 
         public ScreenType CurrentScreen { get; private set; }
 
+        /// <summary>[TASK-KBO-190] ShowScreen 직후 발생 - 시즌 결산 화면(SeasonCycleView)이 로비 복귀 시점에 뜨는 데 쓴다.</summary>
+        public event Action<ScreenType> OnScreenChanged;
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -117,6 +120,7 @@ namespace KBOManager.Managers
             }
 
             CurrentScreen = type;
+            OnScreenChanged?.Invoke(type);
         }
 
         /// <summary>type에 대응하는 화면 루트를 반환한다. 등록되어 있지 않으면 null.</summary>

@@ -633,10 +633,12 @@ namespace KBOManager.Controllers
         private List<(string Icon, string Title, string Sub)> BuildChips(Player player)
         {
             var chips = new List<(string, string, string)>();
-            foreach (var skill in player.AcquiredSkillIds.Where(s => !string.IsNullOrEmpty(s)).Take(3))
+            // [TASK-KBO-190] 3슬롯 스킬 - 아이콘 = 등급(S/A/B/C/D), 이름, "Lv.3 · 상시"
+            foreach (var slot in PlayerSkillRules.SlotsOf(player).Take(3))
             {
-                var tier = skillDB != null ? skillDB.FindTier(skill) : null;
-                chips.Add((skill.Substring(0, 1), skill, tier.HasValue ? $"스킬 {tier.Value}" : "보유 스킬"));
+                var def = PlayerSkillRules.Find(slot.SkillId);
+                chips.Add((PlayerSkillRules.GradeLetter(slot.Grade), PlayerSkillRules.Name(slot),
+                    $"Lv.{PlayerSkillRules.ClampLevel(slot.Level)} · {(def != null ? PlayerSkillRules.TriggerLabel(def.Trigger) : "")}"));
             }
             var t = player.Template;
             var stats = t.IsPitcher

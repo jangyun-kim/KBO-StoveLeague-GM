@@ -47,7 +47,7 @@ namespace KBOManager.Controllers
         // [TASK-KBO-188] 빠른 진행 경기 수 선택 · 경기 중 모드 토글 · 연속 진행 결과 배너
         private GameObject quickCountRoot;
         private Text quickCountText;
-        private readonly Image[] quickPresetImages = new Image[4];
+        private readonly Image[] quickPresetImages = new Image[MatchModeRules.QuickCountPresets.Length];
         private Button relayModeButton, directHighlightButton;
         private GameObject r1QuickBanner, r2QuickBanner;
         private Text r1QuickText, r2QuickText;
@@ -301,23 +301,25 @@ namespace KBOManager.Controllers
             typeDescText = kit.Label(p, "Desc", "", 205, 1172, 1045, 1268, 34, TextAnchor.MiddleCenter, Cyan);
             typeInfoText = kit.Label(p, "Info", "", 205, 1272, 1045, 1335, 36, TextAnchor.MiddleCenter, White, true);
             // [TASK-KBO-188] 빠른 진행 경기 수: [1][3][5][10] [-] N경기 [+] (남은 정규시즌 경기 수로 클램프)
-            var quick = CompyaUiKit.Place(p, "QuickCount", 205, 1338, 1045, 1392);
+            // [TASK-KBO-190] [30경기] · [시즌 완주(잔여 경기 전체)] 추가 - 6버튼
+            var quick = CompyaUiKit.Place(p, "QuickCount", 175, 1338, 1075, 1392);
             quickCountRoot = quick.gameObject;
-            kit.LabelOn(CompyaUiKit.Norm(quick, "Label", 0f, 0f, 0.17f, 1f), "연속 진행", 30, TextAnchor.MiddleLeft, Gold, true);
+            kit.LabelOn(CompyaUiKit.Norm(quick, "Label", 0f, 0f, 0.12f, 1f), "연속 진행", 26, TextAnchor.MiddleLeft, Gold, true);
             for (int i = 0; i < MatchModeRules.QuickCountPresets.Length; i++)
             {
                 int preset = MatchModeRules.QuickCountPresets[i];
-                float x0 = 0.18f + i * 0.115f;
-                var button = kit.Button(quick, $"Preset{preset}", $"{preset}경기", 0, 0, 1, 1, new Color(0.2f, 0.25f, 0.45f), White, 28);
+                float x0 = 0.125f + i * 0.088f;
+                var button = kit.Button(quick, preset >= MatchModeRules.SeasonAll ? "PresetSeasonAll" : $"Preset{preset}", MatchModeRules.PresetLabel(preset),
+                    0, 0, 1, 1, preset >= MatchModeRules.SeasonAll ? new Color(0.45f, 0.2f, 0.55f) : new Color(0.2f, 0.25f, 0.45f), White, preset >= MatchModeRules.SeasonAll ? 22 : 26);
                 var rect = (RectTransform)button.transform;
                 rect.anchorMin = new Vector2(x0, 0.04f);
-                rect.anchorMax = new Vector2(x0 + 0.105f, 0.96f);
+                rect.anchorMax = new Vector2(x0 + 0.084f, 0.96f);
                 rect.offsetMin = rect.offsetMax = Vector2.zero;
                 quickPresetImages[i] = button.targetGraphic as Image;
                 button.onClick.AddListener(() => SetQuickCount(preset));
             }
             var minus = kit.Button(quick, "Minus", "−", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
-            SetNorm((RectTransform)minus.transform, 0.65f, 0.04f, 0.72f, 0.96f);
+            SetNorm((RectTransform)minus.transform, 0.66f, 0.04f, 0.72f, 0.96f);
             minus.onClick.AddListener(() => AdjustQuickCount(-1));
             quickCountText = kit.LabelOn(CompyaUiKit.Norm(quick, "Count", 0.72f, 0f, 0.9f, 1f), "", 34, TextAnchor.MiddleCenter, White, true);
             var plus = kit.Button(quick, "Plus", "+", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
@@ -360,8 +362,10 @@ namespace KBOManager.Controllers
                 {
                     if (quickPresetImages[i] == null) continue;
                     int preset = MatchModeRules.QuickCountPresets[i];
-                    quickPresetImages[i].color = preset == quickCount ? new Color(0.98f, 0.72f, 0.18f)
-                        : preset > remaining ? new Color(0.2f, 0.22f, 0.3f, 0.5f) : new Color(0.2f, 0.25f, 0.45f);
+                    bool all = preset >= MatchModeRules.SeasonAll;
+                    quickPresetImages[i].color = MatchModeRules.IsPresetSelected(preset, quickCount, remaining) ? new Color(0.98f, 0.72f, 0.18f)
+                        : (!all && preset > remaining) || remaining <= 0 ? new Color(0.2f, 0.22f, 0.3f, 0.5f)
+                        : all ? new Color(0.45f, 0.2f, 0.55f) : new Color(0.2f, 0.25f, 0.45f);
                 }
             }
 
@@ -1331,7 +1335,8 @@ namespace KBOManager.Controllers
 
         private static void FillSkills(Text[] slots, Player player)
         {
-            var skills = player?.AcquiredSkillIds ?? new List<string>();
+            // [TASK-KBO-190] 3슬롯 스킬 "[S] 배팅 머신 Lv.3"
+            var skills = player != null ? PlayerSkillRules.SlotsOf(player).Select(PlayerSkillRules.SlotLabel).ToList() : new List<string>();
             for (int i = 0; i < slots.Length; i++)
             {
                 slots[i].text = i < skills.Count ? skills[i] : "";

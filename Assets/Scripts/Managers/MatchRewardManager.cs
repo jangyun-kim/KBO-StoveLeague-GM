@@ -126,6 +126,8 @@ namespace KBOManager.Managers
             gmLedger.GrowthCoin += material.GrowthCoin;
             gmLedger.TrainingTicket += material.TrainingTicket;
             gmLedger.Trophy += material.Trophy;
+            gmLedger.SkillChangeTicket += material.SkillChangeTicket; // [TASK-KBO-190] 승리 시 확률 지급
+            gmLedger.PremiumSkillChangeTicket += material.PremiumSkillChangeTicket;
 
             int itemCount = won ? Random.Range(winMinItemDrop, winMaxItemDrop + 1) : loseOrDrawItemDrop;
             var grantedItems = new List<Item>();

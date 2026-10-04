@@ -293,6 +293,7 @@ namespace KBOManager.Managers
             }
 
             NormalizeRosterToTeamOvr(roster, targetTeamOvr);
+            foreach (var p in roster) PlayerSkillRules.EnsureSlots(p); // [TASK-KBO-190] AI 선수도 같은 규칙의 3슬롯 스킬(공정한 판정)
             return roster;
         }
 
@@ -635,15 +636,22 @@ namespace KBOManager.Managers
         /// CreateAiPlayer를 메서드 그룹으로 그대로 넘겨 StoveLeagueManager가 신인을 생성할 때도 초기
         /// AI 로스터 생성과 동일한 경로(PlayerDatabase 실카드 우선, 없으면 procedural)를 타도록 한다.
         /// </summary>
-        public StoveLeagueManager.StoveLeagueReport AdvanceToNextSeason()
+        public StoveLeagueManager.StoveLeagueReport AdvanceToNextSeason() => AdvanceToNextSeason(null);
+
+        /// <summary>
+        /// [TASK-KBO-190] promote = 승격 여부(SeasonCycle.ShouldPromote - 정규시즌 1위 또는 한국시리즈 우승). null이면 정규시즌 1위 기준(구 동작).
+        /// SeasonRollover가 포스트시즌 브래킷을 비우기 전에 우승 여부를 판정해 넘긴다.
+        /// </summary>
+        public StoveLeagueManager.StoveLeagueReport AdvanceToNextSeason(bool? promote)
         {
             var aiTeams = standings.Values.Where(t => !t.IsUserTeam).ToList();
             int userAverageOvr = EstimateTargetStatLevel();
             var report = StoveLeagueManager.ProcessStoveLeague(aiTeams, skillDB, userAverageOvr, CreateAiPlayer);
 
-            // [TASK-KBO-183] 12단계 리그 - 정규시즌 1위로 마치면 다음 시즌 한 단계 승격한다(영구결번 리그가 최상위).
+            // [TASK-KBO-183] 12단계 리그 - 정규시즌 1위(또는 [TASK-KBO-190] 한국시리즈 우승)로 마치면 다음 시즌 한 단계 승격한다(영구결번 리그가 최상위).
             LastPromotion = null;
-            if (UserFinalRank == 1 && currentTier < LeagueTierTable.Highest)
+            bool earned = promote ?? UserFinalRank == 1;
+            if (earned && currentTier < LeagueTierTable.Highest)
             {
                 var from = currentTier;
                 currentTier = LeagueTierTable.Next(currentTier);
@@ -657,6 +665,7 @@ namespace KBOManager.Managers
             foreach (var (team, target) in AssignAiTargets())
             {
                 NormalizeRosterToTeamOvr(standings[team].Roster, target);
+                foreach (var p in standings[team].Roster) PlayerSkillRules.EnsureSlots(p); // [TASK-KBO-190] 세대교체 신인
             }
 
             foreach (var info in standings.Values)

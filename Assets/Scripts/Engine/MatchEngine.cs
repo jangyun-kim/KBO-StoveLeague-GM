@@ -1135,6 +1135,8 @@ namespace KBOManager.Engine
             stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher, state);
             // 상대 투수가 보유한 Target=Opponent 스킬(나를 겨냥한 효과) - 조건 판정은 스킬 소유자(투수) 기준
             stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
+            // [TASK-KBO-190] 3슬롯 스킬(등급 D~S · Lv.1~6) - 상시 + 조건(득점권 · 2스트라이크 · 상위 OVR 상대 등) 충족분 가산
+            if (HasSkillSlots(batter)) stats = stats + PlayerSkillRules.BatterBonus(batter, SkillSituationFor(batter, pitcher, state));
 
             var batterModifiers = GetModifiersFor(batter);
             // [TASK-KBO-183] 체급 우위(Δ ≥ 8) - [TASK-KBO-187] 타격 쪽은 리드가 클수록 감쇠(OvrGapLaw.BattingClassBonus)
@@ -1181,6 +1183,8 @@ namespace KBOManager.Engine
 
             stats = ApplyPitcherSkills(stats, pitcher, EffectTarget.Self, self: pitcher, opponent: batter, state);
             stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher, state);
+            // [TASK-KBO-190] 3슬롯 스킬 - 투수(위기 관리 = 주자 출루, 수호신 = 7회 이후 등)
+            if (HasSkillSlots(pitcher)) stats = stats + PlayerSkillRules.PitcherBonus(pitcher, SkillSituationFor(pitcher, batter, state));
 
             var pitcherModifiers = GetModifiersFor(pitcher);
             stats = AddTeamBuff(stats, pitcherModifiers.TotalBuff + ClassBonusFor(pitcher)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
@@ -1289,10 +1293,22 @@ namespace KBOManager.Engine
         /// skillOwner가 보유한 스킬 중 지정한 wantedTarget(Self/Opponent)에 해당하고 조건을 만족하는 것만
         /// 골라 stats(타자 스탯)에 적용한다. 조건은 항상 스킬 소유자(self) 기준으로 평가한다.
         /// </summary>
+        /// <summary>[TASK-KBO-190] 3슬롯 스킬 보유 여부 - 있으면 구 SkillDB 이름 목록(AcquiredSkillIds)은 판정에 쓰지 않는다(표시와 일원화).</summary>
+        private static bool HasSkillSlots(Player player) => player?.SkillSlots != null && player.SkillSlots.Count > 0;
+
+        private SkillSituation SkillSituationFor(Player self, Player opponent, MatchState state) => new SkillSituation
+        {
+            ScoringPosition = state != null && state.HasRunnerInScoringPosition,
+            RunnerOnBase = state != null && state.HasAnyRunner,
+            Strikes = state != null ? state.Strikes : 0,
+            Inning = state != null ? state.Inning : 1,
+            OpponentStronger = GetBaseOvr(self) < GetBaseOvr(opponent),
+        };
+
         private BatterStats ApplyBatterSkills(BatterStats stats, Player skillOwner, EffectTarget wantedTarget,
             Player self, Player opponent, MatchState state)
         {
-            if (skillDB == null || skillOwner?.Template == null) return stats;
+            if (skillDB == null || skillOwner?.Template == null || HasSkillSlots(skillOwner)) return stats;
 
             // 소유자의 실제 카테고리(타자/선발/불펜) 풀에서만 조회한다 - "패기"/"마당쇠"처럼 동일 이름의
             // 스킬이 다른 카테고리 풀에 다른 효과로도 존재하는 경우, 이름만으로 전체 풀을 검색하면
@@ -1319,7 +1335,7 @@ namespace KBOManager.Engine
         private PitcherStats ApplyPitcherSkills(PitcherStats stats, Player skillOwner, EffectTarget wantedTarget,
             Player self, Player opponent, MatchState state)
         {
-            if (skillDB == null || skillOwner?.Template == null) return stats;
+            if (skillDB == null || skillOwner?.Template == null || HasSkillSlots(skillOwner)) return stats;
 
             // ApplyBatterSkills와 동일한 이유로 소유자의 실제 카테고리(선발/불펜) 풀에서만 조회한다.
             var ownerCategory = SkillDB.ResolveCategory(skillOwner.Template);

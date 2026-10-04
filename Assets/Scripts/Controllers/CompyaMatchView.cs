@@ -177,7 +177,7 @@ namespace KBOManager.Controllers
         public void SetQuickCount(int count)
         {
             int remaining = QuickRemainingGames();
-            quickCount = Mathf.Max(1, remaining > 0 ? MatchModeRules.ClampQuickCount(count, remaining) : count);
+            quickCount = Mathf.Max(1, remaining > 0 ? MatchModeRules.ClampQuickCount(count, remaining) : Mathf.Min(count, LeagueManager.TotalUserGames));
             if (typePanel != null && typePanel.activeSelf) RefreshTypeSelect();
         }
 
@@ -206,6 +206,8 @@ namespace KBOManager.Controllers
             }
             if (LeagueManager.Instance == null || LeagueManager.Instance.PeekNextFixture() == null)
             {
+                // [TASK-KBO-190] 144경기를 모두 마쳤으면 시즌 결산(포스트시즌 → 시상식 → 승격 → 다음 시즌) 화면으로 안내한다.
+                if (SeasonCycleView.OpenIfSeasonOver()) { HideAll(); UIManager.Instance?.ShowScreen(ScreenType.Lobby); return; }
                 typeInfoText.text = "진행할 예정 경기가 없습니다.";
                 return;
             }

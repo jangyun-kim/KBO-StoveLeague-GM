@@ -17,9 +17,14 @@ namespace KBOManager.Models
         AwakenTicket = 4,       // 범용 각성 보조권(+1각)
         TranscendTicket = 5,    // 초월 핵심 대체권
         RecruitMaterialBox = 6, // 골글/시그니처 특별 영입 재료 상자
+        // [TASK-KBO-190] 3슬롯 스킬 변경권(포인트 또는 성장 코인) · 고급 스킬 변경권(성장 코인 또는 트로피)
+        SkillChangeTicket = 7,              // 스킬 변경권(포인트)
+        SkillChangeTicketCoin = 8,          // 스킬 변경권(성장 코인)
+        PremiumSkillChangeTicket = 9,       // 고급 스킬 변경권(성장 코인)
+        PremiumSkillChangeTicketTrophy = 10,// 고급 스킬 변경권(트로피)
     }
 
-    public enum ShopCurrency { Points, GrowthCoin }
+    public enum ShopCurrency { Points, GrowthCoin, Trophy }
 
     /// <summary>
     /// [TASK-KBO-189] 컴프야V26 운영 기조(잉여 카드 재활용 · 포지션/구단 맞춤 수급 · 명확한 재료 획득처)를 옮긴 상점/교환소 순수 규칙.
@@ -152,14 +157,38 @@ namespace KBOManager.Models
 
         // ================================================================== 3. 상점 · 교환소
 
-        public static readonly ShopProduct[] PointProducts = { ShopProduct.LivePositionPack, ShopProduct.TrainingBox, ShopProduct.EnhanceSupportPack };
-        public static readonly ShopProduct[] CoinProducts = { ShopProduct.SpecialPositionPack, ShopProduct.AwakenTicket, ShopProduct.TranscendTicket, ShopProduct.RecruitMaterialBox };
+        public static readonly ShopProduct[] PointProducts = { ShopProduct.LivePositionPack, ShopProduct.TrainingBox, ShopProduct.EnhanceSupportPack, ShopProduct.SkillChangeTicket };
+        public static readonly ShopProduct[] CoinProducts =
+        {
+            ShopProduct.SpecialPositionPack, ShopProduct.AwakenTicket, ShopProduct.TranscendTicket, ShopProduct.RecruitMaterialBox,
+            ShopProduct.SkillChangeTicketCoin, ShopProduct.PremiumSkillChangeTicket, ShopProduct.PremiumSkillChangeTicketTrophy,
+        };
 
         public const int LivePackEpicPercent = 15;
         public const int FavoriteTeamPercent = 50;
         public const int EnhanceSupportCards = 3;
 
-        public static ShopCurrency CurrencyOf(ShopProduct p) => (int)p >= (int)ShopProduct.SpecialPositionPack ? ShopCurrency.GrowthCoin : ShopCurrency.Points;
+        public static ShopCurrency CurrencyOf(ShopProduct p)
+        {
+            switch (p)
+            {
+                case ShopProduct.LivePositionPack:
+                case ShopProduct.TrainingBox:
+                case ShopProduct.EnhanceSupportPack:
+                case ShopProduct.SkillChangeTicket:
+                    return ShopCurrency.Points;
+                case ShopProduct.PremiumSkillChangeTicketTrophy:
+                    return ShopCurrency.Trophy;
+                default:
+                    return ShopCurrency.GrowthCoin;
+            }
+        }
+
+        /// <summary>[TASK-KBO-190] 재화 이름(부족 문구용).</summary>
+        public static string CurrencyName(ShopCurrency c) => c == ShopCurrency.Points ? "포인트" : c == ShopCurrency.Trophy ? "트로피" : "성장 코인";
+
+        public static int Owned(IGrowthLedger ledger, ShopCurrency c) =>
+            ledger == null ? 0 : c == ShopCurrency.Points ? ledger.Points : c == ShopCurrency.Trophy ? ledger.Trophies : ledger.GrowthCoin;
 
         public static int Price(ShopProduct p, Grade grade = Grade.ALLSTAR) => p switch
         {
@@ -170,6 +199,10 @@ namespace KBOManager.Models
             ShopProduct.AwakenTicket => 500,
             ShopProduct.TranscendTicket => 1500,
             ShopProduct.RecruitMaterialBox => 800,
+            ShopProduct.SkillChangeTicket => 12000,
+            ShopProduct.SkillChangeTicketCoin => 150,
+            ShopProduct.PremiumSkillChangeTicket => 600,
+            ShopProduct.PremiumSkillChangeTicketTrophy => 1,
             _ => 0,
         };
 
@@ -182,6 +215,10 @@ namespace KBOManager.Models
             ShopProduct.AwakenTicket => "범용 각성 보조권 (+1각)",
             ShopProduct.TranscendTicket => "초월 핵심 대체권",
             ShopProduct.RecruitMaterialBox => "골글/시그니처 특별 영입 재료 상자",
+            ShopProduct.SkillChangeTicket => "스킬 변경권",
+            ShopProduct.SkillChangeTicketCoin => "스킬 변경권",
+            ShopProduct.PremiumSkillChangeTicket => "고급 스킬 변경권",
+            ShopProduct.PremiumSkillChangeTicketTrophy => "고급 스킬 변경권",
             _ => p.ToString(),
         };
 
@@ -194,11 +231,19 @@ namespace KBOManager.Models
             ShopProduct.AwakenTicket => "같은 시즌 · 포지션 재료가 없을 때 즉시 +1각 (+10강 선행, 9각까지)",
             ShopProduct.TranscendTicket => "초월 슬롯 1(같은 시즌 · 같은 선수 1장)을 대체",
             ShopProduct.RecruitMaterialBox => "스페셜 카드 50% / +3강 LIVE 에픽 30% / +6강 LIVE 에픽 20% - 특별 영입 슬롯 재료",
+            ShopProduct.SkillChangeTicket => "선수 3슬롯 스킬의 종류 · 등급(D~S)을 다시 뽑습니다 (성장 센터 > 훈련·특훈)",
+            ShopProduct.SkillChangeTicketCoin => "선수 3슬롯 스킬의 종류 · 등급(D~S)을 다시 뽑습니다 (성장 센터 > 훈련·특훈)",
+            ShopProduct.PremiumSkillChangeTicket => "스킬 재추첨 + 최소 1슬롯 A~S 등급 확정",
+            ShopProduct.PremiumSkillChangeTicketTrophy => "스킬 재추첨 + 최소 1슬롯 A~S 등급 확정 (트로피 교환)",
             _ => "",
         };
 
-        public static string PriceLabel(ShopProduct p, Grade grade = Grade.ALLSTAR) =>
-            CurrencyOf(p) == ShopCurrency.Points ? $"{Price(p, grade):N0}P" : $"코인 {Price(p, grade):N0}";
+        public static string PriceLabel(ShopProduct p, Grade grade = Grade.ALLSTAR)
+        {
+            var currency = CurrencyOf(p);
+            return currency == ShopCurrency.Points ? $"{Price(p, grade):N0}P"
+                : currency == ShopCurrency.Trophy ? $"트로피 {Price(p, grade):N0}" : $"코인 {Price(p, grade):N0}";
+        }
 
         /// <summary>
         /// 상품 구매: 재화 확인 → 상품 지급(카드는 issue로 발급) → 재화 차감. 지급할 카드가 없으면 결제하지 않는다.
@@ -213,8 +258,8 @@ namespace KBOManager.Models
             pick ??= n => 0;
             int price = Price(product, grade);
             var currency = CurrencyOf(product);
-            int owned = currency == ShopCurrency.Points ? ledger.Points : ledger.GrowthCoin;
-            if (owned < price) { message = $"{(currency == ShopCurrency.Points ? "포인트" : "성장 코인")} 부족 - {PriceLabel(product, grade)} 필요 (보유 {owned:N0})"; return false; }
+            int owned = Owned(ledger, currency);
+            if (owned < price) { message = $"{CurrencyName(currency)} 부족 - {PriceLabel(product, grade)} 필요 (보유 {owned:N0})"; return false; }
 
             var all = (templates ?? Enumerable.Empty<PlayerTemplate>()).Where(t => t != null).ToList();
             string reward;
@@ -288,13 +333,25 @@ namespace KBOManager.Models
                     ledger.TranscendTicket += 1;
                     reward = "초월 핵심 대체권 1장";
                     break;
+                case ShopProduct.SkillChangeTicket:
+                case ShopProduct.SkillChangeTicketCoin:
+                    ledger.SkillChangeTicket += 1;
+                    reward = "스킬 변경권 1장";
+                    break;
+                case ShopProduct.PremiumSkillChangeTicket:
+                case ShopProduct.PremiumSkillChangeTicketTrophy:
+                    ledger.PremiumSkillChangeTicket += 1;
+                    reward = "고급 스킬 변경권 1장";
+                    break;
                 default:
                     message = "알 수 없는 상품입니다.";
                     return false;
             }
 
             foreach (var c in cards) ledger.AddCard(c);
-            if (currency == ShopCurrency.Points) ledger.Points -= price; else ledger.GrowthCoin -= price;
+            if (currency == ShopCurrency.Points) ledger.Points -= price;
+            else if (currency == ShopCurrency.Trophy) ledger.Trophies -= price;
+            else ledger.GrowthCoin -= price;
             message = $"{Name(product)} 구매 - {reward} 획득 ({PriceLabel(product, grade)})";
             return true;
         }

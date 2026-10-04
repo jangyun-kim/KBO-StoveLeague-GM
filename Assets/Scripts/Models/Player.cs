@@ -48,6 +48,10 @@ namespace KBOManager.Models
 
         public List<string> AcquiredSkillIds = new List<string>();
 
+        // [TASK-KBO-190] 3슬롯 스킬(스킬 ID · 등급 D~S · Lv.1~6) - PlayerSkillRules가 부여 · 변경 · 레벨업하고 MatchEngine이 판정에 반영한다.
+        // 슬롯이 있으면 구 AcquiredSkillIds(SkillDB 이름 목록)는 경기에 쓰이지 않는다(표시 · 엔진 모두 3슬롯 기준으로 일원화).
+        public List<PlayerSkillSlot> SkillSlots = new List<PlayerSkillSlot>();
+
         // 투수 카드에만 의미가 있다(타자 카드는 항상 0). MatchEngine이 타석마다 ConsumeStamina()로
         // 깎고, LeagueManager가 경기 종료마다 RecoverStamina()로 회복시킨다.
         public int MaxStamina;

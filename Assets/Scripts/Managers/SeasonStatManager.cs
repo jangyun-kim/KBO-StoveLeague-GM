@@ -30,6 +30,8 @@ namespace KBOManager.Managers
         public int EarnedRuns;
         public int Wins;
         public int Losses;
+        /// <summary>[TASK-KBO-190] 탈삼진 - 탈삼진 1위 타이틀 집계용.</summary>
+        public int Strikeouts;
 
         public float InningsPitched => OutsRecorded / 3f;
         /// <summary>ERA = 자책점 * 27 / 아웃카운트 (= 자책점 / 이닝 * 9). 아웃카운트가 0이면 0으로 취급.</summary>
@@ -101,6 +103,10 @@ namespace KBOManager.Managers
 
         public PitcherSeasonStats GetPitcherStats(Player player) =>
             player != null && pitcherStatsByPlayer.TryGetValue(player, out var stats) ? stats : null;
+
+        /// <summary>[TASK-KBO-190] 시즌 타이틀 시상식(SeasonAwardRules) 집계용 전체 기록(읽기 전용).</summary>
+        public IReadOnlyDictionary<Player, BatterSeasonStats> AllBatterStats => batterStatsByPlayer;
+        public IReadOnlyDictionary<Player, PitcherSeasonStats> AllPitcherStats => pitcherStatsByPlayer;
 
         /// <summary>새 시즌 시작 시 호출한다(스토브리그 -> 다음 시즌 개막). 누적 기록을 전부 비운다.</summary>
         public void ResetSeason()
@@ -200,6 +206,7 @@ namespace KBOManager.Managers
             previousOutsInHalfInning = step.HalfInningEnded ? 0 : step.State.Outs;
 
             stats.OutsRecorded += Mathf.Max(0, outsThisPlay);
+            if (step.Result == AtBatResult.Strikeout) stats.Strikeouts++; // [TASK-KBO-190]
             stats.EarnedRuns += step.RunsScoredThisPlay; // 단순화: 모든 실점을 자책점으로 취급(실책 미모델링)
         }
 

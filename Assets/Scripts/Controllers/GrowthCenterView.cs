@@ -49,6 +49,10 @@ namespace KBOManager.Controllers
         private readonly Button[] tabButtons = new Button[5];
         private Button actionButton, autoButton, clearButton, scopeButton, contextButton, sourceButton;
         private bool useCoreTicket; // [TASK-KBO-189] 초월 슬롯 1을 초월 핵심 대체권으로
+        // [TASK-KBO-190] 훈련·특훈 탭 = 3슬롯 스킬 섹션([스킬 변경] / [고급 스킬 변경] / [스킬 레벨업])
+        private Button skillRerollButton, skillPremiumButton, skillLevelButton;
+        private int skillSlotIndex;
+        public int SkillSlotIndex => skillSlotIndex;
         private RectTransform materialContent, targetContent;
 
         private Player target;
@@ -187,6 +191,13 @@ namespace KBOManager.Controllers
             autoButton.onClick.AddListener(AutoSelect);
             clearButton = kit.Button(root, "ClearSelect", "선택 해제", 924, 1358, 1216, 1412, PanelLight, White, 28);
             clearButton.onClick.AddListener(() => { selected.Clear(); useCoreTicket = false; Refresh(); });
+            // [TASK-KBO-190] 훈련·특훈 탭 스킬 버튼(자동 선택/선택 해제 자리)
+            skillRerollButton = kit.Button(root, "SkillReroll", "스킬 변경", 624, 1358, 818, 1412, new Color(0.15f, 0.33f, 0.88f), White, 22);
+            skillRerollButton.onClick.AddListener(() => RerollSkills(false));
+            skillPremiumButton = kit.Button(root, "SkillPremium", "고급 스킬 변경", 822, 1358, 1016, 1412, new Color(0.55f, 0.2f, 0.62f), White, 22);
+            skillPremiumButton.onClick.AddListener(() => RerollSkills(true));
+            skillLevelButton = kit.Button(root, "SkillLevelUp", "스킬 레벨업", 1020, 1358, 1216, 1412, new Color(0.12f, 0.55f, 0.35f), White, 22);
+            skillLevelButton.onClick.AddListener(() => LevelUpSkill());
 
             // ---- 실행
             resultText = kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true);
@@ -306,11 +317,19 @@ namespace KBOManager.Controllers
                 if (preview.Length > 0) descText.text = $"<color=#5EE08A>각성 미리보기: {preview}</color>\n" + descText.text.Split('\n')[0];
             }
             statText.text = string.Join("\n", GrowthCenterRules.StatPreviewLines(target, after));
+            if (tab == GrowthTab.Training)
+            {
+                // [TASK-KBO-190] 상시 스킬 보정(경기 판정 + 상세창 "스킬 +N")
+                var bonus = PlayerSkillRules.AlwaysStatBonuses(target);
+                var labels = tpl.IsPitcher ? new[] { "구위", "구속", "변화", "제구", "체력" } : new[] { "파워", "정확", "선구", "주력", "수비" };
+                var parts = labels.Select((l, i) => bonus[i] > 0 ? $"{l} +{bonus[i]}" : null).Where(s => s != null).ToList();
+                statText.text += $"\n<color=#5EE08A>스킬 상시 보정: {(parts.Count > 0 ? string.Join(" · ", parts) : "없음(조건부 스킬만)")}</color>";
+            }
 
             int maxMaterials = GrowthCenterRules.MaxMaterials(tab);
             int trainingTickets = gm != null ? gm.TrainingTicket : 0;
             materialTitleText.text = tab == GrowthTab.Training
-                ? (trainingTickets > 0 ? $"특훈 비용 - 특훈권 1장 (보유 {trainingTickets}장)" : $"특훈 비용 - 볼 {CardGrowthActions.TrainingGoldCost(target.TrainingLevel):N0}")
+                ? $"스킬 변경 · 훈련 (3슬롯) · 변경권 {(gm != null ? gm.SkillChangeTicket : 0)} · 고급 {(gm != null ? gm.PremiumSkillChangeTicket : 0)} · 특훈권 {trainingTickets}"
                 : tab == GrowthTab.Transcend
                     ? $"초월 재료 {TranscendRules.SlotSummary(target, CurrentTranscendSelection())} (후보 {candidates.Count}장)"
                     : $"재료 카드 선택 {selected.Count}/{maxMaterials} (후보 {candidates.Count}장)";
@@ -331,7 +350,21 @@ namespace KBOManager.Controllers
                         on ? RowOn : RowOff, () => ToggleMaterial(captured)));
                 }
             }
-            RebuildRows(materialContent, rows, columns: 2);
+            if (tab == GrowthTab.Training)
+            {
+                // [TASK-KBO-190] 3슬롯 스킬 - "[S] 배팅 머신 Lv.3" + 상세 효과. 행을 누르면 레벨업 대상 슬롯 선택.
+                var slots = PlayerSkillRules.SlotsOf(target);
+                skillSlotIndex = Mathf.Clamp(skillSlotIndex, 0, Mathf.Max(0, slots.Count - 1));
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    int captured = i;
+                    var slot = slots[i];
+                    rows.Add(($"{(i == skillSlotIndex ? "▶ " : "")}슬롯 {i + 1}  {PlayerSkillRules.SlotRichLabel(slot)}\n{PlayerSkillRules.DetailText(slot)}",
+                        i == skillSlotIndex ? RowLineup : RowOff, () => { skillSlotIndex = captured; Refresh(); }));
+                }
+            }
+            RebuildRows(materialContent, rows, columns: tab == GrowthTab.Training ? 1 : 2);
+            RefreshSkillButtons(gm);
             autoButton.interactable = tab != GrowthTab.Training && (candidates.Count > 0 || (tab == GrowthTab.Transcend && gm != null && gm.TranscendTicket > 0));
             CompyaUiKit.SetButtonText(autoButton, tab == GrowthTab.Transcend ? "초월 재료 자동 등록" : "자동 선택");
             clearButton.interactable = selected.Count > 0 || useCoreTicket;
@@ -574,6 +607,59 @@ namespace KBOManager.Controllers
             }
             resultText.color = ok ? Green : new Color(1f, 0.45f, 0.45f);
             resultText.text = message;
+            Refresh();
+        }
+
+        // ================================================================== [TASK-KBO-190] 3슬롯 스킬
+
+        private void RefreshSkillButtons(GameManager gm)
+        {
+            bool skillTab = tab == GrowthTab.Training && target?.Template != null;
+            autoButton.gameObject.SetActive(!skillTab);
+            clearButton.gameObject.SetActive(!skillTab);
+            foreach (var b in new[] { skillRerollButton, skillPremiumButton, skillLevelButton }) if (b != null) b.gameObject.SetActive(skillTab);
+            if (!skillTab || skillRerollButton == null) return;
+            int tickets = gm != null ? gm.SkillChangeTicket : 0, premium = gm != null ? gm.PremiumSkillChangeTicket : 0, points = gm != null ? gm.GameGold : 0;
+            CompyaUiKit.SetButtonText(skillRerollButton, tickets > 0 ? $"스킬 변경 (변경권 {tickets})" : $"스킬 변경 ({PlayerSkillRules.RerollPointCost:N0}P)");
+            skillRerollButton.interactable = gm != null && (tickets > 0 || points >= PlayerSkillRules.RerollPointCost);
+            CompyaUiKit.SetButtonText(skillPremiumButton, $"고급 변경 ({premium}) A~S 확정");
+            skillPremiumButton.interactable = gm != null && premium > 0;
+            var slots = PlayerSkillRules.SlotsOf(target);
+            var slot = skillSlotIndex < slots.Count ? slots[skillSlotIndex] : null;
+            CompyaUiKit.SetButtonText(skillLevelButton, slot == null || slot.Level >= PlayerSkillRules.MaxLevel ? "최대 Lv.6" : $"Lv업 ({PlayerSkillRules.LevelUpCostLabel(slot)})");
+            skillLevelButton.interactable = gm != null && slot != null && slot.Level < PlayerSkillRules.MaxLevel
+                && (gm.TrainingTicket >= PlayerSkillRules.LevelUpTicketCost(slot.Level) || points >= PlayerSkillRules.LevelUpPointCost(slot.Level));
+        }
+
+        /// <summary>[스킬 변경] / [고급 스킬 변경] - 3슬롯 재추첨(레벨 유지).</summary>
+        public bool RerollSkills(bool premium)
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || target?.Template == null) return false;
+            bool ok = PlayerSkillRules.TryReroll(target, new GameManagerGrowthLedger(gm), premium, n => Random.Range(0, n), out var message);
+            if (ok) SaveManager.Instance?.TrySaveCareer();
+            resultText.color = ok ? Green : new Color(1f, 0.45f, 0.45f);
+            resultText.text = message;
+            Refresh();
+            return ok;
+        }
+
+        /// <summary>[스킬 레벨업] - 선택 슬롯 Lv.n → n+1(특훈권 n장 또는 포인트 10,000 × n).</summary>
+        public bool LevelUpSkill()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || target?.Template == null) return false;
+            bool ok = PlayerSkillRules.TryLevelUp(target, skillSlotIndex, new GameManagerGrowthLedger(gm), out var message);
+            if (ok) SaveManager.Instance?.TrySaveCareer();
+            resultText.color = ok ? Green : new Color(1f, 0.45f, 0.45f);
+            resultText.text = message;
+            Refresh();
+            return ok;
+        }
+
+        public void SelectSkillSlot(int index)
+        {
+            skillSlotIndex = Mathf.Clamp(index, 0, PlayerSkillRules.SlotCount - 1);
             Refresh();
         }
 

@@ -85,7 +85,7 @@ namespace KBOManager.EditorTools
         /// <remarks>
         /// [TASK-KBO-189] 메뉴 이름을 TASK-168~189로 갱신. 마지막 단계로 SetupTask189.ApplyAll()을 실행한다 - 스카우트 허브 [상점 · 교환소] 섹션 + 4번째 탭.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~189)")]
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~190)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -113,7 +113,8 @@ namespace KBOManager.EditorTools
             SetupTask187.ApplyAll();
             SetupTask188.ApplyAll();
             SetupTask189.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~189 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask190.ApplyAll(); // [TASK-KBO-190] SeasonRewardManager 배선 + 시즌 완주 오버레이
+            Debug.Log("[SetupMasterBinding] TASK-168~190 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

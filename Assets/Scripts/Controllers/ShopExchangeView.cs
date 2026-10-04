@@ -31,7 +31,7 @@ namespace KBOManager.Controllers
     public class ShopExchangeView : MonoBehaviour
     {
         public const string RootName = "ShopExchange189";
-        private const int ProductRows = 4;
+        private const int ProductRows = 7; // [TASK-KBO-190] 코인 교환소 7종(스킬 변경권 · 고급 스킬 변경권 추가)
 
         [SerializeField] private Font boldFont;
         [SerializeField] private Font regularFont;
@@ -204,19 +204,19 @@ namespace KBOManager.Controllers
             gradeButton = kit.Button(root, "GradeSelect", "", 628, 326, 1228, 396, PanelLight, White, 30);
             gradeButton.onClick.AddListener(CycleGrade);
 
-            // ---- 상품 목록(최대 4행)
+            // ---- 상품 목록(최대 7행 - [TASK-KBO-190] 행 높이 215 → 165)
             productGroup = CompyaUiKit.Fill(root, "Products");
             for (int i = 0; i < ProductRows; i++)
             {
-                float y0 = 410 + i * 230f;
-                productBoxes[i] = CompyaUiKit.Box(productGroup, $"Product{i}", 20, y0, 1228, y0 + 215, Panel);
-                productTitles[i] = kit.Label(productGroup, $"ProductTitle{i}", "", 44, y0 + 12, 900, y0 + 82, 34, TextAnchor.MiddleLeft, Gold, true);
-                productDescs[i] = kit.Label(productGroup, $"ProductDesc{i}", "", 44, y0 + 84, 900, y0 + 205, 24, TextAnchor.UpperLeft, White);
+                float y0 = 410 + i * 175f;
+                productBoxes[i] = CompyaUiKit.Box(productGroup, $"Product{i}", 20, y0, 1228, y0 + 165, Panel);
+                productTitles[i] = kit.Label(productGroup, $"ProductTitle{i}", "", 44, y0 + 8, 900, y0 + 66, 32, TextAnchor.MiddleLeft, Gold, true);
+                productDescs[i] = kit.Label(productGroup, $"ProductDesc{i}", "", 44, y0 + 68, 900, y0 + 158, 23, TextAnchor.UpperLeft, White);
                 productDescs[i].resizeTextForBestFit = true;
                 productDescs[i].resizeTextMinSize = 14;
                 productDescs[i].resizeTextMaxSize = productDescs[i].fontSize;
                 int index = i;
-                buyButtons[i] = kit.GradientButton(productGroup, $"Buy{i}", "구매", 920, y0 + 45, 1208, y0 + 170, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 32);
+                buyButtons[i] = kit.GradientButton(productGroup, $"Buy{i}", "구매", 920, y0 + 28, 1208, y0 + 138, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 32);
                 buyButtons[i].onClick.AddListener(() => OnBuy(index));
             }
 
@@ -287,7 +287,7 @@ namespace KBOManager.Controllers
 
             walletText.text = gm == null ? "" :
                 $"포인트 <color=#FFD54A>{gm.GameGold:N0}</color> · 성장 코인 <color=#5EE08A>{gm.GrowthCoin:N0}</color> · 트로피 {gm.Trophy} · " +
-                $"각성 보조권 {gm.AwakenTicket} · 초월 대체권 {gm.TranscendTicket} · 특훈권 {gm.TrainingTicket}";
+                $"각성 보조권 {gm.AwakenTicket} · 초월 대체권 {gm.TranscendTicket} · 특훈권 {gm.TrainingTicket} · 스킬 변경권 {gm.SkillChangeTicket} · 고급 {gm.PremiumSkillChangeTicket}";
 
             bool products = subTab == ShopSubTab.PointShop || subTab == ShopSubTab.CoinExchange;
             bool list = subTab == ShopSubTab.Release || subTab == ShopSubTab.Recombine;
@@ -305,10 +305,10 @@ namespace KBOManager.Controllers
             switch (subTab)
             {
                 case ShopSubTab.PointShop:
-                    descText.text = "포인트 상시 상품 - 포지션 지정 LIVE 영입 · 특훈권 · 강화 EXP 재료";
+                    descText.text = "포인트 상시 상품 - 포지션 지정 LIVE 영입 · 특훈권 · 강화 EXP 재료 · 스킬 변경권";
                     break;
                 case ShopSubTab.CoinExchange:
-                    descText.text = "성장 코인(방출 마일리지) 교환소 - 각성 +1각 저격 · 보조권 · 초월 대체권 · 특별 영입 재료";
+                    descText.text = "성장 코인(방출 마일리지) 교환소 - 각성 · 초월 · 특별 영입 재료 · 스킬 변경권 · 고급 스킬 변경권(트로피 교환 포함)";
                     break;
                 case ShopSubTab.Release:
                     descText.text = "라인업에 없는 카드를 방출해 포인트 + 성장 코인을 얻습니다 (등급 · 강화 단계 비례).";
@@ -347,7 +347,7 @@ namespace KBOManager.Controllers
                     : p == ShopProduct.SpecialPositionPack ? $" [{CardGrowthRules.DisplayName(grade)} · {PositionKey}]" : "";
                 productTitles[i].text = ShopExchangeRules.Name(p) + target;
                 productDescs[i].text = ShopExchangeRules.Description(p);
-                int owned = gm == null ? 0 : ShopExchangeRules.CurrencyOf(p) == ShopCurrency.Points ? gm.GameGold : gm.GrowthCoin;
+                int owned = gm == null ? 0 : ShopExchangeRules.Owned(new GameManagerGrowthLedger(gm), ShopExchangeRules.CurrencyOf(p));
                 bool affordable = owned >= ShopExchangeRules.Price(p, grade);
                 CompyaUiKit.SetButtonText(buyButtons[i], ShopExchangeRules.PriceLabel(p, grade));
                 buyButtons[i].interactable = gm != null && affordable;

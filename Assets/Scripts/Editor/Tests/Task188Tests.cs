@@ -331,7 +331,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(4, MatchModeRules.RemainingRegularGames(140, 144, true, true));
             Assert.AreEqual(0, MatchModeRules.RemainingRegularGames(144, 144, true, false));
             Assert.AreEqual(1, MatchModeRules.RemainingRegularGames(144, 144, false, true), "포스트시즌은 1경기씩");
-            CollectionAssert.AreEqual(new[] { 1, 3, 5, 10 }, MatchModeRules.QuickCountPresets);
+            CollectionAssert.AreEqual(new[] { 1, 3, 5, 10, 30, MatchModeRules.SeasonAll }, MatchModeRules.QuickCountPresets); // [TASK-KBO-190] 30경기 · 시즌 완주 추가
         }
 
         [Test]

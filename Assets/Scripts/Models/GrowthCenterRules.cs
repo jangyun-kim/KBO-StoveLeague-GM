@@ -167,6 +167,7 @@ namespace KBOManager.Models
                 StarLevel = source.StarLevel,
                 CurrentStarType = source.CurrentStarType,
                 AcquiredSkillIds = new List<string>(source.AcquiredSkillIds ?? new List<string>()),
+                SkillSlots = (source.SkillSlots ?? new List<PlayerSkillSlot>()).Where(s => s != null).Select(s => s.Clone()).ToList(), // [TASK-KBO-190]
                 MaxStamina = source.MaxStamina,
                 CurrentStamina = source.CurrentStamina,
                 CurrentCondition = source.CurrentCondition,

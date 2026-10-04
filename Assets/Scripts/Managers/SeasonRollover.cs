@@ -35,6 +35,8 @@ namespace KBOManager.Managers
         [SerializeField] private LeagueManager leagueManager;
         [SerializeField] private SeasonStatManager seasonStatManager;
         [SerializeField] private PostSeasonManager postSeasonManager;
+        [Tooltip("[TASK-KBO-190] 새 시즌 전환 시 결산 상태(중복 지급 방지 플래그)를 비운다. 비어 있으면 SeasonRewardManager.Instance.")]
+        [SerializeField] private SeasonRewardManager seasonRewardManager;
 
         private readonly List<HallOfFameEntry> hallOfFame = new List<HallOfFameEntry>();
         public IReadOnlyList<HallOfFameEntry> HallOfFame => hallOfFame;
@@ -59,9 +61,17 @@ namespace KBOManager.Managers
         }
 
         /// <summary>스토브리그 처리가 모두 끝난 뒤 UI(예: "다음 시즌 시작" 버튼)가 호출하는 단일 진입점.</summary>
+        /// <remarks>
+        /// [TASK-KBO-190] 승격 판정(정규시즌 1위 또는 한국시리즈 우승 - SeasonCycle.ShouldPromote)을 포스트시즌 브래킷을 비우기 전에 끝내
+        /// AdvanceToNextSeason(promote)로 넘긴다(예전에는 정규시즌 1위만 승격). 새 시즌은 승격된 리그의 권장 OVR 분포로 AI 9개 구단을 재조정하고
+        /// 승·무·패 · 경기일(1/144) · 시즌 개인 기록 · 포스트시즌 · 결산 플래그만 비운다 - 유저 카드 · 성장 · 라인업 · 재화 · 치어리더는 그대로다. 끝나면 저장한다.
+        /// </remarks>
         public void RolloverToNextSeason()
         {
             if (leagueManager == null) return;
+
+            bool promote = SeasonCycle.ShouldPromote(leagueManager.UserFinalRank, postSeasonManager != null ? postSeasonManager.ChampionTeam : null,
+                leagueManager.UserTeam, leagueManager.CurrentTier);
 
             ArchiveCurrentSeason();
 
@@ -69,11 +79,13 @@ namespace KBOManager.Managers
             // 명예의 전당에 빈 값(0/무기록)만 남게 된다.
             seasonStatManager?.ResetSeason();
             postSeasonManager?.ResetForNextSeason();
+            (seasonRewardManager != null ? seasonRewardManager : SeasonRewardManager.Instance)?.ResetForNextSeason();
 
             int nextYear = (LeagueCalendar.Instance != null ? LeagueCalendar.Instance.CurrentDate.Year : DateTime.Now.Year) + 1;
             LeagueCalendar.Instance?.InitializeSeason(nextYear);
 
-            leagueManager.AdvanceToNextSeason();
+            leagueManager.AdvanceToNextSeason(promote);
+            SaveManager.Instance?.TrySaveCareer();
         }
 
         private void ArchiveCurrentSeason()

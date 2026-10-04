@@ -30,6 +30,8 @@ namespace KBOManager.Managers
         public int StarLevel;
         public StarType CurrentStarType;
         public List<string> AcquiredSkillIds = new List<string>();
+        // [TASK-KBO-190] v12 - 3슬롯 스킬(ID · 등급 · 레벨). 필드 없는 구버전 세이브는 빈 목록 → 로드 시 InstanceId 시드로 결정적 부여.
+        public List<PlayerSkillSlot> SkillSlots = new List<PlayerSkillSlot>();
 
         // 체력 필드 도입(v2) 이전 세이브에는 이 두 값이 JSON에 아예 없어 역직렬화 시 기본값(0)이 된다.
         // RestorePlayer()가 "투수인데 MaxStamina가 0"인 경우를 "구버전 세이브"로 간주해 Player 생성자의
@@ -140,7 +142,8 @@ namespace KBOManager.Managers
         // v10: 카드 한계 돌파/훈련 단계(PlayerSaveData.LimitBreakLevel/TrainingLevel)와 12단계 리그 현재 단계(LeagueTier) 추가(TASK-KBO-183).
         //      LeagueTier가 없는 구버전 세이브(-1)는 저장된 구단 OVR의 권장 리그(최소 아마추어)로 복원한다.
         // v11: 라인업 선발(주전) ↔ 후보 맞교환 고정(LineupAssignment - 주전 자리/투수 보직 InstanceId 핀) 추가(TASK-KBO-186). 없으면 기본 OVR 편성.
-        public int SaveVersion = 11;
+        // v12: 카드 3슬롯 스킬(PlayerSaveData.SkillSlots)과 스킬 변경권 · 고급 스킬 변경권 추가(TASK-KBO-190). 슬롯 없는 카드는 로드 시 결정적 부여.
+        public int SaveVersion = 12;
         public string SavedAtUtc;
 
         // GameManager
@@ -167,6 +170,8 @@ namespace KBOManager.Managers
         public int AwakenTicket;    // [TASK-KBO-189] 범용 각성 보조권
         public int TranscendTicket; // [TASK-KBO-189] 초월 핵심 대체권
         public int TrainingTicket;  // [TASK-KBO-189] 특훈권
+        public int SkillChangeTicket;        // [TASK-KBO-190] 스킬 변경권
+        public int PremiumSkillChangeTicket; // [TASK-KBO-190] 고급 스킬 변경권
         public bool IsFirstLogin = true;
         public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
         public int LosingStreak;
@@ -187,6 +192,8 @@ namespace KBOManager.Managers
         public int UserFinalRank = -1; // -1 = 아직 시즌을 완주하지 않음(null 대용)
         public int LeagueTier = -1; // [TASK-KBO-183] v10 - (int)Models.LeagueTier, -1 = 구버전 세이브
         public List<TeamStandingSaveData> Standings = new List<TeamStandingSaveData>();
+        // [TASK-KBO-190] 이번 시즌 결산(순위 · 타이틀 보상)을 이미 지급했는지 - 결산 후 저장 · 재시작 시 중복 지급 방지.
+        public bool SeasonRewardGranted;
 
         // LeagueCalendar
         public string CalendarDateIso; // null/빈 문자열이면 구버전 세이브(캘린더 도입 이전)
@@ -332,6 +339,8 @@ namespace KBOManager.Managers
                 data.AwakenTicket = gm.AwakenTicket;
                 data.TranscendTicket = gm.TranscendTicket;
                 data.TrainingTicket = gm.TrainingTicket;
+                data.SkillChangeTicket = gm.SkillChangeTicket;
+                data.PremiumSkillChangeTicket = gm.PremiumSkillChangeTicket;
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.ManagerNickname = gm.ManagerNickname;
                 data.TutorialCompleted = gm.TutorialCompleted;
@@ -358,6 +367,7 @@ namespace KBOManager.Managers
                 data.CurrentPhase = lm.CurrentPhase;
                 data.UserFinalRank = lm.UserFinalRank ?? -1;
                 data.LeagueTier = (int)lm.CurrentTier;
+                data.SeasonRewardGranted = SeasonRewardManager.Instance != null && SeasonRewardManager.Instance.HasGrantedThisSeason;
                 data.Standings = lm.GetStandings().Select(t => new TeamStandingSaveData
                 {
                     Team = t.Team,
@@ -422,6 +432,7 @@ namespace KBOManager.Managers
             StarLevel = player.StarLevel,
             CurrentStarType = player.CurrentStarType,
             AcquiredSkillIds = new List<string>(player.AcquiredSkillIds),
+            SkillSlots = (player.SkillSlots ?? new List<PlayerSkillSlot>()).Where(s => s != null).Select(s => s.Clone()).ToList(),
             CurrentStamina = player.CurrentStamina,
             MaxStamina = player.MaxStamina,
         };
@@ -464,6 +475,8 @@ namespace KBOManager.Managers
                 gm.AwakenTicket = data.AwakenTicket;
                 gm.TranscendTicket = data.TranscendTicket;
                 gm.TrainingTicket = data.TrainingTicket;
+                gm.SkillChangeTicket = data.SkillChangeTicket;
+                gm.PremiumSkillChangeTicket = data.PremiumSkillChangeTicket;
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.ManagerNickname = data.ManagerNickname ?? "";
                 gm.TutorialCompleted = data.TutorialCompleted;
@@ -529,6 +542,7 @@ namespace KBOManager.Managers
                     : (LeagueTier)System.Math.Max((int)LeagueTier.Amateur, (int)LeagueTierTable.RecommendedFor(GameManager.Instance != null ? GameManager.Instance.CalculateTeamOVR() : 0));
                 LeagueManager.Instance.RestoreFromSave(data.UserTeam, data.PlayedGameCount, data.CurrentPhase,
                     data.UserFinalRank, standingsData, savedTier);
+                SeasonRewardManager.Instance?.RestoreGrantedFlag(data.SeasonRewardGranted); // [TASK-KBO-190]
             }
 
             // CalendarDateIso가 비어 있으면 캘린더 도입 이전(v2 이하) 세이브다 - 그 경우 그대로 두면
@@ -605,7 +619,9 @@ namespace KBOManager.Managers
                 StarLevel = saved.StarLevel,
                 CurrentStarType = saved.CurrentStarType,
                 AcquiredSkillIds = new List<string>(saved.AcquiredSkillIds ?? new List<string>()),
+                SkillSlots = (saved.SkillSlots ?? new List<PlayerSkillSlot>()).Where(s => s != null && !string.IsNullOrEmpty(s.SkillId)).Select(s => s.Clone()).ToList(),
             };
+            PlayerSkillRules.EnsureSlots(player); // [TASK-KBO-190]
 
             // 체력 필드 도입(v2) 이전 세이브는 CurrentStamina/MaxStamina가 JSON에 아예 없어 역직렬화 시
             // 기본값(0)이 된다. 투수인데 MaxStamina가 0이면 "체력 데이터가 없던 구버전 세이브"로 간주해,

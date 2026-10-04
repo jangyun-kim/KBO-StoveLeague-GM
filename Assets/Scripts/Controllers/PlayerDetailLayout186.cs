@@ -16,7 +16,9 @@ namespace KBOManager.Controllers
             public string Label;
             public int Base;
             public int Bonus;
-            public int Final => Base + Bonus;
+            /// <summary>[TASK-KBO-190] 상시 스킬(3슬롯) 가산 - 조건부 스킬은 경기 중 해당 상황에서만 붙어 여기 넣지 않는다.</summary>
+            public int Skill;
+            public int Final => Base + Bonus + Skill;
         }
 
         public enum BarTier { Sky, Green, Blue, Elite }
@@ -76,7 +78,8 @@ namespace KBOManager.Controllers
             var pairs = t.IsPitcher
                 ? new[] { ("구위", t.PitcherStats.Stuff), ("구속", t.PitcherStats.Velocity), ("변화", t.PitcherStats.Movement), ("제구", t.PitcherStats.Control), ("체력", t.PitcherStats.Stamina) }
                 : new[] { ("파워", t.BatterStats.Power), ("정확", t.BatterStats.Contact), ("선구", t.BatterStats.Discipline), ("주력", t.BatterStats.Speed), ("수비", t.BatterStats.Defense) };
-            foreach (var (label, value) in pairs) rows.Add(new StatRow { Label = label, Base = value, Bonus = bonus });
+            var skill = PlayerSkillRules.AlwaysStatBonuses(p); // [TASK-KBO-190]
+            for (int i = 0; i < pairs.Length; i++) rows.Add(new StatRow { Label = pairs[i].Item1, Base = pairs[i].Item2, Bonus = bonus, Skill = i < skill.Length ? skill[i] : 0 });
             return rows;
         }
 
@@ -277,29 +280,29 @@ namespace KBOManager.Controllers
                 var row = i < rows.Count ? rows[i] : null;
                 statNames[i].text = row?.Label ?? "";
                 statValues[i].text = row != null ? row.Final.ToString() : "";
-                statSubs[i].text = row != null ? $"(기본 {row.Base} + 성장/시너지 +{row.Bonus})" : "";
+                statSubs[i].text = row != null ? $"(기본 {row.Base} + 성장/시너지 +{row.Bonus}{(row.Skill > 0 ? $" + 스킬 +{row.Skill}" : "")})" : "";
                 var tier = PlayerDetailRules.TierOf(row?.Final ?? 0);
                 statFills[i].color = PlayerDetailRules.BarColor(tier);
                 statValues[i].color = tier == PlayerDetailRules.BarTier.Elite ? Gold : White;
                 statFillRects[i].anchorMax = new Vector2(PlayerDetailRules.FillRatio(row?.Final ?? 0), 1f);
             }
 
-            var category = !player.Template.IsPitcher ? SkillCategory.Batter
-                : LineupAssignment.RoleOf(player) == PitcherRole.StartingPitcher ? SkillCategory.StartingPitcher : SkillCategory.BullpenPitcher;
-            var skills = player.AcquiredSkillIds.Where(s => !string.IsNullOrEmpty(s)).Take(3).ToList();
+            // [TASK-KBO-190] 3슬롯 스킬(등급 D~S 컬러 · Lv.1~6 · 상세 효과) - 성장 센터 · 라인업 트레이와 같은 PlayerSkillRules 표기
+            var slots = PlayerSkillRules.SlotsOf(player);
             for (int i = 0; i < 3; i++)
             {
-                if (i >= skills.Count)
+                if (i >= slots.Count)
                 {
                     skillIcons[i].text = "-";
                     skillNames[i].text = "빈 슬롯";
-                    skillDescs[i].text = "보유한 스킬/특성이 없습니다.\n선수 관리 > 성장 센터에서 스킬을 획득할 수 있습니다.";
+                    skillDescs[i].text = "보유한 스킬/특성이 없습니다.\n선수 관리 > 성장 센터 [훈련·특훈]에서 스킬을 변경할 수 있습니다.";
                     continue;
                 }
-                var entry = skillDB != null ? (skillDB.FindSkill(skills[i], category) ?? skillDB.FindSkill(skills[i])) : null;
-                skillIcons[i].text = entry != null ? TierLetter(entry.Tier) : "★";
-                skillNames[i].text = skills[i];
-                skillDescs[i].text = entry != null && !string.IsNullOrEmpty(entry.Description) ? entry.Description : "경기 중 조건을 만족하면 효과가 발동합니다.";
+                var slot = slots[i];
+                skillIcons[i].supportRichText = true;
+                skillIcons[i].text = $"<color={PlayerSkillRules.GradeColorHex(slot.Grade)}>{PlayerSkillRules.GradeLetter(slot.Grade)}</color>";
+                skillNames[i].text = $"{PlayerSkillRules.Name(slot)} Lv.{PlayerSkillRules.ClampLevel(slot.Level)}";
+                skillDescs[i].text = PlayerSkillRules.DetailText(slot);
             }
         }
 

@@ -332,6 +332,8 @@ namespace KBOManager.Managers
         [SerializeField] private int awakenTicket;     // 범용 각성 보조권(+1각)
         [SerializeField] private int transcendTicket;  // 초월 핵심 대체권
         [SerializeField] private int trainingTicket;   // 특훈권
+        [SerializeField] private int skillChangeTicket;        // [TASK-KBO-190] 스킬 변경권
+        [SerializeField] private int premiumSkillChangeTicket; // [TASK-KBO-190] 고급 스킬 변경권(A~S 1슬롯 확정)
 
         public int LiveNormalTicket { get => liveNormalTicket; set => liveNormalTicket = Mathf.Max(0, value); }
         public int LiveEpicTicket { get => liveEpicTicket; set => liveEpicTicket = Mathf.Max(0, value); }
@@ -357,6 +359,8 @@ namespace KBOManager.Managers
         public int AwakenTicket { get => awakenTicket; set => awakenTicket = Mathf.Max(0, value); }
         public int TranscendTicket { get => transcendTicket; set => transcendTicket = Mathf.Max(0, value); }
         public int TrainingTicket { get => trainingTicket; set => trainingTicket = Mathf.Max(0, value); }
+        public int SkillChangeTicket { get => skillChangeTicket; set => skillChangeTicket = Mathf.Max(0, value); }
+        public int PremiumSkillChangeTicket { get => premiumSkillChangeTicket; set => premiumSkillChangeTicket = Mathf.Max(0, value); }
 
         // ----- 팬심 / 연패 (TASK-KBO-049, 치어리더 B안 결산 연동용) -----
         [Header("Fan Sentiment / Losing Streak")]
@@ -518,6 +522,7 @@ namespace KBOManager.Managers
             liveNormalTicket = d[0]; liveEpicTicket = d[1]; pickupTicket = d[2]; advancedTicket = d[3]; trophy = d[4]; signatureBall = d[5];
             liveCheerStick = d[6]; starCheerStick = d[7]; legendCheerStick = d[8]; limitedCheerStick = d[9]; gameGold = d[10]; uniform = d[11]; ticket = d[12];
             growthCoin = awakenTicket = transcendTicket = trainingTicket = 0; // [TASK-KBO-189]
+            skillChangeTicket = premiumSkillChangeTicket = 0; // [TASK-KBO-190]
         }
 
         // ----- 인벤토리/로스터 헬퍼 -----
@@ -526,6 +531,7 @@ namespace KBOManager.Managers
         public void AddPlayerToInventory(Player player)
         {
             if (player == null) return;
+            PlayerSkillRules.EnsureSlots(player); // [TASK-KBO-190] 획득 시 3슬롯 스킬 부여(이미 있으면 유지)
             inventory.Add(player);
         }
 
@@ -595,6 +601,7 @@ namespace KBOManager.Managers
         {
             inventory.Clear();
             if (players != null) inventory.AddRange(players);
+            foreach (var p in inventory) PlayerSkillRules.EnsureSlots(p); // [TASK-KBO-190] 구버전 세이브 카드 = InstanceId 시드로 결정적 부여
         }
 
         /// <summary>강화 재료(Item) 인벤토리 전체를 교체한다. (SaveManager의 로드 복원 전용)</summary>
