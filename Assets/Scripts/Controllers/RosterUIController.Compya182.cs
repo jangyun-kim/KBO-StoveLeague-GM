@@ -558,6 +558,70 @@ namespace KBOManager.Controllers
             }
 
             if (traySwapButton != null) CompyaUiKit.SetButtonText(traySwapButton, isStorage ? "라인업 투입" : "교체");
+            LayoutTrayButtons(isStorage);
+        }
+
+        // ------------------------------------------------------------------ [TASK-KBO-189] 보관 선수 [선수 방출]
+
+        private Button trayReleaseButton;
+        private Player releaseArmedFor;
+        private (Vector2 Min, Vector2 Max)[] trayButtonBaseAnchors;
+
+        public Button TrayReleaseButton => trayReleaseButton;
+
+        /// <summary>보관 선수면 트레이 버튼 줄을 4칸([상세 정보] [선수 관리] [라인업 투입] [선수 방출])으로, 라인업 선수면 기존 3칸으로 둔다.</summary>
+        private void LayoutTrayButtons(bool isStorage)
+        {
+            var buttons = new[] { trayDetailButton, trayManageButton, traySwapButton };
+            if (buttons.Any(b => b == null)) return;
+            if (trayButtonBaseAnchors == null)
+                trayButtonBaseAnchors = buttons.Select(b => { var r = (RectTransform)b.transform; return (r.anchorMin, r.anchorMax); }).ToArray();
+            if (trayReleaseButton == null)
+            {
+                trayReleaseButton = Instantiate(traySwapButton, traySwapButton.transform.parent);
+                trayReleaseButton.name = "ReleaseButton189";
+                trayReleaseButton.onClick = new Button.ButtonClickedEvent();
+                trayReleaseButton.onClick.AddListener(ReleaseSelected);
+                if (trayReleaseButton.targetGraphic != null) trayReleaseButton.targetGraphic.color = new Color(0.72f, 0.2f, 0.24f);
+            }
+            releaseArmedFor = null;
+            CompyaUiKit.SetButtonText(trayReleaseButton, "선수 방출");
+            trayReleaseButton.gameObject.SetActive(isStorage);
+
+            var row = isStorage ? buttons.Append(trayReleaseButton).ToArray() : buttons;
+            float left = trayButtonBaseAnchors[0].Min.x, right = trayButtonBaseAnchors[2].Max.x;
+            float gap = (trayButtonBaseAnchors[1].Min.x - trayButtonBaseAnchors[0].Max.x);
+            float width = (right - left - gap * (row.Length - 1)) / row.Length;
+            for (int i = 0; i < row.Length; i++)
+            {
+                var rect = (RectTransform)row[i].transform;
+                float x0 = left + i * (width + gap);
+                rect.anchorMin = new Vector2(x0, trayButtonBaseAnchors[0].Min.y);
+                rect.anchorMax = new Vector2(x0 + width, trayButtonBaseAnchors[0].Max.y);
+                rect.offsetMin = rect.offsetMax = Vector2.zero;
+            }
+        }
+
+        /// <summary>[선수 방출] - 첫 클릭은 보상 안내 + [방출 확인], 두 번째 클릭에 방출(포인트 + 성장 코인).</summary>
+        private void ReleaseSelected()
+        {
+            var gm = GameManager.Instance;
+            if (selectedPlayer?.Template == null || gm == null) return;
+            if (gm.Roster.Contains(selectedPlayer)) { UpdateToolbarHint("라인업 선수는 방출할 수 없습니다."); return; }
+            var reward = ShopExchangeRules.ReleaseReward(selectedPlayer);
+            if (releaseArmedFor != selectedPlayer)
+            {
+                releaseArmedFor = selectedPlayer;
+                CompyaUiKit.SetButtonText(trayReleaseButton, "방출 확인");
+                UpdateToolbarHint($"{selectedPlayer.Template.PlayerName} 방출 시 포인트 +{reward.Points:N0} · 성장 코인 +{reward.Coins:N0} - [방출 확인]을 누르십시오.");
+                return;
+            }
+            bool ok = ShopExchangeRules.TryRelease(new[] { selectedPlayer }, new GameManagerGrowthLedger(gm), out _, out _, out var message);
+            UpdateToolbarHint(message);
+            if (!ok) return;
+            SaveManager.Instance?.TrySaveCareer();
+            Deselect();
+            RefreshRoster();
         }
 
         private static void SetChip(Text[] texts, int index, string value)

@@ -124,7 +124,7 @@ namespace KBOManager.Controllers
             selectedPlayers.Clear();
             selectedItems.Clear();
 
-            if (titleText != null) titleText.text = "각성 재료 선택 (같은 시즌 등급: 같은 선수 +3각 / 다른 선수 +1각)";
+            if (titleText != null) titleText.text = (CardGrowthRules.CanAwakenNow(targetPlayer, out var lockReason) ? "각성 재료 선택 (같은 시즌 등급: 같은 선수 +3각 / 같은 포지션 +1각)" : lockReason);
             if (itemListPanel != null) itemListPanel.SetActive(false);
             if (playerListPanel != null) playerListPanel.SetActive(true);
 

@@ -64,7 +64,7 @@ namespace KBOManager.EditorTests
         [Test]
         public void Awaken_SameSeasonSameYear_GivesPlus3PerMaterial_ClampedAt9()
         {
-            var target = Card(Grade.TITLE_HOLDER, "KOO", 2024);
+            var target = Card(Grade.TITLE_HOLDER, "KOO", 2024, reinforce: 10); // [TASK-KBO-189] +10강 선행
             var copy = Card(Grade.TITLE_HOLDER, "KOO", 2024); // 같은 시즌 · 같은 연도지만 다른 템플릿 인스턴스(구 버그: +1각 처리)
             Assert.AreEqual(3, CardGrowthRules.AwakenGainFor(target, copy));
             Assert.IsTrue(UpgradeManager.ApplyAwaken(target, new List<Player> { copy }));
@@ -79,7 +79,7 @@ namespace KBOManager.EditorTests
         public void Awaken_SameSeasonOtherYear_GivesPlus3_SamePlayer()
         {
             // [TASK-KBO-188] 같은 시즌 등급 · 같은 선수면 연도 무관 +3각
-            var target = Card(Grade.ALLSTAR, "KOO", 2024);
+            var target = Card(Grade.ALLSTAR, "KOO", 2024, reinforce: 10);
             var otherYear = Card(Grade.ALLSTAR, "KOO", 2023);
             Assert.AreEqual(3, CardGrowthRules.AwakenGainFor(target, otherYear));
             UpgradeManager.ApplyAwaken(target, new List<Player> { otherYear });
@@ -90,9 +90,9 @@ namespace KBOManager.EditorTests
         [Test]
         public void Awaken_OtherGradeOrOtherPlayer_IsNotMaterial_ExceptSameGradeOtherPlayer()
         {
-            var target = Card(Grade.ALLSTAR, "KOO", 2024);
+            var target = Card(Grade.ALLSTAR, "KOO", 2024, reinforce: 10);
             Assert.AreEqual(0, CardGrowthRules.AwakenGainFor(target, Card(Grade.FRANCHISE, "KOO", 2024)), "다른 시즌 등급");
-            Assert.AreEqual(1, CardGrowthRules.AwakenGainFor(target, Card(Grade.ALLSTAR, "LEE", 2024)), "[TASK-KBO-188] 같은 시즌 다른 선수 = +1각");
+            Assert.AreEqual(1, CardGrowthRules.AwakenGainFor(target, Card(Grade.ALLSTAR, "LEE", 2024)), "[TASK-KBO-189] 같은 시즌 · 같은 포지션(RF) 다른 선수 = +1각");
             Assert.AreEqual(0, CardGrowthRules.AwakenGainFor(target, target), "자기 자신");
             Assert.IsFalse(UpgradeManager.ApplyAwaken(target, new List<Player> { Card(Grade.LIVE_EPIC, "KOO", 2024) }));
             Assert.AreEqual(0, target.AwakenLevel);
@@ -102,7 +102,7 @@ namespace KBOManager.EditorTests
         public void GrowthCenter_AwakenCandidates_SameYearFirst_LineupExcluded_PreviewShowsJump()
         {
             // [TASK-KBO-188] 같은 선수(연도 무관) +3각이 먼저, 같은 시즌 다른 선수 +1각이 뒤
-            var target = Card(Grade.GOLDEN_GLOVE, "KOO", 2024);
+            var target = Card(Grade.GOLDEN_GLOVE, "KOO", 2024, reinforce: 10);
             var sameYear = Card(Grade.GOLDEN_GLOVE, "KOO", 2024);
             var otherYear = Card(Grade.GOLDEN_GLOVE, "LEE", 2022);
             var lineupCopy = Card(Grade.GOLDEN_GLOVE, "KOO", 2024);

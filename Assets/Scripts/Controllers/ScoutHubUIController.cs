@@ -41,6 +41,8 @@ namespace KBOManager.Controllers
         [SerializeField] private Button cheerleaderTabButton;
         [Tooltip("[TASK-KBO-185] [특별 영입(골글·시그니처)] 탭 - 선수 스카우트와 응원단 영입 사이.")]
         [SerializeField] private Button specialTabButton;
+        [Tooltip("[TASK-KBO-189] [상점 · 교환소] 탭 - 응원단 영입 오른쪽.")]
+        [SerializeField] private Button shopTabButton;
 
         [Header("Sections")]
         [Tooltip("ScoutUIController가 붙은 선수 영입 섹션 루트.")]
@@ -49,8 +51,11 @@ namespace KBOManager.Controllers
         [SerializeField] private GameObject cheerleaderSection;
         [Tooltip("[TASK-KBO-185] SpecialRecruitView가 붙은 특별 영입 섹션 루트.")]
         [SerializeField] private GameObject specialSection;
+        [Tooltip("[TASK-KBO-189] ShopExchangeView가 붙은 상점 · 교환소 섹션 루트.")]
+        [SerializeField] private GameObject shopSection;
 
         public GameObject SpecialSection => specialSection;
+        public GameObject ShopSection => shopSection;
 
         [Header("Tab Style (TASK-KBO-178 - 활성 탭 네이비 + 흰 글씨, 비활성 흰 바탕 + 회색 글씨)")]
         [SerializeField] private Color activeTabColor = new Color(0.06f, 0.17f, 0.45f, 1f);
@@ -73,6 +78,7 @@ namespace KBOManager.Controllers
             if (playerTabButton != null) playerTabButton.onClick.AddListener(ShowPlayerSection);
             if (cheerleaderTabButton != null) cheerleaderTabButton.onClick.AddListener(ShowCheerleaderSection);
             if (specialTabButton != null) specialTabButton.onClick.AddListener(ShowSpecialSection);
+            if (shopTabButton != null) shopTabButton.onClick.AddListener(() => ShowShopSection(ShopSubTab.PointShop));
         }
 
         /// <summary>화면이 켜질 때마다(UIManager.ShowScreen()의 SetActive(true)) 항상 선수 영입 탭을
@@ -92,6 +98,7 @@ namespace KBOManager.Controllers
             if (playerSection != null) playerSection.SetActive(true);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
             if (specialSection != null) specialSection.SetActive(false);
+            if (shopSection != null) shopSection.SetActive(false);
             StyleTabs(0);
         }
 
@@ -102,6 +109,7 @@ namespace KBOManager.Controllers
 
             if (playerSection != null) playerSection.SetActive(false);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
+            if (shopSection != null) shopSection.SetActive(false);
             if (specialSection != null)
             {
                 specialSection.SetActive(true);
@@ -117,8 +125,26 @@ namespace KBOManager.Controllers
 
             if (playerSection != null) playerSection.SetActive(false);
             if (specialSection != null) specialSection.SetActive(false);
+            if (shopSection != null) shopSection.SetActive(false);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(true);
             StyleTabs(2);
+        }
+
+        /// <summary>[TASK-KBO-189] [상점 · 교환소] - 포인트 상점 / 코인 교환소 / 선수 방출 / 3:1 재조합 / 획득처 안내.</summary>
+        public void ShowShopSection(ShopSubTab tab)
+        {
+            LogSectionToggle(nameof(ShowShopSection), activate: shopSection, deactivate: playerSection);
+
+            if (playerSection != null) playerSection.SetActive(false);
+            if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
+            if (specialSection != null) specialSection.SetActive(false);
+            if (shopSection != null)
+            {
+                shopSection.SetActive(true);
+                shopSection.transform.SetAsLastSibling();
+                if (shopSection.TryGetComponent<ShopExchangeView>(out var view)) view.SelectSubTab(tab);
+            }
+            StyleTabs(3);
         }
 
         /// <summary>[TASK-KBO-178] 레퍼런스(선수 스카우트 탭 바)처럼 현재 탭만 네이비로 강조한다. [TASK-185] 0 스카우트 / 1 특별 영입 / 2 응원단.</summary>
@@ -127,6 +153,7 @@ namespace KBOManager.Controllers
             StyleTab(playerTabButton, active == 0);
             StyleTab(specialTabButton, active == 1);
             StyleTab(cheerleaderTabButton, active == 2);
+            StyleTab(shopTabButton, active == 3);
         }
 
         private void StyleTab(Button tab, bool active)

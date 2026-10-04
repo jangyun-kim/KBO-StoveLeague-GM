@@ -337,6 +337,9 @@ namespace KBOManager.Controllers
                 ShowResult($"각성 최대 단계({currentPlayer.AwakenLabel})입니다.");
                 return;
             }
+            // [TASK-KBO-189] 강화 +10강 선행 - 잠금 안내(성장 센터 [각성] 탭에서도 같은 문구 + [강화 탭으로 이동])
+            if (currentPlayer.ReinforceLevel < CardGrowthRules.AwakenRequiredReinforce)
+                ShowResult(CardGrowthRules.AwakenLockMessage(currentPlayer.ReinforceLevel));
 
             // [TASK-KBO-185] 성장 센터가 있으면 [각성] 탭(재료 배지 [동일 연도 +3각]/[다른 연도 +1각] + 단계 미리보기)으로 연다.
             if (growthCenter == null) growthCenter = GetComponent<GrowthCenterView>();

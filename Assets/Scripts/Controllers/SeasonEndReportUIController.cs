@@ -59,7 +59,8 @@ namespace KBOManager.Controllers
                 string packLine = string.IsNullOrEmpty(report.GuaranteedPackGrade)
                     ? ""
                     : $"\n확정팩: {report.GuaranteedPackGrade} 이상 1장";
-                rewardSummaryText.text = $"라이브 일반 영입권 +{report.LiveNormalTicketGained}\n게임 머니 +{report.GameGoldGained}{packLine}";
+                rewardSummaryText.text = $"라이브 일반 영입권 +{report.LiveNormalTicketGained}\n게임 머니 +{report.GameGoldGained}{packLine}" +
+                    (report.MaterialReward.IsEmpty ? "" : $"\n재료 보상: {report.MaterialReward.Summary()}"); // [TASK-KBO-189]
             }
 
             SpawnTitleHolders(report.TitleHolders);

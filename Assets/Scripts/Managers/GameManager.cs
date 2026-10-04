@@ -326,6 +326,13 @@ namespace KBOManager.Managers
         [SerializeField] private int uniform;          // 유니폼
         [SerializeField] private int ticket;           // 플레이 티켓
 
+        // [TASK-KBO-189] 컴프야V26식 재료 수급 루프 - 선수 방출 마일리지(성장 코인)와 교환소 성장 보조권 3종.
+        [Header("Currency - 성장 재료(TASK-189)")]
+        [SerializeField] private int growthCoin;       // 성장 코인(방출 마일리지)
+        [SerializeField] private int awakenTicket;     // 범용 각성 보조권(+1각)
+        [SerializeField] private int transcendTicket;  // 초월 핵심 대체권
+        [SerializeField] private int trainingTicket;   // 특훈권
+
         public int LiveNormalTicket { get => liveNormalTicket; set => liveNormalTicket = Mathf.Max(0, value); }
         public int LiveEpicTicket { get => liveEpicTicket; set => liveEpicTicket = Mathf.Max(0, value); }
         public int PickupTicket { get => pickupTicket; set => pickupTicket = Mathf.Max(0, value); }
@@ -346,6 +353,10 @@ namespace KBOManager.Managers
 
         public int Uniform { get => uniform; set => uniform = Mathf.Max(0, value); }
         public int Ticket { get => ticket; set => ticket = Mathf.Max(0, value); }
+        public int GrowthCoin { get => growthCoin; set => growthCoin = Mathf.Max(0, value); }
+        public int AwakenTicket { get => awakenTicket; set => awakenTicket = Mathf.Max(0, value); }
+        public int TranscendTicket { get => transcendTicket; set => transcendTicket = Mathf.Max(0, value); }
+        public int TrainingTicket { get => trainingTicket; set => trainingTicket = Mathf.Max(0, value); }
 
         // ----- 팬심 / 연패 (TASK-KBO-049, 치어리더 B안 결산 연동용) -----
         [Header("Fan Sentiment / Losing Streak")]
@@ -506,6 +517,7 @@ namespace KBOManager.Managers
             var d = newManagerCurrencyDefaults ?? new int[13];
             liveNormalTicket = d[0]; liveEpicTicket = d[1]; pickupTicket = d[2]; advancedTicket = d[3]; trophy = d[4]; signatureBall = d[5];
             liveCheerStick = d[6]; starCheerStick = d[7]; legendCheerStick = d[8]; limitedCheerStick = d[9]; gameGold = d[10]; uniform = d[11]; ticket = d[12];
+            growthCoin = awakenTicket = transcendTicket = trainingTicket = 0; // [TASK-KBO-189]
         }
 
         // ----- 인벤토리/로스터 헬퍼 -----

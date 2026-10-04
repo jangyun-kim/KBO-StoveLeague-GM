@@ -294,21 +294,90 @@ namespace KBOManager.Models
 
         /// <summary>[TASK-KBO-188] 같은 시즌 등급 · 같은 선수(RealPlayerId) 재료 1장당 각성 상승폭(연도 무관).</summary>
         public const int SamePlayerAwakenGain = 3;
-        /// <summary>[TASK-KBO-188] 같은 시즌 등급 · 다른 선수 재료 1장당 각성 상승폭.</summary>
+        /// <summary>[TASK-KBO-189] 같은 시즌 등급 · 같은 포지션 · 다른 선수 재료 1장당 각성 상승폭.</summary>
         public const int OtherPlayerAwakenGain = 1;
+        /// <summary>[TASK-KBO-189] OtherPlayerAwakenGain의 새 이름(같은 포지션 +1각).</summary>
+        public const int SamePositionAwakenGain = OtherPlayerAwakenGain;
 
         /// <summary>[TASK-KBO-185 호환 별칭] 구 "동일 연도 +3각" 상수 - 이제 "같은 선수 +3각"과 같다.</summary>
         public const int SameYearAwakenGain = SamePlayerAwakenGain;
-        /// <summary>[TASK-KBO-185 호환 별칭] 구 "다른 연도 +1각" 상수 - 이제 "다른 선수 +1각"과 같다.</summary>
+        /// <summary>[TASK-KBO-185 호환 별칭] 구 "다른 연도 +1각" 상수 - 이제 "같은 포지션 +1각"과 같다.</summary>
         public const int OtherYearAwakenGain = OtherPlayerAwakenGain;
 
+        /// <summary>[TASK-KBO-189] 각성(1~9각) 선행 조건 - 강화 +10강 완료.</summary>
+        public const int AwakenRequiredReinforce = 10;
+
+        /// <summary>[TASK-KBO-189] 재료 투입 각성의 최종 단계(9각). 9각 → 초월은 TranscendRules(복합 재료)만 가능하다.</summary>
+        public const int MaterialAwakenCap = NineStageAwakenCap;
+
+        /// <summary>[TASK-KBO-189] 각성 실행 가능 여부(강화 +10강 선행 · 재료 각성 한계 9각). 불가하면 사유.</summary>
+        public static bool CanAwakenNow(Player target, out string reason)
+        {
+            reason = null;
+            if (target?.Template == null) { reason = "선수 카드가 없습니다."; return false; }
+            if (target.ReinforceLevel < AwakenRequiredReinforce) { reason = AwakenLockMessage(target.ReinforceLevel); return false; }
+            int cap = MaterialAwakenCapFor(target.Template.Grade);
+            if (target.AwakenLevel >= cap)
+            {
+                reason = CanTranscend(target.Template.Grade) && target.AwakenLevel < TranscendLevel
+                    ? "9각 완성 - [초월] 탭에서 복합 재료로 초월하십시오."
+                    : $"각성 최대 단계({AwakenLabel(target.Template.Grade, target.AwakenLevel)})입니다.";
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>[TASK-KBO-189] 재료로 오를 수 있는 각성 상한 - 등급 한계와 9각 중 작은 값.</summary>
+        public static int MaterialAwakenCapFor(Grade grade) => MaxAwakenLevelFor(grade) < MaterialAwakenCap ? MaxAwakenLevelFor(grade) : MaterialAwakenCap;
+
+        /// <summary>[TASK-KBO-189] 각성 잠금 안내 문구.</summary>
+        public static string AwakenLockMessage(int reinforceLevel) =>
+            $"강화 +10강 달성 후 각성을 진행할 수 있습니다 (현재 +{(reinforceLevel < 0 ? 0 : reinforceLevel)}/10강)";
+
         /// <summary>
-        /// [TASK-KBO-188 각성 재료 규칙 교정] 각성 재료 1장이 주는 각성 단계(전 등급 공통).
-        /// 필수 조건은 대상과 "같은 시즌 등급(Grade)"뿐이다 - 같은 선수(RealPlayerId 일치)면 연도와 무관하게 +3각,
-        /// 다른 선수면 +1각이다. (TASK-185의 "동일 선수 한정 · 연도 비교"는 폐기.)
+        /// [TASK-KBO-189] 포지션 키 - 타자는 C/1B/2B/3B/SS/LF/CF/RF/DH, 투수는 SP/RP/CP(승리조·추격조·롱릴리프 = RP).
+        /// 각성 +1각 재료 · 초월 보조 재료 · 3:1 포지션 재조합이 모두 이 키로 "같은 포지션"을 판정한다.
         /// </summary>
-        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isSamePlayer) =>
-            isSamePlayer ? SamePlayerAwakenGain : OtherPlayerAwakenGain;
+        public static string PositionKey(PlayerTemplate t)
+        {
+            if (t == null) return "";
+            if (t.IsPitcher)
+            {
+                switch (t.PitcherRole)
+                {
+                    case PitcherRole.StartingPitcher: return "SP";
+                    case PitcherRole.Closer: return "CP";
+                    default: return "RP";
+                }
+            }
+            switch (t.BatterPosition)
+            {
+                case BatterPosition.Catcher: return "C";
+                case BatterPosition.FirstBase: return "1B";
+                case BatterPosition.SecondBase: return "2B";
+                case BatterPosition.ThirdBase: return "3B";
+                case BatterPosition.ShortStop: return "SS";
+                case BatterPosition.LeftField: return "LF";
+                case BatterPosition.CenterField: return "CF";
+                case BatterPosition.RightField: return "RF";
+                default: return "DH";
+            }
+        }
+
+        public static string PositionKey(Player p) => PositionKey(p?.Template);
+
+        /// <summary>[TASK-KBO-189] 포지션 순환 목록(3:1 재조합 · 포지션 지정 팩 선택기).</summary>
+        public static readonly string[] PositionKeys = { "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP", "CP" };
+
+        public static bool IsSamePosition(PlayerTemplate a, PlayerTemplate b) =>
+            a != null && b != null && PositionKey(a) == PositionKey(b);
+
+        /// <summary>
+        /// [TASK-KBO-189 각성 재료 규칙] 각성 재료 1장이 주는 각성 단계(전 등급 공통). 필수 조건은 대상과 "같은 시즌 등급(Grade)".
+        ///   같은 선수(RealPlayerId 일치) → +3각(연도 · 포지션 무관) / 같은 포지션 다른 선수 → +1각 / 다른 포지션 다른 선수 → 재료 불가(0).
+        /// </summary>
+        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isSamePlayer, bool isSamePosition = true) =>
+            isSamePlayer ? SamePlayerAwakenGain : isSamePosition ? SamePositionAwakenGain : 0;
 
         /// <summary>[TASK-KBO-188] 대상/재료가 같은 선수인지(RealPlayerId 우선, 없으면 이름으로 폴백).</summary>
         public static bool IsSamePlayer(PlayerTemplate t, PlayerTemplate m)
@@ -318,20 +387,22 @@ namespace KBOManager.Models
             return !string.IsNullOrEmpty(t.PlayerName) && t.PlayerName == m.PlayerName;
         }
 
-        /// <summary>[TASK-KBO-188] 대상/재료 쌍의 각성 상승폭(무효 재료 = 0: 자기 자신 · 다른 시즌 등급). 미리보기 · 배지 · 실제 적용 공용.</summary>
+        /// <summary>[TASK-KBO-189] 대상/재료 쌍의 각성 상승폭(무효 재료 = 0: 자기 자신 · 다른 시즌 등급 · 다른 포지션 다른 선수).
+        /// 미리보기 · 배지 · 실제 적용 공용. (+10강 선행 조건은 CanAwakenNow가 따로 판정한다.)</summary>
         public static int AwakenGainFor(Player target, Player material)
         {
             if (target?.Template == null || material?.Template == null || ReferenceEquals(target, material)) return 0;
             if (material.Template.Grade != target.Template.Grade) return 0;
-            return AwakenPointsPerMaterial(target.Template.Grade, IsSamePlayer(target.Template, material.Template));
+            return AwakenPointsPerMaterial(target.Template.Grade, IsSamePlayer(target.Template, material.Template),
+                IsSamePosition(target.Template, material.Template));
         }
 
-        /// <summary>[TASK-KBO-188] 각성 재료 배지 문구("[같은 선수 +3각]" / "[다른 선수 +1각]"), 무효 재료면 빈 문자열.</summary>
+        /// <summary>[TASK-KBO-189] 각성 재료 배지 문구("[같은 선수 +3각]" / "[같은 포지션 +1각]"), 무효 재료면 빈 문자열.</summary>
         public static string AwakenMaterialBadge(Player target, Player material)
         {
             int gain = AwakenGainFor(target, material);
             if (gain <= 0) return "";
-            return gain == SamePlayerAwakenGain ? $"[같은 선수 +{gain}각]" : $"[다른 선수 +{gain}각]";
+            return gain == SamePlayerAwakenGain ? $"[같은 선수 +{gain}각]" : $"[같은 포지션 +{gain}각]";
         }
 
         /// <summary>[TASK-KBO-188] 카드 위 성장 배지 - 미각성(0각)은 강화 단계("+7"), 1각 이상은 각성 단계("3각"/"초월")로 전환한다.

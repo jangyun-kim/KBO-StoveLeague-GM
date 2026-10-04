@@ -13,6 +13,8 @@ namespace KBOManager.Managers
         public int GameGoldGained;
         /// <summary>확정팩을 받았다면 그 최소 등급 이름(예: "SIGNATURE"), 없으면 null.</summary>
         public string GuaranteedPackGrade;
+        /// <summary>[TASK-KBO-189] 리그 단계 비례 시즌 재료 보상(포인트 · 성장 코인 · 특훈권 · 트로피).</summary>
+        public LeagueMaterialReward MaterialReward;
         /// <summary>(부문명, 선수 이름, 기록값) 목록 - 타이틀 홀더(투타 각 부문 1위) 명단.</summary>
         public List<(string Category, string PlayerName, string ValueLabel)> TitleHolders = new List<(string, string, string)>();
     }
@@ -123,6 +125,15 @@ namespace KBOManager.Managers
                 report.LiveNormalTicketGained = Mathf.RoundToInt(Mathf.Lerp(championLiveNormalTicket, midTierMinimumLiveNormalTicket, t));
                 GameManager.Instance.LiveNormalTicket += report.LiveNormalTicketGained;
             }
+
+            // [TASK-KBO-189] 리그 단계 비례 시즌 재료 보상(우승 시 트로피 · 성장 코인 · 특훈권 대량)
+            var material = LeagueMaterialRewards.ForSeason(leagueManager.CurrentTier, finalRank);
+            var gm = GameManager.Instance;
+            gm.GameGold += material.Points;
+            gm.GrowthCoin += material.GrowthCoin;
+            gm.TrainingTicket += material.TrainingTicket;
+            gm.Trophy += material.Trophy;
+            report.MaterialReward = material;
 
             PopulateTitleHolders(report);
 

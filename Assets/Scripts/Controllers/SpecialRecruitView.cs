@@ -148,7 +148,10 @@ namespace KBOManager.Controllers
             CompyaUiKit.Paint(root, Bg, true);
 
             kit.GradientBox(root, "Header", 0, 0, 1248, 150, new Color(0.45f, 0.3f, 0.08f), new Color(0.2f, 0.12f, 0.03f), false);
-            kit.Label(root, "Title", "특별 영입 · 골든글러브 / 시그니처", 30, 10, 1218, 90, 46, TextAnchor.MiddleLeft, Gold, true);
+            kit.Label(root, "Title", "특별 영입 · 골든글러브 / 시그니처", 30, 10, 880, 90, 40, TextAnchor.MiddleLeft, Gold, true);
+            // [TASK-KBO-189] 재료 획득처 / 포지션 재조합 바로가기 → [상점 · 교환소]
+            kit.Button(root, "SourceButton", "재료 획득처 · 재조합 ▸", 890, 18, 1228, 84, new Color(0.98f, 0.76f, 0.2f, 0.9f), new Color(0.12f, 0.08f, 0.02f), 26)
+                .onClick.AddListener(() => ShopExchangeView.OpenShop(ShopSubTab.CoinExchange));
             teamText = kit.Label(root, "Team", "", 30, 88, 1218, 145, 28, TextAnchor.MiddleLeft, White);
 
             var kinds = new[] { SpecialRecruitKind.GoldenGlove, SpecialRecruitKind.Signature };

@@ -89,16 +89,17 @@ namespace KBOManager.Managers
         /// </summary>
         public bool TryAwaken(Player target, List<Player> materialCards) => ApplyAwaken(target, materialCards);
 
-        /// <summary>[TASK-KBO-184] TryAwaken 본체(정적) - 성장 센터 미리보기와 실행 공용.</summary>
+        /// <summary>[TASK-KBO-184] TryAwaken 본체(정적) - 성장 센터 미리보기와 실행 공용.
+        /// [TASK-KBO-189] 강화 +10강 완료가 선행 조건이며, 재료 각성은 9각까지만 오른다(9각 → 초월은 TranscendRules 복합 재료).
+        /// 재료: 같은 시즌 등급 - 같은 선수 +3각 / 같은 포지션 다른 선수 +1각 / 다른 포지션 다른 선수 불가.</summary>
         public static bool ApplyAwaken(Player target, List<Player> materialCards)
         {
             if (target == null || target.Template == null) return false;
             if (!target.CanAwaken) return false;
-            int maxAwaken = target.MaxAwakenLevelForGrade; // [TASK-KBO-172] 등급별 9각 한계/초월
-            if (target.AwakenLevel >= maxAwaken) return false;
+            if (!CardGrowthRules.CanAwakenNow(target, out _)) return false;
+            int maxAwaken = CardGrowthRules.MaterialAwakenCapFor(target.Template.Grade);
             if (materialCards == null || materialCards.Count == 0) return false;
 
-            // [TASK-KBO-188] 같은 시즌 등급: 같은 선수 +3각 / 다른 선수 +1각(CardGrowthRules.AwakenGainFor).
             int gainedPoints = 0;
             foreach (var material in materialCards) gainedPoints += CardGrowthRules.AwakenGainFor(target, material);
 

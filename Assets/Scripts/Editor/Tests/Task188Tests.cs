@@ -82,7 +82,7 @@ namespace KBOManager.EditorTests
         [Test]
         public void Awaken_SameGradeSamePlayer_Plus3_RegardlessOfYear()
         {
-            var target = Card(Grade.GOLDEN_GLOVE, "KOO", 2024);
+            var target = Card(Grade.GOLDEN_GLOVE, "KOO", 2024, reinforce: 10); // [TASK-KBO-189] +10강 선행
             foreach (int year in new[] { 2024, 2021, 2025 })
                 Assert.AreEqual(3, CardGrowthRules.AwakenGainFor(target, Card(Grade.GOLDEN_GLOVE, "KOO", year)), $"같은 시즌 등급 · 같은 선수 {year}년 = +3각");
             UpgradeManager.ApplyAwaken(target, new List<Player> { Card(Grade.GOLDEN_GLOVE, "KOO", 2021), Card(Grade.GOLDEN_GLOVE, "KOO", 2023) });
@@ -92,13 +92,13 @@ namespace KBOManager.EditorTests
         [Test]
         public void Awaken_SameGradeOtherPlayer_Plus1_OtherGradeAndSelfInvalid()
         {
-            var target = Card(Grade.ALLSTAR, "KOO", 2024);
+            var target = Card(Grade.ALLSTAR, "KOO", 2024, reinforce: 10);
             var other = Card(Grade.ALLSTAR, "LEE", 2022);
-            Assert.AreEqual(1, CardGrowthRules.AwakenGainFor(target, other), "같은 시즌 등급 · 다른 선수 = +1각");
+            Assert.AreEqual(1, CardGrowthRules.AwakenGainFor(target, other), "[TASK-KBO-189] 같은 시즌 등급 · 같은 포지션(RF) 다른 선수 = +1각");
             Assert.AreEqual(0, CardGrowthRules.AwakenGainFor(target, Card(Grade.TITLE_HOLDER, "KOO", 2024)), "다른 시즌 등급은 재료 아님");
             Assert.AreEqual(0, CardGrowthRules.AwakenGainFor(target, target), "자기 자신");
             Assert.AreEqual("[같은 선수 +3각]", CardGrowthRules.AwakenMaterialBadge(target, Card(Grade.ALLSTAR, "KOO", 2020)));
-            Assert.AreEqual("[다른 선수 +1각]", CardGrowthRules.AwakenMaterialBadge(target, other));
+            Assert.AreEqual("[같은 포지션 +1각]", CardGrowthRules.AwakenMaterialBadge(target, other)); // [TASK-KBO-189] 배지 문구 변경
 
             UpgradeManager.ApplyAwaken(target, new List<Player> { other, Card(Grade.ALLSTAR, "PARK", 2023), Card(Grade.ALLSTAR, "KOO", 2025) });
             Assert.AreEqual(5, target.AwakenLevel, "다른 선수 1 + 1 + 같은 선수 3 = 5각");

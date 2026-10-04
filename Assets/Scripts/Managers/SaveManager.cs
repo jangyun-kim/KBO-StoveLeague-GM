@@ -163,6 +163,10 @@ namespace KBOManager.Managers
         public int GameGold;
         public int Uniform;
         public int Ticket;
+        public int GrowthCoin;      // [TASK-KBO-189] 성장 코인(방출 마일리지)
+        public int AwakenTicket;    // [TASK-KBO-189] 범용 각성 보조권
+        public int TranscendTicket; // [TASK-KBO-189] 초월 핵심 대체권
+        public int TrainingTicket;  // [TASK-KBO-189] 특훈권
         public bool IsFirstLogin = true;
         public int FanSentiment = 100; // 필드 없는 구버전 세이브 로드 시 GameManager 기본값(100)과 동일하게 채워짐
         public int LosingStreak;
@@ -324,6 +328,10 @@ namespace KBOManager.Managers
                 data.GameGold = gm.GameGold;
                 data.Uniform = gm.Uniform;
                 data.Ticket = gm.Ticket;
+                data.GrowthCoin = gm.GrowthCoin;
+                data.AwakenTicket = gm.AwakenTicket;
+                data.TranscendTicket = gm.TranscendTicket;
+                data.TrainingTicket = gm.TrainingTicket;
                 data.IsFirstLogin = gm.IsFirstLogin;
                 data.ManagerNickname = gm.ManagerNickname;
                 data.TutorialCompleted = gm.TutorialCompleted;
@@ -452,6 +460,10 @@ namespace KBOManager.Managers
                 gm.GameGold = data.GameGold;
                 gm.Uniform = data.Uniform;
                 gm.Ticket = data.Ticket;
+                gm.GrowthCoin = data.GrowthCoin;
+                gm.AwakenTicket = data.AwakenTicket;
+                gm.TranscendTicket = data.TranscendTicket;
+                gm.TrainingTicket = data.TrainingTicket;
                 gm.IsFirstLogin = data.IsFirstLogin;
                 gm.ManagerNickname = data.ManagerNickname ?? "";
                 gm.TutorialCompleted = data.TutorialCompleted;

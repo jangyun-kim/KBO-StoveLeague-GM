@@ -237,6 +237,7 @@ namespace KBOManager.EditorTests
             CollectionAssert.DoesNotContain(enhanceMaterials, star);
             Assert.IsEmpty(GrowthCenterRules.MaterialCandidates(GrowthTab.Training, star, inventory, roster));
 
+            star.ReinforceLevel = 10; // [TASK-KBO-189] 각성은 강화 +10강 선행
             var after = GrowthCenterRules.Simulate(GrowthTab.Awaken, star, awakenMaterials);
             Assert.AreEqual(0, star.AwakenLevel, "미리보기는 원본을 바꾸지 않는다");
             // [TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 동일 연도(테스트 카드는 모두 2026) = +3각(다른 연도면 +1각 - Task185Tests).

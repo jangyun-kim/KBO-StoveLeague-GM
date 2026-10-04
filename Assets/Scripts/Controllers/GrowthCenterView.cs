@@ -46,8 +46,9 @@ namespace KBOManager.Controllers
         private Text nameText, subText, ovrText, breakdownText, ladderNoteText, descText, statText, materialTitleText, resultText, targetTitleText;
         private readonly Image[] ladderBoxes = new Image[11];
         private readonly Text[] ladderLabels = new Text[11];
-        private readonly Button[] tabButtons = new Button[4];
-        private Button actionButton, autoButton, clearButton, scopeButton;
+        private readonly Button[] tabButtons = new Button[5];
+        private Button actionButton, autoButton, clearButton, scopeButton, contextButton, sourceButton;
+        private bool useCoreTicket; // [TASK-KBO-189] 초월 슬롯 1을 초월 핵심 대체권으로
         private RectTransform materialContent, targetContent;
 
         private Player target;
@@ -100,6 +101,7 @@ namespace KBOManager.Controllers
             var gm = GameManager.Instance;
             target = player?.Template != null ? player : GrowthCenterRules.DefaultTarget(gm?.Roster, gm?.Inventory);
             selected.Clear();
+            useCoreTicket = false;
             Refresh();
         }
 
@@ -107,6 +109,7 @@ namespace KBOManager.Controllers
         {
             tab = next;
             selected.Clear();
+            useCoreTicket = false;
             if (resultText != null) resultText.text = "";
             Refresh();
         }
@@ -131,7 +134,10 @@ namespace KBOManager.Controllers
             // ---- 헤더
             kit.GradientBox(root, "Header", 0, 0, 1248, 140, new Color(0.13f, 0.3f, 0.66f), new Color(0.07f, 0.16f, 0.4f), false);
             kit.Button(root, "BackButton", "◀ 뒤로", 20, 30, 230, 112, new Color(0f, 0f, 0f, 0.25f), White, 34).onClick.AddListener(Close);
-            kit.Label(root, "Title", "선수 관리 · 성장 센터", 240, 20, 1000, 120, 46, TextAnchor.MiddleCenter, White, true);
+            kit.Label(root, "Title", "선수 관리 · 성장 센터", 240, 20, 770, 120, 42, TextAnchor.MiddleCenter, White, true);
+            // [TASK-KBO-189] 재료 획득처 / 포지션 재조합 바로가기(스카우트 허브 [상점 · 교환소])
+            sourceButton = kit.Button(root, "SourceButton", "재료 획득처 ▸", 780, 30, 1000, 112, new Color(0.98f, 0.76f, 0.2f, 0.9f), new Color(0.12f, 0.08f, 0.02f), 28);
+            sourceButton.onClick.AddListener(() => ShopExchangeView.OpenShop(ShopSubTab.Guide));
             kit.Button(root, "DetailButton", "상세 정보", 1010, 30, 1228, 112, new Color(1f, 1f, 1f, 0.15f), White, 32).onClick.AddListener(OpenDetail);
 
             // ---- 대상 선수
@@ -153,15 +159,21 @@ namespace KBOManager.Controllers
             }
             ladderNoteText = kit.Label(root, "LadderNote", "", 440, 720, 1210, 790, 24, TextAnchor.MiddleLeft, Gold);
 
-            // ---- 성장 탭 4개
+            // ---- 성장 탭 5개([TASK-KBO-189] 초월 추가)
             for (int i = 0; i < GrowthCenterRules.Tabs.Length; i++)
             {
                 var t = GrowthCenterRules.Tabs[i];
-                float x0 = 20 + i * 302f;
-                tabButtons[i] = kit.Button(root, $"Tab_{t}", GrowthCenterRules.TabName(t), x0, 815, x0 + 298, 905, TabOff, White, 38);
+                float x0 = 20 + i * 242f;
+                tabButtons[i] = kit.Button(root, $"Tab_{t}", GrowthCenterRules.TabName(t), x0, 815, x0 + 238, 905, TabOff, White, 36);
                 tabButtons[i].onClick.AddListener(() => SelectTab(t));
             }
-            descText = kit.Label(root, "Desc", "", 28, 915, 1220, 1020, 28, TextAnchor.MiddleLeft, White);
+            descText = kit.Label(root, "Desc", "", 28, 915, 890, 1020, 26, TextAnchor.MiddleLeft, White);
+            descText.resizeTextForBestFit = true;
+            descText.resizeTextMinSize = 14;
+            descText.resizeTextMaxSize = descText.fontSize;
+            // [TASK-KBO-189] 상황 버튼 - [강화 탭으로 이동] / [각성 보조권 +1각] / [핵심 대체권 사용] / [각성 탭으로 이동]
+            contextButton = kit.Button(root, "ContextButton", "", 900, 925, 1228, 1012, new Color(0.15f, 0.33f, 0.88f), White, 28);
+            contextButton.onClick.AddListener(OnContextButton);
 
             // ---- 스탯 변화 미리보기 / 재료 선택
             CompyaUiKit.Box(root, "StatPanel", 20, 1028, 600, 1420, Panel);
@@ -174,7 +186,7 @@ namespace KBOManager.Controllers
             autoButton = kit.Button(root, "AutoSelect", "자동 선택", 624, 1358, 916, 1412, new Color(0.15f, 0.33f, 0.88f), White, 28);
             autoButton.onClick.AddListener(AutoSelect);
             clearButton = kit.Button(root, "ClearSelect", "선택 해제", 924, 1358, 1216, 1412, PanelLight, White, 28);
-            clearButton.onClick.AddListener(() => { selected.Clear(); Refresh(); });
+            clearButton.onClick.AddListener(() => { selected.Clear(); useCoreTicket = false; Refresh(); });
 
             // ---- 실행
             resultText = kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true);
@@ -296,9 +308,12 @@ namespace KBOManager.Controllers
             statText.text = string.Join("\n", GrowthCenterRules.StatPreviewLines(target, after));
 
             int maxMaterials = GrowthCenterRules.MaxMaterials(tab);
+            int trainingTickets = gm != null ? gm.TrainingTicket : 0;
             materialTitleText.text = tab == GrowthTab.Training
-                ? $"특훈 비용 - 볼 {CardGrowthActions.TrainingGoldCost(target.TrainingLevel):N0}"
-                : $"재료 카드 선택 {selected.Count}/{maxMaterials} (후보 {candidates.Count}장)";
+                ? (trainingTickets > 0 ? $"특훈 비용 - 특훈권 1장 (보유 {trainingTickets}장)" : $"특훈 비용 - 볼 {CardGrowthActions.TrainingGoldCost(target.TrainingLevel):N0}")
+                : tab == GrowthTab.Transcend
+                    ? $"초월 재료 {TranscendRules.SlotSummary(target, CurrentTranscendSelection())} (후보 {candidates.Count}장)"
+                    : $"재료 카드 선택 {selected.Count}/{maxMaterials} (후보 {candidates.Count}장)";
             var rows = new List<(string, Color, UnityEngine.Events.UnityAction)>();
             if (tab != GrowthTab.Training)
             {
@@ -306,20 +321,24 @@ namespace KBOManager.Controllers
                 {
                     var captured = m;
                     bool on = selected.Contains(m);
-                    // [TASK-KBO-188] 각성 재료 배지 - [같은 선수 +3각] / [다른 선수 +1각]
-                    string badge = tab == GrowthTab.Awaken ? CardGrowthRules.AwakenMaterialBadge(target, m) : "";
+                    // [TASK-KBO-189] 각성 재료 배지 - [같은 선수 +3각] / [같은 포지션 +1각], 초월 - [핵심 · 같은 선수] / [보조 · 같은 포지션]
+                    string badge = tab == GrowthTab.Awaken ? CardGrowthRules.AwakenMaterialBadge(target, m)
+                        : tab == GrowthTab.Transcend ? TranscendRules.MaterialBadge(target, m) : "";
+                    bool core = tab == GrowthTab.Awaken ? CardGrowthRules.AwakenGainFor(target, m) == CardGrowthRules.SamePlayerAwakenGain : TranscendRules.IsCoreMaterial(target, m);
                     if (badge.Length > 0)
-                        badge = $"<color={(CardGrowthRules.AwakenGainFor(target, m) == CardGrowthRules.SamePlayerAwakenGain ? "#FFD045" : "#7FD1FF")}>{badge}</color> ";
+                        badge = $"<color={(core ? "#FFD045" : "#7FD1FF")}>{badge}</color> ";
                     rows.Add(($"{(on ? "✔ " : "")}{CardDisplay.TargetLine1(m)}\n{badge}{CardDisplay.TargetLine2(m, m.CalculateNeutralOVR())}",
                         on ? RowOn : RowOff, () => ToggleMaterial(captured)));
                 }
             }
             RebuildRows(materialContent, rows, columns: 2);
-            autoButton.interactable = tab != GrowthTab.Training && candidates.Count > 0;
-            clearButton.interactable = selected.Count > 0;
+            autoButton.interactable = tab != GrowthTab.Training && (candidates.Count > 0 || (tab == GrowthTab.Transcend && gm != null && gm.TranscendTicket > 0));
+            CompyaUiKit.SetButtonText(autoButton, tab == GrowthTab.Transcend ? "초월 재료 자동 등록" : "자동 선택");
+            clearButton.interactable = selected.Count > 0 || useCoreTicket;
 
             CompyaUiKit.SetButtonText(actionButton, $"{GrowthCenterRules.TabName(tab)} 실행");
             actionButton.interactable = CanExecute(gold, candidates);
+            RefreshContextButton(gm);
             RebuildTargets(gm);
         }
 
@@ -329,9 +348,18 @@ namespace KBOManager.Controllers
             switch (tab)
             {
                 case GrowthTab.Enhance: return target.ReinforceLevel < Player.MaxReinforceLevel && selected.Count > 0;
-                case GrowthTab.Awaken: return target.AwakenLevel < target.MaxAwakenLevelForGrade && selected.Count > 0;
+                case GrowthTab.Awaken: return CardGrowthRules.CanAwakenNow(target, out _) && selected.Count > 0; // [TASK-KBO-189] +10강 선행
+                case GrowthTab.Transcend:
+                {
+                    var gm = GameManager.Instance;
+                    return gm != null && TranscendRules.Validate(target, CurrentTranscendSelection(), new GameManagerGrowthLedger(gm)) == null;
+                }
                 case GrowthTab.LimitBreak: return CardGrowthActions.CanLimitBreak(target, out _) && (selected.Count > 0 || candidates.Count > 0);
-                case GrowthTab.Training: return CardGrowthActions.CanTrain(target, gold, out _);
+                case GrowthTab.Training:
+                {
+                    var gm = GameManager.Instance;
+                    return CardGrowthActions.CanTrain(target, gm != null && gm.TrainingTicket > 0 ? int.MaxValue : gold, out _);
+                }
                 default: return false;
             }
         }
@@ -425,6 +453,23 @@ namespace KBOManager.Controllers
         private void ToggleMaterial(Player material)
         {
             if (selected.Remove(material)) { Refresh(); return; }
+            if (tab == GrowthTab.Transcend)
+            {
+                // [TASK-KBO-189] 핵심(같은 선수)은 1장 - 새로 고르면 교체, 보조(같은 포지션)는 최대 2장
+                if (TranscendRules.IsCoreMaterial(target, material))
+                {
+                    selected.RemoveAll(p => TranscendRules.IsCoreMaterial(target, p));
+                    useCoreTicket = false;
+                }
+                else if (selected.Count(p => TranscendRules.IsSupportMaterial(target, p)) >= TranscendRules.SupportCount)
+                {
+                    resultText.text = $"보조 재료는 최대 {TranscendRules.SupportCount}장까지 선택할 수 있습니다.";
+                    return;
+                }
+                selected.Add(material);
+                Refresh();
+                return;
+            }
             int max = GrowthCenterRules.MaxMaterials(tab);
             if (max == 1) selected.Clear();
             if (selected.Count >= max)
@@ -442,6 +487,18 @@ namespace KBOManager.Controllers
             if (gm == null || target == null) return;
             var candidates = GrowthCenterRules.MaterialCandidates(tab, target, gm.Inventory, gm.Roster);
             selected.Clear();
+            if (tab == GrowthTab.Transcend)
+            {
+                // [TASK-KBO-189] 초월 재료 자동 등록 - 핵심(같은 선수, 없으면 대체권) + 보조(같은 포지션 2장 / +5강 1장)
+                var auto = TranscendRules.AutoAssign(target, gm.Inventory, gm.Roster, gm.TranscendTicket);
+                useCoreTicket = auto.UseCoreTicket;
+                selected.AddRange(auto.Cards);
+                string reason = TranscendRules.Validate(target, auto, new GameManagerGrowthLedger(gm));
+                resultText.color = reason == null ? Green : new Color(1f, 0.45f, 0.45f);
+                resultText.text = reason == null ? "초월 재료 자동 등록 완료 - 주전 라인업 카드는 제외했습니다." : reason;
+                Refresh();
+                return;
+            }
             selected.AddRange(GrowthCenterRules.AutoSelect(tab, target, candidates));
             if (selected.Count == 0) resultText.text = "사용할 수 있는 재료가 없습니다.";
             Refresh();
@@ -466,9 +523,18 @@ namespace KBOManager.Controllers
                     message = ok ? $"강화 완료 - {target.ReinforceLevel}강 (EXP {target.ReinforceExp})" : "강화할 수 없습니다(재료 선택 또는 10강 확인).";
                     break;
                 case GrowthTab.Awaken:
-                    ok = selected.Count > 0 && UpgradeManager.ApplyAwaken(target, new List<Player>(selected));
-                    if (ok) used.AddRange(selected);
-                    message = ok ? $"각성 완료 - {target.AwakenLabel} · {CardGrowthRules.AwakenStageNote(target.Template.Grade, target.AwakenLevel)}" : "각성할 수 없습니다(동일 선수 재료 또는 최대 단계 확인).";
+                {
+                    if (!CardGrowthRules.CanAwakenNow(target, out var awakenReason)) { ok = false; message = awakenReason; break; }
+                    var valid = selected.Where(m => CardGrowthRules.AwakenGainFor(target, m) > 0).ToList();
+                    ok = valid.Count > 0 && UpgradeManager.ApplyAwaken(target, valid);
+                    if (ok) used.AddRange(valid);
+                    message = ok ? $"각성 완료 - {target.AwakenLabel} · {CardGrowthRules.AwakenStageNote(target.Template.Grade, target.AwakenLevel)}" : "각성할 수 없습니다(같은 선수 / 같은 포지션 재료 확인).";
+                    break;
+                }
+                case GrowthTab.Transcend:
+                    // [TASK-KBO-189] 복합 재료 초월 - 재료 · 대체권 · 포인트 · 트로피는 원장에서 직접 소모한다.
+                    ok = TranscendRules.TryTranscend(target, CurrentTranscendSelection(), new GameManagerGrowthLedger(gm), out message);
+                    if (ok) useCoreTicket = false;
                     break;
                 case GrowthTab.LimitBreak:
                 {
@@ -478,6 +544,17 @@ namespace KBOManager.Controllers
                     break;
                 }
                 case GrowthTab.Training:
+                    if (gm.TrainingTicket > 0)
+                    {
+                        // [TASK-KBO-189] 특훈권이 있으면 볼 대신 1장 소모
+                        ok = CardGrowthActions.TryTrain(target, int.MaxValue, out _, out message);
+                        if (ok)
+                        {
+                            gm.TrainingTicket -= 1;
+                            message = $"특훈 {target.TrainingLevel}/{CardGrowthRules.TrainingCap(target.Template.Grade)}단계 완료! OVR +1 (특훈권 -1, 남은 {gm.TrainingTicket}장)";
+                        }
+                        break;
+                    }
                     ok = CardGrowthActions.TryTrain(target, gm.GameGold, out int spent, out message);
                     if (ok) gm.GameGold -= spent;
                     break;
@@ -498,6 +575,77 @@ namespace KBOManager.Controllers
             resultText.color = ok ? Green : new Color(1f, 0.45f, 0.45f);
             resultText.text = message;
             Refresh();
+        }
+
+        /// <summary>[TASK-KBO-189] 현재 선택을 초월 슬롯(핵심 1 · 보조 2)에 배정한 결과.</summary>
+        private TranscendRules.Selection CurrentTranscendSelection() => TranscendRules.Assign(target, selected, useCoreTicket);
+
+        /// <summary>[TASK-KBO-189] 탭별 상황 버튼 - 잠금이면 이동 안내, 아니면 보조권/대체권/특훈권.</summary>
+        private void RefreshContextButton(GameManager gm)
+        {
+            if (contextButton == null) return;
+            string label = ContextLabel(gm);
+            contextButton.gameObject.SetActive(label.Length > 0);
+            if (label.Length > 0) CompyaUiKit.SetButtonText(contextButton, label);
+        }
+
+        public string ContextLabel(GameManager gm)
+        {
+            if (target?.Template == null) return "";
+            bool locked = target.ReinforceLevel < CardGrowthRules.AwakenRequiredReinforce;
+            switch (tab)
+            {
+                case GrowthTab.Awaken:
+                    if (locked) return "강화 탭으로 이동";
+                    return $"각성 보조권 +1각 ({(gm != null ? gm.AwakenTicket : 0)})";
+                case GrowthTab.Transcend:
+                    if (!CardGrowthRules.CanTranscend(target.Template.Grade) || target.IsTranscended) return "";
+                    if (locked) return "강화 탭으로 이동";
+                    if (target.AwakenLevel < CardGrowthRules.FinalAwakenThreshold) return "각성 탭으로 이동";
+                    return useCoreTicket ? $"대체권 사용 중 ({(gm != null ? gm.TranscendTicket : 0)})" : $"핵심 대체권 사용 ({(gm != null ? gm.TranscendTicket : 0)})";
+                case GrowthTab.Training:
+                    return gm != null && gm.TrainingTicket > 0 ? $"특훈권 {gm.TrainingTicket}장 보유" : "특훈권 구하기 ▸";
+                default:
+                    return "";
+            }
+        }
+
+        private void OnContextButton()
+        {
+            var gm = GameManager.Instance;
+            if (target?.Template == null) return;
+            bool locked = target.ReinforceLevel < CardGrowthRules.AwakenRequiredReinforce;
+            switch (tab)
+            {
+                case GrowthTab.Awaken:
+                {
+                    if (locked) { SelectTab(GrowthTab.Enhance); return; }
+                    if (gm == null) return;
+                    bool ok = ShopExchangeRules.TryUseAwakenTicket(target, new GameManagerGrowthLedger(gm), out var message);
+                    if (ok) SaveManager.Instance?.TrySaveCareer();
+                    selected.Clear();
+                    resultText.color = ok ? Green : new Color(1f, 0.45f, 0.45f);
+                    resultText.text = message;
+                    Refresh();
+                    return;
+                }
+                case GrowthTab.Transcend:
+                    if (locked) { SelectTab(GrowthTab.Enhance); return; }
+                    if (target.AwakenLevel < CardGrowthRules.FinalAwakenThreshold) { SelectTab(GrowthTab.Awaken); return; }
+                    if (!useCoreTicket && (gm == null || gm.TranscendTicket < 1))
+                    {
+                        resultText.color = new Color(1f, 0.45f, 0.45f);
+                        resultText.text = "초월 핵심 대체권이 없습니다 - 상점 · 교환소(성장 코인 1,500)에서 교환하십시오.";
+                        return;
+                    }
+                    useCoreTicket = !useCoreTicket;
+                    if (useCoreTicket) selected.RemoveAll(p => TranscendRules.IsCoreMaterial(target, p));
+                    Refresh();
+                    return;
+                case GrowthTab.Training:
+                    if (gm == null || gm.TrainingTicket <= 0) ShopExchangeView.OpenShop(ShopSubTab.PointShop);
+                    return;
+            }
         }
 
         private void OpenDetail()

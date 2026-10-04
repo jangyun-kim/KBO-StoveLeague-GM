@@ -12,6 +12,7 @@ namespace KBOManager.Models
         Awaken = 1,      // 각성(동일 선수 재료) - 핵심 성장 축
         LimitBreak = 2,  // 한계 돌파(10강 후, 재료 1장)
         Training = 3,    // 훈련·특훈(볼 소모)
+        Transcend = 4,   // [TASK-KBO-189] 초월(+10강 · 9각 선행, 동일 선수 1장 + 동포지션 2장 + 포인트/트로피)
     }
 
     /// <summary>
@@ -24,7 +25,8 @@ namespace KBOManager.Models
     /// </summary>
     public static class GrowthCenterRules
     {
-        public static readonly GrowthTab[] Tabs = { GrowthTab.Enhance, GrowthTab.Awaken, GrowthTab.LimitBreak, GrowthTab.Training };
+        /// <summary>[TASK-KBO-189] 5탭 - 강화 · 각성 · 초월 · 한계 돌파 · 훈련·특훈.</summary>
+        public static readonly GrowthTab[] Tabs = { GrowthTab.Enhance, GrowthTab.Awaken, GrowthTab.Transcend, GrowthTab.LimitBreak, GrowthTab.Training };
 
         public static string TabName(GrowthTab tab) => tab switch
         {
@@ -32,6 +34,7 @@ namespace KBOManager.Models
             GrowthTab.Awaken => "각성",
             GrowthTab.LimitBreak => "한계 돌파",
             GrowthTab.Training => "훈련·특훈",
+            GrowthTab.Transcend => "초월",
             _ => tab.ToString()
         };
 
@@ -40,6 +43,7 @@ namespace KBOManager.Models
             GrowthTab.Enhance => UpgradeManager.MaxEnhanceMaterials,
             GrowthTab.Awaken => 10,
             GrowthTab.LimitBreak => 1,
+            GrowthTab.Transcend => 1 + TranscendRules.SupportCount,
             _ => 0
         };
 
@@ -61,7 +65,7 @@ namespace KBOManager.Models
                 .ThenBy(p => p.Template.PlayerName, StringComparer.Ordinal).ToList();
         }
 
-        /// <summary>[TASK-KBO-185] 동일 선수 + 동일 시즌 등급(연도 무관 - 같은 연도 +3각 / 다른 연도 +1각).</summary>
+        /// <summary>[TASK-KBO-189] 같은 시즌 등급 - 같은 선수(+3각) 또는 같은 포지션 다른 선수(+1각). 다른 포지션 다른 선수는 불가.</summary>
         public static bool IsValidAwakenMaterial(Player target, Player material) => CardGrowthRules.AwakenGainFor(target, material) > 0;
 
         /// <summary>[TASK-KBO-185] 각성 미리보기 문구 - "0각 → 3각 · OVR +5 점프"(재료 없으면 빈 문자열).</summary>
@@ -92,6 +96,11 @@ namespace KBOManager.Models
                 case GrowthTab.Awaken:
                     return pool.Where(p => IsValidAwakenMaterial(target, p))
                         .OrderByDescending(p => CardGrowthRules.AwakenGainFor(target, p)).ThenBy(p => p.GetStatGrowth()).ToList();
+                case GrowthTab.Transcend:
+                    return pool.Where(p => TranscendRules.IsCoreMaterial(target, p) || TranscendRules.IsSupportMaterial(target, p))
+                        .OrderByDescending(p => TranscendRules.IsCoreMaterial(target, p))
+                        .ThenBy(p => p.ReinforceLevel >= TranscendRules.SupportEnhancedLevel)
+                        .ThenBy(p => p.ReinforceLevel + p.AwakenLevel).ThenBy(p => p.CalculateNeutralOVR()).ToList();
                 case GrowthTab.LimitBreak:
                     return pool.Where(p => CardGrowthActions.IsValidLimitBreakMaterial(target, p))
                         .OrderByDescending(p => p.Template.RealPlayerId == target.Template.RealPlayerId)
@@ -126,7 +135,8 @@ namespace KBOManager.Models
                 case GrowthTab.Awaken:
                 {
                     int next = CardGrowthRules.NextAwakenThreshold(target.Template.Grade, target.AwakenLevel);
-                    int goal = next > 0 ? next : target.MaxAwakenLevelForGrade;
+                    int cap = CardGrowthRules.MaterialAwakenCapFor(target.Template.Grade); // [TASK-KBO-189] 재료 각성은 9각까지
+                    int goal = next > 0 && next < cap ? next : cap;
                     foreach (var c in candidates)
                     {
                         if (picked.Count >= max) break;
@@ -135,6 +145,9 @@ namespace KBOManager.Models
                     }
                     break;
                 }
+                case GrowthTab.Transcend:
+                    picked.AddRange(TranscendRules.AutoAssign(target, candidates, null, 0).Cards);
+                    break;
             }
             return picked;
         }
@@ -180,6 +193,9 @@ namespace KBOManager.Models
                 case GrowthTab.Training:
                     CardGrowthActions.TryTrain(clone, gold, out _, out _);
                     break;
+                case GrowthTab.Transcend:
+                    if (TranscendRules.CanAttempt(clone, out _)) clone.AwakenLevel = CardGrowthRules.TranscendLevel; // 재료 · 재화 검증은 TranscendRules.Validate
+                    break;
             }
             return clone;
         }
@@ -197,13 +213,21 @@ namespace KBOManager.Models
                         : $"강화 {target.ReinforceLevel}강 (EXP {target.ReinforceExp}/{UpgradeConstants.GetRequiredExp(target)}) · 1강 = OVR +1, 최대 +{CardGrowthRules.MaxReinforceGrowth}\n보관 카드(최대 {UpgradeManager.MaxEnhanceMaterials}장)를 재료로 EXP를 쌓습니다.";
                 case GrowthTab.Awaken:
                 {
+                    if (target.ReinforceLevel < CardGrowthRules.AwakenRequiredReinforce)
+                        return CardGrowthRules.AwakenLockMessage(target.ReinforceLevel) + "\n[강화 탭으로 이동]해 +10강을 먼저 완료하십시오. · 재료: 같은 선수 +3각 / 같은 포지션 +1각";
+                    if (target.AwakenLevel >= CardGrowthRules.MaterialAwakenCapFor(g))
+                        return $"각성 {target.AwakenLabel} 완성 · " + (TranscendRules.CanAttempt(target, out _) ? "[초월] 탭에서 복합 재료로 초월하십시오." : CardGrowthRules.AwakenStageNote(g, target.AwakenLevel));
                     int next = CardGrowthRules.NextAwakenThreshold(g, target.AwakenLevel);
                     string nextText = next > 0
                         ? $" · 다음 임계점 {CardGrowthRules.AwakenLabel(g, next)} = OVR +{CardGrowthRules.AwakenGrowthFor(g, next)}"
                         : "";
                     return $"각성 {target.AwakenLabel} (OVR +{target.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(g)}){nextText}\n" +
-                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 같은 시즌 등급 - 같은 선수 +3각 / 다른 선수 +1각";
+                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 같은 시즌 등급 - 같은 선수 +3각 / 같은 포지션({CardGrowthRules.PositionKey(target)}) +1각";
                 }
+                case GrowthTab.Transcend:
+                    return TranscendRules.CanAttempt(target, out var transcendReason)
+                        ? $"초월 준비 완료(+10강 · 9각) · 비용 {TranscendRules.CostLabel(g)}\n핵심: 같은 선수 1장(또는 초월 핵심 대체권) + 보조: 같은 포지션({CardGrowthRules.PositionKey(target)}) 다른 선수 2장(+5강이면 1장)"
+                        : $"{transcendReason}\n초월 조건: +10강 · 9각 · 같은 선수 1장 + 같은 포지션 2장(+5강 1장) + {TranscendRules.CostLabel(g)}";
                 case GrowthTab.LimitBreak:
                     return CardGrowthActions.CanLimitBreak(target, out var reason)
                         ? $"한계 돌파 {target.LimitBreakLevel}/{CardGrowthRules.LimitBreakCap(g)}단계 · 1단계 = OVR +1\n재료 1장(동일 선수 또는 같은 등급 이상)을 소모합니다."

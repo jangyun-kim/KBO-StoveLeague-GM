@@ -14,6 +14,8 @@ namespace KBOManager.Managers
         public bool Won;
         public bool Draw;
         public int LiveNormalTicketGained;
+        /// <summary>[TASK-KBO-189] 리그 단계 비례 재료 보상(포인트 · 성장 코인 · 특훈권 · 트로피).</summary>
+        public LeagueMaterialReward MaterialReward;
         public List<Item> ItemsGained = new List<Item>();
     }
 
@@ -116,6 +118,15 @@ namespace KBOManager.Managers
 
             UpdateLosingStreakAndFanSentiment(won, isDraw);
 
+            // [TASK-KBO-189] 리그 단계 비례 재료 보상 - 포인트 · 성장 코인 · 특훈권(확률) · 트로피(타이틀홀더 리그 이상 승리, 확률)
+            var tier = LeagueManager.Instance != null ? LeagueManager.Instance.CurrentTier : LeagueTier.Amateur;
+            var material = LeagueMaterialRewards.ForMatch(tier, won, n => Random.Range(0, n));
+            var gmLedger = GameManager.Instance;
+            gmLedger.GameGold += material.Points;
+            gmLedger.GrowthCoin += material.GrowthCoin;
+            gmLedger.TrainingTicket += material.TrainingTicket;
+            gmLedger.Trophy += material.Trophy;
+
             int itemCount = won ? Random.Range(winMinItemDrop, winMaxItemDrop + 1) : loseOrDrawItemDrop;
             var grantedItems = new List<Item>();
 
@@ -133,6 +144,7 @@ namespace KBOManager.Managers
                 Won = won,
                 Draw = isDraw,
                 LiveNormalTicketGained = scoutReward,
+                MaterialReward = material,
                 ItemsGained = grantedItems,
             };
 
