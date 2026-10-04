@@ -40,6 +40,9 @@ namespace KBOManager.Models
         // (UpgradeConstants.GetRequiredExp())를 넘을 때마다 ReinforceLevel을 올리며 초과분만 이월한다.
         public int ReinforceExp;
         public int AwakenLevel;        // 0~9각, 10 = 초월([TASK-KBO-172] 전 등급 각성 가능, 한계는 등급별)
+        // [TASK-KBO-183] 4대 성장 시스템 - 한계 돌파(10강 달성 후, 단계당 OVR +1)와 훈련/특훈(단계당 OVR +1). 등급별 상한은 CardGrowthRules.
+        public int LimitBreakLevel;
+        public int TrainingLevel;
         public int StarLevel;          // 1~6, 뽑기 시 등급에 따라 결정되는 초기 성급. 강화/각성과는 별개 개념
         public StarType CurrentStarType;
 
@@ -105,7 +108,7 @@ namespace KBOManager.Models
 
         /// <summary>[TASK-KBO-172] 전 등급 각성 가능 - LIVE_NORMAL/LIVE_EPIC도 이제 3·6·9각을 거쳐 초월까지
         /// 성장해 세트덱 스코어(최대 8점)를 올리는 "스코어 배터리" 역할을 한다(기획 고도화 자료.pdf). 대신
-        /// LIVE의 실전 성장치는 ALLSTAR 9각 동급으로 상한이 걸린다(GetStatGrowth 참고). 이전 규칙(TASK-155:
+        /// 실전 성장치는 [TASK-KBO-183] 등급별 4대 성장 상한(LIVE +14)으로 자른다(GetStatGrowth 참고). 이전 규칙(TASK-155:
         /// LIVE 각성 불가)은 폐기됐다.</summary>
         public bool CanAwaken => Template != null;
 
@@ -159,22 +162,42 @@ namespace KBOManager.Models
             _ => MinStarLevel
         };
 
-        // 강화/각성 1레벨당 세부 스탯 각각에 붙는 성장치. TODO: 밸런스 확정 전까지의 임시값.
+        // 강화 1레벨당 세부 스탯 각각에 붙는 성장치.
         private const int ReinforcePerStatBonus = 1;
-        private const int AwakenPerStatBonus = 1;
+
+        /// <summary>[TASK-KBO-183] 강화 성장(0~+10).</summary>
+        public int ReinforceGrowth => Math.Min(Math.Max(0, ReinforceLevel), CardGrowthRules.MaxReinforceGrowth) * ReinforcePerStatBonus;
+
+        /// <summary>[TASK-KBO-183] 한계 돌파 성장(등급 상한까지).</summary>
+        public int LimitBreakGrowth => Template != null ? Math.Min(Math.Max(0, LimitBreakLevel), CardGrowthRules.LimitBreakCap(Template.Grade)) : 0;
+
+        /// <summary>[TASK-KBO-183] 훈련(특훈) 성장(등급 상한까지).</summary>
+        public int TrainingGrowth => Template != null ? Math.Min(Math.Max(0, TrainingLevel), CardGrowthRules.TrainingCap(Template.Grade)) : 0;
+
+        /// <summary>[TASK-KBO-183] 각성 성장(유효 각성 단계 / 2, 등급 상한까지 - 초월 = +5).</summary>
+        public int AwakenGrowth => Template != null ? CardGrowthRules.AwakenGrowthFor(Template.Grade, AwakenLevel) : 0;
 
         /// <summary>
-        /// [TASK-KBO-172] 강화+각성 성장치(세부 스탯 각각에 균등 가산). 각성은 등급 한계로 클램프하고,
-        /// LIVE 등급은 CardGrowthRules.MaxStatGrowthFor()로 ALLSTAR 9각 동급(+19)을 넘지 못하게 자른다 -
-        /// "LIVE는 초월해도 실전 성능은 ALLSTAR 동급 이하" 제약의 실제 구현 지점이다.
+        /// [TASK-KBO-183] 4대 성장(강화 + 한계 돌파 + 훈련/특훈 + 각성) 합계 - 세부 스탯 각각에 균등 가산된다(= OVR +N).
+        /// 등급별 순수 성장 상한(CardGrowthRules.MaxTotalGrowth: LIVE +14 ~ 상위 시즌 +25)으로 자른다. TASK-172의 "강화 + 각성(1단계당 +1),
+        /// LIVE만 +19 상한" 규칙은 이 4대 성장 상한표로 대체됐다.
         /// </summary>
         public int GetStatGrowth()
         {
             if (Template == null) return 0;
-            int growth = ReinforceLevel * ReinforcePerStatBonus + EffectiveAwakenLevel * AwakenPerStatBonus;
-            int cap = CardGrowthRules.MaxStatGrowthFor(Template.Grade, MaxReinforceLevel);
+            int growth = ReinforceGrowth + LimitBreakGrowth + TrainingGrowth + AwakenGrowth;
+            int cap = CardGrowthRules.MaxTotalGrowth(Template.Grade);
             return growth > cap ? cap : growth;
         }
+
+        /// <summary>[TASK-KBO-183] 카드 기본 OVR(성장/시너지 제외 = cards_*.csv base_ovr).</summary>
+        public int BaseOvr => Template != null ? Template.GetBaseOverall() : 0;
+
+        /// <summary>[TASK-KBO-183] 이 카드 등급의 순수 성장 상한.</summary>
+        public int MaxGrowth => Template != null ? CardGrowthRules.MaxTotalGrowth(Template.Grade) : 0;
+
+        /// <summary>[TASK-KBO-183] 최대 잠재 OVR = 기본 + 순수 성장 상한 + 팀 시너지 최대(+17), 상한 144.</summary>
+        public int MaxPotentialOvr => Template != null ? CardGrowthRules.MaxPotentialOvr(Template.Grade, BaseOvr) : 0;
 
         /// <summary>
         /// 강화/각성 성장치가 반영된 타자 세부 스탯. Template이 없거나 투수 카드면 default(0,0,0,0,0)를 반환한다.
@@ -230,6 +253,15 @@ namespace KBOManager.Models
 
             average *= ConditionMultiplier(CurrentCondition);
 
+            return Mathf.RoundToInt(average);
+        }
+
+        /// <summary>[TASK-KBO-183] 컨디션 배율을 뺀 OVR(= 기본 OVR + 4대 성장). 구단 OVR(TeamOvrCalculator)과 'OVR 7 격차 법칙'은
+        /// 기획서대로 "기본 OVR" 기준이라 일일 컨디션(±5%)에 흔들리지 않게 이 값을 쓴다 - 컨디션은 경기 안 가변 요소로만 작동한다.</summary>
+        public int CalculateNeutralOVR()
+        {
+            if (Template == null) return 0;
+            float average = Template.IsPitcher ? AverageOf(GetEffectivePitcherStats()) : AverageOf(GetEffectiveBatterStats());
             return Mathf.RoundToInt(average);
         }
 

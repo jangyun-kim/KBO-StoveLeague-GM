@@ -24,6 +24,9 @@ namespace KBOManager.Managers
         // 동일해 별도의 구버전 판별 로직이 필요 없다.
         public int ReinforceExp;
         public int AwakenLevel;
+        // [TASK-KBO-183] v10 - 4대 성장 중 한계 돌파 / 훈련(특훈) 단계. 필드 없는 구버전 세이브는 0(미진행)으로 채워진다.
+        public int LimitBreakLevel;
+        public int TrainingLevel;
         public int StarLevel;
         public StarType CurrentStarType;
         public List<string> AcquiredSkillIds = new List<string>();
@@ -134,7 +137,9 @@ namespace KBOManager.Managers
         // v8: 단장 닉네임(ManagerNickname)·신규 단장 튜토리얼 완료 여부(TutorialCompleted) 추가(TASK-KBO-181). 필드가 없는 구버전
         // 세이브는 닉네임 빈 문자열(로비는 '단장'으로 표기), 튜토리얼 완료(true - 기존 유저에게 가이드를 다시 띄우지 않음)로 채워진다.
         // v9: 라인업 [타순 변경] 유저 지정 타순(BattingOrder, InstanceId 목록) 추가(TASK-KBO-182). 없으면 빈 목록 = 기본 타순.
-        public int SaveVersion = 9;
+        // v10: 카드 한계 돌파/훈련 단계(PlayerSaveData.LimitBreakLevel/TrainingLevel)와 12단계 리그 현재 단계(LeagueTier) 추가(TASK-KBO-183).
+        //      LeagueTier가 없는 구버전 세이브(-1)는 저장된 구단 OVR의 권장 리그(최소 아마추어)로 복원한다.
+        public int SaveVersion = 10;
         public string SavedAtUtc;
 
         // GameManager
@@ -174,6 +179,7 @@ namespace KBOManager.Managers
         public int PlayedGameCount;
         public LeaguePhase CurrentPhase;
         public int UserFinalRank = -1; // -1 = 아직 시즌을 완주하지 않음(null 대용)
+        public int LeagueTier = -1; // [TASK-KBO-183] v10 - (int)Models.LeagueTier, -1 = 구버전 세이브
         public List<TeamStandingSaveData> Standings = new List<TeamStandingSaveData>();
 
         // LeagueCalendar
@@ -339,6 +345,7 @@ namespace KBOManager.Managers
                 data.PlayedGameCount = lm.PlayedGameCount;
                 data.CurrentPhase = lm.CurrentPhase;
                 data.UserFinalRank = lm.UserFinalRank ?? -1;
+                data.LeagueTier = (int)lm.CurrentTier;
                 data.Standings = lm.GetStandings().Select(t => new TeamStandingSaveData
                 {
                     Team = t.Team,
@@ -398,6 +405,8 @@ namespace KBOManager.Managers
             ReinforceLevel = player.ReinforceLevel,
             ReinforceExp = player.ReinforceExp,
             AwakenLevel = player.AwakenLevel,
+            LimitBreakLevel = player.LimitBreakLevel,
+            TrainingLevel = player.TrainingLevel,
             StarLevel = player.StarLevel,
             CurrentStarType = player.CurrentStarType,
             AcquiredSkillIds = new List<string>(player.AcquiredSkillIds),
@@ -497,8 +506,12 @@ namespace KBOManager.Managers
                 var standingsData = (data.Standings ?? new List<TeamStandingSaveData>())
                     .Select(s => (s.Team, s.Wins, s.Draws, s.Losses));
 
+                // [TASK-KBO-183] 리그 단계 - 구버전 세이브(-1)는 복원된 구단 OVR의 권장 리그(최소 아마추어)로.
+                LeagueTier savedTier = data.LeagueTier >= 0 && System.Enum.IsDefined(typeof(LeagueTier), data.LeagueTier)
+                    ? (LeagueTier)data.LeagueTier
+                    : (LeagueTier)System.Math.Max((int)LeagueTier.Amateur, (int)LeagueTierTable.RecommendedFor(GameManager.Instance != null ? GameManager.Instance.CalculateTeamOVR() : 0));
                 LeagueManager.Instance.RestoreFromSave(data.UserTeam, data.PlayedGameCount, data.CurrentPhase,
-                    data.UserFinalRank, standingsData);
+                    data.UserFinalRank, standingsData, savedTier);
             }
 
             // CalendarDateIso가 비어 있으면 캘린더 도입 이전(v2 이하) 세이브다 - 그 경우 그대로 두면
@@ -570,6 +583,8 @@ namespace KBOManager.Managers
                 ReinforceLevel = saved.ReinforceLevel,
                 ReinforceExp = saved.ReinforceExp,
                 AwakenLevel = saved.AwakenLevel,
+                LimitBreakLevel = saved.LimitBreakLevel,
+                TrainingLevel = saved.TrainingLevel,
                 StarLevel = saved.StarLevel,
                 CurrentStarType = saved.CurrentStarType,
                 AcquiredSkillIds = new List<string>(saved.AcquiredSkillIds ?? new List<string>()),

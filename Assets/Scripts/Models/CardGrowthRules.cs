@@ -101,18 +101,104 @@ namespace KBOManager.Models
         public static bool IsTranscended(Grade grade, int awakenLevel) =>
             CanTranscend(grade) && awakenLevel >= TranscendLevel;
 
-        /// <summary>
-        /// [LIVE 초월 OVR 상한] 강화+각성으로 세부 스탯 각각에 더해지는 성장치의 등급별 상한.
-        /// LIVE는 초월(각성 10)까지 성장해 세트덱 스코어는 최대 8점을 주지만, 실전 성장치는 ALLSTAR의
-        /// 최대 성장치(10강 + 9각 = +19)를 넘지 못한다 - 즉 같은 선수의 LIVE 초월 카드는 ALLSTAR 9각
-        /// 카드와 "동급 이하"의 Final OVR을 갖는다(명령서 STEP 2-3 핵심 밸런스 제약). 초월의 가치는
-        /// 오직 세트덱 스코어(+1)에만 있다. 나머지 등급은 상한 없음(int.MaxValue).
-        /// </summary>
-        public static int MaxStatGrowthFor(Grade grade, int maxReinforceLevel) =>
-            IsLive(grade) ? maxReinforceLevel + NineStageAwakenCap : int.MaxValue;
+        // ------------------------------------------------------------------
+        // [TASK-KBO-183] 4대 성장 시스템(강화 · 한계 돌파 · 훈련/특훈 · 각성) + 12단계 리그(OVR 57~144) 정렬
+        //
+        // 카드 최종 도달 OVR = 기본 OVR(BaseOvrRange) + 순수 성장(MaxTotalGrowth, 최대 +25) + 팀 시너지(TeamSynergyRules, 최대 +17).
+        // 성장 1포인트 = 세부 스탯 전 항목 +1 = OVR +1. 항목별 최대치는 상위 시즌(GOLDEN_GLOVE 이상) 기준 강화 +10 / 한계 돌파 +5 /
+        // 훈련(특훈) +5 / 각성 +5 = +25이고, 하위 등급은 항목별 상한이 차등이다(아래 표 - 합계가 곧 등급별 순수 성장 상한).
+        //   등급            기본 OVR    강화 돌파 훈련 각성 = 합계   풀성장       풀시너지(+17)
+        //   LIVE_NORMAL     55~68       10   2    1    1   = +14   69~82        86~99
+        //   LIVE_EPIC       65~75       10   3    3    2   = +18   83~93        100~110
+        //   ALLSTAR         75~83       10   4    4    3   = +21   96~104       113~121
+        //   FRANCHISE       79~86       10   4    4    4   = +22   101~108      118~125
+        //   TITLE_HOLDER    83~90       10   5    4    4   = +23   106~113      123~130
+        //   GOLDEN_GLOVE    87~95       10   5    5    5   = +25   112~120      129~137
+        //   SIG/DYN/RN      95~102      10   5    5    5   = +25   120~127      137~144
+        // 각성 성장 = 유효 각성 단계 / 2(초월 10 = +5, 9각 = +4)를 등급 각성 상한으로 자른 값 - 각성의 3·6·9각/초월 세트덱 스코어 규칙은 그대로다.
+        // ------------------------------------------------------------------
+
+        /// <summary>[TASK-KBO-183] 시즌 등급별 카드 기본 OVR 대역(base_ovr) - GenerateKBODatabase.py GRADE_BASE_OVR_BAND와 반드시 일치.</summary>
+        public static (int Min, int Max) BaseOvrRange(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => (55, 68),
+            Grade.LIVE_EPIC => (65, 75),
+            Grade.ALLSTAR => (75, 83),
+            Grade.FRANCHISE => (79, 86),
+            Grade.TITLE_HOLDER => (83, 90),
+            Grade.GOLDEN_GLOVE => (87, 95),
+            Grade.SIGNATURE => (95, 102),
+            Grade.DYNASTY => (95, 102),
+            Grade.RETIRED_NUMBER => (95, 102),
+            _ => (1, 102)
+        };
+
+        public const int MaxReinforceGrowth = 10;
+        public const int MaxLimitBreakGrowth = 5;
+        public const int MaxTrainingGrowth = 5;
+        public const int MaxAwakenGrowth = 5;
+        /// <summary>상위 시즌(GOLDEN_GLOVE 이상) 순수 성장 최대치 = 10 + 5 + 5 + 5.</summary>
+        public const int MaxPureGrowth = MaxReinforceGrowth + MaxLimitBreakGrowth + MaxTrainingGrowth + MaxAwakenGrowth;
+
+        /// <summary>[TASK-KBO-183] 한계 돌파 단계 상한(1단계 = OVR +1). 10강 달성 후에만 진행할 수 있다.</summary>
+        public static int LimitBreakCap(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 2,
+            Grade.LIVE_EPIC => 3,
+            Grade.ALLSTAR => 4,
+            Grade.FRANCHISE => 4,
+            _ => MaxLimitBreakGrowth
+        };
+
+        /// <summary>[TASK-KBO-183] 훈련(특훈) 단계 상한(1단계 = OVR +1).</summary>
+        public static int TrainingCap(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 1,
+            Grade.LIVE_EPIC => 3,
+            Grade.ALLSTAR => 4,
+            Grade.FRANCHISE => 4,
+            Grade.TITLE_HOLDER => 4,
+            _ => MaxTrainingGrowth
+        };
+
+        /// <summary>[TASK-KBO-183] 각성으로 얻는 OVR 성장 상한.</summary>
+        public static int AwakenGrowthCap(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 1,
+            Grade.LIVE_EPIC => 2,
+            Grade.ALLSTAR => 3,
+            Grade.FRANCHISE => 4,
+            Grade.TITLE_HOLDER => 4,
+            _ => MaxAwakenGrowth
+        };
+
+        /// <summary>[TASK-KBO-183] 각성 단계 → OVR 성장(유효 단계 / 2, 등급 상한으로 자름).</summary>
+        public static int AwakenGrowthFor(Grade grade, int awakenLevel)
+        {
+            int growth = ClampAwaken(grade, awakenLevel) / 2;
+            int cap = AwakenGrowthCap(grade);
+            return growth > cap ? cap : growth;
+        }
+
+        /// <summary>[TASK-KBO-183] 등급별 순수 성장 상한(강화 + 한계 돌파 + 훈련 + 각성).</summary>
+        public static int MaxTotalGrowth(Grade grade) =>
+            MaxReinforceGrowth + LimitBreakCap(grade) + TrainingCap(grade) + AwakenGrowthCap(grade);
+
+        /// <summary>[TASK-KBO-183] 기존 호출부 호환 - 등급별 순수 성장 상한(MaxTotalGrowth)을 돌려준다.
+        /// (TASK-172 시절 "LIVE = 10강 + 9각 = +19, 그 외 무제한"은 4대 성장 상한표로 대체됐다.)</summary>
+        public static int MaxStatGrowthFor(Grade grade, int maxReinforceLevel) => MaxTotalGrowth(grade);
+
+        /// <summary>[TASK-KBO-183] 카드 최대 잠재 OVR = 기본 OVR + 순수 성장 상한 + 팀 시너지 최대치(+17), 최종 상한 144.</summary>
+        public static int MaxPotentialOvr(Grade grade, int baseOvr)
+        {
+            int potential = baseOvr + MaxTotalGrowth(grade) + TeamSynergyRules.MaxSynergyOvr;
+            return potential > TeamSynergyRules.MaxFinalOvr ? TeamSynergyRules.MaxFinalOvr : potential;
+        }
 
         /// <summary>[TASK-KBO-174] 등급별 실전 기본 OVR 보정(같은 선수 기준). GenerateKBODatabase.py GRADE_OVR_BONUS와
-        /// 반드시 일치해야 한다 - 카드 CSV의 base_ovr가 없거나 해석 불가일 때 PlayerDatabase가 이 값으로 폴백한다.</summary>
+        /// 반드시 일치해야 한다 - 카드 CSV의 base_ovr가 없거나 해석 불가일 때 PlayerDatabase가 이 값으로 폴백한다.
+        /// [TASK-KBO-183] 기획서 2단계 산정의 "2단계 시즌 등급 보정"이다: base_ovr = 1단계(그 시즌 성적 스탯) + 이 값.
+        /// 1단계는 카드(시즌)마다 다르므로 같은 선수라도 카드 간 차이가 이 값의 차이와 같지는 않다.</summary>
         public static int GradeOvrBonus(Grade grade) => grade switch
         {
             Grade.LIVE_NORMAL => 0,

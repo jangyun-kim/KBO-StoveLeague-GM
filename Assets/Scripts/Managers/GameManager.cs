@@ -599,74 +599,26 @@ namespace KBOManager.Managers
             return batterCount == RequiredBatterCount && pitcherCount == RequiredPitcherCount;
         }
 
-        // ----- 팀 OVR (GDD v4.0) -----
-
-        private static readonly BatterPosition[] AllBatterPositions =
-            (BatterPosition[])System.Enum.GetValues(typeof(BatterPosition));
-
-        private const int BenchBatterQuota = 4;  // 후보 타자 인원
-        private const int BenchReliefQuota = 6;  // 후보 구원(롱/중/셋) 인원
+        // ----- 팀 OVR (GDD v4.0 → [TASK-KBO-183] TeamOvrCalculator) -----
 
         /// <summary>
-        /// 구단 OVR = (주전 15인 평균 OVR * 0.8) + (후보 10인 평균 OVR * 0.2) + 시너지 합산.
-        /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 5 + 마무리 1.
-        /// 후보 10 = 나머지 타자 중 OVR 상위 4 + 나머지 구원(승리조/추격조/롱릴리프) 중 OVR 상위 6.
-        /// [TASK-KBO-031 공식화] 28인 로스터 중 (28 - 15 - 10 =) 3명(타자 2명, 투수 1명)은 각 그룹
-        /// (벤치 타자/구원) 내 OVR 최하위 순으로 자동 제외된다 - 실제 KBO의 28인 등록/25인 경기 엔트리
-        /// 구조를 본뜬 공식 스펙으로 확정됨(이 계산 방식 자체는 변경 없음, 기존 구현을 그대로 유지).
-        /// 로스터가 비어 있거나 해당 그룹에 아무도 없으면 그 그룹의 평균은 0으로 취급한다(0으로 나누기 방지).
-        /// 세트덱 보너스(Player.CalculateOVR의 setDeckBonus)는 로스터 구성 자체가 세트덱 활성화 여부를
-        /// 좌우하는 순환 참조를 피하기 위해(RosterManager의 다른 OVR 계산들과 동일하게) 개별 선수 OVR에는
-        /// 반영하지 않는다 - 대신 세트덱 시너지는 CalculateSynergy()의 가산 항목으로 별도 처리된다.
-        /// [TASK-KBO-033] 25인 가중평균은 시너지를 더하기 "전"에 정수로 반올림한다(반올림 시점 고정 -
-        /// 시너지 가산 이후로 옮기지 말 것).
+        /// 구단 OVR = round(주전 15인 평균 x 0.8 + 후보 10인 평균 x 0.2) + 팀 시너지, 상한 144.
+        /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 + 마무리 / 후보 10 = 나머지 타자 상위 4 + 나머지 구원 상위 6(TASK-031 공식 그대로).
+        /// [TASK-KBO-183] 계산은 Models.TeamOvrCalculator(AI 구단 생성·경기 엔진 'OVR 7 격차 법칙'과 공용 SSOT)로 옮겼다. 팀 시너지는
+        /// 세트덱 스코어 → OVR(+0~13, 기본 세트덱 ≈ +1, 200P = +13) + 치어리더 6인 편성(+0~4, 6인 LEGEND = +4)이다 - 예전 "모든 능력치 +N"
+        /// 누적합(200P = +16)을 그대로 더하던 방식은 온보딩 직후 기본 세트덱만으로 +5가 붙어 아마추어 리그(57~64)를 벗어났다.
         /// </summary>
-        public int CalculateTeamOVR()
+        public int CalculateTeamOVR() => TeamOvrBreakdown().Total;
+
+        /// <summary>[TASK-KBO-183] 구단 OVR 구성(기본 / 세트덱 OVR / 치어리더 OVR).</summary>
+        public TeamOvrCalculator.Breakdown TeamOvrBreakdown()
         {
-            var batters = roster.Where(p => p?.Template != null && !p.Template.IsPitcher).ToList();
-            var pitchers = roster.Where(p => p?.Template != null && p.Template.IsPitcher).ToList();
-
-            var starterBatters = new List<Player>();
-            foreach (var position in AllBatterPositions)
-            {
-                var pick = batters
-                    .Where(p => p.Template.BatterPosition == position && !starterBatters.Contains(p))
-                    .OrderByDescending(p => p.CalculateOVR(false))
-                    .FirstOrDefault();
-                if (pick != null) starterBatters.Add(pick);
-            }
-
-            var benchBatters = batters
-                .Except(starterBatters)
-                .OrderByDescending(p => p.CalculateOVR(false))
-                .Take(BenchBatterQuota)
-                .ToList();
-
-            var startingPitchers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).ToList();
-            var closers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.Closer).ToList();
-
-            var benchRelief = pitchers
-                .Except(startingPitchers).Except(closers)
-                .OrderByDescending(p => p.CalculateOVR(false))
-                .Take(BenchReliefQuota)
-                .ToList();
-
-            var starters15 = starterBatters.Concat(startingPitchers).Concat(closers).ToList();
-            var bench10 = benchBatters.Concat(benchRelief).ToList();
-
-            float starterAvg = starters15.Count > 0 ? (float)starters15.Average(p => p.CalculateOVR(false)) : 0f;
-            float benchAvg = bench10.Count > 0 ? (float)bench10.Average(p => p.CalculateOVR(false)) : 0f;
-
-            int baseOvr = Mathf.RoundToInt((starterAvg * 0.8f) + (benchAvg * 0.2f));
-
-            // favoriteTeam이 Team.None(온보딩 이전 등 미지정 상태)이면 null을 넘겨, CalculateSynergy()의
-            // "지정 없음 -> 최다 구단 기준" 경로를 그대로 태운다 - AI와 동일한 규칙을 적용하는 셈이라,
-            // 특별 취급(항상 0)을 위한 별도 분기가 필요 없다.
             string favoriteTeamName = favoriteTeam != Team.None ? favoriteTeam.ToString() : null;
-            int synergy = CalculateSynergy(roster, favoriteTeamName);
-
-            return baseOvr + synergy;
+            return TeamOvrCalculator.Calculate(roster, favoriteTeamName, CheerSquadSlots, SetDeckSelection);
         }
+
+        /// <summary>[TASK-KBO-183] 현재 유저 구단의 팀 시너지 OVR(세트덱 + 치어리더) - 선수 관리/상세 화면의 "시너지 +M".</summary>
+        public int CurrentTeamSynergyOvr => roster.Count > 0 ? TeamOvrBreakdown().Synergy : 0;
 
         /// <summary>
         /// [TASK-KBO-172] 유저 구단의 세트덱 선택형 구간(OR) 옵션과 "연도 선택" 값. 기본값은 전 구간 A안 +

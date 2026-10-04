@@ -1,4 +1,5 @@
 using System;
+using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
 using UnityEngine;
@@ -68,6 +69,8 @@ namespace KBOManager.Controllers
         [Header("[기본 스탯] 탭 내용")]
         [SerializeField] private Text reinforceText;
         [SerializeField] private Text awakenText;
+        [Tooltip("[TASK-KBO-183] [기본 OVR / 현재 성장(+N) / 시너지(+M) / 최대 잠재 OVR] 요약.")]
+        [SerializeField] private Text growthSummaryText;
         [Tooltip("정확히 5칸 - 타자/투수 각각의 실제 세부 스탯 5종을 순서대로 채운다(RefreshStatsTab() 참고).")]
         [SerializeField] private Text[] statRowTexts;
 
@@ -210,14 +213,24 @@ namespace KBOManager.Controllers
 
             if (reinforceText != null)
             {
-                reinforceText.text = $"강화 {currentPlayer.ReinforceLevel} / {Player.MaxReinforceLevel}";
+                // [TASK-KBO-183] 4대 성장 진행도(강화 · 한계 돌파 · 특훈) - 각성은 아래 awakenText.
+                var g = currentPlayer.Template.Grade;
+                reinforceText.text = $"강화 {currentPlayer.ReinforceLevel} / {Player.MaxReinforceLevel} · 한계 돌파 {currentPlayer.LimitBreakGrowth} / {CardGrowthRules.LimitBreakCap(g)}" +
+                                     $" · 특훈 {currentPlayer.TrainingGrowth} / {CardGrowthRules.TrainingCap(g)}";
+            }
+
+            if (growthSummaryText != null)
+            {
+                int synergy = GameManager.Instance != null ? GameManager.Instance.CurrentTeamSynergyOvr : 0;
+                growthSummaryText.text = $"기본 OVR {currentPlayer.BaseOvr} · 현재 성장 +{currentPlayer.GetStatGrowth()} · 시너지 +{synergy} · " +
+                                         $"최대 잠재 OVR {currentPlayer.MaxPotentialOvr}";
             }
 
             if (awakenText != null)
             {
                 // [TASK-KBO-172] 전 등급 각성 가능 - "현재 단계 / 등급 한계(9각 또는 초월)"와 개인 세트덱 스코어를 함께 표기.
                 string limitLabel = currentPlayer.MaxAwakenLevelForGrade >= CardGrowthRules.TranscendLevel ? "초월" : "9각";
-                awakenText.text = $"각성 {currentPlayer.AwakenLabel} / {limitLabel} · 세트덱 {currentPlayer.SetDeckScore}점";
+                awakenText.text = $"각성 {currentPlayer.AwakenLabel} / {limitLabel} (OVR +{currentPlayer.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(currentPlayer.Template.Grade)}) · 세트덱 {currentPlayer.SetDeckScore}점";
             }
 
             if (statRowTexts == null) return;

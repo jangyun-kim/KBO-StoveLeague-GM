@@ -77,6 +77,20 @@ namespace KBOManager.Managers
 
         private const int DefaultAiBaseStatLevel = 65; // 유저 로스터가 비어 있을 때 쓰는 기본 스탯 수준
 
+        [Header("League Tier (TASK-KBO-183)")]
+        [Tooltip("유저 구단이 현재 뛰는 리그 단계. 새 커리어는 아마추어 리그(57~64)에서 시작하고, 정규시즌 1위로 마치면 다음 시즌 한 단계 승격한다.")]
+        [SerializeField] private LeagueTier currentTier = LeagueTier.Amateur;
+
+        /// <summary>[TASK-KBO-183] 유저 구단이 현재 뛰는 리그 단계(12단계 리그 57~144).</summary>
+        public LeagueTier CurrentTier => currentTier;
+        public LeagueTierInfo CurrentTierInfo => LeagueTierTable.Get(currentTier);
+
+        /// <summary>[TASK-KBO-183] 직전 AdvanceToNextSeason()에서 승격했으면 (이전, 새) 리그 - UI/로그용. 승격 없으면 null.</summary>
+        public (LeagueTier From, LeagueTier To)? LastPromotion { get; private set; }
+
+        /// <summary>[TASK-KBO-183] 리그 단계가 바뀌었을 때(승격/세이브 복원/새 커리어).</summary>
+        public event Action<LeagueTier> OnLeagueTierChanged;
+
         private readonly Dictionary<Team, TeamInfo> standings = new Dictionary<Team, TeamInfo>();
         private readonly List<MatchFixture> schedule = new List<MatchFixture>();
         private int nextFixtureIndex;
@@ -134,8 +148,16 @@ namespace KBOManager.Managers
         /// 유저 팀 + KBO 나머지 9개 구단으로 리그를 초기화하고 유저의 144경기 스케줄을 생성한다.
         /// 유저 팀의 로스터는 GameManager.Roster를 그대로 참조한다(스냅샷 아님 - 매 경기 시뮬레이션 시점의 현재 로스터를 사용).
         /// </summary>
-        public void InitializeLeague(Team userTeamValue)
+        public void InitializeLeague(Team userTeamValue) => InitializeLeague(userTeamValue, null);
+
+        /// <summary>[TASK-KBO-183] tier를 주면 그 리그 단계로 시작한다(새 커리어 = 아마추어, 세이브 복원 = 저장된 단계). null이면 현재 단계 유지.</summary>
+        public void InitializeLeague(Team userTeamValue, LeagueTier? tier)
         {
+            if (tier.HasValue && tier.Value != currentTier)
+            {
+                currentTier = tier.Value;
+                OnLeagueTierChanged?.Invoke(currentTier);
+            }
             userTeam = userTeamValue;
             standings.Clear();
             schedule.Clear();
@@ -170,18 +192,38 @@ namespace KBOManager.Managers
 
         /// <summary>
         /// 9개 AI 팀 전체의 28인(타자 15 + 투수 13) 로스터를 자동 생성한다.
-        /// 유저 팀 로스터의 평균 OVR을 목표치로 삼아 ±aiOvrVarianceRange 범위에서 편차를 준 더미 스탯으로
-        /// 채우므로, 유저 로스터가 강해지면 AI들도 대략 비슷한 수준으로 스케일링된다.
-        /// playerDatabase에 해당 구단·포지션/롤의 실제 PlayerTemplate이 있으면 그것을 우선 사용한다.
+        /// [TASK-KBO-183] 예전(유저 로스터 평균 OVR ± 10 러버밴딩)과 달리 현재 리그 단계의 권장 구간 안에서 팀 OVR을 정한다 -
+        /// LeagueTierTable.AiTeamOvrTargets(하위권 Min~Min+1 3팀 / 중위권 Min+2~Min+4 4팀 / 우승 경쟁 보스 Min+6~Min+7 2팀)를
+        /// 구단에 결정적으로(리그 단계·유저 구단 시드) 섞어 배정하고, 각 구단은 실제 2026 현역 LIVE 선수(PlayerDatabase)를 복제해
+        /// 세부 스탯을 균등 이동시켜 구단 OVR(TeamOvrCalculator)을 목표치에 정확히 맞춘다(DB가 없으면 절차 생성 선수).
         /// </summary>
         public void GenerateAiRosters()
         {
-            int targetStatLevel = EstimateTargetStatLevel();
-
-            foreach (var team in standings.Keys.Where(t => t != userTeam).ToList())
+            foreach (var (team, target) in AssignAiTargets())
             {
-                standings[team].Roster = GenerateTeamRoster(team, targetStatLevel);
+                standings[team].Roster = GenerateTeamRoster(team, target);
             }
+        }
+
+        /// <summary>[TASK-KBO-183] AI 9개 구단 ↔ 리그 목표 팀 OVR 배정(결정적 셔플).</summary>
+        private List<(Team team, int targetOvr)> AssignAiTargets()
+        {
+            var aiTeams = standings.Keys.Where(t => t != userTeam).OrderBy(t => (int)t).ToList();
+            var targets = LeagueTierTable.AiTeamOvrTargets(currentTier).ToList();
+            var rng = new System.Random((int)currentTier * 7919 + (int)userTeam * 104729);
+            for (int i = targets.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (targets[i], targets[j]) = (targets[j], targets[i]);
+            }
+            return aiTeams.Select((t, i) => (t, targets[i % targets.Count])).ToList();
+        }
+
+        /// <summary>[TASK-KBO-183] team의 현재 구단 OVR(유저 = GameManager.CalculateTeamOVR, AI = TeamOvrCalculator).</summary>
+        public int GetTeamOvr(Team team)
+        {
+            if (team == userTeam && GameManager.Instance != null) return GameManager.Instance.CalculateTeamOVR();
+            return standings.TryGetValue(team, out var info) ? TeamOvrCalculator.Calculate(info.Roster).Total : 0;
         }
 
         private int EstimateTargetStatLevel()
@@ -208,37 +250,93 @@ namespace KBOManager.Managers
             (PitcherRole.Closer, 1),
         };
 
-        private List<Player> GenerateTeamRoster(Team team, int targetStatLevel)
+        private PlayerDatabase Database => playerDatabase != null ? playerDatabase : PlayerDatabase.Instance;
+
+        /// <summary>
+        /// [TASK-KBO-183] 구단 28인 = 포지션 주전 9 + 후보 6 + 보직 쿼터 투수 13. 그 구단의 2026 LIVE 선수(실명)를 OVR 순으로 우선 쓰고,
+        /// 모자란 자리만 절차 생성 선수로 채운 뒤 NormalizeRosterToTeamOvr()로 구단 OVR을 targetTeamOvr에 맞춘다.
+        /// </summary>
+        private List<Player> GenerateTeamRoster(Team team, int targetTeamOvr)
         {
             var roster = new List<Player>(GameManager.RequiredRosterSize);
+            var db = Database;
+            var pool = db != null
+                ? OnboardingRules.SelectStarterTemplates(db.AllTemplates, team).OrderByDescending(t => t.GetBaseOverall()).ToList()
+                : new List<PlayerTemplate>();
+            int procLevel = Mathf.Max(10, targetTeamOvr - 2);
+
+            PlayerTemplate Take(Func<PlayerTemplate, bool> match)
+            {
+                var pick = pool.FirstOrDefault(match);
+                if (pick != null) pool.Remove(pick);
+                return pick;
+            }
 
             foreach (var position in AllBatterPositions)
             {
-                roster.Add(CreateAiPlayer(team, false, position, null, targetStatLevel));
+                var t = Take(x => !x.IsPitcher && x.BatterPosition == position);
+                roster.Add(t != null ? new Player(Guid.NewGuid().ToString(), CloneTemplate(t)) : CreateAiPlayer(team, false, position, null, procLevel));
             }
-
             for (int i = 0; i < AiBenchBatterCount; i++)
             {
-                // 벤치는 포지션 편중 없이 무작위 포지션으로 채운다 (단순화)
+                var t = Take(x => !x.IsPitcher);
                 var randomPosition = AllBatterPositions[UnityEngine.Random.Range(0, AllBatterPositions.Length)];
-                roster.Add(CreateAiPlayer(team, false, randomPosition, null, targetStatLevel));
+                roster.Add(t != null ? new Player(Guid.NewGuid().ToString(), CloneTemplate(t)) : CreateAiPlayer(team, false, randomPosition, null, procLevel));
             }
-
             foreach (var (role, count) in AiPitcherRoleQuota)
             {
                 for (int i = 0; i < count; i++)
                 {
-                    roster.Add(CreateAiPlayer(team, true, null, role, targetStatLevel));
+                    var t = Take(x => x.IsPitcher && x.PitcherRole == role);
+                    roster.Add(t != null ? new Player(Guid.NewGuid().ToString(), CloneTemplate(t)) : CreateAiPlayer(team, true, null, role, procLevel));
                 }
             }
 
+            NormalizeRosterToTeamOvr(roster, targetTeamOvr);
             return roster;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-183] AI 로스터 전원의 세부 스탯을 같은 양만큼 이동시켜 구단 OVR(TeamOvrCalculator, 최다 구단 기준 세트덱 시너지 포함)을
+        /// targetTeamOvr에 맞춘다. 템플릿은 AI 전용 복제본이라 DB 원본/유저 카드에 영향이 없다. 스탯은 1 미만으로 내려가지 않는다.
+        /// </summary>
+        public static void NormalizeRosterToTeamOvr(List<Player> roster, int targetTeamOvr)
+        {
+            for (int guard = 0; guard < 12; guard++)
+            {
+                int delta = targetTeamOvr - TeamOvrCalculator.Calculate(roster).Total;
+                if (delta == 0) return;
+                foreach (var player in roster)
+                {
+                    if (player?.Template != null) ShiftTemplateStats(player.Template, delta);
+                }
+            }
+        }
+
+        private static PlayerTemplate CloneTemplate(PlayerTemplate source)
+        {
+            var clone = Instantiate(source);
+            clone.name = source.name;
+            return clone;
+        }
+
+        private static void ShiftTemplateStats(PlayerTemplate template, int shift)
+        {
+            var b = template.BatterStats;
+            template.BatterStats = new BatterStats(Mathf.Max(1, b.Power + shift), Mathf.Max(1, b.Contact + shift), Mathf.Max(1, b.Discipline + shift),
+                Mathf.Max(1, b.Speed + shift), Mathf.Max(1, b.Defense + shift));
+            var p = template.PitcherStats;
+            template.PitcherStats = new PitcherStats(Mathf.Max(1, p.Stuff + shift), Mathf.Max(1, p.Velocity + shift), Mathf.Max(1, p.Movement + shift),
+                Mathf.Max(1, p.Control + shift), Mathf.Max(1, p.Stamina + shift));
         }
 
         private Player CreateAiPlayer(Team team, bool isPitcher, BatterPosition? batterPosition, PitcherRole? pitcherRole, int targetStatLevel)
         {
-            var template = FindDatabaseTemplate(team, isPitcher, batterPosition, pitcherRole)
-                ?? CreateProceduralTemplate(team, isPitcher, batterPosition, pitcherRole, targetStatLevel);
+            // [TASK-KBO-183] DB 템플릿도 복제본을 쓴다 - 리그 단계 정렬(NormalizeRosterToTeamOvr)이 AI 템플릿 스탯을 직접 이동시키기 때문.
+            var dbTemplate = FindDatabaseTemplate(team, isPitcher, batterPosition, pitcherRole);
+            var template = dbTemplate != null
+                ? CloneTemplate(dbTemplate)
+                : CreateProceduralTemplate(team, isPitcher, batterPosition, pitcherRole, targetStatLevel);
 
             return new Player(Guid.NewGuid().ToString(), template);
         }
@@ -533,6 +631,24 @@ namespace KBOManager.Managers
             int userAverageOvr = EstimateTargetStatLevel();
             var report = StoveLeagueManager.ProcessStoveLeague(aiTeams, skillDB, userAverageOvr, CreateAiPlayer);
 
+            // [TASK-KBO-183] 12단계 리그 - 정규시즌 1위로 마치면 다음 시즌 한 단계 승격한다(영구결번 리그가 최상위).
+            LastPromotion = null;
+            if (UserFinalRank == 1 && currentTier < LeagueTierTable.Highest)
+            {
+                var from = currentTier;
+                currentTier = LeagueTierTable.Next(currentTier);
+                LastPromotion = (from, currentTier);
+                OnLeagueTierChanged?.Invoke(currentTier);
+                Debug.Log($"[LeagueManager] 리그 승격: {LeagueTierTable.DisplayName(from)} → {LeagueTierTable.DisplayName(currentTier)}");
+            }
+
+            // 스토브리그 성장(강화/스킬/세대교체)으로 AI 구단 내부 서열은 바뀌지만, 구단 OVR은 (새) 리그 단계의 권장 분포로 다시 맞춘다 -
+            // AI가 시즌마다 유저 평균을 쫓아 리그 구간을 벗어나지 않게 한다.
+            foreach (var (team, target) in AssignAiTargets())
+            {
+                NormalizeRosterToTeamOvr(standings[team].Roster, target);
+            }
+
             foreach (var info in standings.Values)
             {
                 info.Wins = 0;
@@ -619,7 +735,9 @@ namespace KBOManager.Managers
                 : null;
             int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
 
-            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer);
+            // [TASK-KBO-183] 'OVR 7 격차 법칙' 판정용 구단 OVR - 유저 구단은 화면과 같은 값(시너지 포함), AI는 로스터 기준.
+            int teamOvr = isUserTeam && gm != null ? gm.CalculateTeamOVR() : TeamOvrCalculator.Calculate(roster).Total;
+            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer, teamOvr);
         }
 
         /// <summary>
@@ -629,9 +747,10 @@ namespace KBOManager.Managers
         /// 재시작 시 AI 로스터도 (PlayerDatabase 미보유분은) 절차적으로 새로 생성되므로 완전히 동일하지 않을 수 있다.
         /// </summary>
         public void RestoreFromSave(Team savedUserTeam, int playedGameCount, LeaguePhase phase,
-            int userFinalRankOrNegativeOne, IEnumerable<(Team team, int wins, int draws, int losses)> standingsData)
+            int userFinalRankOrNegativeOne, IEnumerable<(Team team, int wins, int draws, int losses)> standingsData,
+            LeagueTier? savedTier = null)
         {
-            InitializeLeague(savedUserTeam);
+            InitializeLeague(savedUserTeam, savedTier);
 
             if (standingsData != null)
             {

@@ -128,7 +128,9 @@ namespace KBOManager.Controllers
                 : null;
             int conditionBuff = isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0;
 
-            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer);
+            // [TASK-KBO-183] 'OVR 7 격차 법칙' 판정용 구단 OVR - 유저 구단은 화면과 같은 값(시너지 포함), AI는 로스터 기준.
+            int teamOvr = isUserTeam && gm != null ? gm.CalculateTeamOVR() : TeamOvrCalculator.Calculate(roster).Total;
+            return TeamPowerModifiers.FromSetDeck(setDeck, conditionBuff, GameManager.NeutralClutchMultiplier, cheer, teamOvr);
         }
 
         private void BeginMatch(List<Player> homeRoster, List<Player> awayRoster,

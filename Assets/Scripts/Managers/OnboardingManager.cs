@@ -109,7 +109,8 @@ namespace KBOManager.Managers
             gm.TutorialCompleted = false;
 
             // 새 게임 경로에서 리그(스케줄/AI 로스터/캘린더)를 만드는 곳은 여기뿐이다 - 로스터 편성이 끝난 뒤 호출해야 AI 목표 스탯이 맞는다.
-            LeagueManager.Instance?.InitializeLeague(team);
+            // [TASK-KBO-183] 새 커리어는 12단계 리그 중 1단계 아마추어 리그(권장 OVR 57~64)에서 시작한다.
+            LeagueManager.Instance?.InitializeLeague(team, LeagueTier.Amateur);
 
             Debug.Log($"[OnboardingManager] 단장 취임: {team} '{gm.ManagerNickname}' - 2026 LIVE 지급 {LastStarterCardCount}장, " +
                 $"보유 {gm.Inventory.Count}장, 1군 {gm.Roster.Count}명(완비={gm.IsRosterComplete()}), 선물: {LastGiftPlacementNote}");

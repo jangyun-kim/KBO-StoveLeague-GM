@@ -431,15 +431,19 @@ namespace KBOManager.Managers
                     // [TASK-KBO-174, 등급별 실전 능력치 연동] base_ovr(5번째 컬럼)를 카드의 실제 기본 OVR로 만든다 -
                     // players.csv에서 온 선수 기본 스탯 전 항목을 (base_ovr - 선수 기본 OVR)만큼 균등 이동하므로
                     // cardTemplate.GetBaseOverall() == base_ovr가 되고, 이 값이 라인업 OVR/경기 세부 스탯에 그대로 쓰인다.
-                    // base_ovr는 GenerateKBODatabase.py가 "선수 기본 OVR + 등급 보정(CardGrowthRules.GradeOvrBonus)"으로
-                    // 생성하므로 같은 선수의 카드 서열이 항상 LIVE < AS < FRA <= TH < GG < SIG = DYN = RN이다.
+                    // base_ovr는 GenerateKBODatabase.py가 "1단계(시즌 성적 스탯) + 2단계 시즌 등급 보정"으로 생성하며([TASK-KBO-183] 등급 대역
+                    // 55~102), 같은 선수의 카드 서열 LIVE < EPIC < AS < FRA < TH < GG < SIG/DYN/RN을 생성 단계에서 보장한다.
                     // 해석 불가 시 등급 보정만 적용한다.
                     int baseOverall = baseTemplate.GetBaseOverall();
                     int gradeBonus = CardGrowthRules.GradeOvrBonus(grade);
                     int statShift = int.TryParse(columns[4].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var baseOvr)
                         ? baseOvr - baseOverall
                         : gradeBonus;
-                    if (Math.Abs(statShift - gradeBonus) > 1) baseOvrMismatchCount++; // 생성 스크립트와 C# 환산 차이(반올림 1 이내 허용)
+                    // [TASK-KBO-183] 1단계(시즌 성적 스탯)가 카드마다 분리돼 이동량은 더 이상 등급 보정과 같지 않다 - 대신 결과 base_ovr가
+                    // 시즌 등급 대역(CardGrowthRules.BaseOvrRange: LIVE 55~68 … SIG/DYN/RN 95~102) 안인지 검증한다.
+                    var band = CardGrowthRules.BaseOvrRange(grade);
+                    int cardOvr = baseOverall + statShift;
+                    if (cardOvr < band.Min || cardOvr > band.Max) baseOvrMismatchCount++;
                     ApplyStatShift(cardTemplate, statShift);
 
                     templates[cardId] = cardTemplate;
@@ -466,8 +470,8 @@ namespace KBOManager.Managers
                 $"(선수 {playerIdsWithCards.Count}명 커버).");
             if (baseOvrMismatchCount > 0)
             {
-                Debug.LogWarning($"[PlayerDatabase] base_ovr가 '선수 기본 OVR + 등급 보정'과 2 이상 다른 카드 {baseOvrMismatchCount}장 - " +
-                    "GenerateKBODatabase.py GRADE_OVR_BONUS와 CardGrowthRules.GradeOvrBonus가 어긋났는지 확인하세요(TASK-KBO-174).");
+                Debug.LogWarning($"[PlayerDatabase] base_ovr가 시즌 등급 대역(CardGrowthRules.BaseOvrRange)을 벗어난 카드 {baseOvrMismatchCount}장 - " +
+                    "GenerateKBODatabase.py GRADE_BASE_OVR_BAND와 어긋났는지 확인하세요(TASK-KBO-183).");
             }
             if (salaryMismatchCount > 0)
             {

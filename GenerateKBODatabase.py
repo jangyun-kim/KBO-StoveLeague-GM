@@ -471,10 +471,41 @@ def _unique_roster_name(name, team_token):
     return name if count == 0 else f"{name}({count + 1})"
 
 real_2026_records = []
+# [TASK-KBO-183] 같은 구단 2026 명단 안의 동명이인(삼성 투수 이승현 2명, 삼성 외야수/투수 김태훈)은 예전에 두 번째 등장이
+# 첫 번째 인물의 레코드를 그대로 재사용해 같은 card_id(SAMSUNG_2026_PLY_004087_LN / _004094_LN)가 두 번 발급됐다. 두 번째
+# 등장은 별개 실존 인물이므로 고정 player_id(PLY_900002~, 김상엽 PLY_900001과 같은 "정상 시퀀스 밖" 대역)의 새 레코드로
+# 분리한다. add_player()를 쓰지 않는 이유: 전역 난수 스트림/ID 시퀀스를 1바이트도 건드리지 않아야 기존 player_id·card_id가
+# 전부 보존된다(이 레코드는 skip_random_cards=True라 7절 확률 루프에서도 난수를 소비하지 않는다).
+SAME_TEAM_NAMESAKE_IDS = iter(["PLY_900002", "PLY_900003", "PLY_900004", "PLY_900005"])
+namesake_2026_records = []
+
+
+def _add_namesake_2026(team_token, team_id, team_enum, raw_name, is_pitcher, position):
+    rec = PlayerRecord()
+    rec.player_id = next(SAME_TEAM_NAMESAKE_IDS)
+    rec.team_token, rec.team_id, rec.team_enum = team_token, team_id, team_enum
+    rec.name = f"{raw_name}(2)"
+    rec.is_pitcher = is_pitcher
+    rec.position = position
+    rec.career_start, rec.career_end = 2018, MAX_YEAR
+    rec.z_value = 0.6  # 임시값 - 7-K(TASK-183)가 LIVE 1단계 스탯으로 다시 산정한다.
+    rec.pa_ip = 50 if is_pitcher else 300
+    rec.is_dynasty_member = False
+    rec.dynasty_years = None
+    rec.skip_random_cards = True
+    player_records.append(rec)
+    namesake_2026_records.append(rec)
+    return rec
+
+
 for team_token, groups in ROSTER_2026.items():
     team_id, team_enum = TEAM_LOOKUP_2026[team_token]
+    _resolved_in_team = set()  # [TASK-KBO-183] 이 구단 2026 명단에서 이미 처리한 원본 이름
 
     def _resolve(raw_name, is_pitcher, position):
+        if raw_name in _resolved_in_team:
+            return _add_namesake_2026(team_token, team_id, team_enum, raw_name, is_pitcher, position)
+        _resolved_in_team.add(raw_name)
         existing = real_player_records.get(raw_name)
         if existing is not None and existing.team_token == team_token:
             existing.skip_random_cards = True
@@ -1716,6 +1747,284 @@ if len(_dyn_players) != len(DYNASTY_CARDS) or len(set(_dyn_players)) != len(_dyn
     raise ValueError(f"[TASK-KBO-172] DYNASTY 1인 1연도 규칙 위반: {len(_dyn_players)}장 / 고유 {len(set(_dyn_players))}명")
 
 # ---------------------------------------------------------------------------
+# 7-K. [TASK-KBO-183] 12단계 리그(OVR 57~144) 정렬 - 시즌 등급별 기본 OVR(base_ovr) 리밸런싱.
+# 기획서 2단계 산정: 카드 base_ovr = 1단계(해당 시즌 성적 스탯) + 2단계(시즌 등급 보정 GRADE_OVR_BONUS +0/+1/+3/+4/+5/+7/+10).
+# 예전(TASK-174)에는 1단계가 "선수 1명당 값 하나"(통산 수상 장부 기반 위상)라, 과거 수상 경력이 있는 현역의 2026 LIVE_NORMAL이
+# 88~94로 나와 부임 첫날 구단 OVR이 75~80(아마추어 57~64 / 퓨처스 65~72 건너뜀)이었다. 이제 1단계를 "카드(시즌) 단위"로 분리한다:
+#   - 위상 키(legacy key) = 예전 선수 기본 OVR(수상 장부 기반) - 같은 등급 안의 서열을 정하는 데만 쓴다(LIVE 수치에는 섞이지 않음).
+#   - LIVE_NORMAL(2026 현역): 구단별 위상 순위 -> 55~68 곡선. 구단별 28인 자동 편성 평균이 59~60이 되도록 곡선 지수를 구단마다
+#     맞춘다(아래 시뮬레이터 = C# RosterManager.AutoSetRoster + GameManager.CalculateTeamOVR 재현).
+#   - 그 외 등급: 등급 풀(SIG/DYN/RN은 하나의 최상위 풀) 안의 위상 백분위 -> 등급 대역(GRADE_BASE_OVR_BAND)에 선형 배치.
+#   - 같은 선수의 등급 서열(LN < EPIC < AS < FRA < TH < GG < SIG/DYN/RN)을 대역 안에서 강제한다.
+#   - 온보딩 선물 '24 골든글러브 4종은 편차 없이 GIFT_BASE_OVR(90)로 정렬한다.
+# 1단계 스탯 = base_ovr - 등급 보정이며, players.csv의 선수 프로필 레벨은 "그 선수의 가장 낮은 카드(현역이면 2026 LIVE)의 1단계"로
+# 다시 쓴다 - 통산 최고 등급이 LIVE 1단계 스탯을 오염시키지 않는다. 런타임(PlayerDatabase)은 카드마다 (base_ovr - 프로필 레벨)만큼
+# 세부 스탯을 균등 이동하므로 포지션·타이틀 편차는 그대로 유지된다. 난수를 전혀 쓰지 않아 player_id/card_id/연도/등급은 그대로다.
+# C# CardGrowthRules.BaseOvrRange()와 반드시 일치해야 한다.
+# ---------------------------------------------------------------------------
+GRADE_BASE_OVR_BAND = {
+    "LIVE_NORMAL": (55, 68), "LIVE_EPIC": (65, 75), "ALLSTAR": (75, 83), "FRANCHISE": (79, 86), "TITLE_HOLDER": (83, 90),
+    "GOLDEN_GLOVE": (87, 95), "SIGNATURE": (95, 102), "DYNASTY": (95, 102), "RETIRED_NUMBER": (95, 102),
+}
+GRADE_POWER_ORDER = ["LIVE_NORMAL", "LIVE_EPIC", "ALLSTAR", "FRANCHISE", "TITLE_HOLDER", "GOLDEN_GLOVE", "TOP"]
+_TOP_GRADES = {"SIGNATURE", "DYNASTY", "RETIRED_NUMBER"}
+GIFT_CARD_IDS = ["SAMSUNG_2024_PLY_004038_GG", "KIA_2024_PLY_004368_GG", "NC_2024_PLY_004366_GG", "KT_2024_PLY_004369_GG"]
+GIFT_BASE_OVR = 90
+LIVE_TEAM_ROSTER_AVG_TARGET = (59.0, 60.0)  # 구단별 28인 자동 편성 평균
+LIVE_TEAM_OVR_TARGET = (60, 62)             # 온보딩 직후 구단 OVR(아마추어 리그 57~64 중앙) - 선물 미수령 + 선물 4종 각각 모두
+
+
+def _pool_key(grade):
+    return "TOP" if grade in _TOP_GRADES else grade
+
+
+_all_recs_by_id = {r.player_id: r for r in player_records}
+_all_recs_by_id[KIM_SANGYEOP_ID] = kim_sangyeop
+legacy_key = {pid: player_base_overall(r) for pid, r in _all_recs_by_id.items()}
+
+
+def _rank_tuple(pid):
+    """위상 서열 키: 예전 기본 OVR -> 검증 수상 시즌 수 -> player_id 해시(결정론)."""
+    return (legacy_key.get(pid, 50), len(award_ledger.get(pid, ())), hashlib.md5(pid.encode("utf-8")).hexdigest())
+
+
+_all_card_rows = [row for rows in cards_by_team.values() for row in rows]
+
+# (1) LIVE_NORMAL 제외 등급: 등급 풀 안의 위상 백분위 -> 대역 선형 배치(같은 선수는 같은 등급에서 같은 값).
+_pool_players = {}
+for _row in _all_card_rows:
+    if _row[3] != "LIVE_NORMAL":
+        _pool_players.setdefault(_pool_key(_row[3]), set()).add(_row[1])
+_pool_ovr = {}  # (pool, pid) -> base_ovr
+for _pool, _pids in _pool_players.items():
+    _lo, _hi = GRADE_BASE_OVR_BAND["SIGNATURE" if _pool == "TOP" else _pool]
+    _ordered = sorted(_pids, key=_rank_tuple)
+    for _i, _pid in enumerate(_ordered):
+        _p = _i / (len(_ordered) - 1) if len(_ordered) > 1 else 1.0
+        _pool_ovr[(_pool, _pid)] = _lo + int(_p * (_hi - _lo) + 0.5)
+
+# (2) LIVE_NORMAL(2026 현역): 구단별 위상 순위 곡선. C# 자동 편성/구단 OVR을 재현해 구단마다 지수 k를 맞춘다.
+BATTER_POS_ORDER = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+PITCHER_ROLE_QUOTA = [("SP", 5), ("RP", 2), ("MR", 4), ("LR", 1), ("CP", 1)]
+SETDECK_OVR_THRESHOLDS = [100, 110, 120, 130, 140, 150, 160, 170, 180, 185, 190, 195, 200]  # C# TeamSynergyRules.SetDeckOvrBonus와 동일
+
+
+def _setdeck_ovr_bonus(score):
+    return sum(1 for t in SETDECK_OVR_THRESHOLDS if score >= t)
+
+
+def _pitcher_role(position):
+    return position if position in ("SP", "CP", "LR", "MR") else "RP"
+
+
+def simulate_team(cards):
+    """cards: [{"pid","ovr","pitcher","pos","team_pref","sd"}] -> (28인 로스터, 구단 OVR). C# AutoSetRoster + CalculateTeamOVR 재현."""
+    pool = list(cards)
+    used = set()
+    slots = [("B", p) for p in BATTER_POS_ORDER] + [("P", r) for r, n in PITCHER_ROLE_QUOTA for _ in range(n)] + [("BENCH", None)] * 6
+    assigned = [None] * len(slots)
+
+    def avail():
+        return [c for c in pool if c["pid"] not in used]
+
+    def take(i, c):
+        assigned[i] = c
+        pool.remove(c)
+        used.add(c["pid"])
+
+    def matches(c, kind, req):
+        if kind == "B":
+            return not c["pitcher"] and c["pos"] == req
+        if kind == "P":
+            return c["pitcher"] and _pitcher_role(c["pos"]) == req
+        return not c["pitcher"]
+
+    def best(cands, keys):
+        return max(cands, key=keys) if cands else None
+
+    for pref_only, exact, pitchers_only in ((True, True, False), (True, False, True), (False, True, False)):
+        for i, (kind, req) in enumerate(slots):
+            if kind == "BENCH" or assigned[i] is not None or (pitchers_only and kind != "P"):
+                continue
+            cands = [c for c in avail() if (c["team_pref"] or not pref_only)
+                     and (matches(c, kind, req) if exact else c["pitcher"] == (kind == "P"))]
+            c = best(cands, lambda c: (c["ovr"], c["sd"]))
+            if c:
+                take(i, c)
+    for i, (kind, req) in enumerate(slots):
+        if kind == "B" and assigned[i] is None:
+            c = best([c for c in avail() if not c["pitcher"]], lambda c: (c["team_pref"], c["ovr"], c["sd"]))
+            if c:
+                take(i, c)
+    for i, (kind, req) in enumerate(slots):
+        if kind == "BENCH" and assigned[i] is None:
+            c = best([c for c in avail() if not c["pitcher"]], lambda c: (c["team_pref"], c["sd"] if c["team_pref"] or c["gg"] else 0, c["ovr"]))
+            if c:
+                take(i, c)
+    for i, (kind, req) in enumerate(slots):
+        if assigned[i] is None:
+            c = best(avail(), lambda c: (c["pitcher"] == (kind == "P"), c["team_pref"], matches(c, kind, req), c["ovr"]))
+            if c:
+                take(i, c)
+    roster = [c for c in assigned if c]
+
+    batters = [c for c in roster if not c["pitcher"]]
+    pitchers = [c for c in roster if c["pitcher"]]
+    starters_b = []
+    for pos in BATTER_POS_ORDER:
+        cand = [c for c in batters if c["pos"] == pos and c not in starters_b]
+        if cand:
+            starters_b.append(max(cand, key=lambda c: c["ovr"]))
+    bench_b = sorted([c for c in batters if c not in starters_b], key=lambda c: -c["ovr"])[:4]
+    sp = [c for c in pitchers if _pitcher_role(c["pos"]) == "SP"]
+    cp = [c for c in pitchers if _pitcher_role(c["pos"]) == "CP"]
+    relief = sorted([c for c in pitchers if c not in sp and c not in cp], key=lambda c: -c["ovr"])[:6]
+    starters = starters_b + sp + cp
+    bench = bench_b + relief
+    s_avg = sum(c["ovr"] for c in starters) / len(starters) if starters else 0
+    b_avg = sum(c["ovr"] for c in bench) / len(bench) if bench else 0
+    base = int(s_avg * 0.8 + b_avg * 0.2 + 0.5)
+    # 세트덱 27인(주전 9 + 후보 6 + 선발 5 + 불펜 7) 스코어: 선택 구단 카드 + 골든글러브만 합산.
+    deck = starters_b + sorted([c for c in batters if c not in starters_b], key=lambda c: -c["ovr"])[:6] \
+        + sorted(sp, key=lambda c: -c["ovr"])[:5] + sorted([c for c in pitchers if c not in sp], key=lambda c: -c["ovr"])[:7]
+    score = sum(c["sd"] for c in deck if c["team_pref"] or c["gg"])
+    return roster, base + _setdeck_ovr_bonus(score), score
+
+
+_live_rows_by_team = {}
+for _team, _rows in cards_by_team.items():
+    _live_rows_by_team[_team] = [r for r in _rows if r[3] == "LIVE_NORMAL" and int(r[9]) == MAX_YEAR]
+
+_live_ovr = {}  # card_id -> base_ovr
+live_calibration_report = {}
+
+
+def _live_curve(n, k, top, lo):
+    """위상 1위 = top(64~68), 꼴찌 = lo(55~57)인 곡선 - 지수 k가 클수록 하위권이 두껍다."""
+    return [lo + int((top - lo) * ((1 - i / (n - 1)) ** k if n > 1 else 1.0) + 0.5) for i in range(n)]
+
+
+def _team_cards(team, ovr_by_card, extra=None):
+    # C# 온보딩은 카드를 TemplateId(card_id) 순으로 지급하고 OVR 동점은 그 순서로 고른다 - 같은 순서로 시뮬레이션한다.
+    cards = []
+    for r in sorted(_live_rows_by_team[team], key=lambda r: r[0]):
+        rec = _all_recs_by_id[r[1]]
+        cards.append({"pid": r[1], "ovr": ovr_by_card[r[0]], "pitcher": rec.is_pitcher, "pos": rec.position,
+                      "team_pref": True, "sd": SETDECK_BASE_SCORE["LIVE_NORMAL"], "gg": False})
+    if extra:
+        cards.append(extra)
+    return cards
+
+
+def _gift_card(gift_id, team):
+    """온보딩 선물 카드(GG '24, OVR 90)를 시뮬레이터 카드로 - 선택 구단 카드면 선호 구단 취급."""
+    gift_team, _, p1, p2, _ = gift_id.split("_")
+    rec = _all_recs_by_id[f"{p1}_{p2}"]
+    return {"pid": rec.player_id, "ovr": GIFT_BASE_OVR, "pitcher": rec.is_pitcher, "pos": rec.position,
+            "team_pref": gift_team == team, "sd": SETDECK_BASE_SCORE["GOLDEN_GLOVE"], "gg": True}
+
+
+def _range_miss(value, lo_hi):
+    return max(0, lo_hi[0] - value, value - lo_hi[1])
+
+
+for _team, _rows in _live_rows_by_team.items():
+    _ordered = sorted(_rows, key=lambda r: _rank_tuple(r[1]), reverse=True)
+    _best = None
+    _band_lo, _band_hi = GRADE_BASE_OVR_BAND["LIVE_NORMAL"]
+    for _k100, _top, _lo in ((k, t, b) for k in range(40, 801, 4) for t in range(_band_hi, _band_hi - 5, -1)
+                             for b in range(_band_lo, _band_lo + 3)):
+        _curve = _live_curve(len(_ordered), _k100 / 100.0, _top, _lo)
+        _ovr_by_card = {r[0]: v for r, v in zip(_ordered, _curve)}
+        _roster, _team_ovr, _score = simulate_team(_team_cards(_team, _ovr_by_card))
+        _avg = sum(c["ovr"] for c in _roster) / len(_roster)
+        # 선물 4종 각각을 받은 경우(선택 구단 카드면 주전 편성, 타 구단이면 대부분 보관)도 60~62 안에 들어와야 한다.
+        _gift_ovrs = [simulate_team(_team_cards(_team, _ovr_by_card, _gift_card(g, _team)))[1] for g in GIFT_CARD_IDS]
+        _cost = _range_miss(_avg, LIVE_TEAM_ROSTER_AVG_TARGET) * 40 \
+            + sum(_range_miss(o, LIVE_TEAM_OVR_TARGET) for o in [_team_ovr] + _gift_ovrs) * 10 \
+            + abs(_avg - 59.5) * 0.1 + (_band_hi - _top) * 0.05 + (_lo - _band_lo) * 0.05
+        if _best is None or _cost < _best[0]:
+            _best = (_cost, (_k100 / 100.0, _top, _lo), _ovr_by_card, _avg, _team_ovr, _score, _gift_ovrs)
+    _, _k, _ovr_by_card, _avg, _team_ovr, _score, _gift_ovrs = _best
+    _live_ovr.update(_ovr_by_card)
+    live_calibration_report[_team] = {"k": _k, "roster28_avg": round(_avg, 2), "team_ovr": _team_ovr, "setdeck": _score,
+                                      "gift_team_ovrs": _gift_ovrs,
+                                      "live_all_avg": round(sum(_ovr_by_card.values()) / len(_ovr_by_card), 2)}
+
+# (3) 카드별 base_ovr 확정 + 같은 선수 등급 서열 강제(대역 안) + 선물 카드 정렬.
+_card_ovr = {}
+for _row in _all_card_rows:
+    _card_ovr[_row[0]] = _live_ovr[_row[0]] if _row[3] == "LIVE_NORMAL" else _pool_ovr[(_pool_key(_row[3]), _row[1])]
+for _gid in GIFT_CARD_IDS:
+    _card_ovr[_gid] = GIFT_BASE_OVR
+_gift_pids = {cid.split("_")[2] + "_" + cid.split("_")[3] for cid in GIFT_CARD_IDS}
+
+_rows_by_pid = {}
+for _row in _all_card_rows:
+    _rows_by_pid.setdefault(_row[1], []).append(_row)
+order_fix_count = 0
+for _pid, _rows in _rows_by_pid.items():
+    _floor = 0  # 지금까지 확정된 하위 등급 카드의 최대 OVR
+    for _tier in GRADE_POWER_ORDER:
+        _tier_rows = [r for r in _rows if _pool_key(r[3]) == _tier]
+        if not _tier_rows:
+            continue
+        _hi = GRADE_BASE_OVR_BAND["SIGNATURE" if _tier == "TOP" else _tier][1]
+        for r in _tier_rows:
+            if r[0] in GIFT_CARD_IDS:
+                continue
+            _want = max(_card_ovr[r[0]], min(_hi, _floor + 1))
+            if _want != _card_ovr[r[0]]:
+                order_fix_count += 1
+                _card_ovr[r[0]] = _want
+        _floor = max(_floor, max(_card_ovr[r[0]] for r in _tier_rows))
+    if _pid in _gift_pids:
+        # 선물 카드(90)보다 하위 등급 카드가 높아지지 않게 상한(89) - 상위 등급(SIG 등)은 그대로.
+        for r in _rows:
+            if r[0] not in GIFT_CARD_IDS and GRADE_POWER_ORDER.index(_pool_key(r[3])) < GRADE_POWER_ORDER.index("GOLDEN_GLOVE"):
+                _card_ovr[r[0]] = min(_card_ovr[r[0]], GIFT_BASE_OVR - 1)
+
+for _row in _all_card_rows:
+    _row[4] = _card_ovr[_row[0]]
+
+# (4) 선수 프로필 레벨(players.csv) = 그 선수의 가장 낮은 카드의 1단계(= base_ovr - 등급 보정). 현역은 2026 LIVE_NORMAL 그 자체.
+profile_level = {}
+for _pid, _rows in _rows_by_pid.items():
+    profile_level[_pid] = min(r[4] - GRADE_OVR_BONUS[r[3]] for r in _rows)
+for _pid, _level in profile_level.items():
+    _all_recs_by_id[_pid].z_value = overall_to_z(_level)
+for _row in players_rows:
+    _rec = _all_recs_by_id.get(_row[0])
+    if _rec is None or _row[0] not in profile_level:
+        continue
+    _line = {k: stat_to_z(v) for k, v in stat_line(_rec).items()}
+    if _rec.is_pitcher:
+        _row[9], _row[11], _row[13], _row[14], _row[15] = _line["z_speed"], _line["z_stamina"], _line["z_stuff"], _line["z_control"], _line["z_movement"]
+    else:
+        _row[6], _row[7], _row[8], _row[9], _row[10] = _line["z_contact"], _line["z_eye"], _line["z_power"], _line["z_speed"], _line["z_def"]
+    _row[4] = _rec.position  # 5-L2 보직 재배정 반영(동명이인 분리로 삼성 불펜 순번이 바뀜)
+
+# (5) 검증 - 등급 대역 / 선물 카드 / 같은 선수 등급 서열 / 세부 스탯 편차.
+_band_violations = [(r[0], r[3], r[4]) for r in _all_card_rows
+                    if not GRADE_BASE_OVR_BAND[r[3]][0] <= r[4] <= GRADE_BASE_OVR_BAND[r[3]][1]]
+if _band_violations:
+    raise ValueError(f"[TASK-KBO-183] 등급 대역 위반 {len(_band_violations)}장: {_band_violations[:10]}")
+if any(_card_ovr[g] != GIFT_BASE_OVR for g in GIFT_CARD_IDS):
+    raise ValueError("[TASK-KBO-183] 선물 카드 OVR 정렬 실패")
+for _pid, _rows in _rows_by_pid.items():
+    _by_tier = {}
+    for r in _rows:
+        _by_tier.setdefault(GRADE_POWER_ORDER.index(_pool_key(r[3])), []).append(r[4])
+    _tiers = sorted(_by_tier)
+    for _a, _b in zip(_tiers, _tiers[1:]):
+        if max(_by_tier[_a]) >= min(_by_tier[_b]) and _pid not in _gift_pids:
+            raise ValueError(f"[TASK-KBO-183] 같은 선수 등급 서열 위반: {_pid} {_by_tier}")
+_flat_profiles = [row[0] for row in players_rows
+                  if len({row[i] for i in ((9, 11, 13, 14, 15) if _all_recs_by_id[row[0]].is_pitcher else (6, 7, 8, 9, 10))}) == 1]
+if _flat_profiles:
+    raise ValueError(f"[TASK-KBO-183] 세부 스탯 5개가 모두 같은 선수 {len(_flat_profiles)}명: {_flat_profiles[:10]}")
+
+# ---------------------------------------------------------------------------
 # 8. cheerleaders.csv 행 생성 (CheerleaderCatalog.cs 파서 스키마 7컬럼 + Team/ActivePeriod 2컬럼 = 총 9컬럼)
 # ---------------------------------------------------------------------------
 # [TASK-KBO-175, DCL-146] 치어리더 "단일 대표 연도" 폐지 -> "소속 구단 + 활동 기간" 체제. 치어리더 카드는 선수
@@ -1956,6 +2265,16 @@ _raised = [r for r in stat_recalibration_report if r[3] > r[2]]
 print(f"  - [TASK-175] 수상 장부 기반 기본 OVR 산정: 실존 {len(stat_recalibration_report)}명 "
       f"(상향 {len(_raised)}명, 보정 전 평균 {sum(r[2] for r in stat_recalibration_report) / len(stat_recalibration_report):.1f} -> "
       f"보정 후 {sum(r[3] for r in stat_recalibration_report) / len(stat_recalibration_report):.1f})")
+
+print(f"  - [TASK-183] 동명이인 분리(신규 player_id): {[(r.player_id, r.name) for r in namesake_2026_records]}")
+print(f"  - [TASK-183] 같은 선수 등급 서열 보정 카드: {order_fix_count}장")
+for _grade in ("LIVE_NORMAL", "LIVE_EPIC", "ALLSTAR", "FRANCHISE", "TITLE_HOLDER", "GOLDEN_GLOVE", "SIGNATURE", "DYNASTY", "RETIRED_NUMBER"):
+    _vals = [r[4] for r in _all_card_rows if r[3] == _grade]
+    if _vals:
+        print(f"  - [TASK-183] {_grade:<15} 대역 {GRADE_BASE_OVR_BAND[_grade]} 실측 {min(_vals)}~{max(_vals)} 평균 {sum(_vals) / len(_vals):.1f} ({len(_vals)}장)")
+for _team, _rep in live_calibration_report.items():
+    print(f"  - [TASK-183] {_team:<8} LIVE 곡선 (k, 최상위, 바닥)={_rep['k']} 28인 평균 {_rep['roster28_avg']} / LIVE 전원 평균 {_rep['live_all_avg']} "
+          f"/ 세트덱 {_rep['setdeck']}P / 구단 OVR 선물 전 {_rep['team_ovr']} · 선물 4종 {_rep['gift_team_ovrs']}")
 
 _cheer_grade_counts = {}
 _cheer_unique_names = set()

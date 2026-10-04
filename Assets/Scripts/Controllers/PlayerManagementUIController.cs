@@ -9,10 +9,10 @@ namespace KBOManager.Controllers
     /// <summary>
     /// [TASK-KBO-145] 인벤토리에서 선수 카드를 클릭하면 뜨는 "선수 관리 집합소(Player Management Hub)".
     /// 상단에 타겟 선수 미니 카드/이름을 보여주고, 중앙 GridLayoutGroup에 훈련/강화/한계돌파/스킬 변경/
-    /// 각성 5개 사각형 메뉴 타일을 배치한다. 명령서 4항 지시대로 현재는 [강화]/[스킬 변경] 2개만 실제로
-    /// 동작하고 나머지 3개(훈련/한계돌파/각성)는 "준비 중입니다" 로그만 남긴다 - 각성은
-    /// `MaterialSelectUIController.OpenForAwaken()`으로 이미 동작하는 기존 경로가 있지만, 명령서가
-    /// 명시적으로 이번 허브에서는 플레이스홀더로만 두라고 지시해 의도적으로 연결하지 않았다.
+    /// 각성 5개 사각형 메뉴 타일을 배치한다. [TASK-KBO-183] 5개 타일이 전부 실제로 동작한다(구 "준비 중입니다" 3종 개통):
+    ///   [강화] EnhanceUIController(EXP 누적) · [한계 돌파] 10강 후 보관 카드 1장 소모(CardGrowthActions) ·
+    ///   [훈련(특훈)] 볼 소모(CardGrowthActions) · [각성] MaterialSelectUIController.OpenForAwaken(동일 선수 재료) · [스킬 변경].
+    /// 상단 growthInfoText에 [기본 OVR / 현재 성장(+N) / 시너지(+M) / 최대 잠재 OVR]과 항목별 진행도를 표시하고, 결과는 세이브에 즉시 기록한다.
     ///
     /// 화면 전환은 `UIManager.ShowScreen()`(ScreenType.PlayerManagementHub/Inventory)을 쓴다 - 이
     /// 허브는 인벤토리를 완전히 덮는 별도 풀스크린이지 모달 팝업이 아니므로(명령서 "화면을 덮는 새
@@ -54,8 +54,14 @@ namespace KBOManager.Controllers
         [SerializeField] private Button skillChangeButton;
         [SerializeField] private Button awakenButton;
 
-        [Tooltip("스킬 변경 결과(성공/실패/F등급 재확인 대기)를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
+        [Tooltip("스킬 변경/한계 돌파/특훈/각성 결과를 보여주는 텍스트. 비워두면 표시를 생략한다.")]
         [SerializeField] private Text skillChangeResultText;
+
+        [Header("TASK-KBO-183 - 4대 성장")]
+        [Tooltip("[기본 OVR / 현재 성장(+N) / 시너지(+M) / 최대 잠재 OVR] + 강화·한계 돌파·특훈·각성 진행도.")]
+        [SerializeField] private Text growthInfoText;
+        [Tooltip("[각성] 타일이 여는 재료 선택 팝업. 비우면 씬에서 찾는다.")]
+        [SerializeField] private MaterialSelectUIController materialSelectUIController;
 
         [SerializeField] private Button closeButton;
 
@@ -67,11 +73,13 @@ namespace KBOManager.Controllers
 
         private void Awake()
         {
-            if (trainButton != null) trainButton.onClick.AddListener(() => LogNotReady("훈련"));
+            if (trainButton != null) trainButton.onClick.AddListener(OnClickTrain);
             if (enhanceButton != null) enhanceButton.onClick.AddListener(OnClickEnhance);
-            if (breakthroughButton != null) breakthroughButton.onClick.AddListener(() => LogNotReady("한계 돌파"));
+            if (breakthroughButton != null) breakthroughButton.onClick.AddListener(OnClickBreakthrough);
             if (skillChangeButton != null) skillChangeButton.onClick.AddListener(OnClickSkillChange);
-            if (awakenButton != null) awakenButton.onClick.AddListener(() => LogNotReady("각성"));
+            if (awakenButton != null) awakenButton.onClick.AddListener(OnClickAwaken);
+            var materialSelect = MaterialSelect;
+            if (materialSelect != null) materialSelect.OnActionCompleted += RefreshTarget;
             if (cardClickButton != null) cardClickButton.onClick.AddListener(OnClickCardPortrait);
             if (closeButton != null) closeButton.onClick.AddListener(Close);
         }
@@ -81,9 +89,33 @@ namespace KBOManager.Controllers
             // [TASK-KBO-145, 명령서 6항] 강화 화면을 다녀오는 등 다른 화면을 거쳐 다시 활성화될 때마다
             // 최신 상태로 미리보기 카드를 다시 그린다. currentPlayer가 아직 없으면(최초 비활성 상태로
             // 씬 로드 직후) 아무 것도 하지 않는다.
-            if (currentPlayer != null && targetPreviewCard != null)
+            if (currentPlayer != null) RefreshTarget();
+        }
+
+        private void OnDestroy()
+        {
+            if (materialSelectUIController != null) materialSelectUIController.OnActionCompleted -= RefreshTarget;
+        }
+
+        private MaterialSelectUIController MaterialSelect
+        {
+            get
             {
-                targetPreviewCard.Setup(currentPlayer);
+                if (materialSelectUIController == null)
+                    materialSelectUIController = FindAnyObjectByType<MaterialSelectUIController>(FindObjectsInactive.Include);
+                return materialSelectUIController;
+            }
+        }
+
+        /// <summary>[TASK-KBO-183] 미리보기 카드 + 성장 요약을 최신 상태로 다시 그린다(강화/한계 돌파/특훈/각성 직후).</summary>
+        private void RefreshTarget()
+        {
+            if (currentPlayer == null) return;
+            if (targetPreviewCard != null) targetPreviewCard.Setup(currentPlayer);
+            if (growthInfoText != null)
+            {
+                int synergy = GameManager.Instance != null ? GameManager.Instance.CurrentTeamSynergyOvr : 0;
+                growthInfoText.text = CardGrowthActions.GrowthSummary(currentPlayer, synergy);
             }
         }
 
@@ -103,9 +135,9 @@ namespace KBOManager.Controllers
             }
 
             currentPlayer = player;
-            if (targetPreviewCard != null) targetPreviewCard.Setup(player);
             if (targetNameText != null) targetNameText.text = player.Template.PlayerName;
             if (skillChangeResultText != null) skillChangeResultText.text = "";
+            RefreshTarget();
 
             UIManager.Instance?.ShowScreen(ScreenType.PlayerManagementHub);
 
@@ -228,9 +260,61 @@ namespace KBOManager.Controllers
             };
         }
 
-        private static void LogNotReady(string featureName)
+        // ----- [TASK-KBO-183] 한계 돌파 / 훈련(특훈) / 각성 -----
+
+        private void ShowResult(string message)
         {
-            Debug.Log($"[PlayerManagementUIController] '{featureName}' 기능은 준비 중입니다.");
+            Debug.Log($"[PlayerManagement] {message}");
+            if (skillChangeResultText != null) skillChangeResultText.text = message;
+        }
+
+        /// <summary>[한계 돌파] 10강 카드에 보관 카드 1장(동일 선수 우선 → 낮은 등급·OVR 순 자동 선택)을 소모해 OVR +1.</summary>
+        private void OnClickBreakthrough()
+        {
+            var gm = GameManager.Instance;
+            if (currentPlayer == null || gm == null) return;
+
+            if (!CardGrowthActions.CanLimitBreak(currentPlayer, out var reason)) { ShowResult(reason); return; }
+            var material = CardGrowthActions.PickLimitBreakMaterial(currentPlayer, gm.Inventory, gm.Roster);
+            if (!CardGrowthActions.TryLimitBreak(currentPlayer, material, out var message)) { ShowResult(message); return; }
+
+            gm.RemovePlayerFromInventory(material);
+            SaveManager.Instance?.TrySaveCareer();
+            ShowResult(message);
+            RefreshTarget();
+        }
+
+        /// <summary>[훈련(특훈)] 볼(GameGold)을 소모해 OVR +1(등급별 상한).</summary>
+        private void OnClickTrain()
+        {
+            var gm = GameManager.Instance;
+            if (currentPlayer == null || gm == null) return;
+
+            if (!CardGrowthActions.TryTrain(currentPlayer, gm.GameGold, out int spent, out var message)) { ShowResult(message); return; }
+
+            gm.GameGold -= spent;
+            SaveManager.Instance?.TrySaveCareer();
+            ShowResult(message);
+            RefreshTarget();
+        }
+
+        /// <summary>[각성] 동일 선수 재료 선택 팝업(기존 TryAwaken 경로). 완료되면 OnActionCompleted로 요약을 갱신한다.</summary>
+        private void OnClickAwaken()
+        {
+            if (currentPlayer == null) return;
+            if (currentPlayer.AwakenLevel >= currentPlayer.MaxAwakenLevelForGrade)
+            {
+                ShowResult($"각성 최대 단계({currentPlayer.AwakenLabel})입니다.");
+                return;
+            }
+
+            var materialSelect = MaterialSelect;
+            if (materialSelect == null)
+            {
+                ShowResult("각성 재료 선택 화면(MaterialSelectUIController)을 찾지 못했습니다.");
+                return;
+            }
+            materialSelect.OpenForAwaken(currentPlayer);
         }
     }
 }

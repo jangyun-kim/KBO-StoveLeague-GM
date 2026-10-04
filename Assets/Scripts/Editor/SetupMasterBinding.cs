@@ -58,7 +58,11 @@ namespace KBOManager.EditorTools
         /// [TASK-KBO-182] 메뉴 이름을 TASK-168~182로 갱신. 마지막 단계로 SetupTask182.ApplyAll()을 실행한다 - 컴프야V26 라인업(3탭 · 다이아몬드 ·
         /// 하단 세트덱 바 / 선수 액션 트레이), 상세 정보 패널 캔버스 최상위 이동, 세트덱 A/B 색, BroadcastUIManager 연결, 골든글러브 스카우트 배너.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~182)")]
+        /// <remarks>
+        /// [TASK-KBO-183] 메뉴 이름을 TASK-168~183으로 갱신. 마지막 단계로 SetupTask183.ApplyAll()을 실행한다 - 선수 관리 허브 4대 성장
+        /// ([훈련(특훈)] [한계 돌파] [각성] 개통 타일 + 성장 요약 텍스트 + 각성 재료 팝업 바인딩), 상세 정보 성장 요약 줄.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~183)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -79,7 +83,8 @@ namespace KBOManager.EditorTools
             SetupTask180.ApplyAll();
             SetupTask181.ApplyAll();
             SetupTask182.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~182 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask183.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~183 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

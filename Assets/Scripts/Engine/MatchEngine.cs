@@ -220,24 +220,28 @@ namespace KBOManager.Engine
         /// <summary>[TASK-KBO-180] 치어리더 6인 편성 효과(유저 구단 전용, 없으면 null). 상황(홈/연패/열세/후반 접전)별 적용은
         /// MatchEngine이 타석마다 판정한다.</summary>
         public readonly CheerSquadEffects Cheer;
+        /// <summary>[TASK-KBO-183] 이 팀의 구단 OVR(TeamOvrCalculator - 기본 + 팀 시너지). 'OVR 7 격차 법칙' 판정에 쓴다.
+        /// 0이면 MatchEngine이 로스터로 직접 계산한다(시너지는 최다 구단 기준 세트덱만).</summary>
+        public readonly int TeamOvr;
         public int TotalBuff => SynergyBuff + ConditionBuff;
 
         public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f,
-            SetDeckBuffProfile setDeckProfile = null, CheerSquadEffects cheer = null)
+            SetDeckBuffProfile setDeckProfile = null, CheerSquadEffects cheer = null, int teamOvr = 0)
         {
             SynergyBuff = synergyBuff;
             ConditionBuff = conditionBuff;
             ClutchMultiplier = clutchMultiplier;
             SetDeckProfile = setDeckProfile;
             Cheer = cheer;
+            TeamOvr = teamOvr;
         }
 
         /// <summary>[TASK-KBO-172] 세트덱 평가 결과로 보정치를 만든다 - SynergyBuff = "모든 능력치" 누적합,
         /// SetDeckProfile = 그 외 대상 한정 효과. 세 경기 진입 호출부(LeagueManager/PlayBallController/
         /// PostSeasonManager)가 공통으로 쓴다.</summary>
         public static TeamPowerModifiers FromSetDeck(SetDeckResult setDeck, int conditionBuff, float clutchMultiplier,
-            CheerSquadEffects cheer = null) =>
-            new TeamPowerModifiers(setDeck?.AllPlayersFlatBuff ?? 0, conditionBuff, clutchMultiplier, setDeck?.Profile, cheer);
+            CheerSquadEffects cheer = null, int teamOvr = 0) =>
+            new TeamPowerModifiers(setDeck?.AllPlayersFlatBuff ?? 0, conditionBuff, clutchMultiplier, setDeck?.Profile, cheer, teamOvr);
 
         /// <summary>버프 없음(0, 0, 1.0f = 클러치 효과 없음). 치어리더/홈 어드밴티지가 없는 호출부
         /// (BatchSimulator 등)가 쓴다.</summary>
@@ -401,6 +405,15 @@ namespace KBOManager.Engine
         public MatchResult Result { get; private set; }
         public bool IsGameOver { get; private set; }
 
+        /// <summary>[TASK-KBO-183] 경기 시작 시 판정한 양 팀 구단 OVR과 체급 우위 가산(OvrGapLaw).</summary>
+        public int HomeTeamOvr { get; private set; }
+        public int AwayTeamOvr { get; private set; }
+        private int homeClassBonus;
+        private int awayClassBonus;
+        public int HomeClassBonus => homeClassBonus;
+        public int AwayClassBonus => awayClassBonus;
+        private int ClassBonusFor(Player player) => player != null && homeRoster.Contains(player) ? homeClassBonus : awayClassBonus;
+
         /// <summary>[TASK-KBO-180] 타석 번호 -> 작전. 같은 시드(randomSeed)로 다시 계산하면 지정 타석 직전까지는 결과가 같고, 그 타석부터
         /// 작전이 실제 확률에 반영된다(PlayBallController.ReplayWithTactic).</summary>
         public Dictionary<int, MatchTactic> Tactics { get; } = new Dictionary<int, MatchTactic>();
@@ -441,6 +454,12 @@ namespace KBOManager.Engine
         {
             homeState = BuildTeamState(homeRoster, homeTeamName);
             awayState = BuildTeamState(awayRoster, awayTeamName);
+
+            // [TASK-KBO-183] 'OVR 7 격차 법칙' - ΔOVR ≤ 7이면 가변 승부(보정 없음), ≥ 8이면 상위 구단에 체급 우위 세부 스탯 가산.
+            HomeTeamOvr = homeModifiers.TeamOvr > 0 ? homeModifiers.TeamOvr : TeamOvrCalculator.Calculate(homeRoster).Total;
+            AwayTeamOvr = awayModifiers.TeamOvr > 0 ? awayModifiers.TeamOvr : TeamOvrCalculator.Calculate(awayRoster).Total;
+            homeClassBonus = OvrGapLaw.ClassAdvantageBonus(HomeTeamOvr, AwayTeamOvr);
+            awayClassBonus = OvrGapLaw.ClassAdvantageBonus(AwayTeamOvr, HomeTeamOvr);
             this.homeTeamName = homeTeamName;
             this.awayTeamName = awayTeamName;
             isPostSeasonMatch = isPostSeason;
@@ -1088,7 +1107,7 @@ namespace KBOManager.Engine
             stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
 
             var batterModifiers = GetModifiersFor(batter);
-            stats = AddTeamBuff(stats, batterModifiers.TotalBuff);
+            stats = AddTeamBuff(stats, batterModifiers.TotalBuff + ClassBonusFor(batter)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
             if (batterModifiers.SetDeckProfile != null)
             {
                 // [TASK-KBO-172] 세트덱 대상 한정 효과(타순 1~9 기준 상위/중심/하위 타선 등)를 추가 가산한다.
@@ -1132,7 +1151,7 @@ namespace KBOManager.Engine
             stats = ApplyPitcherSkills(stats, batter, EffectTarget.Opponent, self: batter, opponent: pitcher, state);
 
             var pitcherModifiers = GetModifiersFor(pitcher);
-            stats = AddTeamBuff(stats, pitcherModifiers.TotalBuff);
+            stats = AddTeamBuff(stats, pitcherModifiers.TotalBuff + ClassBonusFor(pitcher)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
             if (pitcherModifiers.SetDeckProfile != null)
             {
                 stats = AddTeamBuff(stats, pitcherModifiers.SetDeckProfile.GetPitcherBonus(pitcher)); // [TASK-KBO-172]
