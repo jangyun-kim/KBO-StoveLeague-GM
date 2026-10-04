@@ -602,22 +602,20 @@ namespace KBOManager.Managers
         // ----- 팀 OVR (GDD v4.0 → [TASK-KBO-183] TeamOvrCalculator) -----
 
         /// <summary>
-        /// 구단 OVR = round(주전 15인 평균 x 0.8 + 후보 10인 평균 x 0.2) + 팀 시너지, 상한 144.
-        /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 + 마무리 / 후보 10 = 나머지 타자 상위 4 + 나머지 구원 상위 6(TASK-031 공식 그대로).
-        /// [TASK-KBO-183] 계산은 Models.TeamOvrCalculator(AI 구단 생성·경기 엔진 'OVR 7 격차 법칙'과 공용 SSOT)로 옮겼다. 팀 시너지는
-        /// 세트덱 스코어 → OVR(+0~13, 기본 세트덱 ≈ +1, 200P = +13) + 치어리더 6인 편성(+0~4, 6인 LEGEND = +4)이다 - 예전 "모든 능력치 +N"
-        /// 누적합(200P = +16)을 그대로 더하던 방식은 온보딩 직후 기본 세트덱만으로 +5가 붙어 아마추어 리그(57~64)를 벗어났다.
+        /// [TASK-KBO-184] 구단 OVR = 라인업(28인) 선수 최종 표시 OVR의 산술 평균(Models.TeamOvrCalculator - AI 구단 생성·경기 엔진
+        /// 'OVR 7 격차 법칙'과 공용 SSOT). 선수 최종 표시 OVR = 카드 기본 + 4대 성장 + 정적 시너지(세트덱 OVR x 응원단장 보강), 상한 144.
+        /// 치어리더 직접 가산(+4)과 컨디션 배율은 들어가지 않는다 - 구단 OVR은 라인업/성장/세트덱이 바뀔 때만 변하는 정적 수치다.
         /// </summary>
         public int CalculateTeamOVR() => TeamOvrBreakdown().Total;
 
-        /// <summary>[TASK-KBO-183] 구단 OVR 구성(기본 / 세트덱 OVR / 치어리더 OVR).</summary>
+        /// <summary>[TASK-KBO-184] 구단 OVR 구성(시너지 제외 평균 / 세트덱 OVR / 응원단장 보강 / 라인업 평균 Total).</summary>
         public TeamOvrCalculator.Breakdown TeamOvrBreakdown()
         {
             string favoriteTeamName = favoriteTeam != Team.None ? favoriteTeam.ToString() : null;
             return TeamOvrCalculator.Calculate(roster, favoriteTeamName, CheerSquadSlots, SetDeckSelection);
         }
 
-        /// <summary>[TASK-KBO-183] 현재 유저 구단의 팀 시너지 OVR(세트덱 + 치어리더) - 선수 관리/상세 화면의 "시너지 +M".</summary>
+        /// <summary>[TASK-KBO-184] 현재 유저 라인업 선수 1인당 정적 시너지 OVR(세트덱 OVR x 응원단장 보강) - 선수 관리/상세 화면의 "시너지 +M".</summary>
         public int CurrentTeamSynergyOvr => roster.Count > 0 ? TeamOvrBreakdown().Synergy : 0;
 
         /// <summary>

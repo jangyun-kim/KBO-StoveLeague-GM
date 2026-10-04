@@ -273,7 +273,7 @@ namespace KBOManager.Controllers
             if (manager == null)
             {
                 Debug.LogWarning("[OnboardingUIController] OnboardingManager가 없어 단장 취임을 진행할 수 없습니다 - " +
-                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~182)'을 실행하십시오.");
+                    "'KBO Manager/Setup/Apply Latest UI (TASK-168~184)'을 실행하십시오.");
                 return;
             }
             manager.CompleteOnboarding(selectedTeam, Nickname, OnboardingRules.GiftTemplateIds[selectedGift]);

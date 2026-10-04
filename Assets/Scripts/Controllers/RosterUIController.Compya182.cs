@@ -31,6 +31,12 @@ namespace KBOManager.Controllers
         [SerializeField] private GameObject storagePage;
         [SerializeField] private Transform storageContainer;
         [SerializeField] private Text storageInfoText;
+        [Header("TASK-KBO-184 - 보관 선수 필터/정렬(구 선수 관리 탭 보유 리스트)")]
+        [SerializeField] private Button storageScopeButton;
+        [SerializeField] private Button storageTeamButton;
+        [SerializeField] private Button storagePositionButton;
+        [SerializeField] private Button storageGradeButton;
+        [SerializeField] private Button storageSortButton;
         [Tooltip("BatterPosition 순서(C, 1B, 2B, 3B, SS, LF, CF, RF, DH)의 다이아몬드 자리.")]
         [SerializeField] private RectTransform[] diamondSlots = new RectTransform[9];
         [SerializeField] private GameObject diamondRoot;
@@ -73,6 +79,8 @@ namespace KBOManager.Controllers
         [SerializeField] private SkillDB skillDB;
 
         private CompyaTab compyaTab = CompyaTab.Batter;
+        private readonly StorageFilter storageFilter = new StorageFilter();
+        private const int StorageDisplayLimit = 150;
         private bool fullView;
         private LineupMode mode = LineupMode.None;
         private Player orderFirstPick;
@@ -88,6 +96,11 @@ namespace KBOManager.Controllers
         {
             if (!useCompyaLayout) return;
             if (storageTabButton != null) storageTabButton.onClick.AddListener(() => ShowCompyaTab(CompyaTab.Storage));
+            BindStorageFilter(storageScopeButton, storageFilter.CycleScope);
+            BindStorageFilter(storageTeamButton, storageFilter.CycleTeam);
+            BindStorageFilter(storagePositionButton, storageFilter.CyclePosition);
+            BindStorageFilter(storageGradeButton, storageFilter.CycleGrade);
+            BindStorageFilter(storageSortButton, storageFilter.CycleSort);
             if (basicViewButton != null) basicViewButton.onClick.AddListener(() => SetFullView(false));
             if (fullViewButton != null) fullViewButton.onClick.AddListener(() => SetFullView(!fullView));
             if (defenseChangeButton != null) defenseChangeButton.onClick.AddListener(() => ToggleMode(LineupMode.Defense));
@@ -214,14 +227,18 @@ namespace KBOManager.Controllers
                     entry.IsExtra ? "추가" : entry.Header + (entry.Header.Any(char.IsDigit) ? "번" : ""), false, stretch: false);
             }
 
-            var storage = StorageOrder(gm, roster);
-            foreach (var player in storage.Take(120))
+            // [TASK-KBO-184] 보유 선수 리스트(구 [선수 관리] 탭) - 범위/구단/포지션/등급 필터 + 정렬. 라인업 선수는 "라인업" 라벨로 구분한다.
+            var storage = compyaTab == CompyaTab.Storage ? storageFilter.Apply(gm.Inventory, roster, gm.FavoriteTeam) : new List<Player>();
+            var inLineup = new HashSet<Player>(roster);
+            foreach (var player in storage.Take(StorageDisplayLimit))
             {
+                bool lineupCard = inLineup.Contains(player);
                 var entry = new LineupView.Entry { Player = player, Header = player.Template.IsPitcher ? RoleShort(player.Template.PitcherRole) : RosterSlotLayout.PositionLabel(player.Template.BatterPosition) };
-                SpawnCompyaCell(entry, storageContainer, spawnedStorageCards, nativeSize, "", false, stretch: false, isStorage: true);
+                SpawnCompyaCell(entry, storageContainer, spawnedStorageCards, nativeSize, lineupCard ? "라인업" : "", false, stretch: false, isStorage: !lineupCard);
             }
             if (storageInfoText != null)
-                storageInfoText.text = $"보관 선수 {storage.Count}명 · 선택 구단 우선 / OVR 순" + (storage.Count > 120 ? " (상위 120명 표시)" : "");
+                storageInfoText.text = $"{storageFilter.ScopeLabel} {storage.Count}명 · {storageFilter.Summary}" + (storage.Count > StorageDisplayLimit ? $" (상위 {StorageDisplayLimit}명 표시)" : "");
+            RefreshStorageFilterLabels();
 
             if (batterTabButton != null) CompyaUiKit.SetButtonText(batterTabButton, "타자");
             if (pitcherTabButton != null) CompyaUiKit.SetButtonText(pitcherTabButton, "투수");
@@ -235,13 +252,23 @@ namespace KBOManager.Controllers
             UpdateToolbarHint();
         }
 
-        private static List<Player> StorageOrder(GameManager gm, IReadOnlyList<Player> roster)
+        private void BindStorageFilter(Button button, System.Action cycle)
         {
-            var inRoster = new HashSet<Player>(roster);
-            return gm.Inventory.Where(p => p?.Template != null && !inRoster.Contains(p))
-                .OrderByDescending(p => p.Template.Team == gm.FavoriteTeam)
-                .ThenByDescending(p => p.CalculateOVR(false))
-                .ToList();
+            if (button == null) return;
+            button.onClick.AddListener(() =>
+            {
+                cycle();
+                RefreshRoster();
+            });
+        }
+
+        private void RefreshStorageFilterLabels()
+        {
+            CompyaUiKit.SetButtonText(storageScopeButton, storageFilter.ScopeLabel);
+            CompyaUiKit.SetButtonText(storageTeamButton, storageFilter.Team == Team.None ? "전체 구단" : CompyaUiKit.ShortName(storageFilter.Team));
+            CompyaUiKit.SetButtonText(storagePositionButton, storageFilter.PositionLabel);
+            CompyaUiKit.SetButtonText(storageGradeButton, storageFilter.GradeLabel);
+            CompyaUiKit.SetButtonText(storageSortButton, storageFilter.SortLabel);
         }
 
         private static string RoleShort(PitcherRole role) => role switch

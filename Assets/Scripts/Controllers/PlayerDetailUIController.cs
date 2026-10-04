@@ -162,7 +162,9 @@ namespace KBOManager.Controllers
                 return;
             }
 
-            playerManagementUIController.Show(currentPlayer);
+            var player = currentPlayer;
+            Hide(); // [TASK-KBO-184] 캔버스 최상위 상세 창이 성장 센터를 가리지 않게 닫고 연다
+            playerManagementUIController.Show(player);
         }
 
         /// <summary>[명령서 4항] 탭 버튼 클릭 시 해당 탭의 ContentPanel만 SetActive(true)하고 나머지

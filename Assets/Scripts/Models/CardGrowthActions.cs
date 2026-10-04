@@ -92,7 +92,8 @@ namespace KBOManager.Models
             return $"기본 OVR {player.BaseOvr}  ·  성장 +{player.GetStatGrowth()}/{player.MaxGrowth}  ·  시너지 +{teamSynergyOvr}  ·  " +
                    $"현재 {current}  ·  최대 잠재 {player.MaxPotentialOvr}\n" +
                    $"강화 {player.ReinforceGrowth}/{CardGrowthRules.MaxReinforceGrowth}  한계 돌파 {player.LimitBreakGrowth}/{CardGrowthRules.LimitBreakCap(g)}  " +
-                   $"특훈 {player.TrainingGrowth}/{CardGrowthRules.TrainingCap(g)}  각성 {player.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(g)} ({player.AwakenLabel})";
+                   $"특훈 {player.TrainingGrowth}/{CardGrowthRules.TrainingCap(g)}  각성 {player.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(g)} ({player.AwakenLabel})\n" +
+                   CardGrowthRules.AwakenStageNote(g, player.AwakenLevel);
         }
     }
 }

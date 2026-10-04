@@ -115,86 +115,87 @@ namespace KBOManager.Models
     }
 
     /// <summary>
-    /// [TASK-KBO-183] 구단 OVR에 더해지는 팀 시너지(세트덱 최대 +13 · 치어리더 6인 최대 +4 = +17)와 최종 OVR 상한(144).
-    /// 세트덱 버프 구간표(SetDeckBuffTable, 30P~200P)는 경기 엔진의 세부 스탯 버프로 그대로 쓰이고, 구단/카드 OVR 표기에는
-    /// 아래 스코어 → OVR 환산표를 쓴다 - 기본 세트덱(2026 LIVE 27인 ≈ 104~108P)은 +1, 200P 풀 세트덱은 +13이다.
-    /// 치어리더는 기본적으로 경기 조건부 효과(CheerSquadEffects)지만, 세트덱 기준 구단과 시너지가 맞는 6인 편성의 등급 단계 합
-    /// (LIVE 1 / ICON 2 / LEGEND·시즌 한정 3, 최대 18)을 구단 OVR +0~4로 환산해 반영한다(6인 LEGEND = +4).
+    /// [TASK-KBO-184] 선수 최종 표시 OVR에 반영되는 정적 시너지(세트덱 스코어 → OVR +0~13, 응원단장 세트덱 보강 적용률)와 최종 OVR 상한(144).
+    /// 세트덱 버프 구간표(SetDeckBuffTable, 30P~200P)는 경기 엔진의 세부 스탯 버프로 그대로 쓰이고, 선수/구단 OVR 표기에는 아래
+    /// 스코어 → OVR 환산표를 쓴다 - 기본 세트덱(2026 LIVE 27인 ≈ 104~108P)은 +1, 200P 풀 세트덱은 +13이다.
+    /// TASK-183의 "치어리더 6인 등급 합 → 구단 OVR +0~4 직접 가산"은 폐기했다. 치어리더는 응원단장(1번 슬롯)의 "세트덱 보강"
+    /// 적용률(+3%/+6%/+10%)만 세트덱 OVR에 정적으로 곱해지고(라인업·편성이 바뀌기 전엔 변하지 않는 값), 나머지 역할(홈/연패/열세/접전)은
+    /// 경기 안 조건부 효과로만 작동한다 - 선수·구단 OVR은 컨디션이나 경기 상황으로 바뀌지 않는다.
     /// </summary>
     public static class TeamSynergyRules
     {
         public const int MaxSetDeckOvr = 13;
-        public const int MaxCheerOvr = 4;
-        public const int MaxSynergyOvr = MaxSetDeckOvr + MaxCheerOvr; // 17
+        /// <summary>정적 시너지 최대치 = 세트덱 OVR 최대(+13). 응원단장 보강은 반올림 후 최대 +1이지만 최종 상한(144)에서 흡수된다.</summary>
+        public const int MaxSynergyOvr = MaxSetDeckOvr;
         public const int MaxFinalOvr = 144;
 
-        /// <summary>세트덱 스코어 → 구단 OVR 가산 단계(도달 구간 수 = 가산치). GenerateKBODatabase.py SETDECK_OVR_THRESHOLDS와 동일.</summary>
+        /// <summary>세트덱 스코어 → 선수 OVR 가산 단계(도달 구간 수 = 가산치). GenerateKBODatabase.py SETDECK_OVR_THRESHOLDS와 동일.</summary>
         public static readonly IReadOnlyList<int> SetDeckOvrThresholds = new[] { 100, 110, 120, 130, 140, 150, 160, 170, 180, 185, 190, 195, 200 };
 
         public static int SetDeckOvrBonus(int setDeckScore) => SetDeckOvrThresholds.Count(t => setDeckScore >= t);
 
-        public static int CheerSquadOvrBonus(IReadOnlyList<Cheerleader> slots, Team deckTeam)
+        /// <summary>[TASK-KBO-184] 응원단장 세트덱 보강 적용률(%) - 1번 슬롯 치어리더가 세트덱 기준 구단과 같을 때만(LIVE 3 / ICON 6 / LEGEND 10).</summary>
+        public static int LeaderAmplifyPercent(IReadOnlyList<Cheerleader> slots, Team deckTeam)
         {
-            int tierSum = CheerSquad.Filled(slots).Where(c => CheerleaderSynergy.IsActive(c, deckTeam)).Sum(c => CheerSquad.Tier(c.Grade));
-            int maxSum = CheerSquad.SlotCount * CheerSquad.Tier(CheerleaderGrade.LEGEND);
-            return Math.Min(MaxCheerOvr, tierSum * MaxCheerOvr / maxSum);
+            if (slots == null || slots.Count == 0) return 0;
+            var leader = slots[(int)CheerRole.Leader];
+            if (CheerSquad.IsEmpty(leader) || !CheerleaderSynergy.IsActive(leader, deckTeam)) return 0;
+            return CheerSquad.Tier(leader.Grade) switch { 3 => 10, 2 => 6, _ => 3 };
         }
+
+        /// <summary>[TASK-KBO-184] 라인업 전원에게 같은 값으로 붙는 정적 시너지 OVR = round(세트덱 OVR x (1 + 응원단장 적용률)).</summary>
+        public static int StaticSynergyOvr(int setDeckScore, int leaderAmplifyPercent = 0)
+        {
+            int setDeckOvr = SetDeckOvrBonus(setDeckScore);
+            return (int)Math.Round(setDeckOvr * (100 + Math.Max(0, leaderAmplifyPercent)) / 100.0, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>[TASK-KBO-184] 선수 최종 표시 OVR = min(144, 카드 기본 + 4대 성장(컨디션 중립) + 정적 시너지).</summary>
+        public static int PlayerFinalOvr(Player player, int staticSynergyOvr) =>
+            player?.Template == null ? 0 : ClampFinal(player.CalculateNeutralOVR() + staticSynergyOvr);
 
         public static int ClampFinal(int ovr) => ovr > MaxFinalOvr ? MaxFinalOvr : ovr;
     }
 
     /// <summary>
-    /// [TASK-KBO-183] 구단 OVR 계산(유저/AI 공용, GameManager.CalculateTeamOVR의 SSOT).
-    /// 구단 OVR = round(주전 15인 평균 x 0.8 + 후보 10인 평균 x 0.2) + 세트덱 OVR(+0~13) + 치어리더 OVR(+0~4), 상한 144.
-    /// 주전 15 = 포지션별 최고 OVR 타자 9 + 선발투수 + 마무리 / 후보 10 = 나머지 타자 상위 4 + 나머지 구원 상위 6(TASK-031 공식 그대로).
-    /// 선수 OVR은 컨디션 중립(Player.CalculateNeutralOVR = 기본 + 성장)이다 - 구단 OVR은 리그 배정과 격차 법칙의 "기본 OVR"이라 일일 컨디션에 흔들리지 않는다.
+    /// [TASK-KBO-184] 구단 OVR 단일 공식(유저/AI 공용, GameManager.CalculateTeamOVR의 SSOT):
+    ///   구단 OVR = round( 라인업(28인) 선수 최종 표시 OVR의 산술 평균 ),
+    ///   선수 최종 표시 OVR = min(144, 카드 base_ovr + 강화·한계 돌파·특훈·각성 성장 + 정적 시너지(세트덱 OVR x 응원단장 보강)).
+    /// 컨디션(일일 ±5%)·연패·열세·접전 같은 가변 요소는 선수/구단 OVR에 개입하지 않는다(Player.CalculateNeutralOVR 사용).
+    /// TASK-183의 "주전 15 x 0.8 + 후보 10 x 0.2 + 세트덱 + 치어리더(+4)" 가중 공식은 폐기했다.
     /// </summary>
     public static class TeamOvrCalculator
     {
-        private const int BenchBatterQuota = 4;
-        private const int BenchReliefQuota = 6;
+        /// <summary>시너지 없이 라인업 선수 OVR(기본 + 성장)의 산술 평균(반올림).</summary>
+        public static int BaseOvr(IReadOnlyList<Player> roster) => AverageFinalOvr(roster, 0);
 
-        public static int BaseOvr(IReadOnlyList<Player> roster)
+        /// <summary>라인업 전원의 최종 표시 OVR(기본 + 성장 + staticSynergyOvr, 각자 144 상한) 산술 평균(반올림).</summary>
+        public static int AverageFinalOvr(IReadOnlyList<Player> roster, int staticSynergyOvr)
         {
             var valid = (roster ?? Array.Empty<Player>()).Where(p => p?.Template != null).ToList();
-            var batters = valid.Where(p => !p.Template.IsPitcher).ToList();
-            var pitchers = valid.Where(p => p.Template.IsPitcher).ToList();
-
-            var starterBatters = new List<Player>();
-            foreach (BatterPosition position in Enum.GetValues(typeof(BatterPosition)))
-            {
-                var pick = batters.Where(p => p.Template.BatterPosition == position && !starterBatters.Contains(p))
-                    .OrderByDescending(p => p.CalculateNeutralOVR()).FirstOrDefault();
-                if (pick != null) starterBatters.Add(pick);
-            }
-            var benchBatters = batters.Except(starterBatters).OrderByDescending(p => p.CalculateNeutralOVR()).Take(BenchBatterQuota);
-            var startingPitchers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).ToList();
-            var closers = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.Closer).ToList();
-            var benchRelief = pitchers.Except(startingPitchers).Except(closers).OrderByDescending(p => p.CalculateNeutralOVR()).Take(BenchReliefQuota);
-
-            var starters = starterBatters.Concat(startingPitchers).Concat(closers).ToList();
-            var bench = benchBatters.Concat(benchRelief).ToList();
-            double starterAvg = starters.Count > 0 ? starters.Average(p => p.CalculateNeutralOVR()) : 0;
-            double benchAvg = bench.Count > 0 ? bench.Average(p => p.CalculateNeutralOVR()) : 0;
-            return (int)Math.Round(starterAvg * 0.8 + benchAvg * 0.2, MidpointRounding.AwayFromZero);
+            if (valid.Count == 0) return 0;
+            double avg = valid.Average(p => TeamSynergyRules.PlayerFinalOvr(p, staticSynergyOvr));
+            return (int)Math.Round(avg, MidpointRounding.AwayFromZero);
         }
 
         public readonly struct Breakdown
         {
-            public readonly int Base, SetDeck, Cheer, SetDeckScore;
-            public Breakdown(int b, int s, int c, int score) { Base = b; SetDeck = s; Cheer = c; SetDeckScore = score; }
+            /// <summary>Base = 시너지 제외 라인업 평균, SetDeck = 세트덱 OVR(+0~13), Cheer = 응원단장 보강분(정적), Synergy = 선수 1인당 정적 시너지.</summary>
+            public readonly int Base, SetDeck, Cheer, SetDeckScore, Total;
+            public Breakdown(int b, int s, int c, int score, int total) { Base = b; SetDeck = s; Cheer = c; SetDeckScore = score; Total = total; }
             public int Synergy => SetDeck + Cheer;
-            public int Total => TeamSynergyRules.ClampFinal(Base + Synergy);
         }
 
         public static Breakdown Calculate(IReadOnlyList<Player> roster, string favoriteTeam = null, IReadOnlyList<Cheerleader> cheerSlots = null,
             SetDeckSelection selection = null)
         {
             var list = (roster ?? Array.Empty<Player>()).Where(p => p?.Template != null).ToList();
-            if (list.Count == 0) return new Breakdown(0, 0, 0, 0);
+            if (list.Count == 0) return new Breakdown(0, 0, 0, 0, 0);
             var setDeck = SetDeckEvaluator.Evaluate(list, favoriteTeam, selection);
-            int cheer = cheerSlots != null ? TeamSynergyRules.CheerSquadOvrBonus(cheerSlots, setDeck.DeckTeam) : 0;
-            return new Breakdown(BaseOvr(list), TeamSynergyRules.SetDeckOvrBonus(setDeck.Score), cheer, setDeck.Score);
+            int setDeckOvr = TeamSynergyRules.SetDeckOvrBonus(setDeck.Score);
+            int amplify = TeamSynergyRules.LeaderAmplifyPercent(cheerSlots, setDeck.DeckTeam);
+            int synergy = TeamSynergyRules.StaticSynergyOvr(setDeck.Score, amplify);
+            return new Breakdown(BaseOvr(list), setDeckOvr, synergy - setDeckOvr, setDeck.Score, AverageFinalOvr(list, synergy));
         }
     }
 

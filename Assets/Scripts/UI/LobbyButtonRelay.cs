@@ -26,6 +26,7 @@ namespace KBOManager.UI
         private void Fire()
         {
             if (toggleTarget != null) toggleTarget.SetActive(!toggleTarget.activeSelf);
+            else if (useScreen && screen == ScreenType.Inventory) Controllers.PlayerManagementUIController.OpenGrowthHub(); // [TASK-KBO-184] 선수단 강화 = 성장 센터
             else if (useScreen) UIManager.Instance?.ShowScreen(screen);
         }
     }

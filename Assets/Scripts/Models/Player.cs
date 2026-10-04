@@ -174,7 +174,7 @@ namespace KBOManager.Models
         /// <summary>[TASK-KBO-183] 훈련(특훈) 성장(등급 상한까지).</summary>
         public int TrainingGrowth => Template != null ? Math.Min(Math.Max(0, TrainingLevel), CardGrowthRules.TrainingCap(Template.Grade)) : 0;
 
-        /// <summary>[TASK-KBO-183] 각성 성장(유효 각성 단계 / 2, 등급 상한까지 - 초월 = +5).</summary>
+        /// <summary>[TASK-KBO-184] 각성 성장(임계점 계단 곡선 CardGrowthRules.AwakenCurve - 상위 시즌 3각 +5 / 6각 +10 / 9각 +14 / 초월 +15).</summary>
         public int AwakenGrowth => Template != null ? CardGrowthRules.AwakenGrowthFor(Template.Grade, AwakenLevel) : 0;
 
         /// <summary>
@@ -196,7 +196,7 @@ namespace KBOManager.Models
         /// <summary>[TASK-KBO-183] 이 카드 등급의 순수 성장 상한.</summary>
         public int MaxGrowth => Template != null ? CardGrowthRules.MaxTotalGrowth(Template.Grade) : 0;
 
-        /// <summary>[TASK-KBO-183] 최대 잠재 OVR = 기본 + 순수 성장 상한 + 팀 시너지 최대(+17), 상한 144.</summary>
+        /// <summary>[TASK-KBO-184] 최대 잠재 OVR = 기본 + 순수 성장 상한 + 정적 시너지 최대(세트덱 +13), 상한 144.</summary>
         public int MaxPotentialOvr => Template != null ? CardGrowthRules.MaxPotentialOvr(Template.Grade, BaseOvr) : 0;
 
         /// <summary>
@@ -251,8 +251,8 @@ namespace KBOManager.Models
                 average *= setDeckBonusMultiplier;
             }
 
-            average *= ConditionMultiplier(CurrentCondition);
-
+            // [TASK-KBO-184] 컨디션 배율 제거 - 선수 OVR은 컨디션·경기 상황에 흔들리지 않는 정적 수치다(컨디션은 MatchEngine이
+            // 타석마다 세부 스탯에 ConditionStatBonus로만 반영하는 경기 안 가변 요소).
             return Mathf.RoundToInt(average);
         }
 
@@ -265,15 +265,9 @@ namespace KBOManager.Models
             return Mathf.RoundToInt(average);
         }
 
-        /// <summary>5단계를 -5%~+5% 사이에서 대칭 선형 보간한다: Poor -5%, BelowAverage -2.5%,
-        /// Normal 0%, Good +2.5%, Excellent +5%.</summary>
-        private static float ConditionMultiplier(PlayerCondition condition)
-        {
-            int maxIndex = Enum.GetValues(typeof(PlayerCondition)).Length - 1; // Excellent의 인덱스 (4)
-            int midIndex = maxIndex / 2; // Normal의 인덱스 (2)
-            float step = (int)condition - midIndex; // -2 ~ +2
-            return 1f + ConditionMaxBonusPercent * (step / midIndex);
-        }
+        /// <summary>[TASK-KBO-184] 컨디션 → 경기 중 세부 스탯 가산(Poor -2 / BelowAverage -1 / Normal 0 / Good +1 / Excellent +2).
+        /// MatchEngine만 쓴다 - 표시 OVR/구단 OVR에는 들어가지 않는다.</summary>
+        public int ConditionStatBonus => (int)CurrentCondition - (Enum.GetValues(typeof(PlayerCondition)).Length - 1) / 2;
 
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
         private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;

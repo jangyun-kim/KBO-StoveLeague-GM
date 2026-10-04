@@ -758,7 +758,8 @@ namespace KBOManager.Controllers
             box.RowValues[0].text = CompyaGameTracker.FormatAverage(line.Average);
             for (int r = 1; r < 3; r++) { box.RowLabels[r].text = ""; box.RowValues[r].text = ""; }
 
-            var recent = line.Badges.Skip(Mathf.Max(0, line.Badges.Count - 6)).ToList();
+            // [TASK-KBO-184] 이번 이닝 타석 결과만(이전 이닝 결과는 공수 교대 때 초기화 - 누적은 기록 팝업).
+            var recent = line.InningBadges.Skip(Mathf.Max(0, line.InningBadges.Count - 6)).ToList();
             for (int b = 0; b < 6; b++)
             {
                 bool on = b < recent.Count;
@@ -803,10 +804,12 @@ namespace KBOManager.Controllers
                 row.Ovr.text = player != null ? Ovr(player).ToString() : "";
                 row.OvrBox.enabled = player != null;
 
-                bool hasResult = player != null && line.Badges.Count > 0 && !highlighted;
+                // [TASK-KBO-184] 이번 이닝에 실제로 타석에 선 선수의 결과만 표시한다(공수 교대 시 초기화).
+                var inningBadges = line.InningBadges;
+                bool hasResult = player != null && inningBadges.Count > 0 && !highlighted;
                 row.Badge.enabled = hasResult;
-                row.BadgeText.text = hasResult ? line.Badges[line.Badges.Count - 1].Label : "";
-                if (hasResult) row.Badge.color = line.Badges[line.Badges.Count - 1].Positive ? BadgeBlue : BadgeRed;
+                row.BadgeText.text = hasResult ? inningBadges[inningBadges.Count - 1].Label : "";
+                if (hasResult) row.Badge.color = inningBadges[inningBadges.Count - 1].Positive ? BadgeBlue : BadgeRed;
             }
         }
 
@@ -1452,22 +1455,18 @@ namespace KBOManager.Controllers
             SetRoundRow(r2Rows[0], awayTeam, homeTeam, awayRuns.ToString(), homeRuns.ToString(), awayRuns, homeRuns,
                 CompyaUiKit.Stadium(homeTeam), awayTeam == user || homeTeam == user);
 
-            // 2~5행: 리그 엔진은 우리 구단 경기만 시뮬레이션하므로(타 구장 경기 결과가 존재하지 않음) 가짜 점수를 만들지 않고,
-            // 나머지 8개 구단을 현재 순위 순으로 짝지어 각 구단의 시즌 승수를 같은 자리에 표기한다(행 하단 = 홈 구장 · 순위).
-            var others = league != null
-                ? league.GetStandings().Select(s => s.Team).Where(team => team != awayTeam && team != homeTeam && team != Team.None).ToList()
-                : new List<Team>();
+            // 2~5행: [TASK-KBO-184] 같은 라운드에 LeagueManager가 자동 진행한 타 구장 4경기의 실제 스코어(예: KIA 5 : 3 LG).
             var standings = league != null ? league.GetStandings() : new List<TeamInfo>();
+            var otherGames = league != null ? league.LastRoundOtherFixtures : null;
             for (int r = 1; r < 5; r++)
             {
-                int a = (r - 1) * 2, h = a + 1;
-                if (h >= others.Count) { SetRoundRow(r2Rows[r], Team.None, Team.None, "", "", 0, 0, "", false); continue; }
-                var awayInfo = league.GetTeamInfo(others[a]);
-                var homeInfo = league.GetTeamInfo(others[h]);
-                int awayRank = standings.FindIndex(s => s.Team == others[a]) + 1;
-                int homeRank = standings.FindIndex(s => s.Team == others[h]) + 1;
-                SetRoundRow(r2Rows[r], others[a], others[h], $"{awayInfo?.Wins ?? 0}", $"{homeInfo?.Wins ?? 0}",
-                    awayInfo?.Wins ?? 0, homeInfo?.Wins ?? 0, $"시즌 승수 · {awayRank}위 vs {homeRank}위", false);
+                var game = otherGames != null && r - 1 < otherGames.Count ? otherGames[r - 1] : null;
+                if (game?.Result == null) { SetRoundRow(r2Rows[r], Team.None, Team.None, "", "", 0, 0, "", false); continue; }
+                int away = game.Result.AwayTotalScore, home = game.Result.HomeTotalScore;
+                int awayRank = standings.FindIndex(s => s.Team == game.AwayTeam) + 1;
+                int homeRank = standings.FindIndex(s => s.Team == game.HomeTeam) + 1;
+                SetRoundRow(r2Rows[r], game.AwayTeam, game.HomeTeam, away.ToString(), home.ToString(), away, home,
+                    $"{CompyaUiKit.Stadium(game.HomeTeam)} · {awayRank}위 vs {homeRank}위", false);
             }
 
             var next = league != null ? league.PeekNextFixture() : null;

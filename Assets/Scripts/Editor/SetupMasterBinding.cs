@@ -62,7 +62,12 @@ namespace KBOManager.EditorTools
         /// [TASK-KBO-183] 메뉴 이름을 TASK-168~183으로 갱신. 마지막 단계로 SetupTask183.ApplyAll()을 실행한다 - 선수 관리 허브 4대 성장
         /// ([훈련(특훈)] [한계 돌파] [각성] 개통 타일 + 성장 요약 텍스트 + 각성 재료 팝업 바인딩), 상세 정보 성장 요약 줄.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~183)")]
+        /// <remarks>
+        /// [TASK-KBO-184] 메뉴 이름을 TASK-168~184로 갱신. 마지막 단계로 SetupTask184.ApplyAll()을 실행한다 - 하단 [선수 관리] = 성장 센터
+        /// (GrowthCenterView: 강화/각성/한계 돌파/훈련·특훈 4탭 + 대상 변경 + 재료 선택), 라인업 [보관 선수] 탭 보유 리스트 필터/정렬 바.
+        /// 배치 실행(RunBatchApplyLatestUI)은 끝에 SampleScene을 저장해 에디터를 열면 SampleScene이 바로 보이게 한다(SampleSceneGuard).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~184)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -84,17 +89,19 @@ namespace KBOManager.EditorTools
             SetupTask181.ApplyAll();
             SetupTask182.ApplyAll();
             SetupTask183.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~183 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask184.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~184 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod
         /// KBOManager.EditorTools.SetupMasterBinding.RunBatchApplyLatestUI -quit`) - 씬을 열어 ApplyLatestUI() 후 저장한다.</summary>
         public static void RunBatchApplyLatestUI()
         {
-            const string scenePath = "Assets/Scenes/SampleScene.unity";
-            var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            var scene = EditorSceneManager.OpenScene(SampleSceneGuard.ScenePath, OpenSceneMode.Single);
             ApplyLatestUI();
             bool saved = EditorSceneManager.SaveScene(scene);
+            // [TASK-KBO-184] 마지막 단계 - SampleScene을 열린 상태로 저장해 둔다(에디터 재실행 시 Untitled 대신 SampleScene).
+            saved &= SampleSceneGuard.EnsureOpen(save: true);
             Debug.Log(saved
                 ? "[SetupMasterBinding] RunBatchApplyLatestUI 완료 - 씬 저장 성공."
                 : "[SetupMasterBinding] RunBatchApplyLatestUI 완료했으나 씬 저장 실패.");

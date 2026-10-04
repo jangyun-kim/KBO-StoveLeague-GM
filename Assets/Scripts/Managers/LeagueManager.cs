@@ -504,6 +504,9 @@ namespace KBOManager.Managers
             nextFixtureIndex++;
             RecordResult(standings[fixture.HomeTeam], standings[fixture.AwayTeam], fixture.Result);
 
+            // [TASK-KBO-184] 같은 경기일(라운드)의 타 구장 4경기(나머지 AI 8개 구단)를 자동 진행해 10개 구단 경기 수를 동기화한다.
+            SimulateOtherFixtures(fixture);
+
             // 체력 회복은 더 이상 "경기 1건이 끝났다"는 사실에 직접 반응하지 않는다 - LeagueCalendar가
             // 날짜를 넘기고, 그 결과로 발생하는 OnDayAdvanced 이벤트(HandleDayAdvanced)가 회복/컨디션
             // 갱신을 담당한다. 여기서는 오직 "경기 1건 = 하루 경과"를 캘린더에 통지만 한다.
@@ -664,6 +667,76 @@ namespace KBOManager.Managers
             BuildUserSchedule();
 
             return report;
+        }
+
+        // ------------------------------------------------------------------
+        // [TASK-KBO-184] 타 구장(AI 4경기) 자동 진행
+        // ------------------------------------------------------------------
+
+        /// <summary>[TASK-KBO-184] 가장 최근 라운드(유저 경기일)에 자동 진행된 타 구장 4경기 결과(결과 화면 2 - 타구장 경기 결과).</summary>
+        public IReadOnlyList<MatchFixture> LastRoundOtherFixtures => lastRoundOtherFixtures;
+        private readonly List<MatchFixture> lastRoundOtherFixtures = new List<MatchFixture>();
+
+        /// <summary>[TASK-KBO-184] 타 구장 경기까지 끝나 순위표가 갱신됐을 때(유저 경기 1건마다 1회) 발생한다.</summary>
+        public event Action OnRoundCompleted;
+
+        /// <summary>
+        /// [TASK-KBO-184] 유저 경기의 상대를 뺀 AI 8개 구단을 4경기로 짝짓는다(원형 라운드로빈 - 경기 번호마다 회전해 같은 대진이 연속으로
+        /// 몰리지 않고 시즌 전체에 고르게 퍼진다). 홈/원정도 경기 번호 홀짝으로 번갈아 배정한다. 순수 함수 - 단위 테스트 공용.
+        /// </summary>
+        public static List<(Team Home, Team Away)> PairOtherTeams(IReadOnlyList<Team> otherTeams, int gameNumber)
+        {
+            var pairs = new List<(Team, Team)>();
+            if (otherTeams == null || otherTeams.Count < 2) return pairs;
+            var teams = otherTeams.ToList();
+            int n = teams.Count - (teams.Count % 2); // 홀수면 마지막 1팀은 휴식
+            int rounds = n - 1;
+            int r = ((gameNumber % rounds) + rounds) % rounds;
+            // 원형 회전: 0번 고정, 나머지 1..n-1을 r칸 회전
+            var ring = new List<Team> { teams[0] };
+            for (int i = 0; i < n - 1; i++) ring.Add(teams[1 + (i + r) % (n - 1)]);
+            for (int i = 0; i < n / 2; i++)
+            {
+                var a = ring[i];
+                var b = ring[n - 1 - i];
+                bool swap = (gameNumber + i) % 2 == 1;
+                pairs.Add(swap ? (b, a) : (a, b));
+            }
+            return pairs;
+        }
+
+        /// <summary>[TASK-KBO-184] userFixture와 같은 라운드의 나머지 4경기를 MatchEngine으로 시뮬레이션하고 순위표(승·무·패)에 반영한다.</summary>
+        private void SimulateOtherFixtures(MatchFixture userFixture)
+        {
+            lastRoundOtherFixtures.Clear();
+            var others = standings.Keys
+                .Where(t => t != userFixture.HomeTeam && t != userFixture.AwayTeam)
+                .OrderBy(t => (int)t)
+                .ToList();
+            foreach (var (home, away) in PairOtherTeams(others, userFixture.GameNumber))
+            {
+                var fixture = new MatchFixture
+                {
+                    GameNumber = userFixture.GameNumber,
+                    HomeTeam = home,
+                    AwayTeam = away,
+                    Phase = userFixture.Phase,
+                };
+                SimulateFixture(fixture);
+                if (fixture.Result == null) continue;
+                RecordResult(standings[home], standings[away], fixture.Result);
+                lastRoundOtherFixtures.Add(fixture);
+            }
+            OnRoundCompleted?.Invoke();
+        }
+
+        /// <summary>[TASK-KBO-184] 1위 대비 게임차 = ((1위 승 - 팀 승) + (팀 패 - 1위 패)) / 2.</summary>
+        public float GamesBehind(Team team)
+        {
+            var table = GetStandings();
+            if (table.Count == 0 || !standings.TryGetValue(team, out var info)) return 0f;
+            var leader = table[0];
+            return ((leader.Wins - info.Wins) + (info.Losses - leader.Losses)) / 2f;
         }
 
         /// <summary>지정한 GameNumber까지(포함) 남은 스케줄을 한 번에 시뮬레이션한다. (빠른 진행용)</summary>

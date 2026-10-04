@@ -216,9 +216,12 @@ namespace KBOManager.Controllers
                     StartCoroutine(DirectResultRoutine(evt));
                 }
             }
-            else if (evt.Type == PlayEventType.HalfInningEnd && !evt.IsTopHalf && mode != PlayMode.Quick)
+            else if (evt.Type == PlayEventType.HalfInningEnd)
             {
-                StartCoroutine(SplashRoutine(tracker, evt.Inning));
+                // [TASK-KBO-184] 공수 교대 - 이전 하프이닝의 타구 궤적·결과 토스트 잔상을 지운다(타순 뱃지는 트래커가 비움).
+                ClearArc();
+                toastRoot.gameObject.SetActive(false);
+                if (!evt.IsTopHalf && mode != PlayMode.Quick) StartCoroutine(SplashRoutine(tracker, evt.Inning));
             }
         }
 

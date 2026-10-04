@@ -1100,6 +1100,7 @@ namespace KBOManager.Engine
         private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher, MatchState state)
         {
             var stats = batter.GetEffectiveBatterStats(); // Base + Growth
+            if (batter.ConditionStatBonus != 0) stats = AddTeamBuff(stats, batter.ConditionStatBonus); // [TASK-KBO-184] 컨디션 = 경기 안 가변 요소
 
             // 본인이 보유한 Target=Self 스킬
             stats = ApplyBatterSkills(stats, batter, EffectTarget.Self, self: batter, opponent: pitcher, state);
@@ -1141,6 +1142,7 @@ namespace KBOManager.Engine
         private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter, MatchState state)
         {
             var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
+            if (pitcher.ConditionStatBonus != 0) stats = AddTeamBuff(stats, pitcher.ConditionStatBonus); // [TASK-KBO-184] 컨디션 = 경기 안 가변 요소
 
             if (pitcher.IsLowStamina)
             {

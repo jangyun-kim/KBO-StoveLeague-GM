@@ -23,6 +23,9 @@ namespace KBOManager.Controllers
             public readonly List<AtBatResult> Results = new List<AtBatResult>();
             /// <summary>[TASK-KBO-180] 뱃지 표기(희생번트 등 작전 결과 포함)와 색(출루/진루 = true).</summary>
             public readonly List<(string Label, bool Positive)> Badges = new List<(string, bool)>();
+            /// <summary>[TASK-KBO-184] 현재 하프이닝의 타석 결과 뱃지만 - 공수 교대(HalfInningEnd)마다 비운다. 중계 화면(타순/AT BAT)은
+            /// 이 목록만 그리고, 경기 전체 누적(Badges/Results)은 기록 팝업에서만 쓴다.</summary>
+            public readonly List<(string Label, bool Positive)> InningBadges = new List<(string, bool)>();
             public float Average => AtBats == 0 ? 0f : (float)Hits / AtBats;
         }
 
@@ -113,7 +116,9 @@ namespace KBOManager.Controllers
                         var bat = t.BatOf(e.Batter);
                         bat.Results.Add(e.Result);
                         bool sacrifice = e.Tactic == MatchTactic.Bunt && e.Result == AtBatResult.Groundout;
-                        bat.Badges.Add(sacrifice ? ("희생번트", true) : (ResultLabel(e.Result), IsPositive(e.Result)));
+                        var badge = sacrifice ? ("희생번트", true) : (ResultLabel(e.Result), IsPositive(e.Result));
+                        bat.Badges.Add(badge);
+                        bat.InningBadges.Add(badge);
                         if (e.Result == AtBatResult.Walk) { bat.Walks++; team.B++; }
                         else if (sacrifice) bat.Sacrifices++; // 희생번트는 타수에 넣지 않는다
                         else bat.AtBats++;
@@ -187,6 +192,8 @@ namespace KBOManager.Controllers
                         var team = e.IsTopHalf ? t.Away : t.Home;
                         while (team.Runs.Count < e.Inning) team.Runs.Add(0);
                         halfEnded = true;
+                        // [TASK-KBO-184] 이닝(공수 교대) 종료 - 이전 하프이닝 타석 결과 잔상(삼진/뜬공/안타 뱃지)을 비운다.
+                        foreach (var line in t.Bat.Values) line.InningBadges.Clear();
                         break;
                     }
 

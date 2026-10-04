@@ -76,7 +76,7 @@ namespace KBOManager.EditorTools
                 UnityEngine.Object.DestroyImmediate(rosterGo);
 
                 sb.AppendLine();
-                sb.AppendLine("=== [2] 시즌 등급별 기본 OVR → 순수 풀성장 → 풀시너지(+17, 상한 144) 실측 ===");
+                sb.AppendLine("=== [2] 시즌 등급별 기본 OVR → 순수 풀성장 → 풀시너지(세트덱 +13, 상한 144) 실측 ===");
                 foreach (Grade grade in new[] { Grade.LIVE_NORMAL, Grade.LIVE_EPIC, Grade.ALLSTAR, Grade.FRANCHISE, Grade.TITLE_HOLDER,
                              Grade.GOLDEN_GLOVE, Grade.SIGNATURE, Grade.DYNASTY, Grade.RETIRED_NUMBER })
                 {

@@ -89,7 +89,8 @@ namespace KBOManager.Controllers
             if (manageCheerleaderButton != null) manageCheerleaderButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.CheerleaderInventory));
             if (scoutButton != null) scoutButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Scout));
             if (rosterButton != null) rosterButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Roster));
-            if (inventoryButton != null) inventoryButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Inventory));
+            // [TASK-KBO-184] 하단 [선수 관리] = 성장 센터(대표 선수 기본 선택). 보유 리스트는 라인업 → [보관 선수] 탭.
+            if (inventoryButton != null) inventoryButton.onClick.AddListener(() => PlayerManagementUIController.OpenGrowthHub());
         }
 
         private void OnEnable()
@@ -132,7 +133,10 @@ namespace KBOManager.Controllers
                 if (i < standings.Count)
                 {
                     var team = standings[i];
-                    string line = $"{i + 1}위  {team.Team}  {team.Wins}승 {team.Draws}무 {team.Losses}패  {team.WinRate:F3}";
+                    // [TASK-KBO-184] 타 구장 자동 진행으로 10개 구단이 같은 경기 수를 소화하므로 게임차를 함께 표시한다.
+                    float gb = leagueManager.GamesBehind(team.Team);
+                    string gbText = i == 0 || gb <= 0f ? "-" : gb.ToString("0.#");
+                    string line = $"{i + 1}위  {team.Team}  {team.Wins}승 {team.Draws}무 {team.Losses}패  {team.WinRate:F3}  {gbText}";
 
                     bool isFavoriteTeam = favoriteTeam != Team.None && team.Team == favoriteTeam;
                     standingsRowTexts[i].text = isFavoriteTeam

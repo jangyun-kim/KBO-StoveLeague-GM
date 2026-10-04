@@ -102,21 +102,34 @@ namespace KBOManager.Models
             CanTranscend(grade) && awakenLevel >= TranscendLevel;
 
         // ------------------------------------------------------------------
-        // [TASK-KBO-183] 4대 성장 시스템(강화 · 한계 돌파 · 훈련/특훈 · 각성) + 12단계 리그(OVR 57~144) 정렬
+        // [TASK-KBO-184] 각성 중심 4대 성장(강화 · 한계 돌파 · 훈련/특훈 · 각성) + 12단계 리그(OVR 57~144) 정렬
         //
-        // 카드 최종 도달 OVR = 기본 OVR(BaseOvrRange) + 순수 성장(MaxTotalGrowth, 최대 +25) + 팀 시너지(TeamSynergyRules, 최대 +17).
-        // 성장 1포인트 = 세부 스탯 전 항목 +1 = OVR +1. 항목별 최대치는 상위 시즌(GOLDEN_GLOVE 이상) 기준 강화 +10 / 한계 돌파 +5 /
-        // 훈련(특훈) +5 / 각성 +5 = +25이고, 하위 등급은 항목별 상한이 차등이다(아래 표 - 합계가 곧 등급별 순수 성장 상한).
-        //   등급            기본 OVR    강화 돌파 훈련 각성 = 합계   풀성장       풀시너지(+17)
-        //   LIVE_NORMAL     55~68       10   2    1    1   = +14   69~82        86~99
-        //   LIVE_EPIC       65~75       10   3    3    2   = +18   83~93        100~110
-        //   ALLSTAR         75~83       10   4    4    3   = +21   96~104       113~121
-        //   FRANCHISE       79~86       10   4    4    4   = +22   101~108      118~125
-        //   TITLE_HOLDER    83~90       10   5    4    4   = +23   106~113      123~130
-        //   GOLDEN_GLOVE    87~95       10   5    5    5   = +25   112~120      129~137
-        //   SIG/DYN/RN      95~102      10   5    5    5   = +25   120~127      137~144
-        // 각성 성장 = 유효 각성 단계 / 2(초월 10 = +5, 9각 = +4)를 등급 각성 상한으로 자른 값 - 각성의 3·6·9각/초월 세트덱 스코어 규칙은 그대로다.
+        // 선수 최종 표시 OVR = 기본 OVR(BaseOvrRange) + 순수 성장(MaxTotalGrowth, 최대 +31) + 정적 시너지(세트덱 OVR 최대 +13), 상한 144.
+        // 성장 1포인트 = 세부 스탯 전 항목 +1 = OVR +1. 각성/초월이 가장 큰 축이다(상위 시즌 +15 = 순수 성장의 약 절반).
+        //
+        // 각성은 비선형 "임계점 돌파" 계단 - 상위 시즌(GOLDEN_GLOVE 이상) 기준 누적 OVR(AwakenCurve):
+        //   단계   명함 1각 2각 [3각] 4각 5각 [6각] 7각 8각 [9각] [초월]
+        //   OVR     0   1   2   5    6   7   10   11  12   14    15
+        //   3각 = 1차 임계점(+3 도약, 실전 투입 최소선) · 6각 = 2차 임계점(+3 도약, 본래 성능) · 9각/초월 = 최종 완성.
+        //   세트덱 스코어도 같은 3·6·9각/초월에서 +1씩 오른다(SetDeckScoreFor) - 성장과 세트덱이 같은 계단을 탄다.
+        // 하위 등급은 같은 곡선을 등급별 각성 상한(AwakenGrowthCap)으로 축소한다(반올림).
+        //   등급            기본 OVR    강화 돌파 특훈 각성 = 합계   풀성장       +세트덱 13(상한 144)
+        //   LIVE_NORMAL     55~68       10   1    1    6   = +18   73~86        86~99
+        //   LIVE_EPIC       65~75       10   2    2    8   = +22   87~97        100~110
+        //   ALLSTAR         75~83       10   2    2   10   = +24   99~107       112~120
+        //   FRANCHISE       79~86       10   3    2   11   = +26   105~112      118~125
+        //   TITLE_HOLDER    83~90       10   3    3   12   = +28   111~118      124~131
+        //   GOLDEN_GLOVE    87~95       10   3    3   15   = +31   118~126      131~139
+        //   SIG/DYN/RN      95~102      10   3    3   15   = +31   126~133      139~144
         // ------------------------------------------------------------------
+
+        /// <summary>[TASK-KBO-184] 상위 시즌 각성 누적 OVR 곡선(인덱스 = 각성 단계 0~10, 10 = 초월). 3·6·9각이 임계점.</summary>
+        public static readonly int[] AwakenCurve = { 0, 1, 2, 5, 6, 7, 10, 11, 12, 14, 15 };
+
+        /// <summary>[TASK-KBO-184] 각성 임계점(1차 3각 · 2차 6각 · 최종 9각). 초월(10)은 초월 가능 등급의 마지막 단계.</summary>
+        public const int FirstAwakenThreshold = 3;
+        public const int SecondAwakenThreshold = 6;
+        public const int FinalAwakenThreshold = 9;
 
         /// <summary>[TASK-KBO-183] 시즌 등급별 카드 기본 OVR 대역(base_ovr) - GenerateKBODatabase.py GRADE_BASE_OVR_BAND와 반드시 일치.</summary>
         public static (int Min, int Max) BaseOvrRange(Grade grade) => grade switch
@@ -134,50 +147,74 @@ namespace KBOManager.Models
         };
 
         public const int MaxReinforceGrowth = 10;
-        public const int MaxLimitBreakGrowth = 5;
-        public const int MaxTrainingGrowth = 5;
-        public const int MaxAwakenGrowth = 5;
-        /// <summary>상위 시즌(GOLDEN_GLOVE 이상) 순수 성장 최대치 = 10 + 5 + 5 + 5.</summary>
+        public const int MaxLimitBreakGrowth = 3;
+        public const int MaxTrainingGrowth = 3;
+        public const int MaxAwakenGrowth = 15;
+        /// <summary>상위 시즌(GOLDEN_GLOVE 이상) 순수 성장 최대치 = 10 + 3 + 3 + 15.</summary>
         public const int MaxPureGrowth = MaxReinforceGrowth + MaxLimitBreakGrowth + MaxTrainingGrowth + MaxAwakenGrowth;
 
-        /// <summary>[TASK-KBO-183] 한계 돌파 단계 상한(1단계 = OVR +1). 10강 달성 후에만 진행할 수 있다.</summary>
+        /// <summary>[TASK-KBO-184] 한계 돌파 단계 상한(1단계 = OVR +1). 10강 달성 후에만 진행할 수 있다.</summary>
         public static int LimitBreakCap(Grade grade) => grade switch
-        {
-            Grade.LIVE_NORMAL => 2,
-            Grade.LIVE_EPIC => 3,
-            Grade.ALLSTAR => 4,
-            Grade.FRANCHISE => 4,
-            _ => MaxLimitBreakGrowth
-        };
-
-        /// <summary>[TASK-KBO-183] 훈련(특훈) 단계 상한(1단계 = OVR +1).</summary>
-        public static int TrainingCap(Grade grade) => grade switch
-        {
-            Grade.LIVE_NORMAL => 1,
-            Grade.LIVE_EPIC => 3,
-            Grade.ALLSTAR => 4,
-            Grade.FRANCHISE => 4,
-            Grade.TITLE_HOLDER => 4,
-            _ => MaxTrainingGrowth
-        };
-
-        /// <summary>[TASK-KBO-183] 각성으로 얻는 OVR 성장 상한.</summary>
-        public static int AwakenGrowthCap(Grade grade) => grade switch
         {
             Grade.LIVE_NORMAL => 1,
             Grade.LIVE_EPIC => 2,
-            Grade.ALLSTAR => 3,
-            Grade.FRANCHISE => 4,
-            Grade.TITLE_HOLDER => 4,
+            Grade.ALLSTAR => 2,
+            _ => MaxLimitBreakGrowth
+        };
+
+        /// <summary>[TASK-KBO-184] 훈련(특훈) 단계 상한(1단계 = OVR +1).</summary>
+        public static int TrainingCap(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 1,
+            Grade.LIVE_EPIC => 2,
+            Grade.ALLSTAR => 2,
+            Grade.FRANCHISE => 2,
+            _ => MaxTrainingGrowth
+        };
+
+        /// <summary>[TASK-KBO-184] 각성(최종 단계 - 초월 가능 등급은 초월, 그 외 9각)으로 얻는 OVR 성장 상한.</summary>
+        public static int AwakenGrowthCap(Grade grade) => grade switch
+        {
+            Grade.LIVE_NORMAL => 6,
+            Grade.LIVE_EPIC => 8,
+            Grade.ALLSTAR => 10,
+            Grade.FRANCHISE => 11,
+            Grade.TITLE_HOLDER => 12,
             _ => MaxAwakenGrowth
         };
 
-        /// <summary>[TASK-KBO-183] 각성 단계 → OVR 성장(유효 단계 / 2, 등급 상한으로 자름).</summary>
+        /// <summary>[TASK-KBO-184] 각성 단계 → OVR 성장. 상위 시즌 곡선(AwakenCurve)을 등급 상한에 맞춰 축소(반올림)한다 -
+        /// 등급 최종 단계(초월 또는 9각)에서 정확히 AwakenGrowthCap에 닿는다.</summary>
         public static int AwakenGrowthFor(Grade grade, int awakenLevel)
         {
-            int growth = ClampAwaken(grade, awakenLevel) / 2;
+            int level = ClampAwaken(grade, awakenLevel);
+            int top = AwakenCurve[MaxAwakenLevelFor(grade)];
             int cap = AwakenGrowthCap(grade);
-            return growth > cap ? cap : growth;
+            if (top <= 0) return 0;
+            return (AwakenCurve[level] * cap * 2 + top) / (2 * top);
+        }
+
+        /// <summary>[TASK-KBO-184] 다음 각성 임계점(3·6·9각 또는 초월) - 없으면 -1.</summary>
+        public static int NextAwakenThreshold(Grade grade, int awakenLevel)
+        {
+            int level = ClampAwaken(grade, awakenLevel);
+            foreach (int step in new[] { FirstAwakenThreshold, SecondAwakenThreshold, FinalAwakenThreshold, TranscendLevel })
+            {
+                if (step > MaxAwakenLevelFor(grade)) break;
+                if (level < step) return step;
+            }
+            return -1;
+        }
+
+        /// <summary>[TASK-KBO-184] 각성 단계 설명("1차 임계점 전 - 실전 투입 최소선 3각까지 n단계" 등).</summary>
+        public static string AwakenStageNote(Grade grade, int awakenLevel)
+        {
+            int level = ClampAwaken(grade, awakenLevel);
+            if (level < FirstAwakenThreshold) return $"1차 임계점(3각) 전 - 실전 투입 최소선까지 {FirstAwakenThreshold - level}단계";
+            if (level < SecondAwakenThreshold) return $"1차 임계점 돌파 · 2차 임계점(6각 = 본래 성능)까지 {SecondAwakenThreshold - level}단계";
+            if (level < FinalAwakenThreshold) return $"2차 임계점 돌파 · 최종 완성(9각)까지 {FinalAwakenThreshold - level}단계";
+            if (level < MaxAwakenLevelFor(grade)) return "9각 완성 · 초월 1단계 남음";
+            return IsTranscended(grade, level) ? "초월 완성(최종)" : "9각 완성(등급 한계)";
         }
 
         /// <summary>[TASK-KBO-183] 등급별 순수 성장 상한(강화 + 한계 돌파 + 훈련 + 각성).</summary>
@@ -188,7 +225,7 @@ namespace KBOManager.Models
         /// (TASK-172 시절 "LIVE = 10강 + 9각 = +19, 그 외 무제한"은 4대 성장 상한표로 대체됐다.)</summary>
         public static int MaxStatGrowthFor(Grade grade, int maxReinforceLevel) => MaxTotalGrowth(grade);
 
-        /// <summary>[TASK-KBO-183] 카드 최대 잠재 OVR = 기본 OVR + 순수 성장 상한 + 팀 시너지 최대치(+17), 최종 상한 144.</summary>
+        /// <summary>[TASK-KBO-184] 카드 최대 잠재 OVR = 기본 OVR + 순수 성장 상한 + 정적 시너지 최대치(세트덱 +13), 최종 상한 144.</summary>
         public static int MaxPotentialOvr(Grade grade, int baseOvr)
         {
             int potential = baseOvr + MaxTotalGrowth(grade) + TeamSynergyRules.MaxSynergyOvr;

@@ -65,6 +65,10 @@ namespace KBOManager.Controllers
 
         [SerializeField] private Button closeButton;
 
+        [Header("TASK-KBO-184 - 성장 센터")]
+        [Tooltip("하단 [선수 관리] 탭이 곧바로 여는 성장 전용 허브(강화/각성/한계 돌파/훈련·특훈 + 대상 변경 + 재료 선택).")]
+        [SerializeField] private GrowthCenterView growthCenter;
+
         private Player currentPlayer;
 
         /// <summary>SkillRerollManager에 F등급 확정 대기가 걸려 있는 선수. InventoryUIController.
@@ -124,9 +128,35 @@ namespace KBOManager.Controllers
             CancelPendingRerollIfAny();
         }
 
-        /// <summary>인벤토리에서 카드를 클릭했을 때 호출된다. 타겟 선수를 고정하고 허브 화면을 띄운다.</summary>
+        /// <summary>
+        /// [TASK-KBO-184] 어디서든(로비 하단 [선수 관리] 탭 · 메인 홈 [선수단 강화] 타일 · 라인업 트레이 [선수 관리] · 상세 정보 [선수 관리])
+        /// 성장 센터를 연다. player가 null이면 대표 선수(라인업 최고 OVR)가 기본 성장 대상이다.
+        /// </summary>
+        public static void OpenGrowthHub(Player player = null)
+        {
+            var controller = FindAnyObjectByType<PlayerManagementUIController>(FindObjectsInactive.Include);
+            if (controller == null)
+            {
+                Debug.LogWarning("[PlayerManagementUIController] 선수 관리(성장 센터) 화면이 씬에 없습니다.");
+                return;
+            }
+            controller.Show(player);
+        }
+
+        /// <summary>대상 선수를 고정하고 선수 관리(성장 센터) 화면을 띄운다. [TASK-KBO-184] 성장 센터가 있으면 그쪽이 화면 전체를 맡는다.</summary>
         public void Show(Player player)
         {
+            var gm = GameManager.Instance;
+            if (player?.Template == null) player = GrowthCenterRules.DefaultTarget(gm?.Roster, gm?.Inventory);
+            if (growthCenter == null) growthCenter = GetComponent<GrowthCenterView>();
+            if (growthCenter != null)
+            {
+                var from = UIManager.Instance != null ? UIManager.Instance.CurrentScreen : ScreenType.Lobby;
+                currentPlayer = player;
+                UIManager.Instance?.ShowScreen(ScreenType.PlayerManagementHub);
+                growthCenter.Open(player, from);
+                return;
+            }
             if (player?.Template == null) return;
 
             if (pendingRerollTarget != null && pendingRerollTarget != player)
@@ -149,7 +179,7 @@ namespace KBOManager.Controllers
         {
             CancelPendingRerollIfAny();
             currentPlayer = null;
-            UIManager.Instance?.ShowScreen(ScreenType.Inventory);
+            UIManager.Instance?.ShowScreen(ScreenType.Lobby); // [TASK-KBO-184] 보유 리스트는 라인업 [보관 선수] 탭으로 옮겼다
         }
 
         private void CancelPendingRerollIfAny()
@@ -207,7 +237,7 @@ namespace KBOManager.Controllers
                 return;
             }
 
-            UIManager.Instance?.ShowScreen(ScreenType.Inventory);
+            // [TASK-KBO-182] 상세 정보 패널은 캔버스 최상위라 화면 전환 없이 바로 뜬다(구 InventoryPanel 전환 제거 - TASK-184).
             playerDetailUIController.Show(currentPlayer);
         }
 

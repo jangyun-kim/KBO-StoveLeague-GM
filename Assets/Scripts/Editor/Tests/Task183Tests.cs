@@ -210,11 +210,13 @@ namespace KBOManager.EditorTests
                 var none = Task183Report.MeasureOnboarding(all, Db, rosterManager, team, null);
                 TestContext.WriteLine($"{team}: LIVE {none.liveCount}장, 28인 평균 {none.rosterAvg:F2}, 세트덱 {none.score}P(+{none.setDeckOvr}), 구단 OVR {none.teamOvr}");
                 Assert.That(none.rosterAvg, Is.InRange(59.0, 60.0), $"{team} 28인 평균");
-                Assert.That(none.teamOvr, Is.InRange(60, 62), $"{team} 선물 전");
+                // [TASK-KBO-184] 구단 OVR = 라인업 28인 최종 OVR 평균(+세트덱) - 아마추어 리그(57~64) 안착.
+                Assert.That(none.teamOvr, Is.InRange(57, 64), $"{team} 선물 전");
+                Assert.AreEqual(LeagueTier.Amateur, LeagueTierTable.RecommendedFor(none.teamOvr));
                 foreach (var gift in Task183Report.GiftIds)
                 {
                     var m = Task183Report.MeasureOnboarding(all, Db, rosterManager, team, gift);
-                    Assert.That(m.teamOvr, Is.InRange(60, 62), $"{team} + {gift}");
+                    Assert.That(m.teamOvr, Is.InRange(57, 64), $"{team} + {gift}");
                     Assert.AreEqual(LeagueTier.Amateur, LeagueTierTable.RecommendedFor(m.teamOvr));
                 }
             }
@@ -227,12 +229,13 @@ namespace KBOManager.EditorTests
         {
             var expected = new Dictionary<Grade, (int growth, int finalMin, int finalMax)>
             {
-                { Grade.LIVE_NORMAL, (14, 86, 99) }, { Grade.LIVE_EPIC, (18, 100, 110) }, { Grade.ALLSTAR, (21, 113, 121) },
-                { Grade.FRANCHISE, (22, 118, 125) }, { Grade.TITLE_HOLDER, (23, 123, 130) }, { Grade.GOLDEN_GLOVE, (25, 129, 137) },
-                { Grade.SIGNATURE, (25, 137, 144) }, { Grade.DYNASTY, (25, 137, 144) }, { Grade.RETIRED_NUMBER, (25, 137, 144) },
+                // [TASK-KBO-184] 각성 중심 성장(각성 최대 +15) + 정적 시너지(세트덱 +13, 치어리더 직접 가산 폐지)
+                { Grade.LIVE_NORMAL, (18, 86, 99) }, { Grade.LIVE_EPIC, (22, 100, 110) }, { Grade.ALLSTAR, (24, 112, 120) },
+                { Grade.FRANCHISE, (26, 118, 125) }, { Grade.TITLE_HOLDER, (28, 124, 131) }, { Grade.GOLDEN_GLOVE, (31, 131, 139) },
+                { Grade.SIGNATURE, (31, 139, 144) }, { Grade.DYNASTY, (31, 139, 144) }, { Grade.RETIRED_NUMBER, (31, 139, 144) },
             };
-            Assert.AreEqual(25, CardGrowthRules.MaxPureGrowth);
-            Assert.AreEqual(17, TeamSynergyRules.MaxSynergyOvr);
+            Assert.AreEqual(31, CardGrowthRules.MaxPureGrowth);
+            Assert.AreEqual(13, TeamSynergyRules.MaxSynergyOvr);
             foreach (var pair in expected)
             {
                 var band = CardGrowthRules.BaseOvrRange(pair.Key);
@@ -252,23 +255,23 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(60, live.CalculateNeutralOVR());
             live.ReinforceLevel = 10; live.LimitBreakLevel = 5; live.TrainingLevel = 5; live.AwakenLevel = 10;
             Assert.AreEqual(10, live.ReinforceGrowth);
-            Assert.AreEqual(2, live.LimitBreakGrowth);
+            Assert.AreEqual(1, live.LimitBreakGrowth);
             Assert.AreEqual(1, live.TrainingGrowth);
-            Assert.AreEqual(1, live.AwakenGrowth);
-            Assert.AreEqual(14, live.GetStatGrowth());
-            Assert.AreEqual(74, live.CalculateNeutralOVR());
+            Assert.AreEqual(6, live.AwakenGrowth, "[TASK-184] LIVE 초월 = 각성 +6");
+            Assert.AreEqual(18, live.GetStatGrowth());
+            Assert.AreEqual(78, live.CalculateNeutralOVR());
 
             var gg = Card(Grade.GOLDEN_GLOVE, 90, pitcher: true);
             gg.ReinforceLevel = 10; gg.LimitBreakLevel = 5; gg.TrainingLevel = 5; gg.AwakenLevel = 10;
-            Assert.AreEqual(25, gg.GetStatGrowth());
-            Assert.AreEqual(115, gg.CalculateNeutralOVR());
-            Assert.AreEqual(Math.Min(144, 90 + 25 + 17), gg.MaxPotentialOvr);
+            Assert.AreEqual(31, gg.GetStatGrowth());
+            Assert.AreEqual(121, gg.CalculateNeutralOVR());
+            Assert.AreEqual(Math.Min(144, 90 + 31 + 13), gg.MaxPotentialOvr);
 
             var allstar = Card(Grade.ALLSTAR, 80);
             allstar.AwakenLevel = 9;
-            Assert.AreEqual(3, allstar.AwakenGrowth, "9각 = 4 → 올스타 상한 3");
+            Assert.AreEqual(10, allstar.AwakenGrowth, "[TASK-184] 올스타 9각(한계) = 각성 상한 +10");
             allstar.AwakenLevel = 4;
-            Assert.AreEqual(2, allstar.AwakenGrowth);
+            Assert.AreEqual(4, allstar.AwakenGrowth);
         }
 
         [Test]
@@ -307,8 +310,8 @@ namespace KBOManager.EditorTests
                 gold -= spent; spentTotal += spent;
             }
             Assert.IsFalse(CardGrowthActions.TryTrain(target, gold, out _, out _), "특훈 상한");
-            Assert.AreEqual(4, target.TrainingGrowth);
-            Assert.AreEqual(1000 + 2000 + 3000 + 4000, spentTotal);
+            Assert.AreEqual(3, target.TrainingGrowth, "[TASK-184] 타이틀 홀더 특훈 상한 3");
+            Assert.AreEqual(1000 + 2000 + 3000, spentTotal);
             StringAssert.Contains("최대 잠재", CardGrowthActions.GrowthSummary(target, 1));
         }
 
@@ -329,15 +332,18 @@ namespace KBOManager.EditorTests
         // ------------------------------------------------------------------ 팀 시너지
 
         [Test]
-        public void TeamSynergy_SetDeckPlus13_CheerPlus4_Max17()
+        public void TeamSynergy_SetDeckPlus13_LeaderAmplifyOnly()
         {
             Assert.AreEqual(1, TeamSynergyRules.SetDeckOvrBonus(104), "기본 세트덱 +1");
             Assert.AreEqual(0, TeamSynergyRules.SetDeckOvrBonus(99));
             Assert.AreEqual(13, TeamSynergyRules.SetDeckOvrBonus(200));
             var legends = Enumerable.Range(0, CheerSquad.SlotCount)
                 .Select(i => new Cheerleader { InstanceId = $"L{i}", Name = $"L{i}", Grade = CheerleaderGrade.LEGEND, Team = Team.Samsung }).ToList();
-            Assert.AreEqual(4, TeamSynergyRules.CheerSquadOvrBonus(legends, Team.Samsung));
-            Assert.AreEqual(0, TeamSynergyRules.CheerSquadOvrBonus(legends, Team.KIA), "구단 시너지 미발동");
+            // [TASK-KBO-184] 치어리더 6인 등급 합 → 구단 OVR +4 직접 가산 폐지. 응원단장의 세트덱 보강 적용률(+10%)만 정적 시너지에 반영.
+            Assert.AreEqual(10, TeamSynergyRules.LeaderAmplifyPercent(legends, Team.Samsung));
+            Assert.AreEqual(0, TeamSynergyRules.LeaderAmplifyPercent(legends, Team.KIA), "구단 시너지 미발동");
+            Assert.AreEqual(1, TeamSynergyRules.StaticSynergyOvr(104, 10), "기본 세트덱 +1 x 1.1 = 1");
+            Assert.AreEqual(14, TeamSynergyRules.StaticSynergyOvr(200, 10), "200P +13 x 1.1 = 14");
             Assert.AreEqual(144, TeamSynergyRules.ClampFinal(150));
         }
     }

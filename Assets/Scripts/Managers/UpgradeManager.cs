@@ -40,7 +40,10 @@ namespace KBOManager.Managers
         /// 반환한다 - "실패"는 더 이상 존재하지 않는다. 소모된 재료를 인벤토리에서 제거하는 것은
         /// 호출부(GameActionController) 책임이다.
         /// </summary>
-        public bool TryEnhance(Player target, List<Player> materialCards)
+        public bool TryEnhance(Player target, List<Player> materialCards) => ApplyEnhance(target, materialCards);
+
+        /// <summary>[TASK-KBO-184] TryEnhance 본체(정적) - 성장 센터 미리보기(복제 카드에 적용)와 실행이 같은 규칙을 쓴다.</summary>
+        public static bool ApplyEnhance(Player target, List<Player> materialCards)
         {
             if (target == null || target.Template == null) return false;
             if (target.ReinforceLevel >= Player.MaxReinforceLevel) return false;
@@ -86,7 +89,10 @@ namespace KBOManager.Managers
         /// - 완전히 동일한 템플릿(카드 종류)이면 +3각, 같은 등급의 다른 템플릿(동일 선수)이면 +1각을 부여한다.
         /// 소모된 재료를 인벤토리에서 제거하는 것은 호출부 책임이다.
         /// </summary>
-        public bool TryAwaken(Player target, List<Player> materialCards)
+        public bool TryAwaken(Player target, List<Player> materialCards) => ApplyAwaken(target, materialCards);
+
+        /// <summary>[TASK-KBO-184] TryAwaken 본체(정적) - 성장 센터 미리보기와 실행 공용.</summary>
+        public static bool ApplyAwaken(Player target, List<Player> materialCards)
         {
             if (target == null || target.Template == null) return false;
             if (!target.CanAwaken) return false;
