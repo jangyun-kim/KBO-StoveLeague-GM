@@ -55,17 +55,17 @@ namespace KBOManager.EditorTests
             return go.AddComponent<RosterManager>().AutoSetRoster(inventory, team);
         }
 
+        /// <summary>[TASK-KBO-185 갱신] TASK-182의 "최상위 = 골든글러브"는 TASK-185에서 "골든글러브 이상 전면 제외 · 최고 TITLE_HOLDER"로 대체됐다.</summary>
         [Test]
-        public void ScoutTables_ExcludeTerminalGrades_AndTopIsGoldenGlove()
+        public void ScoutTables_ExcludeTerminalGrades_AndTopIsTitleHolder()
         {
-            var gg = ScoutDropTables.GoldenGlove;
-            CollectionAssert.AreEqual(new[] { Grade.GOLDEN_GLOVE, Grade.TITLE_HOLDER, Grade.FRANCHISE, Grade.ALLSTAR, Grade.LIVE_EPIC }, gg.Select(e => e.Grade).ToArray());
-            CollectionAssert.AreEqual(new[] { 0.5f, 1.5f, 2.0f, 3.0f, 93.0f }, gg.Select(e => e.RatePercent).ToArray());
-            Assert.AreEqual(100f, ScoutDropTables.Total(gg), 0.0001f);
-            Assert.AreEqual(100f, ScoutDropTables.Total(ScoutDropTables.TitleHolder), 0.0001f);
-            foreach (var entry in gg.Concat(ScoutDropTables.TitleHolder))
+            var premium = ScoutDropTables.Premium;
+            Assert.AreEqual(Grade.TITLE_HOLDER, premium[0].Grade);
+            Assert.AreEqual(100f, ScoutDropTables.Total(premium), 0.0001f);
+            Assert.AreEqual(100f, ScoutDropTables.Total(ScoutDropTables.Normal), 0.0001f);
+            foreach (var entry in premium.Concat(ScoutDropTables.Normal))
                 Assert.IsFalse(ScoutDropTables.IsExcludedFromScout(entry.Grade), $"{entry.Grade}는 상시 스카우트에 나오면 안 됩니다");
-            CollectionAssert.AreEquivalent(new[] { Grade.SIGNATURE, Grade.DYNASTY, Grade.RETIRED_NUMBER }, ScoutDropTables.ExcludedFromScout.ToArray());
+            CollectionAssert.IsSubsetOf(new[] { Grade.SIGNATURE, Grade.DYNASTY, Grade.RETIRED_NUMBER }, ScoutDropTables.ExcludedFromScout.ToArray());
         }
 
         [Test]

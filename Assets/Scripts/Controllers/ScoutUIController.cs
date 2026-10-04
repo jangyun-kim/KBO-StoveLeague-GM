@@ -212,9 +212,15 @@ namespace KBOManager.Controllers
             SetText(liveEpicCostText, CostLabel("라이브 에픽 영입권", scoutManager.LiveEpicCost, gm.LiveEpicTicket));
             SetText(premiumSignatureCostText, CostLabel("싸인볼", scoutManager.PremiumCost, gm.SignatureBall));
             SetText(premiumTitleHolderCostText, CostLabel("트로피", scoutManager.PremiumCost, gm.Trophy));
-            SetText(pickupSignatureCostText, CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket));
-            SetText(pickupTitleHolderCostText, CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket));
+            // [TASK-KBO-185] 픽업 배너: "[선택 구단(삼성) 픽업 확률 UP! (50%)]" + 비용
+            string pickupBanner = PickupBannerText(gm.FavoriteTeam);
+            SetText(pickupSignatureCostText, $"<color=#FFD54A>{pickupBanner}</color> {CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket)}");
+            SetText(pickupTitleHolderCostText, $"<color=#FFD54A>{pickupBanner}</color> {CostLabel("픽업 영입권", scoutManager.PickupCost, gm.PickupTicket)}");
         }
+
+        /// <summary>[TASK-KBO-185] 스카우트 픽업 배너 문구 - "[선택 구단(삼성) 픽업 확률 UP! (50%)]".</summary>
+        public static string PickupBannerText(Team favoriteTeam) =>
+            ScoutDropTables.PickupBanner(favoriteTeam != Team.None ? CompyaUiKit.ShortName(favoriteTeam) : null);
 
         /// <summary>"1회 싸인볼 1 · 10회 10 (보유 37 → 37회 가능)" 형식.</summary>
         private static string CostLabel(string currency, int costPerRoll, int owned)

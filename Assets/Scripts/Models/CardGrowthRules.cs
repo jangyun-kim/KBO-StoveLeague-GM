@@ -290,14 +290,38 @@ namespace KBOManager.Models
             _ => 0
         };
 
+        /// <summary>[TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 동일 연도 재료 1장당 각성 상승폭.</summary>
+        public const int SameYearAwakenGain = 3;
+        /// <summary>[TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 다른 연도 재료 1장당 각성 상승폭.</summary>
+        public const int OtherYearAwakenGain = 1;
+
         /// <summary>
-        /// [TASK-KBO-174 LIVE 각성/초월 비용 완화] 각성 재료 1장이 주는 각성 포인트(초월 = 10포인트).
-        /// 완전히 같은 카드 사본: LIVE 5 / 그 외 3. 같은 선수의 같은 등급 다른 카드: LIVE 2 / 그 외 1.
-        /// → LIVE 초월 = 같은 카드 사본 2장, 상위 등급 초월/9각 = 사본 4장/3장. 무과금이 연간 LIVE 약 10장을
-        /// 초월(사본 약 20장)해 185~190P 구간에 닿도록 하는 설계값이다(docs/04 11절).
+        /// [TASK-KBO-185 각성 재료 규칙 복원] 각성 재료 1장이 주는 각성 단계(전 등급 공통).
+        /// 동일 선수(RealPlayerId) + 동일 시즌 등급(Grade)이 기본 조건이며, 연도(SeasonYear)가 같으면 +3각, 다르면 +1각이다.
+        /// (TASK-174의 템플릿 참조 비교/LIVE 완화 5·2포인트는 폐기 - 같은 연도 카드가 다른 템플릿 인스턴스로 로드되면
+        /// "다른 카드"로 오판돼 늘 +1각만 오르던 문제가 있었다.)
         /// </summary>
-        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isIdenticalCard) =>
-            IsLive(targetGrade) ? (isIdenticalCard ? 5 : 2) : (isIdenticalCard ? 3 : 1);
+        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isSameYear) =>
+            isSameYear ? SameYearAwakenGain : OtherYearAwakenGain;
+
+        /// <summary>[TASK-KBO-185] 대상/재료 쌍의 각성 상승폭(무효 재료 = 0). 미리보기 · 배지 · 실제 적용 공용.</summary>
+        public static int AwakenGainFor(Player target, Player material)
+        {
+            if (target?.Template == null || material?.Template == null || ReferenceEquals(target, material)) return 0;
+            var t = target.Template;
+            var m = material.Template;
+            if (string.IsNullOrEmpty(t.RealPlayerId) || m.RealPlayerId != t.RealPlayerId) return 0;
+            if (m.Grade != t.Grade) return 0;
+            return AwakenPointsPerMaterial(t.Grade, m.SeasonYear == t.SeasonYear);
+        }
+
+        /// <summary>[TASK-KBO-185] 각성 재료 배지 문구("[동일 연도 +3각]" / "[다른 연도 +1각]"), 무효 재료면 빈 문자열.</summary>
+        public static string AwakenMaterialBadge(Player target, Player material)
+        {
+            int gain = AwakenGainFor(target, material);
+            if (gain <= 0) return "";
+            return gain == SameYearAwakenGain ? $"[동일 연도 +{gain}각]" : $"[다른 연도 +{gain}각]";
+        }
 
         /// <summary>UI 표기용 각성 단계 문자열("명함", "5각", "초월").</summary>
         public static string AwakenLabel(Grade grade, int awakenLevel)

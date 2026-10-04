@@ -83,10 +83,8 @@ namespace KBOManager.Managers
         /// 재료 카드 목록으로 각성을 시도한다.
         /// - [TASK-KBO-172] 전 등급 각성 가능(LIVE 포함). 한계는 등급별 - 9각 한계 등급(ALLSTAR/FRANCHISE/
         ///   TITLE_HOLDER)은 9각, 초월 가능 등급(LIVE/GOLDEN_GLOVE/SIGNATURE/DYNASTY/[TASK-174] RETIRED_NUMBER)은 초월(10).
-        /// - [TASK-KBO-174] 재료당 포인트는 CardGrowthRules.AwakenPointsPerMaterial - LIVE는 완화(동일 카드 +5 / 같은 등급 +2),
-        ///   그 외 등급은 기존 값(동일 카드 +3 / 같은 등급 +1).
-        /// - 재료는 RealPlayerId가 target과 완전히 일치해야 유효한 재료로 인정된다.
-        /// - 완전히 동일한 템플릿(카드 종류)이면 +3각, 같은 등급의 다른 템플릿(동일 선수)이면 +1각을 부여한다.
+        /// - [TASK-KBO-185] 재료는 동일 선수(RealPlayerId) + 동일 시즌 등급이어야 하며, 같은 연도면 +3각 / 다른 연도면 +1각
+        ///   (CardGrowthRules.AwakenGainFor, 등급 한계에서 클램프).
         /// 소모된 재료를 인벤토리에서 제거하는 것은 호출부 책임이다.
         /// </summary>
         public bool TryAwaken(Player target, List<Player> materialCards) => ApplyAwaken(target, materialCards);
@@ -100,23 +98,9 @@ namespace KBOManager.Managers
             if (target.AwakenLevel >= maxAwaken) return false;
             if (materialCards == null || materialCards.Count == 0) return false;
 
+            // [TASK-KBO-185] 동일 선수 + 동일 시즌 등급: 같은 연도 +3각 / 다른 연도 +1각(CardGrowthRules.AwakenGainFor).
             int gainedPoints = 0;
-            foreach (var material in materialCards)
-            {
-                if (material?.Template == null) continue;
-                if (material == target) continue; // 자기 자신은 재료가 될 수 없음
-                if (material.Template.RealPlayerId != target.Template.RealPlayerId) continue; // 다른 선수 -> 무효 재료
-
-                if (material.Template == target.Template)
-                {
-                    gainedPoints += CardGrowthRules.AwakenPointsPerMaterial(target.Template.Grade, true); // 완벽히 동일한 카드
-                }
-                else if (material.Template.Grade == target.Template.Grade)
-                {
-                    gainedPoints += CardGrowthRules.AwakenPointsPerMaterial(target.Template.Grade, false); // 같은 등급 다른 카드(동일 선수)
-                }
-                // 등급이 다른 동일 선수 카드는 GDD에 명시되지 않아 각성 재료로 인정하지 않음
-            }
+            foreach (var material in materialCards) gainedPoints += CardGrowthRules.AwakenGainFor(target, material);
 
             if (gainedPoints <= 0) return false;
 

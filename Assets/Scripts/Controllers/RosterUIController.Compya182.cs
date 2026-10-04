@@ -92,9 +92,49 @@ namespace KBOManager.Controllers
         private static readonly Color CyanAccent = new Color(0.37f, 0.89f, 1f);
         private static readonly Color SelectGold = new Color(1f, 0.83f, 0.2f);
 
+        /// <summary>[TASK-KBO-185] TASK-176~181 하단 바의 잔재 이름 - Layout182 밖(RosterPanel 직속)에 남으면 트레이 위에 겹쳐 그려지고 클릭을 가로챈다.</summary>
+        public static readonly string[] LegacyBarObjectNames = { "SetDeckGaugeFill", "SetDeckStatusText", "SetDeckActiveGlow", "SetDeckOptionButton", "AutoLineupButton" };
+
+        /// <summary>[TASK-KBO-185] RosterPanel 직속의 레거시 하단 바 오브젝트(흰 게이지 막대 · 리스너 없는 [세트덱 버프 선택] · 미바인딩 [자동 교체])를 끈다.
+        /// 컴프야 레이아웃이 실제로 쓰는 것은 Layout182 안의 바인딩 대상뿐이다. 끈 개수를 돌려준다.</summary>
+        public int HideLegacyBarOrphans()
+        {
+            if (!useCompyaLayout) return 0;
+            var bound = new HashSet<Object> { setDeckOptionButton, autoLineupButton, setDeckGaugeFillImage, defaultBarRoot, trayRoot, closeButton };
+            int hidden = 0;
+            foreach (Transform child in transform)
+            {
+                if (!LegacyBarObjectNames.Contains(child.name) || !child.gameObject.activeSelf) continue;
+                if (child.GetComponents<Component>().Any(bound.Contains) || bound.Contains(child.gameObject)) continue;
+                child.gameObject.SetActive(false);
+                hidden++;
+            }
+            return hidden;
+        }
+
+        /// <summary>[TASK-KBO-185] 세트덱 선택형 버프(A/B) 팝업을 연다 - 라인업 하단 [세트덱 버프 선택] · 로비 [세트덱 &amp; 버프 선택] 공용.
+        /// 겹친 레거시 버튼을 먼저 치우고 팝업을 최상단(SetAsLastSibling)으로 올린다.</summary>
+        public bool OpenSetDeckBuffSelection()
+        {
+            HideLegacyBarOrphans();
+            if (setDeckOptionController == null) setDeckOptionController = GetComponentInChildren<SetDeckOptionUIController>(true);
+            if (setDeckOptionController == null) return false;
+            setDeckOptionController.Open();
+            return setDeckOptionController.IsOpen;
+        }
+
+        /// <summary>[TASK-KBO-185] 로비 타일용 - 라인업 화면으로 이동한 뒤 세트덱 버프 선택 팝업을 연다.</summary>
+        public static void OpenSetDeckBuffsFromLobby()
+        {
+            UIManager.Instance?.ShowScreen(ScreenType.Roster);
+            var roster = FindAnyObjectByType<RosterUIController>(FindObjectsInactive.Include);
+            if (roster != null) roster.OpenSetDeckBuffSelection();
+        }
+
         private void AwakeCompya()
         {
             if (!useCompyaLayout) return;
+            HideLegacyBarOrphans();
             if (storageTabButton != null) storageTabButton.onClick.AddListener(() => ShowCompyaTab(CompyaTab.Storage));
             BindStorageFilter(storageScopeButton, storageFilter.CycleScope);
             BindStorageFilter(storageTeamButton, storageFilter.CycleTeam);
@@ -196,7 +236,7 @@ namespace KBOManager.Controllers
 
         private void RefreshCompya(IReadOnlyList<Player> roster)
         {
-            ClearCards(spawnedStorageCards);
+            ClearStorageCards();
             selectionFrames.Clear();
             var gm = GameManager.Instance;
             var nativeSize = CardHolderFit.NativeSizeOf(cardPrefab);
@@ -234,7 +274,7 @@ namespace KBOManager.Controllers
             {
                 bool lineupCard = inLineup.Contains(player);
                 var entry = new LineupView.Entry { Player = player, Header = player.Template.IsPitcher ? RoleShort(player.Template.PitcherRole) : RosterSlotLayout.PositionLabel(player.Template.BatterPosition) };
-                SpawnCompyaCell(entry, storageContainer, spawnedStorageCards, nativeSize, lineupCard ? "라인업" : "", false, stretch: false, isStorage: !lineupCard);
+                SpawnCompyaCell(entry, storageContainer, spawnedStorageCards, nativeSize, lineupCard ? "라인업" : "", false, stretch: false, isStorage: !lineupCard, freshCard: true);
             }
             if (storageInfoText != null)
                 storageInfoText.text = $"{storageFilter.ScopeLabel} {storage.Count}명 · {storageFilter.Summary}" + (storage.Count > StorageDisplayLimit ? $" (상위 {StorageDisplayLimit}명 표시)" : "");
@@ -250,6 +290,32 @@ namespace KBOManager.Controllers
                 if (visible) ShowSelection(selectedPlayer); else Deselect();
             }
             UpdateToolbarHint();
+        }
+
+        /// <summary>[TASK-KBO-185 보관 선수 렌더링 복구] 보관 그리드(RectMask2D 스크롤) 카드는 공용 풀을 거치지 않고 새로 만든다 -
+        /// 다른 화면에서 쓰다 반납된 풀 카드는 렌더 상태(마스크 컬링/클립 · 레이아웃 무시 · 스케일)가 남아 2번째 카드부터 배경·프레임·이름·OVR이
+        /// 통째로 사라지고 칸 장식(구단 로고 · 라인업 · 강화 뱃지)만 떠 있었다. 새 인스턴스는 칸 장식과 같은 프레임에 깨끗하게 그려진다.</summary>
+        private PlayerCardUI SpawnFreshCard(Player player, Transform container, List<PlayerCardUI> tracking)
+        {
+            if (cardPrefab == null || container == null) return null;
+            var card = Instantiate(cardPrefab, container, false);
+            card.name = "StorageCard";
+            card.gameObject.SetActive(true);
+            card.transform.localScale = Vector3.one;
+            card.Setup(player);
+            tracking.Add(card);
+            return card;
+        }
+
+        private void ClearStorageCards()
+        {
+            foreach (var card in spawnedStorageCards)
+            {
+                if (card == null) continue;
+                card.gameObject.SetActive(false);
+                if (Application.isPlaying) Destroy(card.gameObject); else DestroyImmediate(card.gameObject);
+            }
+            spawnedStorageCards.Clear();
         }
 
         private void BindStorageFilter(Button button, System.Action cycle)
@@ -281,7 +347,7 @@ namespace KBOManager.Controllers
         /// <summary>컴프야 슬롯 칸: 카드 위 라벨(포지션 약어/보직) + 카드(디자인 크기 유지 스케일) + 좌측 다이아몬드 타순 + 우상단 구단 로고 +
         /// 강화 뱃지 + 선택 테두리. 이름은 카드 하단 띠에 "이름'연도"로 바꿔 쓴다.</summary>
         private void SpawnCompyaCell(LineupView.Entry entry, Transform container, List<PlayerCardUI> tracking, Vector2 nativeSize,
-            string label, bool showOrder, bool stretch, bool isStorage = false)
+            string label, bool showOrder, bool stretch, bool isStorage = false, bool freshCard = false)
         {
             if (container == null) return;
             var cell = new GameObject($"Slot_{entry.Header}", typeof(RectTransform), typeof(Image), typeof(Button));
@@ -319,7 +385,7 @@ namespace KBOManager.Controllers
             }
 
             var player = entry.Player;
-            var card = SpawnCard(player, holderRect, tracking);
+            var card = freshCard ? SpawnFreshCard(player, holderRect, tracking) : SpawnCard(player, holderRect, tracking);
             if (card != null)
             {
                 holder.Place((RectTransform)card.transform);

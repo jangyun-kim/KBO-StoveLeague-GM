@@ -46,6 +46,15 @@ namespace KBOManager.Controllers
 
         private readonly List<Row> rows = new List<Row>();
         private string lastFeedback; // [TASK-KBO-182] "{tier}P 구간: A안으로 설정되었습니다"
+        public string LastFeedback => lastFeedback;
+        public int RowCount => rows.Count;
+
+        /// <summary>[TASK-KBO-185 검증용] threshold 구간의 A(false)/B(true) 버튼(없으면 null).</summary>
+        public Button OptionButton(int threshold, bool optionB)
+        {
+            var row = rows.FirstOrDefault(r => r.Threshold == threshold);
+            return row == null ? null : optionB ? row.OptionB : row.OptionA;
+        }
 
         private void Awake()
         {
@@ -64,11 +73,30 @@ namespace KBOManager.Controllers
             if (GameManager.Instance != null) GameManager.Instance.OnSetDeckSelectionChanged -= Refresh;
         }
 
+        public bool IsOpen => panelRoot != null ? panelRoot.activeInHierarchy : gameObject.activeInHierarchy;
+
+        /// <summary>[TASK-KBO-185] 팝업을 켜고 최상단으로 올린다 - 형제 순서상 뒤에 있는 패널(트레이/레거시 버튼)에 가려 A/B 버튼 클릭이
+        /// 먹히지 않던 문제를 막는다(컨트롤러는 RosterPanel에 붙어 있고 팝업 루트는 그 자식 SetDeckOptionPanel이다).</summary>
         public void Open()
         {
             lastFeedback = null;
-            if (panelRoot != null) panelRoot.SetActive(true);
+            var popup = panelRoot != null ? panelRoot : gameObject;
+            popup.SetActive(true);
+            popup.transform.SetAsLastSibling();
             Refresh();
+            EnsureRaycastable();
+        }
+
+        /// <summary>[TASK-KBO-185] A/B · 연도 · 닫기 버튼이 클릭을 받도록 버튼 그래픽 raycastTarget을 켜고, 버튼을 덮는 라벨 Text는 끈다.</summary>
+        public void EnsureRaycastable()
+        {
+            var root = panelRoot != null ? panelRoot.transform : transform;
+            foreach (var button in root.GetComponentsInChildren<Button>(true))
+            {
+                if (button.targetGraphic != null) button.targetGraphic.raycastTarget = true;
+                button.interactable = true;
+                foreach (var text in button.GetComponentsInChildren<Text>(true)) text.raycastTarget = false;
+            }
         }
 
         public void Close()
@@ -85,10 +113,10 @@ namespace KBOManager.Controllers
 
         public void Refresh()
         {
+            EnsureRows(); // [TASK-KBO-185] GameManager 없이도 A/B 행은 만든다(팝업이 빈 창으로 뜨지 않게)
             var gm = GameManager.Instance;
             if (gm == null) return;
 
-            EnsureRows();
             var setDeck = EvaluateUserSetDeck();
             var selection = gm.SetDeckSelection;
 

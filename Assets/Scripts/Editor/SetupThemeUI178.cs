@@ -422,17 +422,18 @@ namespace KBOManager.EditorTools
             int liveEpicCost = scoutManager != null ? scoutManager.LiveEpicCost : 1;
             int premiumCost = scoutManager != null ? scoutManager.PremiumCost : 1;
             int pickupCost = scoutManager != null ? scoutManager.PickupCost : 1;
-            string signatureRates = DescribeScoutTable(ScoutDropTables.GoldenGlove); // [TASK-KBO-182] 시그니처 → 골든글러브
-            string titleRates = DescribeScoutTable(ScoutDropTables.TitleHolder);
+            // [TASK-KBO-185] 골든글러브 이상은 뽑기 제외(특별 영입 전용) - 프리미엄/픽업 = Premium 표, 일반 = Normal 표, 최고 등급 TITLE_HOLDER.
+            string premiumRates = DescribeScoutTable(ScoutDropTables.Premium);
+            string normalRates = DescribeScoutTable(ScoutDropTables.Normal);
 
             var products = new[]
             {
-                ("LiveNormalBanner", "일반 · 라이브 스카우트", "라이브 카드 100%", "영입권", liveNormalCost, "liveNormalButton", "liveNormalButton10", "liveNormalCostText"),
+                ("LiveNormalBanner", "일반 스카우트", normalRates, "영입권", liveNormalCost, "liveNormalButton", "liveNormalButton10", "liveNormalCostText"),
                 ("LiveEpicBanner", "일반 · 라이브 에픽 스카우트", "라이브 에픽 카드 100%", "영입권", liveEpicCost, "liveEpicButton", "liveEpicButton10", "liveEpicCostText"),
-                ("PremiumSignatureBanner", "프리미엄 · 골든글러브 스카우트", signatureRates, "싸인볼", premiumCost, "premiumSignatureButton", "premiumSignatureButton10", "premiumSignatureCostText"),
-                ("PremiumTitleHolderBanner", "프리미엄 · 타이틀 홀더 스카우트", titleRates, "트로피", premiumCost, "premiumTitleHolderButton", "premiumTitleHolderButton10", "premiumTitleHolderCostText"),
-                ("PickupSignatureBanner", "픽업 · 골든글러브 스카우트", signatureRates, "픽업권", pickupCost, "pickupSignatureButton", "pickupSignatureButton10", "pickupSignatureCostText"),
-                ("PickupTitleHolderBanner", "픽업 · 타이틀 홀더 스카우트", titleRates, "픽업권", pickupCost, "pickupTitleHolderButton", "pickupTitleHolderButton10", "pickupTitleHolderCostText"),
+                ("PremiumSignatureBanner", "프리미엄 스카우트 (싸인볼)", premiumRates, "싸인볼", premiumCost, "premiumSignatureButton", "premiumSignatureButton10", "premiumSignatureCostText"),
+                ("PremiumTitleHolderBanner", "프리미엄 스카우트 (트로피)", premiumRates, "트로피", premiumCost, "premiumTitleHolderButton", "premiumTitleHolderButton10", "premiumTitleHolderCostText"),
+                ("PickupSignatureBanner", "픽업 · 선택 구단 스카우트", premiumRates + " · 선택 구단 50%", "픽업권", pickupCost, "pickupSignatureButton", "pickupSignatureButton10", "pickupSignatureCostText"),
+                ("PickupTitleHolderBanner", "픽업 · 선택 구단 스카우트 II", premiumRates + " · 선택 구단 50%", "픽업권", pickupCost, "pickupTitleHolderButton", "pickupTitleHolderButton10", "pickupTitleHolderCostText"),
             };
             const float top = 0.915f, height = 0.145f, gap = 0.006f;
             for (int i = 0; i < products.Length; i++)

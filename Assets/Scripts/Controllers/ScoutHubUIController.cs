@@ -39,12 +39,18 @@ namespace KBOManager.Controllers
         [Header("Tabs")]
         [SerializeField] private Button playerTabButton;
         [SerializeField] private Button cheerleaderTabButton;
+        [Tooltip("[TASK-KBO-185] [특별 영입(골글·시그니처)] 탭 - 선수 스카우트와 응원단 영입 사이.")]
+        [SerializeField] private Button specialTabButton;
 
         [Header("Sections")]
         [Tooltip("ScoutUIController가 붙은 선수 영입 섹션 루트.")]
         [SerializeField] private GameObject playerSection;
         [Tooltip("CheerleaderShopUIController가 붙은 치어리더 영입 섹션 루트.")]
         [SerializeField] private GameObject cheerleaderSection;
+        [Tooltip("[TASK-KBO-185] SpecialRecruitView가 붙은 특별 영입 섹션 루트.")]
+        [SerializeField] private GameObject specialSection;
+
+        public GameObject SpecialSection => specialSection;
 
         [Header("Tab Style (TASK-KBO-178 - 활성 탭 네이비 + 흰 글씨, 비활성 흰 바탕 + 회색 글씨)")]
         [SerializeField] private Color activeTabColor = new Color(0.06f, 0.17f, 0.45f, 1f);
@@ -66,6 +72,7 @@ namespace KBOManager.Controllers
 
             if (playerTabButton != null) playerTabButton.onClick.AddListener(ShowPlayerSection);
             if (cheerleaderTabButton != null) cheerleaderTabButton.onClick.AddListener(ShowCheerleaderSection);
+            if (specialTabButton != null) specialTabButton.onClick.AddListener(ShowSpecialSection);
         }
 
         /// <summary>화면이 켜질 때마다(UIManager.ShowScreen()의 SetActive(true)) 항상 선수 영입 탭을
@@ -84,7 +91,24 @@ namespace KBOManager.Controllers
 
             if (playerSection != null) playerSection.SetActive(true);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
-            StyleTabs(playerActive: true);
+            if (specialSection != null) specialSection.SetActive(false);
+            StyleTabs(0);
+        }
+
+        /// <summary>[TASK-KBO-185] [특별 영입(골글·시그니처)] - 골든글러브(3슬롯) / 시그니처(5슬롯) 재료 투입 영입.</summary>
+        public void ShowSpecialSection()
+        {
+            LogSectionToggle(nameof(ShowSpecialSection), activate: specialSection, deactivate: playerSection);
+
+            if (playerSection != null) playerSection.SetActive(false);
+            if (cheerleaderSection != null) cheerleaderSection.SetActive(false);
+            if (specialSection != null)
+            {
+                specialSection.SetActive(true);
+                specialSection.transform.SetAsLastSibling();
+                if (specialSection.TryGetComponent<SpecialRecruitView>(out var view)) view.Refresh();
+            }
+            StyleTabs(1);
         }
 
         public void ShowCheerleaderSection()
@@ -92,15 +116,17 @@ namespace KBOManager.Controllers
             LogSectionToggle(nameof(ShowCheerleaderSection), activate: cheerleaderSection, deactivate: playerSection);
 
             if (playerSection != null) playerSection.SetActive(false);
+            if (specialSection != null) specialSection.SetActive(false);
             if (cheerleaderSection != null) cheerleaderSection.SetActive(true);
-            StyleTabs(playerActive: false);
+            StyleTabs(2);
         }
 
-        /// <summary>[TASK-KBO-178] 레퍼런스(선수 스카우트 탭 바)처럼 현재 탭만 네이비로 강조한다.</summary>
-        private void StyleTabs(bool playerActive)
+        /// <summary>[TASK-KBO-178] 레퍼런스(선수 스카우트 탭 바)처럼 현재 탭만 네이비로 강조한다. [TASK-185] 0 스카우트 / 1 특별 영입 / 2 응원단.</summary>
+        private void StyleTabs(int active)
         {
-            StyleTab(playerTabButton, playerActive);
-            StyleTab(cheerleaderTabButton, !playerActive);
+            StyleTab(playerTabButton, active == 0);
+            StyleTab(specialTabButton, active == 1);
+            StyleTab(cheerleaderTabButton, active == 2);
         }
 
         private void StyleTab(Button tab, bool active)

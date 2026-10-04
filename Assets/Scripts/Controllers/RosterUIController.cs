@@ -131,10 +131,7 @@ namespace KBOManager.Controllers
             if (swapConfirmButton != null) swapConfirmButton.onClick.AddListener(ConfirmSwap);
             if (swapCancelButton != null) swapCancelButton.onClick.AddListener(CloseSwapPopup);
             if (autoLineupButton != null) autoLineupButton.onClick.AddListener(ExecuteAutoLineup);
-            if (setDeckOptionButton != null) setDeckOptionButton.onClick.AddListener(() =>
-            {
-                if (setDeckOptionController != null) setDeckOptionController.Open();
-            });
+            if (setDeckOptionButton != null) setDeckOptionButton.onClick.AddListener(() => OpenSetDeckBuffSelection()); // [TASK-KBO-185]
             if (batterTabButton != null) batterTabButton.onClick.AddListener(() => ShowTab(false));
             if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(() => ShowTab(true));
             AwakeCompya();
@@ -520,7 +517,8 @@ namespace KBOManager.Controllers
                 CardHolderFit.ResetCard(card); // [TASK-KBO-181] 슬롯 칸 스케일이 다른 화면 재사용에 새지 않게
 
                 if (CardPoolManager.Instance != null) CardPoolManager.Instance.Release(card);
-                else Destroy(card.gameObject);
+                else if (Application.isPlaying) Destroy(card.gameObject);
+                else DestroyImmediate(card.gameObject);
             }
             tracking.Clear();
         }

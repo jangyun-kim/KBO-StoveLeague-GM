@@ -67,7 +67,12 @@ namespace KBOManager.EditorTools
         /// (GrowthCenterView: 강화/각성/한계 돌파/훈련·특훈 4탭 + 대상 변경 + 재료 선택), 라인업 [보관 선수] 탭 보유 리스트 필터/정렬 바.
         /// 배치 실행(RunBatchApplyLatestUI)은 끝에 SampleScene을 저장해 에디터를 열면 SampleScene이 바로 보이게 한다(SampleSceneGuard).
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~184)")]
+        /// <remarks>
+        /// [TASK-KBO-185] 메뉴 이름을 TASK-168~185로 갱신. 마지막 단계로 SetupTask185.ApplyAll()을 실행한다 - 라인업 직속 레거시 하단 바 고아
+        /// (흰 게이지 막대 · 리스너 없는 [세트덱 버프 선택] · 미바인딩 [자동 교체]) 정리, 로비 [세트덱 &amp; 버프 선택] 타일 → 버프 팝업 직행,
+        /// 스카우트 허브 3탭 + [특별 영입(골글·시그니처)] 섹션.
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~185)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -90,7 +95,8 @@ namespace KBOManager.EditorTools
             SetupTask182.ApplyAll();
             SetupTask183.ApplyAll();
             SetupTask184.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~184 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask185.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~185 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

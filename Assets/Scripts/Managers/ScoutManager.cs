@@ -67,10 +67,15 @@ namespace KBOManager.Managers
         /// <summary>[프리미엄/픽업 영입 &gt; 골든글러브] GG 0.5 / TH 1.5 / FRA 2.0 / AS 3.0 / LIVE_EPIC 93.0 = 100%.
         /// [TASK-KBO-182] 구 시그니처 상품(SIG 0.5%) 대체 - 종결 등급(SIG/DYN/RN)은 상시 스카우트에서 제외.
         /// 메서드 이름(RollPremiumSignature/RollPickupSignature)은 씬 버튼 바인딩 호환을 위해 그대로 둔다.</summary>
-        private static readonly List<GradeDropRate> SignatureDropTable = ToDropRates(ScoutDropTables.GoldenGlove);
+        private static readonly List<GradeDropRate> SignatureDropTable = ToDropRates(ScoutDropTables.Premium); // [TASK-KBO-185] GG 제외 · 최고 TH
 
         /// <summary>[프리미엄/픽업 영입 &gt; 타이틀 홀더] TH 0.5 / FRA 1.0 / AS 1.5 / LIVE_EPIC 3.0 / LIVE_NORMAL 94.0 = 100%.</summary>
-        private static readonly List<GradeDropRate> TitleHolderDropTable = ToDropRates(ScoutDropTables.TitleHolder);
+        private static readonly List<GradeDropRate> TitleHolderDropTable = ToDropRates(ScoutDropTables.Premium);
+
+        /// <summary>[TASK-KBO-185] 일반 스카우트(라이브 일반 영입권 · 포인트) - TH 0.3 / FRA 1.0 / AS 2.2 / LIVE_EPIC 6.5 / LIVE_NORMAL 90.0.</summary>
+        private static readonly List<GradeDropRate> NormalDropTable = ToDropRates(ScoutDropTables.Normal);
+
+        public PlayerDatabase Database => playerDatabase != null ? playerDatabase : (playerDatabase = FindAnyObjectByType<PlayerDatabase>());
 
         private static List<GradeDropRate> ToDropRates(IEnumerable<(Grade Grade, float RatePercent)> table) =>
             table.Select(e => new GradeDropRate { Grade = e.Grade, RatePercent = e.RatePercent }).ToList();
@@ -97,7 +102,7 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.LiveNormalTicket = amount,
                 liveNormalCost,
                 "라이브 일반 영입권",
-                () => RollGradeAtMost(Grade.LIVE_NORMAL));
+                () => RollWeightedGrade(NormalDropTable)); // [TASK-KBO-185] 일반 스카우트 표(최고 TH 0.3%)
         }
 
         /// <summary>[일반 영입 &gt; 라이브 에픽(4~5성)] LiveEpicTicket을 소모해 LIVE_EPIC 등급만
@@ -148,7 +153,8 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.PickupTicket = amount,
                 pickupCost,
                 "픽업 영입권",
-                () => RollWeightedGrade(SignatureDropTable));
+                () => RollWeightedGrade(SignatureDropTable),
+                pickup: true);
         }
 
         /// <summary>[픽업 영입 &gt; 타이틀 홀더] PickupTicket(픽업 영입권)을 소모한다. [TASK-KBO-144]
@@ -161,7 +167,8 @@ namespace KBOManager.Managers
                 amount => GameManager.Instance.PickupTicket = amount,
                 pickupCost,
                 "픽업 영입권",
-                () => RollWeightedGrade(TitleHolderDropTable));
+                () => RollWeightedGrade(TitleHolderDropTable),
+                pickup: true);
         }
 
         /// <summary>
@@ -170,7 +177,7 @@ namespace KBOManager.Managers
         /// 것도 차감하지 않고 null을 반환한다.
         /// </summary>
         private Player RollWithCurrency(Func<int> getCurrency, Action<int> setCurrency, int cost,
-            string currencyLabel, Func<Grade> gradeSelector)
+            string currencyLabel, Func<Grade> gradeSelector, bool pickup = false)
         {
             if (GameManager.Instance == null || playerDatabase == null) return null;
 
@@ -185,12 +192,10 @@ namespace KBOManager.Managers
             setCurrency(current - cost);
 
             var grade = gradeSelector();
-            var template = PickTemplate(grade);
+            var template = PickTemplate(grade, pickup);
             if (template == null) return null;
 
-            var player = new Player(Guid.NewGuid().ToString(), template);
-            ApplyInitialGradeRule(player, grade);
-            AttachInitialSkill(player, template);
+            var player = IssueCard(template);
 
             GameManager.Instance.AddPlayerToInventory(player);
             LogAcquired(player);
@@ -299,18 +304,22 @@ namespace KBOManager.Managers
             return dropTable[dropTable.Count - 1].Grade;
         }
 
-        private PlayerTemplate PickTemplate(Grade grade)
+        /// <summary>[TASK-KBO-185] ScoutDropTables.PickTemplate - 스카우트 제외 등급(GG 이상)은 대체 추첨에서도 나오지 않고,
+        /// 픽업 영입이면 선택 구단(GameManager.FavoriteTeam) 카드가 50%로 나온다.</summary>
+        private PlayerTemplate PickTemplate(Grade grade, bool pickup = false)
         {
-            var candidates = playerDatabase.AllTemplates.Where(t => t.Grade == grade).ToList();
-            if (candidates.Count == 0)
-            {
-                // 해당 등급의 템플릿이 아직 등록되지 않은 경우, 전체 풀에서 대체 추첨한다.
-                // [TASK-KBO-182] 대체 추첨에서도 종결 등급(SIG/DYN/RN)은 나오지 않게 한다.
-                candidates = playerDatabase.AllTemplates.Where(t => !ScoutDropTables.IsExcludedFromScout(t.Grade)).ToList();
-            }
-            if (candidates.Count == 0) return null;
+            var favorite = GameManager.Instance != null ? GameManager.Instance.FavoriteTeam : Team.None;
+            return ScoutDropTables.PickTemplate(playerDatabase.AllTemplates, grade, favorite, pickup, () => UnityEngine.Random.value * 0.99999f);
+        }
 
-            return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+        /// <summary>[TASK-KBO-185] 템플릿으로 새 카드 1장을 발급한다(등급 초기 규칙 + 초기 스킬, 인벤토리 추가는 호출부) - 특별 영입 공용.</summary>
+        public Player IssueCard(PlayerTemplate template)
+        {
+            if (template == null) return null;
+            var player = new Player(Guid.NewGuid().ToString(), template);
+            ApplyInitialGradeRule(player, template.Grade);
+            AttachInitialSkill(player, template);
+            return player;
         }
 
         /// <summary>

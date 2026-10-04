@@ -80,6 +80,8 @@ namespace KBOManager.Controllers
         public void AddAwakenMaterial(Player material)
         {
             if (material == null || material == awakenTarget || awakenMaterials.Contains(material)) return;
+            // [TASK-KBO-185] 동일 선수 + 동일 시즌 등급만 재료(같은 연도 +3각 / 다른 연도 +1각) - 무효 카드는 갈리지 않게 거른다.
+            if (awakenTarget != null && CardGrowthRules.AwakenGainFor(awakenTarget, material) <= 0) return;
 
             awakenMaterials.Add(material);
         }
@@ -130,7 +132,7 @@ namespace KBOManager.Controllers
         {
             if (UpgradeManager.Instance == null || GameManager.Instance == null || awakenTarget == null) return;
 
-            var usedMaterials = new List<Player>(awakenMaterials);
+            var usedMaterials = awakenMaterials.Where(m => CardGrowthRules.AwakenGainFor(awakenTarget, m) > 0).ToList();
             bool success = UpgradeManager.Instance.TryAwaken(awakenTarget, usedMaterials);
 
             Debug.Log($"[GameActionController] ExecuteAwaken: {(success ? "성공" : "실패")} " +

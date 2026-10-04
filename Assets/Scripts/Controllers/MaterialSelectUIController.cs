@@ -124,7 +124,7 @@ namespace KBOManager.Controllers
             selectedPlayers.Clear();
             selectedItems.Clear();
 
-            if (titleText != null) titleText.text = "각성 재료 선택 (동일 선수 카드만 표시됨)";
+            if (titleText != null) titleText.text = "각성 재료 선택 (동일 선수·동일 시즌: 같은 연도 +3각 / 다른 연도 +1각)";
             if (itemListPanel != null) itemListPanel.SetActive(false);
             if (playerListPanel != null) playerListPanel.SetActive(true);
 
@@ -150,7 +150,8 @@ namespace KBOManager.Controllers
                 IEnumerable<Player> candidates = mode == MaterialSelectMode.Enhance
                     ? GameManager.Instance.Inventory.Where(p => p != target && p?.Template != null)
                     : GameManager.Instance.Inventory.Where(p => p != target && p?.Template != null
-                        && p.Template.RealPlayerId == target.Template.RealPlayerId);
+                        && CardGrowthRules.AwakenGainFor(target, p) > 0) // [TASK-KBO-185] 동일 선수 + 동일 시즌 등급
+                        .OrderByDescending(p => CardGrowthRules.AwakenGainFor(target, p));
 
                 foreach (var candidate in candidates)
                 {

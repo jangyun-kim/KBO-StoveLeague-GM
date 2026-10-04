@@ -338,6 +338,15 @@ namespace KBOManager.Controllers
                 return;
             }
 
+            // [TASK-KBO-185] 성장 센터가 있으면 [각성] 탭(재료 배지 [동일 연도 +3각]/[다른 연도 +1각] + 단계 미리보기)으로 연다.
+            if (growthCenter == null) growthCenter = GetComponent<GrowthCenterView>();
+            if (growthCenter != null)
+            {
+                growthCenter.Open(currentPlayer, ScreenType.PlayerManagementHub);
+                growthCenter.SelectTab(GrowthTab.Awaken);
+                return;
+            }
+
             var materialSelect = MaterialSelect;
             if (materialSelect == null)
             {

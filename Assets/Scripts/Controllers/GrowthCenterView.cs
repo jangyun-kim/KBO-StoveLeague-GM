@@ -288,6 +288,11 @@ namespace KBOManager.Controllers
             ladderNoteText.text = $"+{target.AwakenGrowth} OVR · " + CardGrowthRules.AwakenStageNote(tpl.Grade, target.AwakenLevel);
 
             descText.text = GrowthCenterRules.Describe(tab, target, gold);
+            if (tab == GrowthTab.Awaken && selected.Count > 0)
+            {
+                string preview = GrowthCenterRules.AwakenPreview(target, selected); // [TASK-KBO-185] "0각 → 3각 · OVR +5 점프"
+                if (preview.Length > 0) descText.text = $"<color=#5EE08A>각성 미리보기: {preview}</color>\n" + descText.text.Split('\n')[0];
+            }
             statText.text = string.Join("\n", GrowthCenterRules.StatPreviewLines(target, after));
 
             int maxMaterials = GrowthCenterRules.MaxMaterials(tab);
@@ -301,7 +306,11 @@ namespace KBOManager.Controllers
                 {
                     var captured = m;
                     bool on = selected.Contains(m);
-                    rows.Add(($"{(on ? "✔ " : "")}{CompyaMatchView.DisplayName(m)}\n<size=80%>{CardGrowthRules.DisplayName(m.Template.Grade)} · OVR {m.CalculateNeutralOVR()}</size>",
+                    // [TASK-KBO-185] 각성 재료 배지 - [동일 연도 +3각] / [다른 연도 +1각]
+                    string badge = tab == GrowthTab.Awaken ? CardGrowthRules.AwakenMaterialBadge(target, m) : "";
+                    if (badge.Length > 0)
+                        badge = $"<color={(CardGrowthRules.AwakenGainFor(target, m) == CardGrowthRules.SameYearAwakenGain ? "#FFD045" : "#7FD1FF")}>{badge}</color> ";
+                    rows.Add(($"{(on ? "✔ " : "")}{CompyaMatchView.DisplayName(m)}\n<size=80%>{badge}{CardGrowthRules.DisplayName(m.Template.Grade)} · OVR {m.CalculateNeutralOVR()}</size>",
                         on ? RowOn : RowOff, () => ToggleMaterial(captured)));
                 }
             }

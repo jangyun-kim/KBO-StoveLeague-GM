@@ -70,6 +70,20 @@ namespace KBOManager.Managers
             pool.Release(instance);
         }
 
+        /// <summary>[TASK-KBO-185] 반납 카드의 렌더 상태 초기화 - CardHolderFit 스케일·ignoreLayout, RectMask2D 컬링/클립 잔재.</summary>
+        public static void ResetRenderState(PlayerCardUI card)
+        {
+            if (card == null) return;
+            CardHolderFit.ResetCard(card);
+            foreach (var graphic in card.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+            {
+                var canvasRenderer = graphic.canvasRenderer;
+                if (canvasRenderer == null) continue;
+                canvasRenderer.cull = false;
+                canvasRenderer.DisableRectClipping();
+            }
+        }
+
         private ObjectPool<PlayerCardUI> GetOrCreatePool(PlayerCardUI prefab)
         {
             if (poolsByPrefab.TryGetValue(prefab, out var existing)) return existing;
@@ -79,6 +93,7 @@ namespace KBOManager.Managers
                 actionOnGet: card => card.gameObject.SetActive(true),
                 actionOnRelease: card =>
                 {
+                    ResetRenderState(card); // [TASK-KBO-185] 다른 화면의 스케일/레이아웃 무시/마스크 컬링이 다음 대여로 새지 않게
                     card.Clear();
                     card.gameObject.SetActive(false);
                     card.transform.SetParent(transform, false); // 비활성 카드를 이 매니저 아래에 보관해 씬 하이어라키를 어지럽히지 않는다

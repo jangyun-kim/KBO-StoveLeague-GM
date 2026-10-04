@@ -19,7 +19,7 @@ namespace KBOManager.Models
     ///   - 기본 성장 대상: 라인업 최고 OVR 선수(로비 대표 선수와 같은 기준), 라인업이 비면 보유 최고 OVR.
     ///   - 대상 변경 목록: 보유 선수 전원(라인업 선수 우선 → OVR 내림차순).
     ///   - 탭별 재료 후보: 라인업(1군) 카드와 대상 자신은 제외. 강화 = 아무 보관 카드(낮은 위상·낮은 OVR 순), 각성 = 동일 선수 &amp;
-    ///     (같은 카드 또는 같은 등급), 한계 돌파 = CardGrowthActions.IsValidLimitBreakMaterial, 훈련 = 재료 없음(볼).
+    ///     동일 시즌 등급(같은 연도 +3각 / 다른 연도 +1각), 한계 돌파 = CardGrowthActions.IsValidLimitBreakMaterial, 훈련 = 재료 없음(볼).
     ///   - 미리보기: 대상을 복제해 같은 규칙(UpgradeManager.ApplyEnhance/ApplyAwaken, CardGrowthActions)을 적용한 결과를 비교한다.
     /// </summary>
     public static class GrowthCenterRules
@@ -61,12 +61,22 @@ namespace KBOManager.Models
                 .ThenBy(p => p.Template.PlayerName, StringComparer.Ordinal).ToList();
         }
 
-        public static bool IsValidAwakenMaterial(Player target, Player material)
+        /// <summary>[TASK-KBO-185] 동일 선수 + 동일 시즌 등급(연도 무관 - 같은 연도 +3각 / 다른 연도 +1각).</summary>
+        public static bool IsValidAwakenMaterial(Player target, Player material) => CardGrowthRules.AwakenGainFor(target, material) > 0;
+
+        /// <summary>[TASK-KBO-185] 각성 미리보기 문구 - "0각 → 3각 · OVR +5 점프"(재료 없으면 빈 문자열).</summary>
+        public static string AwakenPreview(Player target, IReadOnlyList<Player> materials)
         {
-            if (target?.Template == null || material?.Template == null || material == target) return false;
-            if (material.Template.RealPlayerId != target.Template.RealPlayerId) return false;
-            return material.Template == target.Template || material.Template.Grade == target.Template.Grade;
+            if (target?.Template == null || materials == null || materials.Count == 0) return "";
+            var after = Simulate(GrowthTab.Awaken, target, materials);
+            if (after.AwakenLevel == target.AwakenLevel) return "";
+            var g = target.Template.Grade;
+            int jump = CardGrowthRules.AwakenGrowthFor(g, after.AwakenLevel) - CardGrowthRules.AwakenGrowthFor(g, target.AwakenLevel);
+            return $"{StepLabel(g, target.AwakenLevel)} → {StepLabel(g, after.AwakenLevel)} · OVR +{jump} 점프";
         }
+
+        private static string StepLabel(Grade grade, int level) =>
+            CardGrowthRules.IsTranscended(grade, level) ? "초월" : $"{CardGrowthRules.ClampAwaken(grade, level)}각";
 
         /// <summary>탭별 재료 후보(라인업 카드 · 대상 자신 제외). 아까운 카드가 뒤로 가도록 정렬한다.</summary>
         public static List<Player> MaterialCandidates(GrowthTab tab, Player target, IEnumerable<Player> inventory, IEnumerable<Player> roster)
@@ -81,7 +91,7 @@ namespace KBOManager.Models
                         .ThenBy(p => p.GetStatGrowth()).ToList();
                 case GrowthTab.Awaken:
                     return pool.Where(p => IsValidAwakenMaterial(target, p))
-                        .OrderByDescending(p => p.Template == target.Template).ThenBy(p => p.GetStatGrowth()).ToList();
+                        .OrderByDescending(p => CardGrowthRules.AwakenGainFor(target, p)).ThenBy(p => p.GetStatGrowth()).ToList();
                 case GrowthTab.LimitBreak:
                     return pool.Where(p => CardGrowthActions.IsValidLimitBreakMaterial(target, p))
                         .OrderByDescending(p => p.Template.RealPlayerId == target.Template.RealPlayerId)
@@ -192,7 +202,7 @@ namespace KBOManager.Models
                         ? $" · 다음 임계점 {CardGrowthRules.AwakenLabel(g, next)} = OVR +{CardGrowthRules.AwakenGrowthFor(g, next)}"
                         : "";
                     return $"각성 {target.AwakenLabel} (OVR +{target.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(g)}){nextText}\n" +
-                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 동일 선수(같은 카드 또는 같은 등급)";
+                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 동일 선수·동일 시즌 - 같은 연도 +3각 / 다른 연도 +1각";
                 }
                 case GrowthTab.LimitBreak:
                     return CardGrowthActions.CanLimitBreak(target, out var reason)

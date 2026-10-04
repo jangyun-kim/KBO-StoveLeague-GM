@@ -239,7 +239,8 @@ namespace KBOManager.EditorTests
 
             var after = GrowthCenterRules.Simulate(GrowthTab.Awaken, star, awakenMaterials);
             Assert.AreEqual(0, star.AwakenLevel, "미리보기는 원본을 바꾸지 않는다");
-            Assert.AreEqual(1, after.AwakenLevel, "같은 등급 다른 카드(동일 선수) = 각성 +1");
+            // [TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 동일 연도(테스트 카드는 모두 2026) = +3각(다른 연도면 +1각 - Task185Tests).
+            Assert.AreEqual(3, after.AwakenLevel, "같은 시즌 · 같은 연도 카드(동일 선수) = 각성 +3");
         }
 
         [Test]
