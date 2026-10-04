@@ -38,8 +38,6 @@ namespace KBOManager.Controllers
         [Header("Playback")]
         [SerializeField] private float highlightEventDelay = 0.5f;
         [SerializeField] private float fullPlayEventDelay = 0.8f;
-        [SerializeField] private int highlightMaxDirectPlays = 4;
-        [SerializeField] private int fullPlayMaxDirectPlays = 12;
         [SerializeField] private float inningSplashSeconds = 1.4f;
         [SerializeField] private float directResultSeconds = 1.6f;
 
@@ -68,7 +66,36 @@ namespace KBOManager.Controllers
         private MatchRewardResult lastReward;
         private Coroutine arcRoutine;
 
+        // [TASK-KBO-188] 빠른 진행 N경기 연속 자동 진행
+        private int quickCount = 1;
+        private QuickSeriesRunner quickRunner;
+        private bool quickSeriesRegular;
+        private QuickSeriesSummary quickSeries => quickRunner?.Summary;
+
         public PlayMode CurrentMode => mode;
+        public int QuickCount => quickCount;
+        /// <summary>마지막(또는 진행 중) 빠른 진행 연속 집계 - 다른 방식으로 경기를 시작하면 null.</summary>
+        public QuickSeriesSummary LastQuickSeries => quickSeries;
+
+        private QuickSeriesRunner QuickRunner => quickRunner ??= CreateQuickRunner();
+
+        private QuickSeriesRunner CreateQuickRunner()
+        {
+            var runner = new QuickSeriesRunner(
+                () => StartOneMatch(skip: true),
+                CanContinueQuickSeries,
+                next => StartCoroutine(NextFrame(next)),
+                () => GameManager.Instance != null ? GameManager.Instance.LiveNormalTicket : 0,
+                () => GameManager.Instance != null ? GameManager.Instance.GameGold : 0);
+            runner.Finished += _ => FinishQuickSeries();
+            return runner;
+        }
+
+        private static IEnumerator NextFrame(System.Action next)
+        {
+            yield return null;
+            next?.Invoke();
+        }
 
         // ================================================================== 수명주기
 
@@ -146,6 +173,30 @@ namespace KBOManager.Controllers
             RefreshTypeSelect();
         }
 
+        /// <summary>[TASK-KBO-188] 빠른 진행 경기 수 지정(1 ~ 남은 정규시즌 경기 수로 클램프).</summary>
+        public void SetQuickCount(int count)
+        {
+            int remaining = QuickRemainingGames();
+            quickCount = Mathf.Max(1, remaining > 0 ? MatchModeRules.ClampQuickCount(count, remaining) : count);
+            if (typePanel != null && typePanel.activeSelf) RefreshTypeSelect();
+        }
+
+        private void AdjustQuickCount(int delta) => SetQuickCount(quickCount + delta);
+
+        private static bool IsRegularPhase()
+        {
+            var phase = LeagueManager.Instance != null ? LeagueManager.Instance.CurrentPhase : LeaguePhase.STOVE_LEAGUE;
+            return phase == LeaguePhase.REGULAR_OPEN || phase == LeaguePhase.REGULAR_LOCKED;
+        }
+
+        /// <summary>[TASK-KBO-188] 빠른 진행으로 이어서 치를 수 있는 남은 경기 수(정규시즌 = 144 - 진행 경기, 그 외 = 다음 1경기).</summary>
+        public static int QuickRemainingGames()
+        {
+            var league = LeagueManager.Instance;
+            if (league == null) return 0;
+            return MatchModeRules.RemainingRegularGames(league.PlayedGameCount, LeagueManager.TotalUserGames, IsRegularPhase(), league.PeekNextFixture() != null);
+        }
+
         private void OnStartPressed()
         {
             if (playBallController == null)
@@ -159,6 +210,18 @@ namespace KBOManager.Controllers
                 return;
             }
 
+            if (mode == PlayMode.Quick)
+            {
+                BeginQuickSeries();
+                return;
+            }
+
+            quickRunner?.Reset();
+            StartOneMatch(skip: false);
+        }
+
+        private void StartOneMatch(bool skip)
+        {
             modeChosen = true;
             paused = splashActive = choiceActive = directResultActive = awaitingDirectReveal = false;
             resolvedChoices.Clear();
@@ -168,7 +231,48 @@ namespace KBOManager.Controllers
             relayPanel.SetActive(true);
 
             playBallController.StartMatch(); // -> LoadEvents -> HandlePlaybackStarted (재생 시작)
-            if (mode == PlayMode.Quick) broadcastUIManager?.RequestSkip(); // 빠른 진행: 즉시 결과
+            if (skip) broadcastUIManager?.RequestSkip(); // 빠른 진행: 즉시 결과(-> FinishMatch -> HandleMatchCompleted)
+        }
+
+        /// <summary>
+        /// [TASK-KBO-188] 빠른 진행 N경기 연속 - 경기마다 1경기 진행과 같은 경로(StartMatch → 스킵 → FinishMatch)를 탄다:
+        /// ① LeagueManager.GetNextStartingPitcher 선발 로테이션 ② CompleteNextFixture의 타 구장 4경기 ③ 시즌 기록(RecordSeasonStatsFromEvents)
+        /// ④ MatchRewardManager 보상(관중 수익 배율 포함). 다음 경기는 한 프레임 뒤에 시작해 이전 경기의 완료 처리(보상 구독자 등)가 모두 끝나게 한다.
+        /// </summary>
+        private void BeginQuickSeries()
+        {
+            quickSeriesRegular = IsRegularPhase();
+            if (!QuickRunner.Begin(quickCount, QuickRemainingGames())) typeInfoText.text = "진행할 예정 경기가 없습니다.";
+        }
+
+        private bool CanContinueQuickSeries()
+        {
+            if (playBallController == null || LeagueManager.Instance == null || LeagueManager.Instance.PeekNextFixture() == null) return false;
+            return !quickSeriesRegular || IsRegularPhase(); // 정규시즌이 끝나면(포스트시즌 진입 등) 멈춘다
+        }
+
+        private void FinishQuickSeries()
+        {
+            paused = splashActive = choiceActive = directResultActive = awaitingDirectReveal = false;
+            HideAll();
+            FillResult1();
+            result1Panel.SetActive(true);
+        }
+
+        /// <summary>[TASK-KBO-188] 경기 중 토글 - 풀 플레이 ↔ 하이라이트. 진행 중인 작전 패널은 닫고 재생을 잇는다.</summary>
+        public void ToggleHighlightFull()
+        {
+            if (mode == PlayMode.Quick) return;
+            mode = mode == PlayMode.Full ? PlayMode.Highlight : PlayMode.Full;
+            RefreshModeToggle();
+            if (choiceActive && !awaitingDirectReveal && (directPlayButton == null || directPlayButton.interactable)) // 투구 연출 중에는 그대로 진행
+            {
+                resolvedChoices.Add(pendingPlateAppearance);
+                choicePanel.SetActive(false);
+                directPanel.SetActive(false);
+                choiceActive = false;
+                TryRelease();
+            }
         }
 
         private void OnBackPressed()
@@ -189,12 +293,13 @@ namespace KBOManager.Controllers
             if (!modeChosen) mode = PlayMode.Highlight; // 디버그 등 유형 선택 없이 시작된 경기
             modeChosen = false;
             if (broadcastUIManager != null)
-                broadcastUIManager.PerEventDelaySeconds = MatchTempo.Scaled(mode == PlayMode.Full ? fullPlayEventDelay : highlightEventDelay); // [TASK-KBO-186] 33% 단축
+                broadcastUIManager.PerEventDelaySeconds = MatchTempo.Scaled(mode == PlayMode.Quick ? highlightEventDelay : fullPlayEventDelay); // [TASK-KBO-186] 33% 단축 · [TASK-KBO-188] 하이라이트 = 구 풀 플레이 템포
 
             BuildBattingOrders();
             HideAll();
             relayPanel.SetActive(true);
             ApplyTeamsToRelay();
+            RefreshModeToggle();
             ClearArc();
             toastRoot.gameObject.SetActive(false);
             RefreshRelay(CompyaGameTracker.Build(events, -1), -1);
@@ -257,23 +362,21 @@ namespace KBOManager.Controllers
         }
 
         /// <summary>
-        /// 승부처 판정(직접 플레이 자동 선택). 하이라이트: 5회 이후 · 3점 차 이내 · (득점권 주자 또는 8회 이후), 최대 4회.
-        /// 풀 플레이: 득점권 주자, 최대 12회. 빠른 진행은 직접 플레이가 없다.
-        /// [TASK-KBO-180] 우리 팀 공격(공격 작전)뿐 아니라 우리 팀 수비(상대 타석 - 투수 교체/정면 승부/고의사구) 승부처도 고른다.
+        /// [TASK-KBO-188] 작전 개입 판정(MatchModeRules.ShouldIntervene). 하이라이트(= 구 풀 플레이 흐름): 득점권 승부처, 최대 12회.
+        /// 풀 플레이: 우리 팀 매 타석 + 주자가 나간 수비 타석. 빠른 진행은 개입이 없다.
+        /// [TASK-KBO-180] 우리 팀 공격(공격 작전)뿐 아니라 우리 팀 수비(상대 타석 - 투수 교체/정면 승부/고의사구)도 고른다.
         /// </summary>
         private bool IsClutch(PlayEvent evt, int index)
         {
             if (mode == PlayMode.Quick || evt.PlateAppearance < 0 || resolvedChoices.Contains(evt.PlateAppearance)) return false;
             var user = LeagueManager.Instance != null ? LeagueManager.Instance.UserTeam : Team.None;
-            if (awayTeam != user && homeTeam != user) return false;
+            bool userInGame = awayTeam == user || homeTeam == user;
+            if (!userInGame) return false;
 
             var before = CompyaGameTracker.Build(events, index - 1);
-            int diff = Mathf.Abs(before.AwayScore - before.HomeScore);
-            if (mode == PlayMode.Full)
-                return resolvedChoices.Count < fullPlayMaxDirectPlays && before.HasRunnerInScoringPosition;
-
-            return resolvedChoices.Count < highlightMaxDirectPlays && evt.Inning >= 5 && diff <= 3
-                && (before.HasRunnerInScoringPosition || evt.Inning >= 8);
+            bool anyRunner = before.Bases[1] || before.Bases[2] || before.Bases[3];
+            return MatchModeRules.ShouldIntervene((MatchModeRules.Mode)(int)mode, userInGame, IsUserBatting(evt.IsTopHalf),
+                before.HasRunnerInScoringPosition, anyRunner, resolvedChoices.Count);
         }
 
         private void OnPausePressed()
@@ -313,6 +416,12 @@ namespace KBOManager.Controllers
             choiceActive = true;
             pendingChoiceIndex = index;
             pendingPlateAppearance = evt.PlateAppearance;
+            if (mode == PlayMode.Full)
+            {
+                // [TASK-KBO-188] 풀 플레이 = 매 타석 지휘 - 승부처 안내 화면 없이 바로 작전 패널을 연다.
+                OnChoicePlay();
+                return;
+            }
             FillChoice(evt, CompyaGameTracker.Build(events, index - 1));
             choicePanel.SetActive(true);
         }
@@ -406,6 +515,9 @@ namespace KBOManager.Controllers
         {
             lastResult = result;
             finalTracker = CompyaGameTracker.Build(events, events != null ? events.Count - 1 : -1);
+            // [TASK-KBO-188] 빠른 진행 연속 - 전적을 쌓고, 남았으면 다음 경기로(결과 화면은 마지막 경기 뒤 Finished에서 1회).
+            var user = LeagueManager.Instance != null ? LeagueManager.Instance.UserTeam : Team.None;
+            if (quickRunner != null && quickRunner.HandleMatchCompleted(result, user)) return;
             paused = splashActive = choiceActive = directResultActive = awaitingDirectReveal = false;
             HideAll();
             FillResult1();
@@ -415,6 +527,11 @@ namespace KBOManager.Controllers
         private void HandleRewardGranted(MatchRewardResult reward)
         {
             lastReward = reward;
+            if (quickRunner?.Summary != null)
+            {
+                quickRunner.RefreshTotals(); // 보상 구독 순서와 무관하게 누적 자금을 맞춘다
+                RefreshQuickBanners();
+            }
             if (result3Panel != null && result3Panel.activeSelf) FillResult3();
         }
 

@@ -202,7 +202,7 @@ namespace KBOManager.Models
                         ? $" · 다음 임계점 {CardGrowthRules.AwakenLabel(g, next)} = OVR +{CardGrowthRules.AwakenGrowthFor(g, next)}"
                         : "";
                     return $"각성 {target.AwakenLabel} (OVR +{target.AwakenGrowth}/{CardGrowthRules.AwakenGrowthCap(g)}){nextText}\n" +
-                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 동일 선수·동일 시즌 - 같은 연도 +3각 / 다른 연도 +1각";
+                           $"{CardGrowthRules.AwakenStageNote(g, target.AwakenLevel)} · 재료: 같은 시즌 등급 - 같은 선수 +3각 / 다른 선수 +1각";
                 }
                 case GrowthTab.LimitBreak:
                     return CardGrowthActions.CanLimitBreak(target, out var reason)

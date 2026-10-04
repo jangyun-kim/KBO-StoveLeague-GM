@@ -20,6 +20,8 @@ namespace KBOManager.Controllers
         public class BatLine
         {
             public int AtBats, Hits, Walks, HomeRuns, Sacrifices;
+            /// <summary>[TASK-KBO-188] 오늘 타점(그 타석 득점 합) - 시즌 누적 실시간 합산용.</summary>
+            public int RunsBattedIn;
             public readonly List<AtBatResult> Results = new List<AtBatResult>();
             /// <summary>[TASK-KBO-180] 뱃지 표기(희생번트 등 작전 결과 포함)와 색(출루/진루 = true).</summary>
             public readonly List<(string Label, bool Positive)> Badges = new List<(string, bool)>();
@@ -33,6 +35,47 @@ namespace KBOManager.Controllers
         {
             public int Outs, Pitches, Strikeouts, Runs;
         }
+
+        /// <summary>[TASK-KBO-188] 중계 화면용 "시즌 누적 + 오늘 진행분" 타격 기록(시즌 기록은 경기 종료 시 확정되므로 재생 중에는 합산해 보여 준다).</summary>
+        public struct LiveBatting
+        {
+            public int AtBats, Hits, HomeRuns, RunsBattedIn;
+            public float Average => AtBats == 0 ? 0f : (float)Hits / AtBats;
+            /// <summary>"타율 .315 | 14홈런 52타점"</summary>
+            public string Summary => $"타율 {FormatAverage(Average)} | {HomeRuns}홈런 {RunsBattedIn}타점";
+        }
+
+        /// <summary>[TASK-KBO-188] 중계 화면용 "시즌 누적 + 오늘 진행분" 투수 기록.</summary>
+        public struct LivePitching
+        {
+            public int Outs, EarnedRuns, Wins, Losses;
+            public float Era => Outs == 0 ? 0f : EarnedRuns * 27f / Outs;
+            /// <summary>"7승 3패 ERA 3.21"</summary>
+            public string Summary => $"{Wins}승 {Losses}패 ERA {Era:0.00}";
+        }
+
+        public static LiveBatting CombineBatting(Managers.BatterSeasonStats season, BatLine today)
+        {
+            var live = new LiveBatting();
+            if (season != null) { live.AtBats = season.AtBats; live.Hits = season.Hits; live.HomeRuns = season.HomeRuns; live.RunsBattedIn = season.RunsBattedIn; }
+            if (today != null) { live.AtBats += today.AtBats; live.Hits += today.Hits; live.HomeRuns += today.HomeRuns; live.RunsBattedIn += today.RunsBattedIn; }
+            return live;
+        }
+
+        public static LivePitching CombinePitching(Managers.PitcherSeasonStats season, PitchLine today)
+        {
+            var live = new LivePitching();
+            if (season != null) { live.Outs = season.OutsRecorded; live.EarnedRuns = season.EarnedRuns; live.Wins = season.Wins; live.Losses = season.Losses; }
+            if (today != null) { live.Outs += today.Outs; live.EarnedRuns += today.Runs; }
+            return live;
+        }
+
+        /// <summary>[TASK-KBO-188] 선수의 시즌 누적(SeasonStatManager) + 이 집계기의 오늘 기록.</summary>
+        public LiveBatting LiveBattingOf(Player player) =>
+            CombineBatting(player != null ? Managers.SeasonStatManager.Instance?.GetBatterStats(player) : null, player != null ? BatOf(player) : null);
+
+        public LivePitching LivePitchingOf(Player player) =>
+            CombinePitching(player != null ? Managers.SeasonStatManager.Instance?.GetPitcherStats(player) : null, player != null ? PitchOf(player) : null);
 
         public class TeamLine
         {
@@ -124,6 +167,7 @@ namespace KBOManager.Controllers
                         else bat.AtBats++;
                         if (IsHit(e.Result)) { bat.Hits++; team.H++; }
                         if (e.Result == AtBatResult.HomeRun) { bat.HomeRuns++; team.HR++; }
+                        bat.RunsBattedIn += System.Math.Max(0, e.RunsScoredThisPlay);
                         if (e.Result == AtBatResult.Strikeout) team.K++;
 
                         currentPitcher = e.Pitcher;

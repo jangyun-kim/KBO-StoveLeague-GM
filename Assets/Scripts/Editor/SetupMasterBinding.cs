@@ -79,7 +79,10 @@ namespace KBOManager.EditorTools
         /// <remarks>
         /// [TASK-KBO-187] 메뉴 이름을 TASK-168~187로 갱신. 마지막 단계로 SetupTask187.ApplyAll()을 실행한다 - 치어리더 [응원단 성장](강화 · ★각성 · 도감).
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~187)")]
+        /// <remarks>
+        /// [TASK-KBO-188] 메뉴 이름을 TASK-168~188로 갱신. 마지막 단계로 SetupTask188.ApplyAll()을 실행한다 - 초상화 색인(같은 선수 다른 등급 폴백).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~188)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -105,7 +108,8 @@ namespace KBOManager.EditorTools
             SetupTask185.ApplyAll();
             SetupTask186.ApplyAll();
             SetupTask187.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~187 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask188.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~188 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

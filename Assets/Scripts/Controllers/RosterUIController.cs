@@ -310,12 +310,7 @@ namespace KBOManager.Controllers
                 }
                 button.onClick.AddListener(() => OpenSwapPopup(player));
 
-                if (player.ReinforceLevel > 0)
-                {
-                    var badge = CompyaUiKit.Norm(cellRect, "ReinforceBadge", 0.66f, 0.7f, 0.98f, 0.83f);
-                    CompyaUiKit.Paint(badge, new Color(0.55f, 0.18f, 0.62f, 0.95f));
-                    CellLabel(badge, $"+{player.ReinforceLevel}", TextAnchor.MiddleCenter, Color.white, true);
-                }
+                // [TASK-KBO-188] 강화(+N)/각성(N각·초월) 배지는 PlayerCardUI 네임플레이트가 그린다.
             }
             else
             {

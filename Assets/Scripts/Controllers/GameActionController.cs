@@ -80,8 +80,9 @@ namespace KBOManager.Controllers
         public void AddAwakenMaterial(Player material)
         {
             if (material == null || material == awakenTarget || awakenMaterials.Contains(material)) return;
-            // [TASK-KBO-185] 동일 선수 + 동일 시즌 등급만 재료(같은 연도 +3각 / 다른 연도 +1각) - 무효 카드는 갈리지 않게 거른다.
+            // [TASK-KBO-188] 같은 시즌 등급만 재료(같은 선수 +3각 / 다른 선수 +1각) - 무효 카드·라인업 카드는 갈리지 않게 거른다.
             if (awakenTarget != null && CardGrowthRules.AwakenGainFor(awakenTarget, material) <= 0) return;
+            if (GameManager.Instance != null && GameManager.Instance.Roster.Contains(material)) return;
 
             awakenMaterials.Add(material);
         }

@@ -15,6 +15,8 @@ namespace KBOManager.Managers
         public int Hits;
         public int HomeRuns;
         public int Walks;
+        /// <summary>[TASK-KBO-188] 타점 - 그 타석에 홈을 밟은 주자 수(희생플라이/실책 미모델링 단순화).</summary>
+        public int RunsBattedIn;
 
         public int PlateAppearances => AtBats + Walks;
         public float BattingAverage => AtBats == 0 ? 0f : (float)Hits / AtBats;
@@ -186,6 +188,7 @@ namespace KBOManager.Managers
             if (isHit) stats.Hits++;
             if (step.Result == AtBatResult.HomeRun) stats.HomeRuns++;
             if (isWalk) stats.Walks++;
+            stats.RunsBattedIn += Mathf.Max(0, step.RunsScoredThisPlay); // [TASK-KBO-188]
         }
 
         private void RecordPitcherWorkload(AtBatStepResult step)
@@ -222,7 +225,12 @@ namespace KBOManager.Managers
                 ApplyDecision(losingTeamName, isWin: false);
             }
 
-            startersThisGame.Clear();
+            // [TASK-KBO-188] 이 경기 두 팀의 선발만 지운다 - PlayBallController.FinishMatch는 유저 경기 기록(RecordSeasonStatsFromEvents) 뒤
+            // CompleteNextFixture에서 타 구장 4경기(각자 RecordMatchCompleted)를 먼저 치르고 나서 유저 경기 완료를 알린다. 예전처럼 Clear()하면
+            // 타 구장 경기가 유저 경기 선발까지 지워 유저 구단 선발 승·패가 시즌 기록에 한 번도 쌓이지 않았다.
+            if (result != null && Enum.TryParse(result.HomeTeamName, out Team homeTeam)) startersThisGame.Remove(homeTeam);
+            if (result != null && Enum.TryParse(result.AwayTeamName, out Team awayTeam)) startersThisGame.Remove(awayTeam);
+            if (result == null) startersThisGame.Clear();
             previousOutsInHalfInning = 0;
         }
 

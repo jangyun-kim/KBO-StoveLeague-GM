@@ -1,3 +1,5 @@
+using KBOManager.Data;
+
 namespace KBOManager.Models
 {
     /// <summary>
@@ -290,38 +292,61 @@ namespace KBOManager.Models
             _ => 0
         };
 
-        /// <summary>[TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 동일 연도 재료 1장당 각성 상승폭.</summary>
-        public const int SameYearAwakenGain = 3;
-        /// <summary>[TASK-KBO-185] 동일 선수 · 동일 시즌 등급 · 다른 연도 재료 1장당 각성 상승폭.</summary>
-        public const int OtherYearAwakenGain = 1;
+        /// <summary>[TASK-KBO-188] 같은 시즌 등급 · 같은 선수(RealPlayerId) 재료 1장당 각성 상승폭(연도 무관).</summary>
+        public const int SamePlayerAwakenGain = 3;
+        /// <summary>[TASK-KBO-188] 같은 시즌 등급 · 다른 선수 재료 1장당 각성 상승폭.</summary>
+        public const int OtherPlayerAwakenGain = 1;
+
+        /// <summary>[TASK-KBO-185 호환 별칭] 구 "동일 연도 +3각" 상수 - 이제 "같은 선수 +3각"과 같다.</summary>
+        public const int SameYearAwakenGain = SamePlayerAwakenGain;
+        /// <summary>[TASK-KBO-185 호환 별칭] 구 "다른 연도 +1각" 상수 - 이제 "다른 선수 +1각"과 같다.</summary>
+        public const int OtherYearAwakenGain = OtherPlayerAwakenGain;
 
         /// <summary>
-        /// [TASK-KBO-185 각성 재료 규칙 복원] 각성 재료 1장이 주는 각성 단계(전 등급 공통).
-        /// 동일 선수(RealPlayerId) + 동일 시즌 등급(Grade)이 기본 조건이며, 연도(SeasonYear)가 같으면 +3각, 다르면 +1각이다.
-        /// (TASK-174의 템플릿 참조 비교/LIVE 완화 5·2포인트는 폐기 - 같은 연도 카드가 다른 템플릿 인스턴스로 로드되면
-        /// "다른 카드"로 오판돼 늘 +1각만 오르던 문제가 있었다.)
+        /// [TASK-KBO-188 각성 재료 규칙 교정] 각성 재료 1장이 주는 각성 단계(전 등급 공통).
+        /// 필수 조건은 대상과 "같은 시즌 등급(Grade)"뿐이다 - 같은 선수(RealPlayerId 일치)면 연도와 무관하게 +3각,
+        /// 다른 선수면 +1각이다. (TASK-185의 "동일 선수 한정 · 연도 비교"는 폐기.)
         /// </summary>
-        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isSameYear) =>
-            isSameYear ? SameYearAwakenGain : OtherYearAwakenGain;
+        public static int AwakenPointsPerMaterial(Grade targetGrade, bool isSamePlayer) =>
+            isSamePlayer ? SamePlayerAwakenGain : OtherPlayerAwakenGain;
 
-        /// <summary>[TASK-KBO-185] 대상/재료 쌍의 각성 상승폭(무효 재료 = 0). 미리보기 · 배지 · 실제 적용 공용.</summary>
+        /// <summary>[TASK-KBO-188] 대상/재료가 같은 선수인지(RealPlayerId 우선, 없으면 이름으로 폴백).</summary>
+        public static bool IsSamePlayer(PlayerTemplate t, PlayerTemplate m)
+        {
+            if (t == null || m == null) return false;
+            if (!string.IsNullOrEmpty(t.RealPlayerId) || !string.IsNullOrEmpty(m.RealPlayerId)) return t.RealPlayerId == m.RealPlayerId;
+            return !string.IsNullOrEmpty(t.PlayerName) && t.PlayerName == m.PlayerName;
+        }
+
+        /// <summary>[TASK-KBO-188] 대상/재료 쌍의 각성 상승폭(무효 재료 = 0: 자기 자신 · 다른 시즌 등급). 미리보기 · 배지 · 실제 적용 공용.</summary>
         public static int AwakenGainFor(Player target, Player material)
         {
             if (target?.Template == null || material?.Template == null || ReferenceEquals(target, material)) return 0;
-            var t = target.Template;
-            var m = material.Template;
-            if (string.IsNullOrEmpty(t.RealPlayerId) || m.RealPlayerId != t.RealPlayerId) return 0;
-            if (m.Grade != t.Grade) return 0;
-            return AwakenPointsPerMaterial(t.Grade, m.SeasonYear == t.SeasonYear);
+            if (material.Template.Grade != target.Template.Grade) return 0;
+            return AwakenPointsPerMaterial(target.Template.Grade, IsSamePlayer(target.Template, material.Template));
         }
 
-        /// <summary>[TASK-KBO-185] 각성 재료 배지 문구("[동일 연도 +3각]" / "[다른 연도 +1각]"), 무효 재료면 빈 문자열.</summary>
+        /// <summary>[TASK-KBO-188] 각성 재료 배지 문구("[같은 선수 +3각]" / "[다른 선수 +1각]"), 무효 재료면 빈 문자열.</summary>
         public static string AwakenMaterialBadge(Player target, Player material)
         {
             int gain = AwakenGainFor(target, material);
             if (gain <= 0) return "";
-            return gain == SameYearAwakenGain ? $"[동일 연도 +{gain}각]" : $"[다른 연도 +{gain}각]";
+            return gain == SamePlayerAwakenGain ? $"[같은 선수 +{gain}각]" : $"[다른 선수 +{gain}각]";
         }
+
+        /// <summary>[TASK-KBO-188] 카드 위 성장 배지 - 미각성(0각)은 강화 단계("+7"), 1각 이상은 각성 단계("3각"/"초월")로 전환한다.
+        /// 강화도 각성도 없으면 빈 문자열.</summary>
+        public static string GrowthBadgeLabel(Grade grade, int reinforceLevel, int awakenLevel)
+        {
+            int level = ClampAwaken(grade, awakenLevel);
+            if (level >= 1) return IsTranscended(grade, level) ? "초월" : $"{level}각";
+            return reinforceLevel > 0 ? $"+{reinforceLevel}" : "";
+        }
+
+        public static bool ShowsAwakenBadge(Grade grade, int awakenLevel) => ClampAwaken(grade, awakenLevel) >= 1;
+
+        public static string GrowthBadgeLabel(Player p) =>
+            p?.Template == null ? "" : GrowthBadgeLabel(p.Template.Grade, p.ReinforceLevel, p.AwakenLevel);
 
         /// <summary>UI 표기용 각성 단계 문자열("명함", "5각", "초월").</summary>
         public static string AwakenLabel(Grade grade, int awakenLevel)

@@ -132,6 +132,33 @@ namespace KBOManager.UI
         [SerializeField] private Color conditionGoodColor = new Color(0.4f, 0.75f, 1f);
         [SerializeField] private Color conditionExcellentColor = new Color(1f, 0.84f, 0f);
 
+        [Header("[TASK-KBO-188] 3단 레이아웃(헤더 · 일러스트 · 네임플레이트)")]
+        [Tooltip("켜면 Setup()이 카드 자식을 상단 헤더(좌 OVR / 우 구단 로고·SD) · 중단 일러스트(하단 다크 비네팅) · " +
+                 "하단 다크 네임플레이트(#0F172A, [각성/강화 배지] 포지션 이름'연도)로 재배치한다.")]
+        [SerializeField] private bool applyLayout188 = true;
+
+        public static readonly Color NamePlateColor = new Color32(0x0F, 0x17, 0x2A, 0xFF);
+        public static readonly Color AwakenBadgeColor = new Color32(0xC9, 0x93, 0x1A, 0xFF);
+        public static readonly Color TranscendBadgeColor = new Color32(0x6D, 0x28, 0xD9, 0xFF);
+        public static readonly Color ReinforceBadgeColor = new Color(0.55f, 0.18f, 0.62f, 1f);
+
+        /// <summary>[TASK-KBO-188] 네임플레이트 높이(카드 높이 비율)와 헤더 시작점.</summary>
+        public const float NamePlateTop = 0.17f;
+        public const float HeaderBottom = 0.86f;
+
+        private RectTransform headerBar;
+        private Image teamLogoImage;
+        private Image vignetteImage;
+        private RectTransform growthBadge;
+        private Text growthBadgeText;
+        private static Sprite vignetteSprite;
+
+        /// <summary>테스트/검증용 - 현재 표시 중인 성장 배지 문구(숨김이면 빈 문자열).</summary>
+        public string GrowthBadgeText => growthBadge != null && growthBadge.gameObject.activeSelf && growthBadgeText != null ? growthBadgeText.text : "";
+        public bool PortraitVisible => portraitImage != null && portraitImage.enabled && portraitImage.sprite != null;
+        public Sprite PortraitSprite => portraitImage != null ? portraitImage.sprite : null;
+        public string NameLabel => nameText != null ? nameText.text : "";
+
         public Player BoundPlayer { get; private set; }
         public bool IsSelected { get; private set; }
 
@@ -154,7 +181,7 @@ namespace KBOManager.UI
                 return;
             }
 
-            if (nameText != null) nameText.text = player.Template.PlayerName;
+            if (nameText != null) nameText.text = applyLayout188 ? CardDisplay.NamePlate(player) : player.Template.PlayerName;
             if (teamText != null) teamText.text = player.Template.Team.ToString();
             if (positionText != null) positionText.text = DescribePosition(player.Template);
             if (ovrText != null) ovrText.text = player.CalculateOVR(false).ToString();
@@ -173,6 +200,7 @@ namespace KBOManager.UI
             SetupCondition(player.CurrentCondition);
             SetupPortrait(player);
             SetupGradeDesign(player.Template.Grade, player.Template.Team);
+            if (applyLayout188) ApplyLayout188(player);
         }
 
         /// <summary>[TASK-KBO-147, TASK-KBO-153 키 변경, TASK-KBO-169 경로 개편] `Resources/Portraits/
@@ -191,7 +219,13 @@ namespace KBOManager.UI
 
             if (portraitImage != null)
             {
+                // [TASK-KBO-188] 카드 고유 초상화가 없으면 같은 선수의 다른 등급·연도 초상화로 폴백(PortraitResolver).
                 Sprite portrait = portraitPath != null ? LoadSprite(portraitPath) : null;
+                if (portrait == null)
+                {
+                    string fallback = PortraitResolver.Resolve(player.Template);
+                    if (fallback != null && fallback != portraitPath) portrait = LoadSprite(fallback);
+                }
 
                 portraitImage.sprite = portrait != null ? portrait : fallbackPortraitSprite;
                 portraitImage.enabled = portraitImage.sprite != null;
@@ -382,6 +416,176 @@ namespace KBOManager.UI
             return sprite;
         }
 
+        // ------------------------------------------------------------------ [TASK-KBO-188] 3단 레이아웃
+
+        private static void Fit(RectTransform rect, float x0, float y0, float x1, float y1)
+        {
+            if (rect == null) return;
+            rect.anchorMin = new Vector2(x0, y0);
+            rect.anchorMax = new Vector2(x1, y1);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.localRotation = Quaternion.identity;
+            rect.localScale = Vector3.one;
+        }
+
+        private RectTransform EnsureChild(string childName, bool withImage)
+        {
+            var found = transform.Find(childName) as RectTransform;
+            if (found == null)
+            {
+                var go = new GameObject(childName, typeof(RectTransform));
+                found = (RectTransform)go.transform;
+                found.SetParent(transform, false);
+            }
+            if (withImage && !found.TryGetComponent<Image>(out _))
+            {
+                var img = found.gameObject.AddComponent<Image>();
+                img.raycastTarget = false;
+            }
+            return found;
+        }
+
+        private static void FitText(Text text, float x0, float y0, float x1, float y1, TextAnchor anchor, int maxSize)
+        {
+            if (text == null) return;
+            Fit(text.rectTransform, x0, y0, x1, y1);
+            text.alignment = anchor;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 8;
+            text.resizeTextMaxSize = Mathf.Max(10, maxSize);
+            text.raycastTarget = false;
+        }
+
+        private static Sprite VignetteSprite()
+        {
+            if (vignetteSprite != null) return vignetteSprite;
+            const int h = 64;
+            var tex = new Texture2D(1, h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, name = "CardVignette188" };
+            for (int y = 0; y < h; y++)
+            {
+                float t = 1f - y / (float)(h - 1); // 아래(0) = 진하게
+                tex.SetPixel(0, y, new Color(0.04f, 0.06f, 0.12f, Mathf.Pow(t, 1.6f) * 0.92f));
+            }
+            tex.Apply();
+            vignetteSprite = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f));
+            vignetteSprite.name = tex.name;
+            return vignetteSprite;
+        }
+
+        /// <summary>
+        /// [TASK-KBO-188] 상단 헤더(좌 OVR / 우 구단 로고 · SD) · 중단 일러스트(하단 다크 비네팅 - 배경 등급 글씨가 이름을 가리지 않게) ·
+        /// 하단 다크 네임플레이트(#0F172A, [각성/강화 배지] {포지션} {선수명}'{연도}) 3단으로 자식을 재배치한다(풀 재사용 시 반복 호출 안전).
+        /// 1각 이상이면 강화 "+N" 대신 각성 배지("N각" 골드 / "초월" 퍼플)를 보인다.
+        /// </summary>
+        private void ApplyLayout188(Player player)
+        {
+            Font font = nameText != null ? nameText.font : ovrText != null ? ovrText.font : null;
+
+            // 중단 일러스트
+            if (portraitBGImage != null) Fit(portraitBGImage.rectTransform, 0f, NamePlateTop, 1f, HeaderBottom);
+            if (portraitImage != null)
+            {
+                Fit(portraitImage.rectTransform, 0.02f, NamePlateTop, 0.98f, HeaderBottom);
+                portraitImage.preserveAspect = true;
+                portraitImage.raycastTarget = false;
+            }
+            var vignette = EnsureChild("Vignette188", true);
+            Fit(vignette, 0f, NamePlateTop, 1f, 0.5f);
+            vignetteImage = vignette.GetComponent<Image>();
+            vignetteImage.sprite = VignetteSprite();
+            vignetteImage.type = Image.Type.Simple;
+            vignetteImage.color = Color.white;
+
+            // 별(일러스트 하단, 비네팅 위)
+            if (starIcons != null && starIcons.Length > 0)
+            {
+                const float w = 0.075f, gap = 0.012f;
+                float total = starIcons.Length * w + (starIcons.Length - 1) * gap;
+                float x = 0.5f - total * 0.5f;
+                foreach (var star in starIcons)
+                {
+                    if (star != null)
+                    {
+                        Fit(star.rectTransform, x, NamePlateTop + 0.01f, x + w, NamePlateTop + 0.06f);
+                        star.preserveAspect = true;
+                    }
+                    x += w + gap;
+                }
+            }
+            if (conditionIconImage != null) Fit(conditionIconImage.rectTransform, 0.86f, HeaderBottom - 0.075f, 0.97f, HeaderBottom - 0.01f);
+            if (conditionArrowText != null) FitText(conditionArrowText, 0.86f, HeaderBottom - 0.075f, 0.97f, HeaderBottom - 0.01f, TextAnchor.MiddleCenter, 14);
+            if (staminaBarRoot != null && staminaBarRoot.transform is RectTransform stamina) Fit(stamina, 0.03f, NamePlateTop + 0.065f, 0.97f, NamePlateTop + 0.085f);
+
+            // 상단 헤더
+            headerBar = EnsureChild("Header188", true);
+            Fit(headerBar, 0f, HeaderBottom, 1f, 1f);
+            headerBar.GetComponent<Image>().color = new Color(0.04f, 0.06f, 0.12f, 0.78f);
+            FitText(ovrText, 0.04f, HeaderBottom + 0.005f, 0.5f, 0.995f, TextAnchor.MiddleLeft, 34);
+            var logoRect = EnsureChild("TeamLogo188", true);
+            Fit(logoRect, 0.52f, HeaderBottom + 0.015f, 0.68f, 0.985f);
+            teamLogoImage = logoRect.GetComponent<Image>();
+            TeamLogoSprites.Apply(teamLogoImage, player.Template.Team);
+            bool hasLogo = teamLogoImage.sprite != null;
+            teamLogoImage.enabled = hasLogo;
+            if (teamText != null)
+            {
+                teamText.gameObject.SetActive(!hasLogo);
+                FitText(teamText, 0.5f, HeaderBottom + 0.005f, 0.7f, 0.995f, TextAnchor.MiddleCenter, 14);
+            }
+            FitText(setDeckScoreText, 0.69f, HeaderBottom + 0.005f, 0.97f, 0.995f, TextAnchor.MiddleRight, 16);
+            if (positionText != null) positionText.gameObject.SetActive(false); // 포지션은 네임플레이트로 이동
+
+            // 하단 네임플레이트
+            var plate = transform.Find("NameStrip") as RectTransform;
+            if (plate == null) plate = EnsureChild("NameStrip", true);
+            if (!plate.TryGetComponent<Image>(out var plateImage)) plateImage = plate.gameObject.AddComponent<Image>();
+            Fit(plate, 0f, 0f, 1f, NamePlateTop);
+            plateImage.color = NamePlateColor;
+            plateImage.raycastTarget = false;
+
+            string badge = CardGrowthRules.GrowthBadgeLabel(player);
+            bool hasBadge = !string.IsNullOrEmpty(badge);
+            growthBadge = EnsureChild("GrowthBadge188", true);
+            growthBadge.gameObject.SetActive(hasBadge);
+            if (hasBadge)
+            {
+                bool awaken = CardGrowthRules.ShowsAwakenBadge(player.Template.Grade, player.AwakenLevel);
+                bool transcend = CardGrowthRules.IsTranscended(player.Template.Grade, player.AwakenLevel);
+                Fit(growthBadge, 0.03f, 0.025f, 0.27f, NamePlateTop - 0.025f);
+                growthBadge.GetComponent<Image>().color = transcend ? TranscendBadgeColor : awaken ? AwakenBadgeColor : ReinforceBadgeColor;
+                var textRect = growthBadge.Find("Text") as RectTransform;
+                if (textRect == null)
+                {
+                    textRect = (RectTransform)new GameObject("Text", typeof(RectTransform)).transform;
+                    textRect.SetParent(growthBadge, false);
+                    textRect.gameObject.AddComponent<Text>();
+                }
+                growthBadgeText = textRect.GetComponent<Text>();
+                if (font != null) growthBadgeText.font = font;
+                growthBadgeText.fontStyle = FontStyle.Bold;
+                growthBadgeText.text = badge;
+                growthBadgeText.color = transcend ? new Color(1f, 0.86f, 0.35f) : Color.white;
+                FitText(growthBadgeText, 0.04f, 0f, 0.96f, 1f, TextAnchor.MiddleCenter, 18);
+            }
+            FitText(nameText, hasBadge ? 0.29f : 0.04f, 0f, 0.97f, NamePlateTop, hasBadge ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, 20);
+
+            // 그리기 순서: 일러스트 → 비네팅 → 테두리 → 별/컨디션/체력 → 헤더 → 네임플레이트 → 선택 표시
+            int order = 0;
+            void Order(Component c) { if (c != null) c.transform.SetSiblingIndex(order++); }
+            Order(portraitBGImage); Order(portraitImage); Order(vignetteImage); Order(frameOverlayImage);
+            if (starIcons != null) foreach (var star in starIcons) Order(star);
+            Order(conditionIconImage); Order(conditionArrowText);
+            if (staminaBarRoot != null) Order(staminaBarRoot.transform);
+            Order(headerBar); Order(ovrText); Order(teamLogoImage); Order(teamText); Order(setDeckScoreText); Order(positionText);
+            Order(plate); Order(growthBadge); Order(nameText);
+            if (selectedOverlay != null) selectedOverlay.transform.SetAsLastSibling();
+            if (checkmarkIcon != null) checkmarkIcon.transform.SetAsLastSibling();
+        }
+
+
         /// <summary>빈 카드로 되돌린다 (풀링/재사용 시 사용).</summary>
         public void Clear()
         {
@@ -420,6 +624,9 @@ namespace KBOManager.UI
                 frameOverlayImage.sprite = null;
                 frameOverlayImage.gameObject.SetActive(false);
             }
+
+            if (growthBadge != null) growthBadge.gameObject.SetActive(false);
+            if (teamLogoImage != null) teamLogoImage.enabled = false;
         }
 
         /// <summary>투수 카드에서만 체력 게이지를 켠다. fillAmount = CurrentStamina/MaxStamina, 색은

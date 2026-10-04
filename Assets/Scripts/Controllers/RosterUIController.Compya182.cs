@@ -397,8 +397,6 @@ namespace KBOManager.Controllers
                 foreach (var graphic in card.GetComponentsInChildren<Graphic>(true)) graphic.raycastTarget = false;
                 if (!isStorage && cellSetDeck != null)
                     card.ShowLineupSetDeckScore(SetDeckEvaluator.CardScoreIn(cellSetDeck, player), SetDeckEvaluator.IsExcludedFromSlots(cellSetDeck, player));
-                if (card.transform.Find("NameText")?.GetComponent<Text>() is Text nameText)
-                    nameText.text = player.Template.SeasonYear > 0 ? $"{player.Template.PlayerName}'{player.Template.SeasonYear % 100:00}" : player.Template.PlayerName;
             }
 
             // 카드 영역(가로 비율 유지) 기준 장식 - 홀더 안에 같은 비율 박스를 만들어 카드와 겹치게 둔다.
@@ -407,9 +405,7 @@ namespace KBOManager.Controllers
             fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
             fitter.aspectRatio = nativeSize.x / nativeSize.y;
 
-            var logoRect = CompyaUiKit.Norm(deco, "TeamLogo", 0.7f, 0.8f, 0.97f, 0.97f);
-            TeamLogoSprites.Apply(logoRect.gameObject.AddComponent<Image>(), player.Template.Team);
-            logoRect.GetComponent<Image>().raycastTarget = false;
+            // [TASK-KBO-188] 구단 로고 · 이름'연도 · 강화/각성 배지는 PlayerCardUI 3단 레이아웃(헤더 · 네임플레이트)이 그린다.
 
             if (showOrder && entry.BattingOrder > 0)
             {
@@ -423,13 +419,6 @@ namespace KBOManager.Controllers
                 CompyaUiKit.Paint(shape, mode == LineupMode.BattingOrder && orderFirstPick == player ? SelectGold : new Color(0.75f, 0.12f, 0.2f));
                 shape.localRotation = Quaternion.Euler(0f, 0f, 45f);
                 CellLabel(diamond, $"<b>{entry.BattingOrder}</b>", TextAnchor.MiddleCenter, Color.white, true);
-            }
-
-            if (player.ReinforceLevel > 0)
-            {
-                var badge = CompyaUiKit.Norm(deco, "Reinforce", 0.02f, 0.36f, 0.3f, 0.5f);
-                CompyaUiKit.Paint(badge, new Color(0.55f, 0.18f, 0.62f, 0.95f));
-                CellLabel(badge, $"+{player.ReinforceLevel}", TextAnchor.MiddleCenter, Color.white, true);
             }
 
             var frame = CompyaUiKit.Norm(deco, "SelectFrame", -0.03f, -0.02f, 1.03f, 1.02f);

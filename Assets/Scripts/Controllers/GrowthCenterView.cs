@@ -306,11 +306,11 @@ namespace KBOManager.Controllers
                 {
                     var captured = m;
                     bool on = selected.Contains(m);
-                    // [TASK-KBO-185] 각성 재료 배지 - [동일 연도 +3각] / [다른 연도 +1각]
+                    // [TASK-KBO-188] 각성 재료 배지 - [같은 선수 +3각] / [다른 선수 +1각]
                     string badge = tab == GrowthTab.Awaken ? CardGrowthRules.AwakenMaterialBadge(target, m) : "";
                     if (badge.Length > 0)
-                        badge = $"<color={(CardGrowthRules.AwakenGainFor(target, m) == CardGrowthRules.SameYearAwakenGain ? "#FFD045" : "#7FD1FF")}>{badge}</color> ";
-                    rows.Add(($"{(on ? "✔ " : "")}{CompyaMatchView.DisplayName(m)}\n<size=80%>{badge}{CardGrowthRules.DisplayName(m.Template.Grade)} · OVR {m.CalculateNeutralOVR()}</size>",
+                        badge = $"<color={(CardGrowthRules.AwakenGainFor(target, m) == CardGrowthRules.SamePlayerAwakenGain ? "#FFD045" : "#7FD1FF")}>{badge}</color> ";
+                    rows.Add(($"{(on ? "✔ " : "")}{CardDisplay.TargetLine1(m)}\n{badge}{CardDisplay.TargetLine2(m, m.CalculateNeutralOVR())}",
                         on ? RowOn : RowOff, () => ToggleMaterial(captured)));
                 }
             }
@@ -347,7 +347,8 @@ namespace KBOManager.Controllers
             {
                 var captured = p;
                 bool current = p == target;
-                rows.Add(($"{CompyaMatchView.DisplayName(p)}\n<size=80%>{CompyaMatchView.PositionLabel(p)} · {CardGrowthRules.DisplayName(p.Template.Grade)} · OVR {p.CalculateNeutralOVR()}</size>",
+                // [TASK-KBO-188] 1줄 "구자욱'24 (RF)" 24pt Bold · 2줄 "GG · 3각 · OVR 98" - 줄마다 별도 Text(줄바꿈 잘림으로 이름이 사라지던 문제)
+                rows.Add(($"{CardDisplay.TargetLine1(p)}\n{CardDisplay.TargetLine2(p, p.CalculateNeutralOVR())}",
                     current ? RowOn : inLineup.Contains(p) ? RowLineup : RowOff, () => { SetTarget(captured); if (resultText != null) resultText.text = ""; }));
             }
             RebuildRows(targetContent, rows, columns: 3);
@@ -370,7 +371,7 @@ namespace KBOManager.Controllers
                 h.spacing = 6f;
                 h.childControlWidth = h.childControlHeight = true;
                 h.childForceExpandWidth = h.childForceExpandHeight = true;
-                row.GetComponent<LayoutElement>().preferredHeight = 84f;
+                row.GetComponent<LayoutElement>().preferredHeight = 92f;
                 for (int c = 0; c < columns; c++)
                 {
                     int index = start + c;
@@ -383,9 +384,23 @@ namespace KBOManager.Controllers
                     var button = cell.AddComponent<Button>();
                     button.targetGraphic = image;
                     button.onClick.AddListener(item.onClick);
-                    var label = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Text", 0.04f, 0.04f, 0.96f, 0.96f), item.text, 26, TextAnchor.MiddleCenter,
-                        item.color == RowOn ? new Color(0.12f, 0.08f, 0.02f) : White, true);
-                    label.verticalOverflow = VerticalWrapMode.Truncate;
+                    var textColor = item.color == RowOn ? new Color(0.12f, 0.08f, 0.02f) : White;
+                    int split = item.text.IndexOf('\n');
+                    if (split < 0)
+                    {
+                        var label = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Text", 0.04f, 0.04f, 0.96f, 0.96f), item.text, 26, TextAnchor.MiddleCenter, textColor, true);
+                        label.verticalOverflow = VerticalWrapMode.Truncate;
+                        continue;
+                    }
+                    // [TASK-KBO-188] 두 줄은 각각 한 줄짜리 Text로 - 1줄(선수명) 24pt Bold, 2줄(등급 · 성장 · OVR) 19pt
+                    var line1 = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line1", 0.03f, 0.5f, 0.97f, 0.97f), item.text.Substring(0, split), 24, TextAnchor.MiddleCenter, textColor, true);
+                    var line2 = kit.LabelOn(CompyaUiKit.Norm(cell.transform, "Line2", 0.03f, 0.04f, 0.97f, 0.5f), item.text.Substring(split + 1), 19, TextAnchor.MiddleCenter, textColor, false);
+                    foreach (var line in new[] { line1, line2 })
+                    {
+                        line.horizontalOverflow = HorizontalWrapMode.Wrap;
+                        line.verticalOverflow = VerticalWrapMode.Truncate;
+                        line.resizeTextMinSize = 10;
+                    }
                 }
             }
         }

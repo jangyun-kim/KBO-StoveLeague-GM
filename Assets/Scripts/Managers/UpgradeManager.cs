@@ -98,7 +98,7 @@ namespace KBOManager.Managers
             if (target.AwakenLevel >= maxAwaken) return false;
             if (materialCards == null || materialCards.Count == 0) return false;
 
-            // [TASK-KBO-185] 동일 선수 + 동일 시즌 등급: 같은 연도 +3각 / 다른 연도 +1각(CardGrowthRules.AwakenGainFor).
+            // [TASK-KBO-188] 같은 시즌 등급: 같은 선수 +3각 / 다른 선수 +1각(CardGrowthRules.AwakenGainFor).
             int gainedPoints = 0;
             foreach (var material in materialCards) gainedPoints += CardGrowthRules.AwakenGainFor(target, material);
 

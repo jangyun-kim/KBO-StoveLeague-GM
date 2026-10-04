@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Data;
 using KBOManager.Engine;
 using KBOManager.Managers;
 using KBOManager.Models;
@@ -43,6 +44,13 @@ namespace KBOManager.Controllers
         private readonly Image[] typeUnderlines = new Image[3];
         private readonly RawImage[] typePhotos = new RawImage[3];
         private Text typeDescText, typeInfoText, typeBallText, typeSeasonText;
+        // [TASK-KBO-188] 빠른 진행 경기 수 선택 · 경기 중 모드 토글 · 연속 진행 결과 배너
+        private GameObject quickCountRoot;
+        private Text quickCountText;
+        private readonly Image[] quickPresetImages = new Image[4];
+        private Button relayModeButton, directHighlightButton;
+        private GameObject r1QuickBanner, r2QuickBanner;
+        private Text r1QuickText, r2QuickText;
 
         // ---- 중계
         private RawImage awayRowBg, homeRowBg, awayRowLogo, homeRowLogo;
@@ -292,6 +300,29 @@ namespace KBOManager.Controllers
             CompyaUiKit.Box(p, "DescBox", 172, 1148, 1075, 1495, new Color(0.05f, 0.05f, 0.14f, 0.88f));
             typeDescText = kit.Label(p, "Desc", "", 205, 1172, 1045, 1268, 34, TextAnchor.MiddleCenter, Cyan);
             typeInfoText = kit.Label(p, "Info", "", 205, 1272, 1045, 1335, 36, TextAnchor.MiddleCenter, White, true);
+            // [TASK-KBO-188] 빠른 진행 경기 수: [1][3][5][10] [-] N경기 [+] (남은 정규시즌 경기 수로 클램프)
+            var quick = CompyaUiKit.Place(p, "QuickCount", 205, 1338, 1045, 1392);
+            quickCountRoot = quick.gameObject;
+            kit.LabelOn(CompyaUiKit.Norm(quick, "Label", 0f, 0f, 0.17f, 1f), "연속 진행", 30, TextAnchor.MiddleLeft, Gold, true);
+            for (int i = 0; i < MatchModeRules.QuickCountPresets.Length; i++)
+            {
+                int preset = MatchModeRules.QuickCountPresets[i];
+                float x0 = 0.18f + i * 0.115f;
+                var button = kit.Button(quick, $"Preset{preset}", $"{preset}경기", 0, 0, 1, 1, new Color(0.2f, 0.25f, 0.45f), White, 28);
+                var rect = (RectTransform)button.transform;
+                rect.anchorMin = new Vector2(x0, 0.04f);
+                rect.anchorMax = new Vector2(x0 + 0.105f, 0.96f);
+                rect.offsetMin = rect.offsetMax = Vector2.zero;
+                quickPresetImages[i] = button.targetGraphic as Image;
+                button.onClick.AddListener(() => SetQuickCount(preset));
+            }
+            var minus = kit.Button(quick, "Minus", "−", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
+            SetNorm((RectTransform)minus.transform, 0.65f, 0.04f, 0.72f, 0.96f);
+            minus.onClick.AddListener(() => AdjustQuickCount(-1));
+            quickCountText = kit.LabelOn(CompyaUiKit.Norm(quick, "Count", 0.72f, 0f, 0.9f, 1f), "", 34, TextAnchor.MiddleCenter, White, true);
+            var plus = kit.Button(quick, "Plus", "+", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
+            SetNorm((RectTransform)plus.transform, 0.9f, 0.04f, 0.97f, 0.96f);
+            plus.onClick.AddListener(() => AdjustQuickCount(1));
             CompyaUiKit.Box(p, "Divider", 205, 1395, 1045, 1397, new Color(1f, 1f, 1f, 0.15f));
             CompyaUiKit.Box(p, "BallPill", 445, 1418, 805, 1475, new Color(0.02f, 0.02f, 0.07f, 0.75f));
             typeBallText = kit.Label(p, "Ball", "", 445, 1418, 805, 1475, 38, TextAnchor.MiddleCenter, White, true);
@@ -317,17 +348,21 @@ namespace KBOManager.Controllers
                 typeCards[i].localScale = selected ? new Vector3(1.03f, 1.03f, 1f) : Vector3.one;
             }
 
-            switch (mode)
+            typeDescText.text = MatchModeRules.Description((MatchModeRules.Mode)(int)mode); // [TASK-KBO-188]
+
+            int remaining = QuickRemainingGames();
+            if (remaining > 0) quickCount = MatchModeRules.ClampQuickCount(quickCount, remaining);
+            if (quickCountRoot != null)
             {
-                case PlayMode.Quick:
-                    typeDescText.text = "빠른 진행은 중계 없이 경기 결과를 바로 확인합니다.\n결과 화면으로 즉시 이동합니다.";
-                    break;
-                case PlayMode.Highlight:
-                    typeDescText.text = "하이라이트에서는 시뮬레이션과 직접 플레이를 번갈아\n플레이합니다. 직접 플레이 시점은 자동 선택됩니다.";
-                    break;
-                default:
-                    typeDescText.text = "풀 플레이는 모든 타석을 중계로 시청하며,\n우리 팀 득점권 찬스마다 직접 플레이로 개입합니다.";
-                    break;
+                quickCountRoot.SetActive(mode == PlayMode.Quick);
+                quickCountText.text = $"{quickCount}경기 <size=70%>/ 남은 {remaining}</size>";
+                for (int i = 0; i < quickPresetImages.Length; i++)
+                {
+                    if (quickPresetImages[i] == null) continue;
+                    int preset = MatchModeRules.QuickCountPresets[i];
+                    quickPresetImages[i].color = preset == quickCount ? new Color(0.98f, 0.72f, 0.18f)
+                        : preset > remaining ? new Color(0.2f, 0.22f, 0.3f, 0.5f) : new Color(0.2f, 0.25f, 0.45f);
+                }
             }
 
             var fixture = LeagueManager.Instance != null ? LeagueManager.Instance.PeekNextFixture() : null;
@@ -338,6 +373,34 @@ namespace KBOManager.Controllers
             typeBallText.text = GameManager.Instance != null ? $"볼  {GameManager.Instance.GameGold:N0}" : "볼  -";
             int played = LeagueManager.Instance != null ? LeagueManager.Instance.PlayedGameCount : 0;
             typeSeasonText.text = $"{played}/{LeagueManager.TotalUserGames}";
+        }
+
+        private static void SetNorm(RectTransform rect, float x0, float y0, float x1, float y1)
+        {
+            rect.anchorMin = new Vector2(x0, y0);
+            rect.anchorMax = new Vector2(x1, y1);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+        }
+
+        /// <summary>[TASK-KBO-188] 중계 하단 토글 문구(풀 플레이 ↔ 하이라이트). 빠른 진행 중에는 숨긴다.</summary>
+        private void RefreshModeToggle()
+        {
+            string label = mode == PlayMode.Full ? "풀 플레이 ▸ 하이라이트" : "하이라이트 ▸ 풀 플레이";
+            if (relayModeButton != null)
+            {
+                relayModeButton.gameObject.SetActive(mode != PlayMode.Quick);
+                CompyaUiKit.SetButtonText(relayModeButton, label);
+            }
+            if (directHighlightButton != null) CompyaUiKit.SetButtonText(directHighlightButton, mode == PlayMode.Full ? "하이라이트 전환" : "풀 플레이 전환");
+        }
+
+        /// <summary>[TASK-KBO-188] 결과 화면 1·2 상단 - 빠른 진행 N경기 전적 요약.</summary>
+        private void RefreshQuickBanners()
+        {
+            bool show = quickSeries != null && quickSeries.Played > 0;
+            string text = show ? $"빠른 진행 결과  <color=#FFD84A>{quickSeries.Label}</color>" : "";
+            if (r1QuickBanner != null) { r1QuickBanner.SetActive(show); r1QuickText.text = text; }
+            if (r2QuickBanner != null) { r2QuickBanner.SetActive(show); r2QuickText.text = text; }
         }
 
         /// <summary>[TASK-KBO-187] 예고 선발 한 줄("선발 문승원'26 vs 원태인'26") - 실제 경기 엔진 선발과 같은 LeagueManager.GetNextStartingPitcher.</summary>
@@ -432,6 +495,9 @@ namespace KBOManager.Controllers
 
             CompyaUiKit.Box(p, "BottomBar", 0, 1890, 1248, 1972, new Color(0.6f, 0.62f, 0.67f));
             kit.Button(p, "SkipButton", "▶▶", 845, 1897, 1035, 1967, new Color(0.22f, 0.25f, 0.32f), White, 40).onClick.AddListener(OnSkipPressed);
+            // [TASK-KBO-188] 경기 중 언제든 풀 플레이 ↔ 하이라이트 전환(▶▶ = 빠른 진행 스킵)
+            relayModeButton = kit.Button(p, "ModeToggle", "하이라이트 ▸ 풀 플레이", 14, 1897, 470, 1967, new Color(0.36f, 0.2f, 0.7f), White, 32);
+            relayModeButton.onClick.AddListener(ToggleHighlightFull);
             pauseButton = kit.Button(p, "PauseButton", "II", 1045, 1897, 1235, 1967, new Color(0.22f, 0.25f, 0.32f), White, 52);
             pauseButton.onClick.AddListener(OnPausePressed);
             return p.gameObject;
@@ -545,19 +611,40 @@ namespace KBOManager.Controllers
             return box;
         }
 
+        // [TASK-KBO-188] 타순표 열 경계(px, 패널 폭 612) - 칸끼리 6px 이상 띄우고 사이에 얇은 구분선.
+        public const float LineupBadgeX0 = 14f, LineupBadgeX1 = 128f;
+        public const float LineupPosX0 = 138f, LineupPosX1 = 194f;
+        public const float LineupNameX0 = 204f, LineupNameX1 = 430f;
+        public const float LineupAvgX0 = 440f, LineupAvgX1 = 532f;
+        public const float LineupOvrX0 = 548f, LineupOvrX1 = 604f;
+        private static readonly float[] LineupDividers = { 132f, 198f, 434f, 540f };
+
+        /// <summary>[TASK-KBO-188] 한 칸 텍스트: 줄바꿈 없이 자동 크기로 줄이고 넘치면 잘라 옆 칸과 붙지 않게 한다.</summary>
+        private static Text FitCell(Text label)
+        {
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            label.verticalOverflow = VerticalWrapMode.Truncate;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 14;
+            return label;
+        }
+
         private LineupRow BuildLineupRow(Transform p, string name, float dx, float cy)
         {
             var row = new LineupRow();
             row.Highlight = CompyaUiKit.Polygon(p, name + "Highlight", 4 + dx, cy - 27, 612 + dx, cy + 25, Color.white,
                 new Vector2(0f, 0.5f), new Vector2(0.035f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f), new Vector2(0.035f, 0f));
             row.Highlight.SetVerticalGradient(new Color(0.42f, 0.38f, 1f), new Color(0.2f, 0.22f, 0.8f));
-            row.Badge = CompyaUiKit.Box(p, name + "Badge", 20 + dx, cy - 17, 290 + dx, cy + 17, BadgeBlue);
-            row.BadgeText = kit.Label(p, name + "BadgeText", "", 20 + dx, cy - 19, 290 + dx, cy + 19, 30, TextAnchor.MiddleCenter, White, true);
-            row.Position = kit.Label(p, name + "Pos", "", 300 + dx, cy - 25, 348 + dx, cy + 25, 34, TextAnchor.MiddleLeft, Muted);
-            row.Name = kit.Label(p, name + "Name", "", 348 + dx, cy - 25, 494 + dx, cy + 25, 36, TextAnchor.MiddleLeft, Ink);
-            row.Average = kit.Label(p, name + "Avg", "", 490 + dx, cy - 25, 548 + dx, cy + 25, 32, TextAnchor.MiddleRight, Ink);
-            row.OvrBox = CompyaUiKit.Box(p, name + "OvrBox", 557 + dx, cy - 22, 604 + dx, cy + 22, new Color(0.19f, 0.23f, 0.37f));
-            row.Ovr = kit.Label(p, name + "Ovr", "", 557 + dx, cy - 22, 604 + dx, cy + 22, 36, TextAnchor.MiddleCenter, White, true);
+            // [TASK-KBO-188] 열 분리: [직전 결과 뱃지] | [포지션] | [선수명'연도] | [시즌 타율] | [OVR] - 칸마다 자동 크기 + 잘림(옆 칸 침범 0)
+            foreach (float divider in LineupDividers)
+                CompyaUiKit.Box(p, $"{name}Div{divider:0}", divider + dx, cy - 18, divider + 2 + dx, cy + 18, new Color(0.75f, 0.77f, 0.82f));
+            row.Badge = CompyaUiKit.Box(p, name + "Badge", LineupBadgeX0 + dx, cy - 17, LineupBadgeX1 + dx, cy + 17, BadgeBlue);
+            row.BadgeText = FitCell(kit.Label(p, name + "BadgeText", "", LineupBadgeX0 + 2 + dx, cy - 19, LineupBadgeX1 - 2 + dx, cy + 19, 26, TextAnchor.MiddleCenter, White, true));
+            row.Position = FitCell(kit.Label(p, name + "Pos", "", LineupPosX0 + dx, cy - 25, LineupPosX1 + dx, cy + 25, 30, TextAnchor.MiddleCenter, Muted, true));
+            row.Name = FitCell(kit.Label(p, name + "Name", "", LineupNameX0 + dx, cy - 25, LineupNameX1 + dx, cy + 25, 34, TextAnchor.MiddleLeft, Ink));
+            row.Average = FitCell(kit.Label(p, name + "Avg", "", LineupAvgX0 + dx, cy - 25, LineupAvgX1 + dx, cy + 25, 32, TextAnchor.MiddleRight, Ink));
+            row.OvrBox = CompyaUiKit.Box(p, name + "OvrBox", LineupOvrX0 + dx, cy - 22, LineupOvrX1 + dx, cy + 22, new Color(0.19f, 0.23f, 0.37f));
+            row.Ovr = FitCell(kit.Label(p, name + "Ovr", "", LineupOvrX0 + dx, cy - 22, LineupOvrX1 + dx, cy + 22, 34, TextAnchor.MiddleCenter, White, true));
             return row;
         }
 
@@ -619,13 +706,24 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetLogo(c.TeamLogo, template.Team);
             CompyaUiKit.SetLogo(c.Watermark, template.Team, 0.22f);
 
-            var portrait = LoadPortrait(template.TemplateId);
+            var portrait = LoadPortrait(template);
             c.Portrait.texture = portrait;
             c.Portrait.color = portrait != null ? Color.white : new Color(0f, 0f, 0f, 0f);
             c.Watermark.enabled = portrait == null;
         }
 
-        /// <summary>PlayerCardUI와 같은 규칙(Portraits/{Team}/{Year}/{TemplateId}) - 없으면 null.</summary>
+        /// <summary>PlayerCardUI와 같은 규칙(Portraits/{Team}/{Year}/{TemplateId}) - [TASK-KBO-188] 없으면 같은 선수의 다른 등급·연도
+        /// 초상화(PortraitResolver)로 폴백, 그래도 없으면 null.</summary>
+        private static Texture2D LoadPortrait(PlayerTemplate template)
+        {
+            var exact = LoadPortrait(template?.TemplateId);
+            if (exact != null) return exact;
+            string fallback = PortraitResolver.Resolve(template);
+            if (fallback == null) return null;
+            var texture = Resources.Load<Texture2D>(fallback);
+            return texture;
+        }
+
         private static Texture2D LoadPortrait(string templateId)
         {
             if (string.IsNullOrEmpty(templateId)) return null;
@@ -774,13 +872,18 @@ namespace KBOManager.Controllers
         private void FillAtBat(InfoBox box, Player batter, CompyaGameTracker t)
         {
             box.HeaderBg.texture = kit.GradientTexture(new Color(0.78f, 0.18f, 0.2f), new Color(0.62f, 0.62f, 0.68f), true);
-            box.HeaderText.text = "AT BAT";
+            box.HeaderText.text = batter != null ? $"AT BAT  <size=70%>{t.LiveBattingOf(batter).Summary}</size>" : "AT BAT"; // [TASK-KBO-188]
             FillCard(box.Card, batter);
             box.NameText.text = batter != null ? $"{PositionLabel(batter)} {DisplayName(batter)}" : "";
             var line = t.BatOf(batter);
-            box.RowLabels[0].text = "타율";
-            box.RowValues[0].text = CompyaGameTracker.FormatAverage(line.Average);
-            for (int r = 1; r < 3; r++) { box.RowLabels[r].text = ""; box.RowValues[r].text = ""; }
+            // [TASK-KBO-188] 단일 경기 타율(.000) 대신 시즌 누적(+ 오늘 진행분 실시간 합산) 타율 · 홈런 · 타점.
+            var live = t.LiveBattingOf(batter);
+            box.RowLabels[0].text = "시즌 타율";
+            box.RowValues[0].text = batter != null ? CompyaGameTracker.FormatAverage(live.Average) : "";
+            box.RowLabels[1].text = "홈런·타점";
+            box.RowValues[1].text = batter != null ? $"{live.HomeRuns}홈런 {live.RunsBattedIn}타점" : "";
+            box.RowLabels[2].text = "오늘";
+            box.RowValues[2].text = batter != null ? $"{line.AtBats}타수 {line.Hits}안타" : "";
 
             // [TASK-KBO-184] 이번 이닝 타석 결과만(이전 이닝 결과는 공수 교대 때 초기화 - 누적은 기록 팝업).
             var recent = line.InningBadges.Skip(Mathf.Max(0, line.InningBadges.Count - 6)).ToList();
@@ -796,16 +899,18 @@ namespace KBOManager.Controllers
         private void FillMound(InfoBox box, Player pitcher, CompyaGameTracker t)
         {
             box.HeaderBg.texture = kit.GradientTexture(new Color(0.33f, 0.35f, 0.42f), new Color(0.63f, 0.65f, 0.71f), true);
-            box.HeaderText.text = "ON THE MOUND";
+            box.HeaderText.text = pitcher != null ? $"ON THE MOUND  <size=70%>{t.LivePitchingOf(pitcher).Summary}</size>" : "ON THE MOUND"; // [TASK-KBO-188]
             FillCard(box.Card, pitcher);
             box.NameText.text = pitcher != null ? $"{PositionLabel(pitcher)} {DisplayName(pitcher)}" : "";
             var line = t.PitchOf(pitcher);
-            box.RowLabels[0].text = "이닝";
+            // [TASK-KBO-188] 오늘 기록 옆에 시즌 누적 ERA · 승-패(오늘 실점·아웃 실시간 합산).
+            var live = t.LivePitchingOf(pitcher);
+            box.RowLabels[0].text = "오늘 이닝";
             box.RowValues[0].text = CompyaGameTracker.FormatInnings(line.Outs);
-            box.RowLabels[1].text = "투구수";
-            box.RowValues[1].text = line.Pitches.ToString();
-            box.RowLabels[2].text = "탈삼진";
-            box.RowValues[2].text = line.Strikeouts.ToString();
+            box.RowLabels[1].text = "투구·K";
+            box.RowValues[1].text = $"{line.Pitches}구 {line.Strikeouts}K";
+            box.RowLabels[2].text = "시즌";
+            box.RowValues[2].text = pitcher != null ? live.Summary : "";
             for (int b = 0; b < 6; b++) { box.Badges[b].enabled = false; box.BadgeTexts[b].text = ""; }
         }
 
@@ -823,7 +928,7 @@ namespace KBOManager.Controllers
                 row.Name.text = player != null ? DisplayName(player) : "";
                 row.Name.color = textColor;
                 var line = t.BatOf(player);
-                row.Average.text = player != null ? CompyaGameTracker.FormatAverage(line.Average) : "";
+                row.Average.text = player != null ? CompyaGameTracker.FormatAverage(t.LiveBattingOf(player).Average) : ""; // [TASK-KBO-188] 시즌 누적 타율
                 row.Average.color = textColor;
                 row.Ovr.text = player != null ? Ovr(player).ToString() : "";
                 row.OvrBox.enabled = player != null;
@@ -1114,6 +1219,11 @@ namespace KBOManager.Controllers
             directPlayButton = kit.GradientButton(p, "PlayBall", "PLAY BALL", 665, 1830, 1228, 1945,
                 new Color(0.82f, 0.36f, 1f), new Color(0.6f, 0.14f, 0.95f), White, 64, true);
             directPlayButton.onClick.AddListener(OnDirectPlayBall);
+
+            // [TASK-KBO-188] 풀 플레이 지휘 중 전환: [하이라이트 전환] / [▶▶ 스킵]
+            directHighlightButton = kit.Button(p, "ToHighlight", "하이라이트 전환", 880, 40, 1228, 108, new Color(0.36f, 0.2f, 0.7f, 0.95f), White, 32);
+            directHighlightButton.onClick.AddListener(ToggleHighlightFull);
+            kit.Button(p, "ToSkip", "▶▶ 스킵", 880, 118, 1228, 186, new Color(0.22f, 0.25f, 0.32f, 0.95f), White, 32).onClick.AddListener(OnSkipPressed);
             return p.gameObject;
         }
 
@@ -1149,14 +1259,11 @@ namespace KBOManager.Controllers
             FillSkills(directPitcherSkills, evt.Pitcher);
 
             var today = t.BatOf(evt.Batter);
-            var season = SeasonStatManager.Instance != null && evt.Batter != null ? SeasonStatManager.Instance.GetBatterStats(evt.Batter) : null;
-            directBatterStats.text = season != null
-                ? $"<color=#6FA8FF>오늘</color> {today.AtBats}타수 {today.Hits}안타  <color=#6FA8FF>타율</color> {CompyaGameTracker.FormatAverage(season.BattingAverage)}  <color=#6FA8FF>홈런</color> {season.HomeRuns}"
-                : $"<color=#6FA8FF>오늘</color> {today.AtBats}타수 {today.Hits}안타  <color=#6FA8FF>타율</color> {CompyaGameTracker.FormatAverage(today.Average)}";
+            var liveBat = t.LiveBattingOf(evt.Batter); // [TASK-KBO-188] 시즌 누적 + 오늘 실시간 합산
+            directBatterStats.text = $"<color=#6FA8FF>오늘</color> {today.AtBats}타수 {today.Hits}안타  <color=#6FA8FF>시즌</color> {liveBat.Summary}";
 
             var pitchLine = t.PitchOf(evt.Pitcher);
-            var pitcherSeason = SeasonStatManager.Instance != null && evt.Pitcher != null ? SeasonStatManager.Instance.GetPitcherStats(evt.Pitcher) : null;
-            string record = pitcherSeason != null ? $"<color=#6FA8FF>승패</color> {pitcherSeason.Wins}-{pitcherSeason.Losses}  <color=#6FA8FF>ERA</color> {pitcherSeason.EarnedRunAverage:0.00}  " : "";
+            string record = evt.Pitcher != null ? $"<color=#6FA8FF>시즌</color> {t.LivePitchingOf(evt.Pitcher).Summary}  " : "";
             directPitcherStats.text = $"{record}<color=#6FA8FF>투구</color> {pitchLine.Pitches}  <color=#6FA8FF>K</color> {pitchLine.Strikeouts}";
             directStamina.anchorMax = new Vector2(Mathf.Clamp01(1f - pitchLine.Pitches / 110f), 1f);
 
@@ -1237,6 +1344,8 @@ namespace KBOManager.Controllers
         private GameObject BuildResult1()
         {
             var p = NewScreen("Result1", "Broadcast179/bg_result_gray", new Color(0.7f, 0.72f, 0.76f));
+            r1QuickBanner = CompyaUiKit.Box(p, "QuickSummary", 130, 18, 1118, 96, new Color(0.04f, 0.05f, 0.2f, 0.92f)).gameObject; // [TASK-KBO-188]
+            r1QuickText = kit.LabelOn(CompyaUiKit.Fill(r1QuickBanner.transform, "Text"), "", 36, TextAnchor.MiddleCenter, White, true);
 
             r1AwayRow = kit.GradientBox(p, "AwayRow", 130, 105, 332, 190, Color.blue, Color.blue, true);
             r1HomeRow = kit.GradientBox(p, "HomeRow", 130, 192, 332, 278, Color.red, Color.red, true);
@@ -1338,6 +1447,7 @@ namespace KBOManager.Controllers
 
         private void FillResult1()
         {
+            RefreshQuickBanners();
             var t = finalTracker ?? new CompyaGameTracker();
             var awayColor = CompyaUiKit.TeamColor(awayTeam);
             var homeColor = CompyaUiKit.TeamColor(homeTeam);
@@ -1454,6 +1564,8 @@ namespace KBOManager.Controllers
         private GameObject BuildResult2()
         {
             var p = NewScreen("Result2", "Broadcast179/bg_result_gray", new Color(0.7f, 0.72f, 0.76f));
+            r2QuickBanner = CompyaUiKit.Box(p, "QuickSummary", 162, 258, 1086, 334, new Color(0.04f, 0.05f, 0.2f, 0.92f)).gameObject; // [TASK-KBO-188]
+            r2QuickText = kit.LabelOn(CompyaUiKit.Fill(r2QuickBanner.transform, "Text"), "", 36, TextAnchor.MiddleCenter, White, true);
             CompyaUiKit.Box(p, "Header", 162, 342, 1086, 432, new Color(0.15f, 0.17f, 0.24f));
             r2Title = kit.Label(p, "Title", "", 162, 342, 1086, 432, 50, TextAnchor.MiddleCenter, White, true);
             CompyaUiKit.Box(p, "SubHeader", 162, 432, 1086, 507, new Color(0.3f, 0.32f, 0.39f));
@@ -1493,6 +1605,7 @@ namespace KBOManager.Controllers
 
         private void FillResult2()
         {
+            RefreshQuickBanners();
             var league = LeagueManager.Instance;
             var user = league != null ? league.UserTeam : Team.None;
             int gameNumber = league != null ? league.PlayedGameCount : 0;
