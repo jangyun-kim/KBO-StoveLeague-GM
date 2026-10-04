@@ -115,13 +115,13 @@ namespace KBOManager.Controllers
             {
                 t.supportRichText = true;
                 t.resizeTextForBestFit = true;
-                t.resizeTextMinSize = 12;
+                t.resizeTextMinSize = Mathf.Min(t.fontSize, TextTidy.AutoMin); // [TASK-KBO-192] 12 → 15
                 t.resizeTextMaxSize = t.fontSize;
             }
 
             resultText = kit.Label(root, "Result", "", 60, 1510, 1188, 1610, 28, TextAnchor.MiddleCenter, Cyan, true);
             resultText.resizeTextForBestFit = true;
-            resultText.resizeTextMinSize = 12;
+            resultText.resizeTextMinSize = Mathf.Min(resultText.fontSize, TextTidy.AutoMin); // [TASK-KBO-192] 12 → 15
             resultText.resizeTextMaxSize = resultText.fontSize;
             primaryButton = kit.GradientButton(root, "Primary", "", 120, 1620, 1128, 1735, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 44);
             primaryButton.onClick.AddListener(OnPrimary);

@@ -57,24 +57,25 @@ namespace KBOManager.EditorTests
         [Test]
         public void Tier_ShrinksOversizedText_KeepsSmall_CapsAt42_ButtonsAt21_Monotonic()
         {
-            Assert.AreEqual(14, TextTidy.Tier(14, false), "보조 글씨는 그대로");
-            Assert.AreEqual(13, TextTidy.Tier(13, true));
-            Assert.AreEqual(16, TextTidy.Tier(20, false));
-            Assert.AreEqual(17, TextTidy.Tier(22, false), "본문 16~18");
-            Assert.AreEqual(26, TextTidy.Tier(44, false), "타이틀 24~26");
+            // [TASK-KBO-192] 기준 갱신 - 보조 16~18 · 본문 19~21 · 타이틀 26~30 · 버튼 17~30
+            Assert.AreEqual(12, TextTidy.Tier(12, false), "초소형 칸 글씨는 그대로");
+            Assert.AreEqual(16, TextTidy.Tier(14, false), "보조 16~18");
+            Assert.AreEqual(20, TextTidy.Tier(20, false));
+            Assert.AreEqual(21, TextTidy.Tier(22, false), "본문 19~21");
+            Assert.AreEqual(30, TextTidy.Tier(44, false), "타이틀 26~30");
             Assert.AreEqual(TextTidy.MaxSize, TextTidy.Tier(94, false), "대형 점수 상한 42");
-            Assert.AreEqual(21, TextTidy.Tier(41, true), "큰 버튼 19~21");
-            Assert.AreEqual(15, TextTidy.Tier(20, true), "작은 버튼 13~15");
+            Assert.AreEqual(26, TextTidy.Tier(41, true), "큰 버튼");
+            Assert.AreEqual(19, TextTidy.Tier(20, true), "작은 버튼 17~19");
             for (int s = 8; s < 120; s++)
             {
                 Assert.LessOrEqual(TextTidy.Tier(s, false), TextTidy.Tier(s + 1, false), $"단조 증가(일반 {s})");
                 Assert.LessOrEqual(TextTidy.Tier(s, true), TextTidy.Tier(s + 1, true), $"단조 증가(버튼 {s})");
-                Assert.LessOrEqual(TextTidy.Tier(s, false), Math.Max(s, 16), "확대하지 않는다");
+                Assert.LessOrEqual(TextTidy.Tier(s, false), s + 2, "과하게 확대하지 않는다");
             }
         }
 
         [Test]
-        public void Normalize_RemovesBold_RestoresTask186Raise_SetsAutoMin11_AddsSpacing_Idempotent()
+        public void Normalize_RemovesBold_RestoresTask186Raise_SetsAutoMin_AddsSpacing_Idempotent()
         {
             var root = NewRoot("Tidy191");
             var raisedBody = MakeText(root.transform, "RaisedBody", 22);
@@ -96,11 +97,11 @@ namespace KBOManager.EditorTests
             var italic = MakeText(root.transform, "Italic", 40, FontStyle.BoldAndItalic);
 
             Assert.AreEqual(4, ReadableFontPass.Apply(root.transform));
-            Assert.AreEqual((16, 17, 15), (raisedBody.fontSize, raisedBold.fontSize, raisedButton.fontSize), "TASK-186 확대분 복원(본문 16 · 강조 17 · 버튼 15)");
+            Assert.AreEqual((20, 21, 18), (raisedBody.fontSize, raisedBold.fontSize, raisedButton.fontSize), "TASK-186 확대분 복원([TASK-KBO-192] 본문 20 · 강조 21 · 버튼 18)");
             Assert.AreEqual(FontStyle.Normal, raisedBold.fontStyle);
             Assert.AreEqual(FontStyle.Italic, italic.fontStyle, "BoldAndItalic → Italic");
             Assert.AreEqual(TextTidy.Tier(40, false), italic.fontSize);
-            Assert.AreEqual(TextTidy.AutoMin, raisedBody.resizeTextMinSize, "Best Fit 최소 11");
+            Assert.AreEqual(TextTidy.AutoMin, raisedBody.resizeTextMinSize, "Best Fit 최소([TASK-KBO-192] 15)");
             Assert.IsTrue(new[] { raisedBody, raisedBold, raisedButton, italic }.All(t => t.GetComponent<TextTidy>() != null && Mathf.Approximately(t.GetComponent<TextTidy>().CharacterSpacing, 2f)), "자간 2.0");
             Assert.AreEqual(0, ReadableFontPass.Apply(root.transform), "두 번째 실행은 변화 없음");
 
@@ -190,14 +191,14 @@ namespace KBOManager.EditorTests
             for (int i = 0; i <= 10; i++)
             {
                 var ladder = root.Find($"Ladder{i}/Text").GetComponent<Text>();
-                Assert.That(ladder.fontSize, Is.InRange(13, 14), "각성 사다리 13~14pt");
+                Assert.AreEqual(GrowthCenterView.LadderPt, ladder.fontSize, "[TASK-KBO-192] 각성 사다리 16pt");
             }
             Assert.AreEqual("명함", root.Find("Ladder0/Text").GetComponent<Text>().text);
             Assert.AreEqual("초월", root.Find("Ladder10/Text").GetComponent<Text>().text);
 
-            // 훈련·특훈 헤더: 짧은 문구 · 15pt · 한 줄 칸이 목록과 겹치지 않음
+            // 훈련·특훈 헤더: 짧은 문구 · [TASK-KBO-192] 19pt · 한 줄 칸이 목록과 겹치지 않음
             Assert.AreEqual("보유 스킬 (3슬롯) · 변경권 4 / 고급 2 / 특훈권 0", GrowthCenterView.SkillHeaderText(4, 2, 0));
-            Assert.AreEqual(15, GrowthCenterView.SkillHeaderPt);
+            Assert.AreEqual(19, GrowthCenterView.SkillHeaderPt);
             Assert.IsFalse(Task191Report.Overlap(root.Find("MaterialTitle"), root.Find("MaterialScroll")), "헤더 ↔ 스킬 목록");
             Assert.AreEqual(VerticalWrapMode.Truncate, root.Find("MaterialTitle").GetComponent<Text>().verticalOverflow, "칸 밖으로 넘치지 않음");
 
@@ -211,7 +212,7 @@ namespace KBOManager.EditorTests
             {
                 var b = (RectTransform)root.Find(n);
                 var label = b.GetComponentInChildren<Text>(true);
-                Assert.AreEqual(GrowthCenterView.SkillButtonPt, label.fontSize, n + " 14pt");
+                Assert.AreEqual(GrowthCenterView.SkillButtonPt, label.fontSize, n + " 17pt");
                 Assert.AreEqual(VerticalWrapMode.Truncate, label.verticalOverflow, n + " 버튼 밖으로 넘치지 않음");
                 Assert.GreaterOrEqual((b.anchorMax.y - b.anchorMin.y) * CompyaUiKit.RefHeight, 70f, n + " 두 줄 높이");
                 Assert.IsFalse(Task191Report.Overlap(b, root.Find("MaterialScroll")), n + " ↔ 목록");
@@ -224,12 +225,12 @@ namespace KBOManager.EditorTests
             var skillRows = new List<(string, Color, UnityEngine.Events.UnityAction)> { ("▶ 슬롯 1  [B] 테이블세터 Lv.3\n선구(출루) · 주력 상승", Color.gray, () => { }) };
             rebuild.Invoke(view, new object[] { material, skillRows, 1, GrowthCenterView.SkillSlotTitlePt, GrowthCenterView.SkillSlotDescPt, 104f, 0.6f });
             var skillTexts = material.GetComponentsInChildren<Text>(true);
-            Assert.AreEqual(16, skillTexts.First(t => t.name == "Line1").fontSize);
-            Assert.That(skillTexts.First(t => t.name == "Line2").fontSize, Is.InRange(13, 14));
+            Assert.AreEqual(20, skillTexts.First(t => t.name == "Line1").fontSize, "[TASK-KBO-192] 슬롯 제목 20");
+            Assert.AreEqual(17, skillTexts.First(t => t.name == "Line2").fontSize, "[TASK-KBO-192] 슬롯 설명 17");
             var targetRows = new List<(string, Color, UnityEngine.Events.UnityAction)> { ("구자욱'24 (RF)\nGG · 초월 · OVR 121", Color.gray, () => { }) };
             rebuild.Invoke(view, new object[] { target, targetRows, 3, GrowthCenterView.TargetLine1Pt, GrowthCenterView.TargetLine2Pt, 92f, 0.5f });
             var targetTexts = target.GetComponentsInChildren<Text>(true);
-            Assert.AreEqual((17, 14), (targetTexts.First(t => t.name == "Line1").fontSize, targetTexts.First(t => t.name == "Line2").fontSize));
+            Assert.AreEqual((21, 17), (targetTexts.First(t => t.name == "Line1").fontSize, targetTexts.First(t => t.name == "Line2").fontSize), "[TASK-KBO-192] 21 / 17");
             Assert.IsTrue(targetTexts.All(t => t.fontStyle == FontStyle.Normal));
         }
 
@@ -280,25 +281,25 @@ namespace KBOManager.EditorTests
             Text T(string n) => r.Find(n).GetComponent<Text>();
             for (int i = 0; i < 4; i++)
             {
-                Assert.AreEqual(SetupTask181.CurrencyLabelPt, T($"Currency{i}_Label").fontSize, "재화 라벨 13pt");
-                Assert.AreEqual(SetupTask181.CurrencyValuePt, T($"Currency{i}_Value").fontSize, "재화 숫자 18pt");
+                Assert.AreEqual(SetupTask181.CurrencyLabelPt, T($"Currency{i}_Label").fontSize, "재화 라벨 16pt");
+                Assert.AreEqual(SetupTask181.CurrencyValuePt, T($"Currency{i}_Value").fontSize, "재화 숫자 20pt");
                 Assert.IsFalse(Task191Report.Overlap(r.Find($"Currency{i}_Label"), r.Find($"Currency{i}_Value")), "재화 라벨 ↔ 숫자 상하 분리");
             }
             Assert.AreEqual("CBD5E1", ColorUtility.ToHtmlStringRGB(T("Currency0_Label").color));
-            Assert.That(T("SeasonProgress").fontSize, Is.InRange(14, 15));
-            Assert.That(T("Venue").fontSize, Is.InRange(14, 15));
+            Assert.AreEqual(SetupTask181.SeasonProgressPt, T("SeasonProgress").fontSize);
+            Assert.AreEqual(SetupTask181.VenuePt, T("Venue").fontSize);
             var star = new[] { "StarName", "StarDetail", "StarOvrLabel", "StarOvrValue", "StarSd" };
             for (int i = 0; i < star.Length; i++)
                 for (int j = i + 1; j < star.Length; j++)
                     Assert.IsFalse(Task191Report.Overlap(r.Find(star[i]), r.Find(star[j])), $"대표 스타 칸 겹침: {star[i]} ↔ {star[j]}");
             Assert.AreEqual(40, T("StarOvrValue").fontSize);
-            Assert.AreEqual(14, T("StarOvrLabel").fontSize);
+            Assert.AreEqual(SetupTask181.StarOvrLabelPt, T("StarOvrLabel").fontSize);
 
             var growth = UnityEngine.Object.FindAnyObjectByType<GrowthCenterView>(FindObjectsInactive.Include);
             Assert.IsNotNull(growth);
             var g = growth.transform.Find(GrowthCenterView.RootName);
             Assert.IsNotNull(g, "씬에 저장된 성장 센터");
-            Assert.That(g.Find("Ladder0/Text").GetComponent<Text>().fontSize, Is.InRange(13, 14));
+            Assert.AreEqual(GrowthCenterView.LadderPt, g.Find("Ladder0/Text").GetComponent<Text>().fontSize);
             Assert.AreEqual(GrowthCenterView.SkillButtonPt, g.Find("SkillReroll").GetComponentInChildren<Text>(true).fontSize);
         }
 

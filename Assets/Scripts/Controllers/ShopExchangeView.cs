@@ -213,7 +213,7 @@ namespace KBOManager.Controllers
                 productTitles[i] = kit.Label(productGroup, $"ProductTitle{i}", "", 44, y0 + 8, 900, y0 + 66, 32, TextAnchor.MiddleLeft, Gold, true);
                 productDescs[i] = kit.Label(productGroup, $"ProductDesc{i}", "", 44, y0 + 68, 900, y0 + 158, 23, TextAnchor.UpperLeft, White);
                 productDescs[i].resizeTextForBestFit = true;
-                productDescs[i].resizeTextMinSize = 12;
+                productDescs[i].resizeTextMinSize = Mathf.Min(productDescs[i].fontSize, TextTidy.AutoMin); // [TASK-KBO-192] 12 → 15
                 productDescs[i].resizeTextMaxSize = productDescs[i].fontSize;
                 int index = i;
                 buyButtons[i] = kit.GradientButton(productGroup, $"Buy{i}", "구매", 920, y0 + 28, 1208, y0 + 138, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 32);
@@ -230,7 +230,7 @@ namespace KBOManager.Controllers
             // ---- 획득처 안내
             guideText = kit.Label(root, "Guide", "", 36, 410, 1212, 1640, 27, TextAnchor.UpperLeft, White);
             guideText.resizeTextForBestFit = true;
-            guideText.resizeTextMinSize = 12;
+            guideText.resizeTextMinSize = Mathf.Min(guideText.fontSize, TextTidy.AutoMin); // [TASK-KBO-192] 12 → 15
             guideText.resizeTextMaxSize = guideText.fontSize;
 
             resultText = kit.Label(root, "Result", "", 28, 1648, 1220, 1712, 26, TextAnchor.MiddleCenter, Green, true);
@@ -408,7 +408,7 @@ namespace KBOManager.Controllers
                     : $"{CompyaUiKit.ShortName(p.Template.Team)} · OVR {p.CalculateNeutralOVR()}";
                 var l1 = kit.LabelOn(CompyaUiKit.Norm(cell, "Line1", 0.03f, 0.5f, 0.97f, 0.97f), $"{(on ? "✔ " : "")}{CardDisplay.TargetLine1(p)}", 22, TextAnchor.MiddleCenter, color, true);
                 var l2 = kit.LabelOn(CompyaUiKit.Norm(cell, "Line2", 0.03f, 0.04f, 0.97f, 0.5f), $"{CardGrowthRules.DisplayName(p.Template.Grade)} {p.ReinforceLevel}강 · {extra}", 17, TextAnchor.MiddleCenter, color, false);
-                foreach (var l in new[] { l1, l2 }) { l.verticalOverflow = VerticalWrapMode.Truncate; l.resizeTextMinSize = 10; }
+                foreach (var l in new[] { l1, l2 }) { l.verticalOverflow = VerticalWrapMode.Truncate; l.resizeTextMinSize = Mathf.Min(l.fontSize, TextTidy.AutoMin); }
             }
         }
 

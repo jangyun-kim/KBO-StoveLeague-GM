@@ -12,6 +12,10 @@ namespace KBOManager.UI
     ///      대형 점수 · 메인 OVR 32~42 / 화면 타이틀 24~26 / 큰 버튼 · 섹션 헤더 19~21 / 본문 · 능력치 16~18 / 보조 · 작은 버튼 13~15.
     ///      자동 크기(Best Fit) 최소는 11pt - 좁은 칸에서도 넘치지 않고 자연스럽게 줄어든다.
     ///   3) 자간: TMP characterSpacing과 같은 단위(em/100)의 글자 간격(기본 2.0 = 글자 크기의 2%)을 메시 효과로 준다(Text엔 자간 속성이 없다).
+    /// [TASK-KBO-192] 일반 UI가 너무 작아져(13~17pt · Best Fit 최소 11) 안 보이던 문제를 고쳐 계층을 올린다 -
+    ///   대형 수치 34~42 / 화면 타이틀 · 큰 실행 버튼 26~30 / 메뉴 타일 · 섹션 제목 24~26 / 탭 버튼 20~22 / 본문 · 능력치 19~21 / 보조 16~18,
+    ///   Best Fit 최소 11 → 15(작은 칸에서도 15pt 아래로 줄지 않는다). TASK-191로 이미 줄어든 씬 텍스트(version 0)는 Migrate191 표로 한 번 되올린다.
+    ///   Normal(Bold 금지) · 자간 2.0은 그대로.
     /// 이 컴포넌트는 "정리 완료" 표식을 겸한다 - appliedSize와 현재 크기가 같으면 다시 줄이지 않아(멱등) 런타임 재스캔에도 안전하고,
     /// 코드가 나중에 크기를 바꾸면(appliedSize와 달라지면) 그 값을 기준으로 한 번 더 정리한다. 직접 지정한 크기는 Exact()로 고정한다.
     /// </summary>
@@ -20,7 +24,9 @@ namespace KBOManager.UI
     public sealed class TextTidy : BaseMeshEffect
     {
         public const float DefaultSpacing = 2f;
-        public const int AutoMin = 11;
+        public const int AutoMin = 15;
+        /// <summary>[TASK-KBO-192] 정리 기준 버전(0 = TASK-191 크기, 2 = TASK-192 크기).</summary>
+        public const int CurrentVersion = 2;
         public const int MaxSize = 42;
         public const int SmallBodyMaxForBoldFont = 18;
         public const float MaxOutline = 1.5f;
@@ -31,31 +37,45 @@ namespace KBOManager.UI
         [SerializeField] private int appliedSize;
         [Tooltip("크기는 건드리지 않고 굵기 · 자간만 정리(카드 디자인 px 고정 텍스트)")]
         [SerializeField] private bool sizeLocked;
+        [Tooltip("정리 기준 버전(TASK-192 = 2). 낮으면 TASK-191 크기에서 한 번 되올린다")]
+        [SerializeField] private int version;
 
         public float CharacterSpacing { get => characterSpacing; set { characterSpacing = value; if (graphic != null) graphic.SetVerticesDirty(); } }
         public int AppliedSize => appliedSize;
         public bool SizeLocked => sizeLocked;
+        public int Version => version;
 
         /// <summary>Body/Bold 서체 쌍(런타임 정리용 - ReadableFontPass / CompyaUiKit가 채운다).</summary>
         public static Font BodyFont;
 
         // ================================================================== 크기 계층
 
+        // [TASK-KBO-192] 원래(코드가 지정한) 크기 → 적정 크기. 12pt 이하 초소형 칸 글씨는 그대로 둔다.
         private static readonly (int from, int to)[] LabelTiers =
         {
-            (16, 16), (18, 16), (20, 16), (22, 17), (24, 17), (26, 18), (28, 19), (30, 19), (32, 20),
-            (36, 22), (40, 24), (44, 26), (48, 28), (54, 32), (60, 36), (66, 40), (72, 42),
+            (12, 12), (14, 16), (16, 18), (18, 19), (20, 20), (22, 21), (24, 22), (26, 23), (28, 24), (32, 26),
+            (36, 27), (40, 28), (44, 30), (48, 32), (54, 34), (60, 36), (66, 40), (72, 42),
         };
 
         private static readonly (int from, int to)[] ButtonTiers =
         {
-            (15, 15), (20, 15), (24, 16), (28, 17), (32, 19), (36, 20), (40, 21),
+            (12, 12), (15, 17), (20, 19), (24, 20), (28, 21), (32, 22), (36, 24), (40, 26), (48, 28), (64, 30),
         };
 
-        /// <summary>예전 크기 → 역할별 적정 크기. 버튼(Button/Toggle 안) 글씨는 19~21 이하, 그 외는 최대 42pt. 작은 글씨는 그대로 둔다.</summary>
-        public static int Tier(int size, bool inButton)
+        // [TASK-KBO-192] TASK-191이 이미 줄여 둔 크기 → TASK-192 크기(+4 ~ +7pt, 대형 수치는 유지).
+        private static readonly (int from, int to)[] Migrate191Labels =
         {
-            var table = inButton ? ButtonTiers : LabelTiers;
+            (12, 12), (13, 15), (14, 16), (15, 17), (16, 20), (17, 21), (18, 22), (19, 24), (20, 25), (22, 27),
+            (24, 28), (26, 30), (28, 32), (32, 34), (36, 36), (40, 40), (42, 42),
+        };
+
+        private static readonly (int from, int to)[] Migrate191Buttons =
+        {
+            (12, 12), (13, 16), (14, 17), (15, 18), (16, 19), (17, 20), (19, 22), (20, 24), (21, 26), (42, 30),
+        };
+
+        private static int Lookup((int from, int to)[] table, int size)
+        {
             if (size <= table[0].from) return size;
             for (int i = 1; i < table.Length; i++)
             {
@@ -66,6 +86,12 @@ namespace KBOManager.UI
             }
             return table[table.Length - 1].to;
         }
+
+        /// <summary>[TASK-KBO-192] TASK-191 정리 크기 → TASK-192 크기(씬에 저장된 정리 완료 텍스트 1회 이전용).</summary>
+        public static int Migrate191(int size, bool inButton) => Mathf.Min(MaxSize, Lookup(inButton ? Migrate191Buttons : Migrate191Labels, size));
+
+        /// <summary>예전 크기 → 역할별 적정 크기. 버튼(Button/Toggle 안) 글씨는 최대 30, 그 외는 최대 42pt. 12pt 이하는 그대로 둔다.</summary>
+        public static int Tier(int size, bool inButton) => Lookup(inButton ? ButtonTiers : LabelTiers, size);
 
         /// <summary>TASK-186 ReadableFontPass가 올려 둔 텍스트(Best Fit · 최대 = 크기 = 22 또는 26 · 최소 18 이하 · 줄바꿈).</summary>
         public static bool LooksRaised186(Text t) =>
@@ -82,7 +108,7 @@ namespace KBOManager.UI
             t.fontSize = size;
             t.resizeTextMaxSize = size;
             if (min.HasValue) t.resizeTextMinSize = Mathf.Min(size, min.Value);
-            else if (t.resizeTextForBestFit) t.resizeTextMinSize = Mathf.Min(size, Mathf.Clamp(t.resizeTextMinSize, 1, AutoMin));
+            else if (t.resizeTextForBestFit) t.resizeTextMinSize = Mathf.Min(size, AutoMin);
         }
 
         // ================================================================== 정리
@@ -100,21 +126,35 @@ namespace KBOManager.UI
                 tidy = t.gameObject.AddComponent<TextTidy>();
                 tidy.sizeLocked = sizeLocked;
                 tidy.appliedSize = -1;
+                tidy.version = CurrentVersion;
                 changed = true;
             }
 
             int current = EffectiveSize(t);
-            if (tidy.appliedSize != current)
+            if (tidy.appliedSize == current && tidy.version < CurrentVersion)
+            {
+                // [TASK-KBO-192] TASK-191 크기로 정리돼 저장된 텍스트 - 한 번만 되올리고 Best Fit 최소를 15로 올린다.
+                if (!tidy.sizeLocked)
+                {
+                    int target = Migrate191(current, IsInButton(t));
+                    SetSize(t, target, AutoMin);
+                }
+                tidy.version = CurrentVersion;
+                tidy.appliedSize = EffectiveSize(t);
+                changed = true;
+            }
+            else if (tidy.appliedSize != current)
             {
                 if (!tidy.sizeLocked)
                 {
                     bool inButton = IsInButton(t);
                     int target = LooksRaised186(t)
-                        ? (inButton ? 15 : t.fontSize == 26 ? 17 : 16)
+                        ? (inButton ? 18 : t.fontSize == 26 ? 21 : 20)
                         : Tier(current, inButton);
                     if (target != current || t.fontSize != target) SetSize(t, target);
-                    else if (t.resizeTextForBestFit && t.resizeTextMinSize > AutoMin) t.resizeTextMinSize = Mathf.Min(target, AutoMin);
+                    if (t.resizeTextForBestFit && t.resizeTextMinSize < Mathf.Min(target, AutoMin)) t.resizeTextMinSize = Mathf.Min(target, AutoMin);
                 }
+                tidy.version = CurrentVersion;
                 tidy.appliedSize = EffectiveSize(t);
                 changed = true;
             }
@@ -124,7 +164,7 @@ namespace KBOManager.UI
             return changed;
         }
 
-        /// <summary>직접 지정한 크기로 고정(정리기가 다시 줄이지 않는다). min = Best Fit 최소(기본 11).</summary>
+        /// <summary>직접 지정한 크기로 고정(정리기가 다시 줄이지 않는다). min = Best Fit 최소(기본 15).</summary>
         public static Text Exact(Text t, int size, int min = AutoMin, Font bodyFont = null)
         {
             if (t == null) return null;
@@ -133,6 +173,7 @@ namespace KBOManager.UI
             SetSize(t, size, min);
             if (!t.TryGetComponent<TextTidy>(out var tidy)) tidy = t.gameObject.AddComponent<TextTidy>();
             tidy.appliedSize = EffectiveSize(t);
+            tidy.version = CurrentVersion;
             LightenSmallBold(t, bodyFont);
             return t;
         }

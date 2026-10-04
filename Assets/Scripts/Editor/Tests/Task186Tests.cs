@@ -289,11 +289,11 @@ namespace KBOManager.EditorTests
 
             layout.Fill(Batter("구자욱", BatterPosition.LeftField, 95), 3, null);
             var root = layout.Root;
-            // [TASK-KBO-191] 계층 크기(Normal): 타이틀 26 · 메인 OVR 40 · 능력치 18 · 버튼 20 · 닫기 24
-            Assert.AreEqual(26, root.Find("Title").GetComponent<Text>().fontSize);
+            // [TASK-KBO-192] 계층 크기(Normal): 타이틀 28 · 메인 OVR 40 · 능력치 21 · 버튼 24 · 닫기 24
+            Assert.AreEqual(28, root.Find("Title").GetComponent<Text>().fontSize);
             Assert.AreEqual(40, root.Find("Ovr").GetComponent<Text>().fontSize);
-            Assert.AreEqual(18, root.Find("StatValue0").GetComponent<Text>().fontSize);
-            Assert.AreEqual(20, layout.ManageButton.GetComponentInChildren<Text>().fontSize);
+            Assert.AreEqual(21, root.Find("StatValue0").GetComponent<Text>().fontSize);
+            Assert.AreEqual(24, layout.ManageButton.GetComponentInChildren<Text>().fontSize);
             Assert.AreEqual(24, layout.CloseX.GetComponentInChildren<Text>().fontSize);
             Assert.IsTrue(root.GetComponentsInChildren<Text>(true).All(t => t.fontStyle == FontStyle.Normal), "Bold 해제");
             var x = (RectTransform)layout.CloseX.transform;
@@ -302,7 +302,7 @@ namespace KBOManager.EditorTests
             StringAssert.StartsWith("OVR ", root.Find("Ovr").GetComponent<Text>().text);
 
             var texts = root.GetComponentsInChildren<Text>(true).Where(t => t.transform.parent == root).ToList();
-            Assert.IsTrue(texts.All(t => t.fontSize >= 15 && t.fontSize <= 42), "[TASK-KBO-191] 상세정보 텍스트 15~42pt");
+            Assert.IsTrue(texts.All(t => t.fontSize >= 15 && t.fontSize <= 42), "[TASK-KBO-191/192] 상세정보 텍스트 15~42pt");
             Assert.IsTrue(texts.All(t => t.resizeTextMinSize >= PlayerDetailLayout186.MinFont));
             var boxes = texts.Select(t => (RectTransform)t.transform).ToList();
             for (int i = 0; i < boxes.Count; i++)
@@ -338,8 +338,8 @@ namespace KBOManager.EditorTests
             fitSmall.resizeTextMaxSize = 12;
 
             Assert.AreEqual(4, ReadableFontPass.Apply(root.transform));
-            Assert.AreEqual(14, body.fontSize, "작은 글씨는 그대로");
-            Assert.AreEqual(16, boldStat.fontSize);
+            Assert.AreEqual(16, body.fontSize, "[TASK-KBO-192] 보조 14 → 16");
+            Assert.AreEqual(18, boldStat.fontSize, "[TASK-KBO-192] 16 → 18");
             Assert.AreEqual(FontStyle.Normal, boldStat.fontStyle, "Bold 해제");
             Assert.AreEqual(TextTidy.Tier(30, false), big.fontSize);
             Assert.Less(big.fontSize, 30, "과대 글씨 축소");

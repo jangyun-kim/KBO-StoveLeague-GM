@@ -270,10 +270,11 @@ namespace KBOManager.Controllers
             var p = NewScreen("TypeSelect", "Broadcast179/bg_select_type", new Color(0.12f, 0.1f, 0.35f));
             Slash(p, "SlashBlue", 388, 360, 430, 412, new Color(0.3f, 0.65f, 1f));
             Slash(p, "SlashPink", 826, 335, 864, 386, new Color(0.95f, 0.25f, 0.6f));
-            var title = kit.Label(p, "Title", "SELECT TYPE", 420, 330, 830, 412, 78, TextAnchor.MiddleCenter, White, true, true);
+            // [TASK-KBO-192] 화면 타이틀 30 · 부제 24(Normal)
+            var title = TextTidy.Exact(kit.Label(p, "Title", "SELECT TYPE", 420, 330, 830, 412, 78, TextAnchor.MiddleCenter, White, true, true), TypeTitlePt);
             CompyaUiKit.Shadow(title, new Color(0f, 0f, 0f, 0.4f));
             CompyaUiKit.Box(p, "Line", 445, 415, 808, 418, new Color(0.7f, 0.78f, 0.95f, 0.6f));
-            kit.Label(p, "Sub", "플레이 방식 설정", 420, 425, 830, 482, 46, TextAnchor.MiddleCenter, Cyan, true);
+            TextTidy.Exact(kit.Label(p, "Sub", "플레이 방식 설정", 420, 425, 830, 482, 46, TextAnchor.MiddleCenter, Cyan, true), 24);
 
             var labels = new[] { ("빠른 진행", "QUICK PLAY", "type_quick"), ("하이라이트", "HIGHLIGHT", "type_highlight"), ("풀 플레이", "FULL PLAY", "type_full") };
             var xs = new[] { (172f, 462f), (478f, 772f), (785f, 1075f) };
@@ -288,8 +289,9 @@ namespace KBOManager.Controllers
                 card.gameObject.AddComponent<Button>().onClick.AddListener(() => SelectMode((PlayMode)captured));
                 typePhotos[i] = CompyaUiKit.PictureOn(CompyaUiKit.Norm(card, "Photo", 0f, 0.27f, 1f, 1f), $"Broadcast179/{labels[i].Item3}");
                 kit.Gradient(CompyaUiKit.Norm(card, "Fade", 0f, 0.2f, 1f, 0.5f), new Color(0.93f, 0.93f, 0.95f, 0f), new Color(0.93f, 0.93f, 0.95f, 1f), false);
-                var name = kit.LabelOn(CompyaUiKit.Norm(card, "Name", 0.08f, 0.1f, 0.92f, 0.23f), labels[i].Item1, 52, TextAnchor.MiddleCenter, Ink, true, true);
-                var sub = kit.LabelOn(CompyaUiKit.Norm(card, "Eng", 0.1f, 0.02f, 0.9f, 0.1f), labels[i].Item2, 26, TextAnchor.MiddleCenter, new Color(0.5f, 0.52f, 0.58f), true, true);
+                // [TASK-KBO-192] 흰 카드 위 한글 제목 22pt 진한 네이비(#0F172A) · 영문 부제 14pt(#475569) - Normal
+                var name = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(card, "Name", 0.08f, 0.1f, 0.92f, 0.23f), labels[i].Item1, 52, TextAnchor.MiddleCenter, TypeCardTitleColor, true), TypeCardTitlePt);
+                var sub = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(card, "Eng", 0.1f, 0.02f, 0.9f, 0.1f), labels[i].Item2, 26, TextAnchor.MiddleCenter, TypeCardSubColor, true), TypeCardSubPt);
                 CompyaUiKit.Outline(sub, new Color(1f, 1f, 1f, 0.8f), 1f);
                 CompyaUiKit.Paint(CompyaUiKit.Norm(card, "SlashL", 0.05f, 0.12f, 0.09f, 0.2f), new Color(0.2f, 0.45f, 0.95f)).rectTransform.localRotation = Quaternion.Euler(0, 0, -20);
                 CompyaUiKit.Paint(CompyaUiKit.Norm(card, "SlashR", 0.91f, 0.15f, 0.95f, 0.23f), new Color(0.9f, 0.25f, 0.6f)).rectTransform.localRotation = Quaternion.Euler(0, 0, -20);
@@ -297,39 +299,54 @@ namespace KBOManager.Controllers
                 name.raycastTarget = false;
             }
 
+            // [TASK-KBO-192] 설명 상자 재배치 - 하늘색 2줄 안내문(70px · 18pt · 줄간격 1.2) / 경기 정보(18pt) /
+            // 연속 진행 2줄(① 라벨 + 프리셋 6버튼 50px ② [-] "N경기 (잔여 M)" 한 줄 18pt [+]) / 볼 잔액. 칸끼리 겹치지 않는다.
             CompyaUiKit.Box(p, "DescBox", 172, 1148, 1075, 1495, new Color(0.05f, 0.05f, 0.14f, 0.88f));
-            typeDescText = kit.Label(p, "Desc", "", 205, 1172, 1045, 1268, 34, TextAnchor.MiddleCenter, Cyan);
-            typeInfoText = kit.Label(p, "Info", "", 205, 1272, 1045, 1335, 36, TextAnchor.MiddleCenter, White, true);
+            typeDescText = TextTidy.Exact(kit.Label(p, "Desc", "", 205, 1156, 1045, 1228, 34, TextAnchor.MiddleCenter, Cyan), TypeBodyPt);
+            typeDescText.lineSpacing = 1.2f;
+            typeDescText.verticalOverflow = VerticalWrapMode.Truncate;
+            typeInfoText = TextTidy.Exact(kit.Label(p, "Info", "", 205, 1230, 1045, 1290, 36, TextAnchor.MiddleCenter, White, true), TypeBodyPt);
+            typeInfoText.lineSpacing = 1.1f;
+            typeInfoText.verticalOverflow = VerticalWrapMode.Truncate;
             // [TASK-KBO-188] 빠른 진행 경기 수: [1][3][5][10] [-] N경기 [+] (남은 정규시즌 경기 수로 클램프)
             // [TASK-KBO-190] [30경기] · [시즌 완주(잔여 경기 전체)] 추가 - 6버튼
-            var quick = CompyaUiKit.Place(p, "QuickCount", 175, 1338, 1075, 1392);
+            var quick = CompyaUiKit.Place(p, "QuickCount", 175, 1294, 1075, 1404);
             quickCountRoot = quick.gameObject;
-            kit.LabelOn(CompyaUiKit.Norm(quick, "Label", 0f, 0f, 0.12f, 1f), "연속 진행", 26, TextAnchor.MiddleLeft, Gold, true);
+            var presetRow = CompyaUiKit.Norm(quick, "PresetRow", 0f, 0.53f, 1f, 1f);
+            var stepRow = CompyaUiKit.Norm(quick, "StepRow", 0f, 0f, 1f, 0.47f);
+            TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(presetRow, "Label", 0f, 0f, 0.13f, 1f), "연속 진행", 26, TextAnchor.MiddleLeft, Gold, true), TypeBodyPt);
+            const float presetX0 = 0.135f;
+            float presetStep = (1f - presetX0) / MatchModeRules.QuickCountPresets.Length;
             for (int i = 0; i < MatchModeRules.QuickCountPresets.Length; i++)
             {
                 int preset = MatchModeRules.QuickCountPresets[i];
-                float x0 = 0.125f + i * 0.088f;
-                var button = kit.Button(quick, preset >= MatchModeRules.SeasonAll ? "PresetSeasonAll" : $"Preset{preset}", MatchModeRules.PresetLabel(preset),
-                    0, 0, 1, 1, preset >= MatchModeRules.SeasonAll ? new Color(0.45f, 0.2f, 0.55f) : new Color(0.2f, 0.25f, 0.45f), White, preset >= MatchModeRules.SeasonAll ? 22 : 26);
-                var rect = (RectTransform)button.transform;
-                rect.anchorMin = new Vector2(x0, 0.04f);
-                rect.anchorMax = new Vector2(x0 + 0.084f, 0.96f);
-                rect.offsetMin = rect.offsetMax = Vector2.zero;
+                float x0 = presetX0 + i * presetStep;
+                var button = kit.Button(presetRow, preset >= MatchModeRules.SeasonAll ? "PresetSeasonAll" : $"Preset{preset}", MatchModeRules.PresetLabel(preset),
+                    0, 0, 1, 1, preset >= MatchModeRules.SeasonAll ? new Color(0.45f, 0.2f, 0.55f) : new Color(0.2f, 0.25f, 0.45f), White, 26);
+                SetNorm((RectTransform)button.transform, x0, 0f, x0 + presetStep - 0.008f, 1f);
+                TextTidy.ExactButton(button, QuickPresetPt);
                 quickPresetImages[i] = button.targetGraphic as Image;
                 button.onClick.AddListener(() => SetQuickCount(preset));
             }
-            var minus = kit.Button(quick, "Minus", "−", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
-            SetNorm((RectTransform)minus.transform, 0.66f, 0.04f, 0.72f, 0.96f);
+            var minus = kit.Button(stepRow, "Minus", "−", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
+            SetNorm((RectTransform)minus.transform, 0.27f, 0f, 0.35f, 1f);
+            TextTidy.ExactButton(minus, 24);
             minus.onClick.AddListener(() => AdjustQuickCount(-1));
-            quickCountText = kit.LabelOn(CompyaUiKit.Norm(quick, "Count", 0.72f, 0f, 0.9f, 1f), "", 34, TextAnchor.MiddleCenter, White, true);
-            var plus = kit.Button(quick, "Plus", "+", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
-            SetNorm((RectTransform)plus.transform, 0.9f, 0.04f, 0.97f, 0.96f);
+            quickCountText = TextTidy.Exact(kit.LabelOn(CompyaUiKit.Norm(stepRow, "Count", 0.36f, 0f, 0.64f, 1f), "", 34, TextAnchor.MiddleCenter, White, true), QuickCountPt);
+            quickCountText.horizontalOverflow = HorizontalWrapMode.Overflow; // 한 줄 고정(줄바꿈으로 세로 3줄 폭주 방지)
+            quickCountText.verticalOverflow = VerticalWrapMode.Truncate;
+            quickCountText.resizeTextForBestFit = false;
+            var plus = kit.Button(stepRow, "Plus", "+", 0, 0, 1, 1, new Color(0.3f, 0.32f, 0.4f), White, 34);
+            SetNorm((RectTransform)plus.transform, 0.65f, 0f, 0.73f, 1f);
+            TextTidy.ExactButton(plus, 24);
             plus.onClick.AddListener(() => AdjustQuickCount(1));
-            CompyaUiKit.Box(p, "Divider", 205, 1395, 1045, 1397, new Color(1f, 1f, 1f, 0.15f));
-            CompyaUiKit.Box(p, "BallPill", 445, 1418, 805, 1475, new Color(0.02f, 0.02f, 0.07f, 0.75f));
-            typeBallText = kit.Label(p, "Ball", "", 445, 1418, 805, 1475, 38, TextAnchor.MiddleCenter, White, true);
+            CompyaUiKit.Box(p, "Divider", 205, 1408, 1045, 1410, new Color(1f, 1f, 1f, 0.15f));
+            CompyaUiKit.Box(p, "BallPill", 445, 1420, 805, 1476, new Color(0.02f, 0.02f, 0.07f, 0.75f));
+            typeBallText = TextTidy.Exact(kit.Label(p, "Ball", "", 445, 1420, 805, 1476, 38, TextAnchor.MiddleCenter, White, true), 20);
 
-            kit.GradientButton(p, "Start", "START", 355, 1557, 892, 1670, PurpleTop, PurpleBottom, White, 70).onClick.AddListener(OnStartPressed);
+            var start = kit.GradientButton(p, "Start", "START", 355, 1557, 892, 1670, PurpleTop, PurpleBottom, White, 70);
+            start.onClick.AddListener(OnStartPressed);
+            TextTidy.ExactButton(start, 30); // [TASK-KBO-192] 대형 실행 버튼 26~30
 
             kit.Label(p, "BonusTitle", "SEASON", 540, 1712, 710, 1748, 28, TextAnchor.MiddleCenter, Gold, true, true);
             CompyaUiKit.Box(p, "BonusBar", 395, 1755, 860, 1795, new Color(0.13f, 0.2f, 0.36f, 0.9f));
@@ -357,7 +374,7 @@ namespace KBOManager.Controllers
             if (quickCountRoot != null)
             {
                 quickCountRoot.SetActive(mode == PlayMode.Quick);
-                quickCountText.text = $"{quickCount}경기 <size=70%>/ 남은 {remaining}</size>";
+                quickCountText.text = QuickCountLabel(quickCount, remaining);
                 for (int i = 0; i < quickPresetImages.Length; i++)
                 {
                     if (quickPresetImages[i] == null) continue;
@@ -378,6 +395,14 @@ namespace KBOManager.Controllers
             int played = LeagueManager.Instance != null ? LeagueManager.Instance.PlayedGameCount : 0;
             typeSeasonText.text = $"{played}/{LeagueManager.TotalUserGames}";
         }
+
+        // [TASK-KBO-192] 경기 방식 선택 화면 글씨(Normal)
+        public const int TypeTitlePt = 30, TypeCardTitlePt = 22, TypeCardSubPt = 14, TypeBodyPt = 18, QuickPresetPt = 18, QuickCountPt = 18;
+        public static readonly Color TypeCardTitleColor = new Color(15 / 255f, 23 / 255f, 42 / 255f);  // #0F172A
+        public static readonly Color TypeCardSubColor = new Color(71 / 255f, 85 / 255f, 105 / 255f);   // #475569
+
+        /// <summary>[TASK-KBO-192] 연속 진행 경기 수 한 줄 문구("144경기 (잔여 144)") - 예전 "144경기 / 남은 144"는 좁은 칸에서 세로 3줄로 쪼개졌다.</summary>
+        public static string QuickCountLabel(int count, int remaining) => $"{count}경기 (잔여 {remaining})";
 
         private static void SetNorm(RectTransform rect, float x0, float y0, float x1, float y1)
         {

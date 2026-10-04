@@ -40,9 +40,10 @@ namespace KBOManager.Controllers
         private static readonly Color RowLineup = new Color(0.17f, 0.32f, 0.62f, 0.95f);
 
         // [TASK-KBO-191] 성장 센터 글씨 계층(Normal) - 화면 타이틀 26 · 섹션 헤더 19 · 본문 16 · 보조 15 · 각성 사다리 14 · 헤더 버튼 17
-        public const int TitlePt = 26, SectionPt = 19, ButtonPt = 17, BodyPt = 16, SmallPt = 15, LadderPt = 14;
-        public const int SkillHeaderPt = 15, SkillButtonPt = 14, SkillSlotTitlePt = 16, SkillSlotDescPt = 13;
-        public const int TargetLine1Pt = 17, TargetLine2Pt = 14, MaterialLine1Pt = 16, MaterialLine2Pt = 14;
+        // [TASK-KBO-192] 1080×1920 가독성 표준으로 복원(Normal 유지) - 타이틀 28 · 섹션 24 · 탭 21 · 본문/스탯 20 · 보조 17 · 실행 버튼 28
+        public const int TitlePt = 28, SectionPt = 24, ButtonPt = 20, BodyPt = 20, SmallPt = 17, LadderPt = 16, TabPt = 21, ActionPt = 28, StatPt = 20;
+        public const int SkillHeaderPt = 19, SkillButtonPt = 17, SkillSlotTitlePt = 20, SkillSlotDescPt = 17;
+        public const int TargetLine1Pt = 21, TargetLine2Pt = 17, MaterialLine1Pt = 20, MaterialLine2Pt = 17;
 
         private CompyaUiKit kit;
         private RectTransform root;
@@ -159,9 +160,9 @@ namespace KBOManager.Controllers
             var holderRect = CompyaUiKit.Place(root, "CardHolder", 36, 170, 420, 785);
             cardHolder = holderRect.gameObject.AddComponent<CardHolderFit>();
             cardHolder.Configure(cardPrefab != null ? CardHolderFit.NativeSizeOf(cardPrefab) : CardHolderFit.DefaultCardSize, 1f);
-            // [TASK-KBO-191] 계층별 적정 크기(Normal) - 선수명 24 · 메인 OVR 40 · 본문 16~17 · 보조 15
-            nameText = TextTidy.Exact(kit.Label(root, "Name", "", 440, 170, 1210, 240, 46, TextAnchor.MiddleLeft, White, true), 24);
-            subText = TextTidy.Exact(kit.Label(root, "Sub", "", 440, 242, 1210, 292, 28, TextAnchor.MiddleLeft, Muted), 17);
+            // [TASK-KBO-192] 계층별 적정 크기(Normal) - 선수명 26 · 메인 OVR 40 · 본문 19~20 · 보조 17
+            nameText = TextTidy.Exact(kit.Label(root, "Name", "", 440, 170, 1210, 240, 46, TextAnchor.MiddleLeft, White, true), 26);
+            subText = TextTidy.Exact(kit.Label(root, "Sub", "", 440, 242, 1210, 292, 28, TextAnchor.MiddleLeft, Muted), 19);
             ovrText = TextTidy.Exact(kit.Label(root, "Ovr", "", 440, 296, 1210, 400, 64, TextAnchor.MiddleLeft, Gold, true), 40);
             breakdownText = TextTidy.Exact(kit.Label(root, "Breakdown", "", 440, 404, 1210, 600, 27, TextAnchor.UpperLeft, White), BodyPt);
             breakdownText.lineSpacing = 1.1f;
@@ -183,7 +184,7 @@ namespace KBOManager.Controllers
                 float x0 = 20 + i * 242f;
                 tabButtons[i] = kit.Button(root, $"Tab_{t}", GrowthCenterRules.TabName(t), x0, 815, x0 + 238, 905, TabOff, White, 36);
                 tabButtons[i].onClick.AddListener(() => SelectTab(t));
-                TextTidy.ExactButton(tabButtons[i], 20);
+                TextTidy.ExactButton(tabButtons[i], TabPt);
             }
             descText = TextTidy.Exact(kit.Label(root, "Desc", "", 28, 915, 890, 1020, 26, TextAnchor.MiddleLeft, White), BodyPt);
             descText.verticalOverflow = VerticalWrapMode.Truncate;
@@ -195,7 +196,7 @@ namespace KBOManager.Controllers
             // ---- 스탯 변화 미리보기 / 재료 선택
             CompyaUiKit.Box(root, "StatPanel", 20, 1028, 600, 1420, Panel);
             TextTidy.Exact(kit.Label(root, "StatTitle", "세부 스탯 변화 미리보기", 40, 1035, 590, 1085, 28, TextAnchor.MiddleLeft, Gold, true), SectionPt);
-            statText = TextTidy.Exact(kit.Label(root, "Stats", "", 40, 1090, 590, 1410, 32, TextAnchor.UpperLeft, White), 17);
+            statText = TextTidy.Exact(kit.Label(root, "Stats", "", 40, 1090, 590, 1410, 32, TextAnchor.UpperLeft, White), StatPt);
             statText.lineSpacing = 1.1f;
 
             CompyaUiKit.Box(root, "MaterialPanel", 612, 1028, 1228, 1420, Panel);
@@ -205,11 +206,11 @@ namespace KBOManager.Controllers
             materialContent = ScrollList(root, "MaterialScroll", 624, 1092, 1216, 1330);
             autoButton = kit.Button(root, "AutoSelect", "자동 선택", 624, 1336, 916, 1412, new Color(0.15f, 0.33f, 0.88f), White, 28);
             autoButton.onClick.AddListener(AutoSelect);
-            TextTidy.ExactButton(autoButton, 17);
+            TextTidy.ExactButton(autoButton, ButtonPt);
             clearButton = kit.Button(root, "ClearSelect", "선택 해제", 924, 1336, 1216, 1412, PanelLight, White, 28);
             clearButton.onClick.AddListener(() => { selected.Clear(); useCoreTicket = false; Refresh(); });
-            TextTidy.ExactButton(clearButton, 17);
-            // [TASK-KBO-190] 훈련·특훈 탭 스킬 버튼(자동 선택/선택 해제 자리) - [TASK-KBO-191] 두 줄 문구 14pt Normal · 줄간격 1.1
+            TextTidy.ExactButton(clearButton, ButtonPt);
+            // [TASK-KBO-190] 훈련·특훈 탭 스킬 버튼(자동 선택/선택 해제 자리) - [TASK-KBO-191→192] 두 줄 문구 17pt Normal · 줄간격 1.1
             skillRerollButton = SkillButton("SkillReroll", "스킬 변경", 624, 818, new Color(0.15f, 0.33f, 0.88f));
             skillRerollButton.onClick.AddListener(() => RerollSkills(false));
             skillPremiumButton = SkillButton("SkillPremium", "고급 변경(A~S)", 822, 1016, new Color(0.55f, 0.2f, 0.62f));
@@ -218,10 +219,10 @@ namespace KBOManager.Controllers
             skillLevelButton.onClick.AddListener(() => LevelUpSkill());
 
             // ---- 실행
-            resultText = TextTidy.Exact(kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true), 17);
+            resultText = TextTidy.Exact(kit.Label(root, "Result", "", 28, 1428, 1220, 1490, 28, TextAnchor.MiddleCenter, Green, true), BodyPt);
             actionButton = kit.GradientButton(root, "Action", "실행", 20, 1495, 1228, 1600, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), new Color(0.12f, 0.08f, 0.02f), 46);
             actionButton.onClick.AddListener(Execute);
-            TextTidy.ExactButton(actionButton, 21);
+            TextTidy.ExactButton(actionButton, ActionPt);
 
             // ---- 대상 선수 변경
             targetTitleText = TextTidy.Exact(kit.Label(root, "TargetTitle", "대상 선수 변경", 28, 1615, 860, 1675, 32, TextAnchor.MiddleLeft, White, true), SectionPt);

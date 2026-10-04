@@ -146,6 +146,10 @@ namespace KBOManager.UI
         public const float NamePlateTop = 0.17f;
         public const float HeaderBottom = 0.86f;
 
+        // [TASK-KBO-192] 카드 내부 글씨 상한(Best Fit 최대) - TASK-188 대비 약 22% 축소, 모두 Normal.
+        //   OVR 34 → 26 · SD 16 → 12 · 구단 약칭 14 → 11 · 각성/초월/강화 배지 18 → 14 · 포지션+선수명 20 → 15
+        public const int OvrMaxPt = 26, SetDeckMaxPt = 12, TeamMaxPt = 11, BadgeMaxPt = 14, NameMaxPt = 15;
+
         private RectTransform headerBar;
         private Image teamLogoImage;
         private Image vignetteImage;
@@ -523,7 +527,8 @@ namespace KBOManager.UI
             headerBar = EnsureChild("Header188", true);
             Fit(headerBar, 0f, HeaderBottom, 1f, 1f);
             headerBar.GetComponent<Image>().color = new Color(0.04f, 0.06f, 0.12f, 0.78f);
-            FitText(ovrText, 0.04f, HeaderBottom + 0.005f, 0.5f, 0.995f, TextAnchor.MiddleLeft, 34);
+            // [TASK-KBO-192] OVR은 좌상단(로고 앞까지), SD는 우상단 모서리에 위아래 여백을 두고 작게 - 중앙 로고와 맞닿지 않는다.
+            FitText(ovrText, 0.05f, HeaderBottom + 0.02f, 0.42f, 0.98f, TextAnchor.MiddleLeft, OvrMaxPt);
             var logoRect = EnsureChild("TeamLogo188", true);
             Fit(logoRect, 0.52f, HeaderBottom + 0.015f, 0.68f, 0.985f);
             teamLogoImage = logoRect.GetComponent<Image>();
@@ -533,9 +538,9 @@ namespace KBOManager.UI
             if (teamText != null)
             {
                 teamText.gameObject.SetActive(!hasLogo);
-                FitText(teamText, 0.5f, HeaderBottom + 0.005f, 0.7f, 0.995f, TextAnchor.MiddleCenter, 14);
+                FitText(teamText, 0.5f, HeaderBottom + 0.02f, 0.7f, 0.98f, TextAnchor.MiddleCenter, TeamMaxPt);
             }
-            FitText(setDeckScoreText, 0.69f, HeaderBottom + 0.005f, 0.97f, 0.995f, TextAnchor.MiddleRight, 16);
+            FitText(setDeckScoreText, 0.72f, HeaderBottom + 0.025f, 0.95f, 0.975f, TextAnchor.MiddleRight, SetDeckMaxPt);
             if (positionText != null) positionText.gameObject.SetActive(false); // 포지션은 네임플레이트로 이동
 
             // 하단 네임플레이트
@@ -554,7 +559,8 @@ namespace KBOManager.UI
             {
                 bool awaken = CardGrowthRules.ShowsAwakenBadge(player.Template.Grade, player.AwakenLevel);
                 bool transcend = CardGrowthRules.IsTranscended(player.Template.Grade, player.AwakenLevel);
-                Fit(growthBadge, 0.03f, 0.025f, 0.27f, NamePlateTop - 0.025f);
+                // [TASK-KBO-192] 배지를 네임플레이트 높이의 약 60%로 낮추고 좌우 여백 확보
+                Fit(growthBadge, 0.04f, NamePlateTop * 0.2f, 0.25f, NamePlateTop * 0.8f);
                 growthBadge.GetComponent<Image>().color = transcend ? TranscendBadgeColor : awaken ? AwakenBadgeColor : ReinforceBadgeColor;
                 var textRect = growthBadge.Find("Text") as RectTransform;
                 if (textRect == null)
@@ -568,9 +574,12 @@ namespace KBOManager.UI
                 growthBadgeText.fontStyle = FontStyle.Normal;
                 growthBadgeText.text = badge;
                 growthBadgeText.color = transcend ? new Color(1f, 0.86f, 0.35f) : Color.white;
-                FitText(growthBadgeText, 0.04f, 0f, 0.96f, 1f, TextAnchor.MiddleCenter, 18);
+                FitText(growthBadgeText, 0.08f, 0.08f, 0.92f, 0.92f, TextAnchor.MiddleCenter, BadgeMaxPt);
             }
-            FitText(nameText, hasBadge ? 0.29f : 0.04f, 0f, 0.97f, NamePlateTop, hasBadge ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, 20);
+            FitText(nameText, hasBadge ? 0.29f : 0.04f, NamePlateTop * 0.15f, 0.96f, NamePlateTop * 0.85f, hasBadge ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, NameMaxPt);
+            // [TASK-KBO-192] 카드 안 글씨는 Bold 없이(Normal) - 서체 굵기만 쓴다.
+            foreach (var t in new[] { ovrText, teamText, setDeckScoreText, growthBadgeText, nameText })
+                if (t != null && (t.fontStyle == FontStyle.Bold || t.fontStyle == FontStyle.BoldAndItalic)) t.fontStyle = FontStyle.Normal;
 
             // 그리기 순서: 일러스트 → 비네팅 → 테두리 → 별/컨디션/체력 → 헤더 → 네임플레이트 → 선택 표시
             int order = 0;
