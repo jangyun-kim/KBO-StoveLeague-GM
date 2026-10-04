@@ -371,7 +371,8 @@ namespace KBOManager.Engine
             public List<Player> BattingOrder = new List<Player>(); // 최대 9명
             public int NextBatterIndex;
 
-            public List<Player> Starters = new List<Player>();     // OVR 내림차순, [0] = 오늘의 선발
+            public List<Player> Starters = new List<Player>();     // [TASK-KBO-187] 1~5선발 칸 순서(라인업 투수 탭과 동일)
+            public Player DesignatedStarter;                       // [TASK-KBO-187] 오늘의 선발(StartingRotation - NEXT MATCH 예고와 동일)
             public List<Player> LongRelief = new List<Player>();
             public List<Player> WinningRelief = new List<Player>();
             public List<Player> MopUpRelief = new List<Player>();
@@ -411,6 +412,14 @@ namespace KBOManager.Engine
         public int HomeClassBonus => homeClassBonus;
         public int AwayClassBonus => awayClassBonus;
         private int ClassBonusFor(Player player) => player != null && homeRoster.Contains(player) ? homeClassBonus : awayClassBonus;
+
+        /// <summary>[TASK-KBO-187] player 소속 팀의 현재 리드(음수 = 열세).</summary>
+        private int LeadOf(Player player)
+        {
+            if (homeState == null || awayState == null) return 0;
+            bool home = player != null && homeRoster.Contains(player);
+            return home ? homeState.RunsScored - awayState.RunsScored : awayState.RunsScored - homeState.RunsScored;
+        }
 
         /// <summary>[TASK-KBO-180] 타석 번호 -> 작전. 같은 시드(randomSeed)로 다시 계산하면 지정 타석 직전까지는 결과가 같고, 그 타석부터
         /// 작전이 실제 확률에 반영된다(PlayBallController.ReplayWithTactic).</summary>
@@ -452,6 +461,8 @@ namespace KBOManager.Engine
         {
             homeState = BuildTeamState(homeRoster, homeTeamName);
             awayState = BuildTeamState(awayRoster, awayTeamName);
+            homeState.DesignatedStarter = HomeDesignatedStarter;
+            awayState.DesignatedStarter = AwayDesignatedStarter;
 
             // [TASK-KBO-183] 'OVR 7 격차 법칙' - ΔOVR ≤ 7이면 가변 승부(보정 없음), ≥ 8이면 상위 구단에 체급 우위 세부 스탯 가산.
             HomeTeamOvr = homeModifiers.TeamOvr > 0 ? homeModifiers.TeamOvr : TeamOvrCalculator.Calculate(homeRoster).Total;
@@ -571,6 +582,15 @@ namespace KBOManager.Engine
             RollPitchCount(currentAtBatState);
 
             var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
+
+            // [TASK-KBO-187] 대승 스코어 감쇠 - 큰 리드 · 빅이닝 · 두 자릿수 득점 중인 공격 팀의 안타/볼넷을 일정 확률로 범타 처리(53:0 방지).
+            if (currentTactic == MatchTactic.None && IsBatterPositive(result)) // 작전(고의사구 등) 결과는 건드리지 않는다
+            {
+                var attack = isTopHalf ? awayState : homeState;
+                var defense = isTopHalf ? homeState : awayState;
+                float damping = OvrGapLaw.BlowoutDampingChance(attack.RunsScored - defense.RunsScored, attack.RunsScored, runsThisHalfInning);
+                if (damping > 0f && random.NextDouble() < damping) result = result == AtBatResult.Walk ? AtBatResult.Strikeout : AtBatResult.Flyout;
+            }
 
             // 이 타석을 던진 대가로 체력을 소모한다. 선발/불펜 롤에 따라 소모량이 다르다(불펜이 더 큼 -
             // 짧고 굵게 쓰는 만큼 더 빨리 지친다). SimulateAtBat()이 이미 "이번 타석 시작 시점"의 체력을
@@ -1024,6 +1044,11 @@ namespace KBOManager.Engine
 
         // ----- 팀 상태 구성 -----
 
+        /// <summary>[TASK-KBO-187] 오늘의 선발 투수(LeagueManager.GetNextStartingPitcher - NEXT MATCH 예고와 같은 투수). BeginMatch 전에 지정한다.
+        /// null이면 기존처럼 1~5선발 중 체력이 가장 넉넉한 투수가 나온다.</summary>
+        public Player HomeDesignatedStarter { get; set; }
+        public Player AwayDesignatedStarter { get; set; }
+
         private TeamGameState BuildTeamState(List<Player> roster, string teamName)
         {
             var valid = (roster ?? new List<Player>()).Where(p => p?.Template != null).ToList();
@@ -1039,13 +1064,32 @@ namespace KBOManager.Engine
             {
                 TeamName = teamName,
                 BattingOrder = BuildBattingOrder(valid),
-                Starters = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.StartingPitcher)
-                    .OrderByDescending(GetBaseOvr).ToList(),
-                LongRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.LongReliever).ToList(),
-                WinningRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.WinningReliever).ToList(),
-                MopUpRelief = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.MopUpReliever).ToList(),
-                Closers = valid.Where(p => p.Template.IsPitcher && LineupAssignment.RoleOf(p) == PitcherRole.Closer).ToList(),
+                // [TASK-KBO-187] 투수 운용 = 라인업 투수 탭 13칸 그대로(유저 고정 자리 반영, AI는 보직별 OVR 순): 선발 = 1~5선발 칸 순서,
+                // 불펜 그룹 = 그 칸의 보직(대체 배치 포함). 정원 밖 "추가" 투수는 자기 보직 그룹 뒤에 붙는다.
+                Starters = PitchingStaff(valid).Rotation,
+                LongRelief = PitchingStaff(valid).Group(PitcherRole.LongReliever),
+                WinningRelief = PitchingStaff(valid).Group(PitcherRole.WinningReliever),
+                MopUpRelief = PitchingStaff(valid).Group(PitcherRole.MopUpReliever),
+                Closers = PitchingStaff(valid).Group(PitcherRole.Closer),
             };
+        }
+
+        private sealed class Staff
+        {
+            public List<Player> Rotation;
+            public List<LineupView.Entry> Bullpen;
+            public List<Player> Group(PitcherRole role) => Bullpen.Where(e => e.Player != null && e.Role == role).Select(e => e.Player).ToList();
+        }
+
+        private readonly Dictionary<List<Player>, Staff> staffCache = new Dictionary<List<Player>, Staff>();
+
+        private Staff PitchingStaff(List<Player> valid)
+        {
+            if (staffCache.TryGetValue(valid, out var staff)) return staff;
+            var (rotation, bullpen) = LineupView.BuildPitchers(valid);
+            staff = new Staff { Rotation = rotation.Where(e => e.Player != null).Select(e => e.Player).ToList(), Bullpen = bullpen };
+            staffCache[valid] = staff;
+            return staff;
         }
 
         private static List<Player> BuildBattingOrder(List<Player> teamRoster)
@@ -1058,6 +1102,9 @@ namespace KBOManager.Engine
         }
 
         // ----- 세부 스탯 계산(팀 버프 + 스킬 효과 반영) -----
+
+        private static bool IsBatterPositive(AtBatResult result) =>
+            result == AtBatResult.Walk || result == AtBatResult.Single || result == AtBatResult.Double || result == AtBatResult.Triple || result == AtBatResult.HomeRun;
 
         private int GetBaseOvr(Player player)
         {
@@ -1090,7 +1137,8 @@ namespace KBOManager.Engine
             stats = ApplyBatterSkills(stats, pitcher, EffectTarget.Opponent, self: pitcher, opponent: batter, state);
 
             var batterModifiers = GetModifiersFor(batter);
-            stats = AddTeamBuff(stats, batterModifiers.TotalBuff + ClassBonusFor(batter)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
+            // [TASK-KBO-183] 체급 우위(Δ ≥ 8) - [TASK-KBO-187] 타격 쪽은 리드가 클수록 감쇠(OvrGapLaw.BattingClassBonus)
+            stats = AddTeamBuff(stats, batterModifiers.TotalBuff + OvrGapLaw.BattingClassBonus(ClassBonusFor(batter), LeadOf(batter)));
             if (batterModifiers.SetDeckProfile != null)
             {
                 // [TASK-KBO-172] 세트덱 대상 한정 효과(타순 1~9 기준 상위/중심/하위 타선 등)를 추가 가산한다.
@@ -1459,12 +1507,18 @@ namespace KBOManager.Engine
             }
             else
             {
-                var startedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p));
+                var startedToday = pitchingTeam.Starters.FirstOrDefault(p => pitchingTeam.UsedPitchers.Contains(p))
+                                   ?? (pitchingTeam.DesignatedStarter != null && pitchingTeam.UsedPitchers.Contains(pitchingTeam.DesignatedStarter) ? pitchingTeam.DesignatedStarter : null);
 
                 if (startedToday != null && !subbedOutList.Contains(startedToday) && !ShouldPullStarter(startedToday))
                 {
                     // 아직 믿고 맡길 만하다 - 이닝 상한 없이 계속 그 선발로 이어간다.
                     preferred = new List<Player> { startedToday };
+                }
+                else if (startedToday == null && inning <= 5 && pitchingTeam.DesignatedStarter != null && !subbedOutList.Contains(pitchingTeam.DesignatedStarter))
+                {
+                    // [TASK-KBO-187] 1~5선발 순차 로테이션 - NEXT MATCH에 예고된 바로 그 투수가 선발 등판한다.
+                    preferred = new List<Player> { pitchingTeam.DesignatedStarter };
                 }
                 else if (startedToday == null && inning <= 5 && pitchingTeam.Starters.Count > 0)
                 {

@@ -456,6 +456,13 @@ namespace KBOManager.Managers
         /// PlayBallController처럼 외부에서 직접 경기를 진행할 주체가 "이번엔 누구와 붙는지" 미리 알아야 할 때 쓴다.</summary>
         public MatchFixture PeekNextFixture() => nextFixtureIndex < schedule.Count ? schedule[nextFixtureIndex] : null;
 
+        /// <summary>[TASK-KBO-187] team이 이번 시즌 치른 경기 수(승 + 무 + 패) - 1~5선발 로테이션 차례 계산용.</summary>
+        public int GamesPlayed(Team team) => standings.TryGetValue(team, out var info) ? info.Wins + info.Draws + info.Losses : 0;
+
+        /// <summary>[TASK-KBO-187] 단일 진실 공급원 - team의 다음 경기 선발 투수(1~5선발 칸 순서 × 치른 경기 수 로테이션).
+        /// 결과 화면 NEXT MATCH · 로비 NEXT MATCH 카드 · 경기 유형 선택 화면 · 실제 경기 엔진 선발(Home/AwayDesignatedStarter)이 모두 이 값을 쓴다.</summary>
+        public Player GetNextStartingPitcher(Team team) => StartingRotation.PickFor(ResolveRosterForTeam(team), GamesPlayed(team));
+
         /// <summary>team의 로스터를 반환한다. userTeam이면 GameManager.Roster를 실시간으로, 아니면 저장된 AI 로스터를 반환한다.</summary>
         public List<Player> ResolveRosterForTeam(Team team)
         {
@@ -762,7 +769,11 @@ namespace KBOManager.Managers
 
             var homeModifiers = BuildTeamPowerModifiers(fixture.HomeTeam, homeRoster, isHome: true);
             var awayModifiers = BuildTeamPowerModifiers(fixture.AwayTeam, awayRoster, isHome: false);
-            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
+            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig)
+            {
+                HomeDesignatedStarter = GetNextStartingPitcher(fixture.HomeTeam), // [TASK-KBO-187] 1~5선발 순차 로테이션
+                AwayDesignatedStarter = GetNextStartingPitcher(fixture.AwayTeam),
+            };
             bool isPostSeason = fixture.Phase == LeaguePhase.POST_SEASON;
 
             engine.BeginMatch(fixture.HomeTeam.ToString(), fixture.AwayTeam.ToString(), isPostSeason);

@@ -61,6 +61,7 @@ namespace KBOManager.Controllers
         public MatchEngine Engine => engine;
 
         public Team HomeTeam { get; private set; }
+        private Player matchHomeStarter, matchAwayStarter;
         public Team AwayTeam { get; private set; }
 
         /// <summary>경기가 완전히 끝났을 때(결과가 LeagueManager에도 이미 반영된 뒤) 호출된다.</summary>
@@ -157,7 +158,14 @@ namespace KBOManager.Controllers
             foreach (var player in homeRoster.Concat(awayRoster))
                 if (player != null) staminaAtStart[player] = player.CurrentStamina;
 
-            engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig, matchSeed);
+            // [TASK-KBO-187] 오늘의 선발 = LeagueManager.GetNextStartingPitcher(NEXT MATCH 예고와 같은 1~5선발 로테이션 차례).
+            matchHomeStarter = LeagueManager.Instance != null ? LeagueManager.Instance.GetNextStartingPitcher(HomeTeam) : null;
+            matchAwayStarter = LeagueManager.Instance != null ? LeagueManager.Instance.GetNextStartingPitcher(AwayTeam) : null;
+            engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig, matchSeed)
+            {
+                HomeDesignatedStarter = matchHomeStarter,
+                AwayDesignatedStarter = matchAwayStarter,
+            };
             IsMatchInProgress = true;
 
             // 경기 전체를 즉시 계산한다(랜덤 판정은 이 한 번의 호출 안에서만 일어난다 - 재생은 그 결과를
@@ -248,7 +256,11 @@ namespace KBOManager.Controllers
             if (tactic == MatchTactic.None) matchTactics.Remove(plateAppearance); else matchTactics[plateAppearance] = tactic;
 
             foreach (var pair in staminaAtStart) pair.Key.CurrentStamina = pair.Value;
-            var replay = new MatchEngine(matchHomeRoster, matchAwayRoster, matchHomeModifiers, matchAwayModifiers, skillDB, engineConfig, matchSeed);
+            var replay = new MatchEngine(matchHomeRoster, matchAwayRoster, matchHomeModifiers, matchAwayModifiers, skillDB, engineConfig, matchSeed)
+            {
+                HomeDesignatedStarter = matchHomeStarter, // [TASK-KBO-187] 작전 재계산도 같은 선발
+                AwayDesignatedStarter = matchAwayStarter,
+            };
             foreach (var pair in matchTactics) replay.Tactics[pair.Key] = pair.Value;
             var events = new List<PlayEvent>(replay.PlayFullMatchAsEventQueue(matchHomeName, matchAwayName, matchIsPostSeason));
 

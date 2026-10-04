@@ -85,6 +85,7 @@ namespace KBOManager.Controllers
         private LineupMode mode = LineupMode.None;
         private Player orderFirstPick;
         private Player defenseFirstPick; // [TASK-KBO-186] [수비 위치 변경] 맞교환 첫 선택
+        private SetDeckResult cellSetDeck; // [TASK-KBO-187] 라인업 카드 SD 배지 = 하단 총점과 같은 평가 결과
         private Player selectedPlayer;
         private readonly List<PlayerCardUI> spawnedTrayCards = new List<PlayerCardUI>();
         private readonly List<PlayerCardUI> spawnedStorageCards = new List<PlayerCardUI>();
@@ -245,6 +246,8 @@ namespace KBOManager.Controllers
 
             var lineup = LineupView.BuildLineup(roster, gm.BattingOrderOverride);
             var bench = LineupView.BuildBench(roster);
+            // [TASK-KBO-187] 카드 SD 배지 = 하단 총점과 같은 평가 결과의 카드별 합산값(SetDeckEvaluator.CardScoreIn).
+            cellSetDeck = GameManager.EvaluateSetDeck(roster.ToList(), gm.FavoriteTeam != Team.None ? gm.FavoriteTeam.ToString() : null, gm.SetDeckSelection);
             foreach (var entry in fullView ? Enumerable.Empty<LineupView.Entry>() : lineup) // 보이는 쪽만 그린다(선택 테두리가 숨은 카드에 걸리지 않게)
             {
                 int index = (int)entry.Position;
@@ -392,6 +395,8 @@ namespace KBOManager.Controllers
             {
                 holder.Place((RectTransform)card.transform);
                 foreach (var graphic in card.GetComponentsInChildren<Graphic>(true)) graphic.raycastTarget = false;
+                if (!isStorage && cellSetDeck != null)
+                    card.ShowLineupSetDeckScore(SetDeckEvaluator.CardScoreIn(cellSetDeck, player), SetDeckEvaluator.IsExcludedFromSlots(cellSetDeck, player));
                 if (card.transform.Find("NameText")?.GetComponent<Text>() is Text nameText)
                     nameText.text = player.Template.SeasonYear > 0 ? $"{player.Template.PlayerName}'{player.Template.SeasonYear % 100:00}" : player.Template.PlayerName;
             }
@@ -408,10 +413,12 @@ namespace KBOManager.Controllers
 
             if (showOrder && entry.BattingOrder > 0)
             {
-                var diamond = CompyaUiKit.Norm(deco, "OrderDiamond", 0.02f, 0.52f, 0.28f, 0.7f);
-                var diamondFit = diamond.gameObject.AddComponent<AspectRatioFitter>();
-                diamondFit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-                diamondFit.aspectRatio = 1f;
+                // [TASK-KBO-187] AspectRatioFitter(FitInParent)가 앵커를 무시하고 카드 전체로 늘어나 일러스트를 덮었다 -
+                // 고정 32×32px, 카드 좌측 중단 가장자리에 둔다.
+                var diamond = CompyaUiKit.Norm(deco, "OrderDiamond", 0f, 0.5f, 0f, 0.5f);
+                diamond.pivot = new Vector2(0f, 0.5f);
+                diamond.sizeDelta = new Vector2(OrderDiamondSize, OrderDiamondSize);
+                diamond.anchoredPosition = new Vector2(2f, 0f);
                 var shape = CompyaUiKit.Norm(diamond, "Shape", 0.15f, 0.15f, 0.85f, 0.85f);
                 CompyaUiKit.Paint(shape, mode == LineupMode.BattingOrder && orderFirstPick == player ? SelectGold : new Color(0.75f, 0.12f, 0.2f));
                 shape.localRotation = Quaternion.Euler(0f, 0f, 45f);
@@ -663,33 +670,67 @@ namespace KBOManager.Controllers
             if (setDeckScoreText != null)
                 setDeckScoreText.text = $"{CompyaUiKit.ShortName(setDeck.DeckTeam)} <color=#3D7BFF><b>{setDeck.Score}</b></color> <size=70%>POINT</size>";
 
-            var (start, markers) = GaugeWindow(setDeck.Score);
+            var (_, markers) = GaugeWindow(setDeck.Score);
             for (int i = 0; i < 6; i++)
             {
-                int marker = markers[i];
-                bool reached = setDeck.Score >= marker;
-                bool isBracket = SetDeckBuffTable.Brackets.Any(b => b.Threshold == marker);
-                if (gaugeMarkerTexts != null && i < gaugeMarkerTexts.Length && gaugeMarkerTexts[i] != null) gaugeMarkerTexts[i].text = marker.ToString();
+                bool hasMarker = i < markers.Length;
+                int marker = hasMarker ? markers[i] : 0;
+                bool reached = hasMarker && setDeck.Score >= marker;
+                if (gaugeMarkerTexts != null && i < gaugeMarkerTexts.Length && gaugeMarkerTexts[i] != null) gaugeMarkerTexts[i].text = hasMarker ? $"{marker}P" : "";
                 if (gaugeIconTexts != null && i < gaugeIconTexts.Length && gaugeIconTexts[i] != null)
-                    gaugeIconTexts[i].text = !isBracket ? "-" : reached ? "✔" : "잠김";
+                {
+                    gaugeIconTexts[i].text = hasMarker ? GaugeIconLabel(marker, setDeck.Score, gm.SetDeckSelection, setDeck.SelectedYear) : "";
+                    gaugeIconTexts[i].color = reached ? new Color(1f, 0.84f, 0.3f) : new Color(0.75f, 0.78f, 0.84f);
+                }
                 if (gaugeIconImages != null && i < gaugeIconImages.Length && gaugeIconImages[i] != null)
-                    gaugeIconImages[i].color = reached ? new Color(0.15f, 0.55f, 0.7f) : new Color(0.22f, 0.24f, 0.3f);
+                    gaugeIconImages[i].color = reached ? new Color(0.16f, 0.42f, 0.95f) : new Color(0.22f, 0.24f, 0.3f);
             }
             if (setDeckGaugeFillImage != null)
             {
-                setDeckGaugeFillImage.fillAmount = GaugeFill(setDeck.Score, start);
+                setDeckGaugeFillImage.fillAmount = GaugeFill(setDeck.Score, markers);
                 setDeckGaugeFillImage.color = CyanAccent;
             }
         }
 
         /// <summary>마커 i는 게이지 폭의 (i + 0.5) / 6 지점(Setup 배치와 동일) - 스코어 위치까지 채운다.</summary>
-        public static float GaugeFill(int score, int start) => Mathf.Clamp01(((score - start) / 5f + 0.5f) / 6f);
+        public const float OrderDiamondSize = 32f;
 
-        /// <summary>게이지 구간 6칸(5P 간격) - 현재 스코어가 두 번째 칸 근처에 오도록 잡되 30~200P 범위를 넘지 않는다.</summary>
+        /// <summary>[TASK-KBO-187] 게이지 마커 후보 = 실제 세트덱 선택형 버프 구간(80/100/115/120/135/140/150/155/185/190P) + 최종 200P.</summary>
+        public static readonly int[] GaugeThresholds = SetDeckBuffTable.SelectableBrackets.Select(b => b.Threshold)
+            .Append(SetDeckBuffTable.FinalGoalScore).Distinct().OrderBy(t => t).ToArray();
+
+        /// <summary>마커 i는 게이지 폭의 (i + 0.5) / 6 지점(Setup 배치와 동일) - 실제 구간 사이를 선형 보간해 스코어 위치까지 채운다.</summary>
+        public static float GaugeFill(int score, int[] markers)
+        {
+            if (markers == null || markers.Length == 0) return 0f;
+            if (score <= markers[0]) return Mathf.Clamp01(score / (float)Mathf.Max(1, markers[0]) * 0.5f / markers.Length);
+            for (int i = 0; i < markers.Length - 1; i++)
+            {
+                if (score > markers[i + 1]) continue;
+                float t = (score - markers[i]) / (float)Mathf.Max(1, markers[i + 1] - markers[i]);
+                return Mathf.Clamp01((i + 0.5f + t) / markers.Length);
+            }
+            return 1f;
+        }
+
+        /// <summary>[TASK-KBO-187] 게이지 6칸 = 실제 버프 구간 중 현재 스코어 전후 6개(이미 달성한 구간 최대 2개 + 다음 목표들). Start = 첫 마커 인덱스.</summary>
         public static (int Start, int[] Markers) GaugeWindow(int score)
         {
-            int start = Mathf.Clamp((score / 5) * 5, 30 + 5, SetDeckBuffTable.FinalGoalScore - 25);
-            return (start, Enumerable.Range(0, 6).Select(i => start + i * 5).ToArray());
+            int next = System.Array.FindIndex(GaugeThresholds, t => t > score);
+            if (next < 0) next = GaugeThresholds.Length;
+            int start = Mathf.Clamp(next - 2, 0, Mathf.Max(0, GaugeThresholds.Length - 6));
+            return (start, GaugeThresholds.Skip(start).Take(6).ToArray());
+        }
+
+        /// <summary>[TASK-KBO-187] 마커 아이콘 문구 - 달성 구간은 "✔ 달성"(+ 선택 연도 / 적용 버프 A·B), 미달성은 "잠김".</summary>
+        public static string GaugeIconLabel(int marker, int score, SetDeckSelection selection, int selectedYear)
+        {
+            if (score < marker) return "잠김";
+            var bracket = SetDeckBuffTable.Brackets.FirstOrDefault(b => b.Threshold == marker);
+            string option = bracket != null && bracket.IsSelectable ? (selection != null && selection.UsesOptionB(marker) ? " B" : " A") : "";
+            bool yearBuff = bracket != null && bracket.Resolve(selection) is SetDeckEffect e &&
+                            (e.Target == SetDeckTarget.SelectedYearBatters || e.Target == SetDeckTarget.SelectedYearPitchers);
+            return $"✔ 달성{option}{(yearBuff && selectedYear > 0 ? $" '{selectedYear % 100:00}" : "")}";
         }
 
         // ------------------------------------------------------------------ 정보 팝업

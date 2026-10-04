@@ -71,6 +71,18 @@ namespace KBOManager.UI
         [SerializeField] private Text ovrText;
         [Tooltip("[TASK-KBO-173] 개인 세트덱 스코어(= 카드 Salary) 표기. 비워두면 생략(기존 프리팹 호환).")]
         [SerializeField] private Text setDeckScoreText;
+        private Color setDeckDefaultColor = Color.white;
+        private bool setDeckColorCaptured;
+
+        /// <summary>[TASK-KBO-187] 라인업 칸 전용 - 이 카드가 세트덱 총점(NP POINT)에 실제로 더하는 값(SetDeckEvaluator.CardScoreIn)을 표시한다.
+        /// 0점(다른 구단 · 미합산)은 회색 "SD 0", 27인 슬롯 밖이면 "SD 0 제외". 라인업 카드 SD 합계 == 하단 총점.</summary>
+        public void ShowLineupSetDeckScore(int score, bool excluded)
+        {
+            if (setDeckScoreText == null) return;
+            if (!setDeckColorCaptured) { setDeckDefaultColor = setDeckScoreText.color; setDeckColorCaptured = true; }
+            setDeckScoreText.text = excluded ? "SD 0 제외" : $"SD {score}";
+            setDeckScoreText.color = score > 0 ? setDeckDefaultColor : new Color(0.6f, 0.62f, 0.66f);
+        }
 
         [Header("Portrait (TASK-KBO-147 - Resources/Portraits/{TemplateId} 동적 로딩)")]
         [Tooltip("실제 선수 초상화를 표시할 Image. 비워두면 초상화 기능 자체를 생략한다(기존 카드 프리팹 " +
@@ -146,7 +158,12 @@ namespace KBOManager.UI
             if (teamText != null) teamText.text = player.Template.Team.ToString();
             if (positionText != null) positionText.text = DescribePosition(player.Template);
             if (ovrText != null) ovrText.text = player.CalculateOVR(false).ToString();
-            if (setDeckScoreText != null) setDeckScoreText.text = $"SD {player.SetDeckScore}"; // [TASK-KBO-173] Salary = 세트덱 스코어
+            if (setDeckScoreText != null)
+            {
+                if (!setDeckColorCaptured) { setDeckDefaultColor = setDeckScoreText.color; setDeckColorCaptured = true; }
+                setDeckScoreText.color = setDeckDefaultColor; // 풀 재사용 시 라인업 회색 표시가 남지 않게
+                setDeckScoreText.text = $"SD {SetDeckEvaluator.GetBaseCardSetDeckScore(player)}"; // [TASK-KBO-173] Salary = 세트덱 스코어
+            }
 
             var gradeColor = GetStarTypeColor(player.CurrentStarType, player.Template.Team);
             if (frameImage != null) frameImage.color = gradeColor;

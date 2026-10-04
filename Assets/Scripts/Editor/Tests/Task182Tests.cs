@@ -157,13 +157,14 @@ namespace KBOManager.EditorTests
             Assert.AreEqual((thresholds.Count - 1, 1), SetDeckOptionUIController.CountChoices(selection, thresholds));
         }
 
+        /// <summary>[TASK-KBO-187] 게이지 마커 = 실제 버프 구간(80/100/115/120/135/140/150/155/185/190/200P) 중 6개로 바뀌었다.</summary>
         [Test]
         public void GaugeWindow_StaysInsideRange()
         {
-            Assert.AreEqual(175, RosterUIController.GaugeWindow(200).Start);
-            CollectionAssert.AreEqual(new[] { 175, 180, 185, 190, 195, 200 }, RosterUIController.GaugeWindow(199).Markers);
-            Assert.AreEqual(35, RosterUIController.GaugeWindow(10).Start);
-            Assert.AreEqual(150, RosterUIController.GaugeWindow(152).Start);
+            CollectionAssert.AreEqual(new[] { 140, 150, 155, 185, 190, 200 }, RosterUIController.GaugeWindow(200).Markers);
+            CollectionAssert.AreEqual(new[] { 140, 150, 155, 185, 190, 200 }, RosterUIController.GaugeWindow(199).Markers);
+            CollectionAssert.AreEqual(new[] { 80, 100, 115, 120, 135, 140 }, RosterUIController.GaugeWindow(10).Markers);
+            Assert.AreEqual(6, RosterUIController.GaugeWindow(152).Markers.Length);
         }
     }
 }

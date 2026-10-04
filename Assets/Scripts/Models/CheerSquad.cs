@@ -106,12 +106,13 @@ namespace KBOManager.Models
         }
 
         // 단계별 수치표(인덱스 = Tier 1~3)
-        private static readonly int[] LeaderAmplifyPercent = { 0, 3, 6, 10 };   // PDF 5.2절: 일반 +3% / 고급 +6% / 최상위 +10%
-        private static readonly int[] RoleStatBonus = { 0, 1, 1, 2 };            // 타격·투수 응원, 홈 응원 컨디션
-        private static readonly int[] StreakBonus = { 0, 1, 1, 1 };
-        private static readonly int[] TrailingBonus = { 0, 1, 1, 2 };
-        private static readonly int[] HomePressure = { 0, 1, 1, 1 };
-        private static readonly float[] CloseLate = { 1f, 1.03f, 1.05f, 1.08f };   // PDF 11.4절 상황 보정(최대 15% 이내)
+        // [TASK-KBO-187] 인덱스 4 · 5 = ★3 · ★5 각성 임계점 도약 티어(CheerGrowth.EffectiveTier).
+        private static readonly int[] LeaderAmplifyPercent = { 0, 3, 6, 10, 13, 16 };   // PDF 5.2절: 일반 +3% / 고급 +6% / 최상위 +10%
+        private static readonly int[] RoleStatBonus = { 0, 1, 1, 2, 2, 3 };            // 타격·투수 응원, 홈 응원 컨디션
+        private static readonly int[] StreakBonus = { 0, 1, 1, 1, 2, 2 };
+        private static readonly int[] TrailingBonus = { 0, 1, 1, 2, 2, 3 };
+        private static readonly int[] HomePressure = { 0, 1, 1, 1, 2, 2 };
+        private static readonly float[] CloseLate = { 1f, 1.03f, 1.05f, 1.08f, 1.1f, 1.12f };   // PDF 11.4절 상황 보정(최대 15% 이내)
 
         /// <summary>같은 사람 판별 키 - 연도/구단/티어가 달라도 이름이 같으면 같은 인물(중복 편성 금지 기준).</summary>
         public static string PersonKey(Cheerleader cheerleader) => cheerleader?.Name?.Trim() ?? string.Empty;
@@ -155,39 +156,39 @@ namespace KBOManager.Models
                     fx.Lines.Add($"{i + 1}.{RoleName(role)} {c.Name}: 구단 시너지 미발동({c.Team} ≠ 세트덱 {deckTeam})");
                     continue;
                 }
-                int t = Tier(c.Grade);
+                int t = CheerGrowth.EffectiveTier(c); // [TASK-KBO-187] 등급 + ★3/★5 각성 도약
                 switch (role)
                 {
                     case CheerRole.Leader:
-                        fx.SetDeckAmplifyPercent = LeaderAmplifyPercent[t];
-                        fx.SetDeckAmplifyBonus = (int)System.Math.Round(setDeckFlatBuff * LeaderAmplifyPercent[t] / 100.0, System.MidpointRounding.AwayFromZero);
+                        fx.SetDeckAmplifyPercent = LeaderAmplifyPercent[t] + CheerGrowth.LeaderAmplifyBonusPercent(c);
+                        fx.SetDeckAmplifyBonus = (int)System.Math.Round(setDeckFlatBuff * fx.SetDeckAmplifyPercent / 100.0, System.MidpointRounding.AwayFromZero);
                         fx.Lines.Add($"1.응원단장 {c.Name}: 세트덱 적용률 +{fx.SetDeckAmplifyPercent}% (모든 능력치 +{fx.SetDeckAmplifyBonus})");
                         break;
                     case CheerRole.Batting:
-                        fx.BatterContactDiscipline = RoleStatBonus[t];
+                        fx.BatterContactDiscipline = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
                         fx.Lines.Add($"2.타격 응원 {c.Name}: 타자 정확·선구 +{fx.BatterContactDiscipline}");
                         break;
                     case CheerRole.Pitching:
-                        fx.PitcherControlStuff = RoleStatBonus[t];
+                        fx.PitcherControlStuff = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
                         fx.Lines.Add($"3.투수 응원 {c.Name}: 투수 제구·구위 +{fx.PitcherControlStuff}");
                         break;
                     case CheerRole.MoodMaker:
                         fx.LosingStreakBonus = losingStreak >= 2 ? StreakBonus[t] : 0;
-                        fx.TrailingBatterBonus = TrailingBonus[t];
+                        fx.TrailingBatterBonus = TrailingBonus[t] + CheerGrowth.RoleStatBonus(c);
                         fx.Lines.Add($"4.분위기 메이커 {c.Name}: {(losingStreak >= 2 ? $"{losingStreak}연패 대응 전 스탯 +{fx.LosingStreakBonus}, " : "")}" +
                                      $"{fx.TrailingThreshold}점 이상 열세 시 타자 정확·선구 +{fx.TrailingBatterBonus}");
                         break;
                     case CheerRole.Home:
                         if (isHome)
                         {
-                            fx.HomeAllStatsBonus = RoleStatBonus[t];
+                            fx.HomeAllStatsBonus = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
                             fx.OpponentControlPenalty = HomePressure[t];
                             fx.Lines.Add($"5.홈 응원 {c.Name}: 홈 컨디션 전 스탯 +{fx.HomeAllStatsBonus}, 상대 투수 제구 -{fx.OpponentControlPenalty}");
                         }
                         else fx.Lines.Add($"5.홈 응원 {c.Name}: 원정 경기 - 미발동");
                         break;
                     default:
-                        fx.CloseLateMultiplier = CloseLate[t];
+                        fx.CloseLateMultiplier = System.Math.Min(1.15f, CloseLate[t] + CheerGrowth.CloseLateBonus(c));
                         float card = c.ClutchMultiplier;
                         fx.LateRispMultiplier = float.IsNaN(card) || float.IsInfinity(card) ? 1f : System.Math.Max(1f, System.Math.Min(card, 1.1f));
                         fx.Lines.Add($"6.위기 응원 {c.Name}: {fx.CloseLateFromInning}회 이후 {fx.CloseLateMaxDiff}점 차 접전 타격 x{fx.CloseLateMultiplier:F2}" +
@@ -202,15 +203,17 @@ namespace KBOManager.Models
         public static string DescribeRoleEffect(CheerRole role, Cheerleader c)
         {
             if (IsEmpty(c)) return RoleFocus(role);
-            int t = Tier(c.Grade);
+            int t = CheerGrowth.EffectiveTier(c);
+            int stat = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
+            string growth = c.ReinforceLevel > 0 || CheerGrowth.Stars(c) > 1 ? $" ({CheerGrowth.GrowthLabel(c)})" : "";
             switch (role)
             {
-                case CheerRole.Leader: return $"세트덱 적용률 +{LeaderAmplifyPercent[t]}%";
-                case CheerRole.Batting: return $"타자 정확·선구 +{RoleStatBonus[t]}";
-                case CheerRole.Pitching: return $"투수 제구·구위 +{RoleStatBonus[t]}";
-                case CheerRole.MoodMaker: return $"연패 전 스탯 +{StreakBonus[t]} / 열세 타격 +{TrailingBonus[t]}";
-                case CheerRole.Home: return $"홈 전 스탯 +{RoleStatBonus[t]} / 상대 제구 -{HomePressure[t]}";
-                default: return $"7회~ 접전 타격 x{CloseLate[t]:F2}";
+                case CheerRole.Leader: return $"세트덱 적용률 +{LeaderAmplifyPercent[t] + CheerGrowth.LeaderAmplifyBonusPercent(c)}%{growth}";
+                case CheerRole.Batting: return $"타자 정확·선구 +{stat}{growth}";
+                case CheerRole.Pitching: return $"투수 제구·구위 +{stat}{growth}";
+                case CheerRole.MoodMaker: return $"연패 전 스탯 +{StreakBonus[t]} / 열세 타격 +{TrailingBonus[t] + CheerGrowth.RoleStatBonus(c)} / 팬심 방어 +{CheerGrowth.SentimentDefenseBonus(c)}{growth}";
+                case CheerRole.Home: return $"홈 전 스탯 +{stat} / 상대 제구 -{HomePressure[t]} / 관중 수익 +{CheerGrowth.HomeRevenueBonusPercent(c)}%p{growth}";
+                default: return $"7회~ 접전 타격 x{System.Math.Min(1.15f, CloseLate[t] + CheerGrowth.CloseLateBonus(c)):F2}{growth}";
             }
         }
 

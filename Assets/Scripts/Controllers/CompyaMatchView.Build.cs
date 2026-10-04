@@ -332,11 +332,20 @@ namespace KBOManager.Controllers
 
             var fixture = LeagueManager.Instance != null ? LeagueManager.Instance.PeekNextFixture() : null;
             typeInfoText.text = fixture != null
-                ? $"{CompyaUiKit.ShortName(fixture.AwayTeam)} vs {CompyaUiKit.ShortName(fixture.HomeTeam)}  ·  {CompyaUiKit.Stadium(fixture.HomeTeam)}"
+                ? $"{CompyaUiKit.ShortName(fixture.AwayTeam)} vs {CompyaUiKit.ShortName(fixture.HomeTeam)}  ·  {CompyaUiKit.Stadium(fixture.HomeTeam)}\n" +
+                  ProbableStartersLine(LeagueManager.Instance, fixture)
                 : "진행할 예정 경기가 없습니다.";
             typeBallText.text = GameManager.Instance != null ? $"볼  {GameManager.Instance.GameGold:N0}" : "볼  -";
             int played = LeagueManager.Instance != null ? LeagueManager.Instance.PlayedGameCount : 0;
             typeSeasonText.text = $"{played}/{LeagueManager.TotalUserGames}";
+        }
+
+        /// <summary>[TASK-KBO-187] 예고 선발 한 줄("선발 문승원'26 vs 원태인'26") - 실제 경기 엔진 선발과 같은 LeagueManager.GetNextStartingPitcher.</summary>
+        public static string ProbableStartersLine(LeagueManager league, MatchFixture fixture)
+        {
+            if (league == null || fixture == null) return "";
+            string Name(Player p) => p?.Template == null ? "-" : p.Template.SeasonYear > 0 ? $"{p.Template.PlayerName}'{p.Template.SeasonYear % 100:00}" : p.Template.PlayerName;
+            return $"선발 {Name(league.GetNextStartingPitcher(fixture.AwayTeam))} vs {Name(league.GetNextStartingPitcher(fixture.HomeTeam))}";
         }
 
         // ------------------------------------------------------------------ 2. 메인 세로 중계(하이라이트 플레이_1/_2)
@@ -1306,19 +1315,20 @@ namespace KBOManager.Controllers
             r1HomePitcherLogo = CompyaUiKit.Logo(p, "HomePitcherLogo", 653, 1420, 1058, 1690);
             r1AwayPitcherCard = BuildCard(p, "AwayPitcherCard", 300, 1425, 486, 1688, false);
             r1HomePitcherCard = BuildCard(p, "HomePitcherCard", 762, 1425, 948, 1688, false);
-            r1AwayTagBg = CompyaUiKit.Polygon(p, "AwayTag", 160, 1695, 335, 1750, AccentRed,
+            r1AwayTagBg = CompyaUiKit.Polygon(p, "AwayTag", 160, 1693, 335, 1745, AccentRed,
                 new Vector2(0f, 1f), new Vector2(0.86f, 1f), new Vector2(1f, 0f), new Vector2(0f, 0f));
-            r1AwayTag = kit.Label(p, "AwayTagText", "승리 투수", 168, 1695, 320, 1750, 40, TextAnchor.MiddleCenter, White, true);
-            r1HomeTagBg = CompyaUiKit.Polygon(p, "HomeTag", 912, 1695, 1087, 1750, new Color(0.27f, 0.28f, 0.32f),
+            r1AwayTag = kit.Label(p, "AwayTagText", "승리 투수", 168, 1693, 320, 1745, 40, TextAnchor.MiddleCenter, White, true);
+            r1HomeTagBg = CompyaUiKit.Polygon(p, "HomeTag", 912, 1693, 1087, 1745, new Color(0.27f, 0.28f, 0.32f),
                 new Vector2(0.14f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f), new Vector2(0f, 0f));
-            r1HomeTag = kit.Label(p, "HomeTagText", "패전 투수", 928, 1695, 1080, 1750, 40, TextAnchor.MiddleCenter, White, true);
-            r1AwayNameBar = CompyaUiKit.Box(p, "AwayNameBar", 160, 1750, 623, 1825, Color.blue);
-            r1HomeNameBar = CompyaUiKit.Box(p, "HomeNameBar", 623, 1750, 1087, 1825, new Color(0.3f, 0.31f, 0.36f));
-            // 이름 / 시즌 기록을 같은 명판 안의 겹치지 않는 두 칸으로 나눈다(예전 W-L 라벨이 가운데에서 서로 겹쳐 찍혔다).
-            r1AwayPitcherName = kit.Label(p, "AwayPitcherName", "", 176, 1750, 418, 1825, 46, TextAnchor.MiddleLeft, White, true);
-            r1AwayRecord = kit.Label(p, "AwayRecord", "", 424, 1750, 610, 1825, 34, TextAnchor.MiddleRight, White, true);
-            r1HomePitcherName = kit.Label(p, "HomePitcherName", "", 830, 1750, 1072, 1825, 46, TextAnchor.MiddleRight, White, true);
-            r1HomeRecord = kit.Label(p, "HomeRecord", "", 636, 1750, 824, 1825, 34, TextAnchor.MiddleLeft, White, true);
+            r1HomeTag = kit.Label(p, "HomeTagText", "패전 투수", 928, 1693, 1080, 1745, 40, TextAnchor.MiddleCenter, White, true);
+            // [TASK-KBO-187] 명판을 두 줄로 나눈다 - 이름(위) / 시즌 기록(아래)이 각 투수 칸 바깥쪽(AWAY = 왼쪽 정렬, HOME = 오른쪽 정렬)에만
+            // 붙어 두 칸 사이 가운데(623px)에서 서로 만나지 않는다(예전 한 줄 배치는 기록이 가운데 쪽으로 정렬돼 겹쳐 보였다).
+            r1AwayNameBar = CompyaUiKit.Box(p, "AwayNameBar", 160, 1745, 621, 1832, Color.blue);
+            r1HomeNameBar = CompyaUiKit.Box(p, "HomeNameBar", 625, 1745, 1087, 1832, new Color(0.3f, 0.31f, 0.36f));
+            r1AwayPitcherName = kit.Label(p, "AwayPitcherName", "", 176, 1747, 600, 1792, 44, TextAnchor.MiddleLeft, White, true);
+            r1AwayRecord = kit.Label(p, "AwayRecord", "", 176, 1792, 600, 1830, 30, TextAnchor.MiddleLeft, new Color(0.92f, 0.94f, 1f), false);
+            r1HomePitcherName = kit.Label(p, "HomePitcherName", "", 646, 1747, 1072, 1792, 44, TextAnchor.MiddleRight, White, true);
+            r1HomeRecord = kit.Label(p, "HomeRecord", "", 646, 1792, 1072, 1830, 30, TextAnchor.MiddleRight, new Color(0.92f, 0.94f, 1f), false);
 
             kit.Button(p, "Record", "경기 기록", 165, 1838, 410, 1940, new Color(0.36f, 0.38f, 0.43f), White, 42).onClick.AddListener(() => ShowPopup(true));
             kit.Button(p, "Timeline", "타임 라인", 432, 1838, 678, 1940, new Color(0.36f, 0.38f, 0.43f), White, 42).onClick.AddListener(() => ShowPopup(false));
@@ -1515,8 +1525,7 @@ namespace KBOManager.Controllers
                 int rank = standings.FindIndex(s => s.Team == opponent) + 1;
                 r2NextTeam.text = $"<color=#5ED6F2>{CompyaUiKit.ShortName(opponent)}</color> {rank} 위";
                 var roster = league.ResolveRosterForTeam(opponent);
-                var starter = roster?.Where(pl => pl?.Template != null && pl.Template.IsPitcher && pl.Template.PitcherRole == PitcherRole.StartingPitcher)
-                    .OrderByDescending(Ovr).FirstOrDefault();
+                var starter = league.GetNextStartingPitcher(opponent); // [TASK-KBO-187] 실제 다음 경기 선발과 같은 1~5선발 로테이션 차례
                 r2NextPitcher.text = starter != null ? DisplayName(starter) : "-";
             }
             else

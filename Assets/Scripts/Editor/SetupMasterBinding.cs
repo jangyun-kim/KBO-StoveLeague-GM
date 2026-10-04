@@ -76,7 +76,10 @@ namespace KBOManager.EditorTools
         /// [TASK-KBO-186] 메뉴 이름을 TASK-168~186으로 갱신. 마지막 단계로 SetupTask186.ApplyAll()을 실행한다 - 선수 상세정보 4단 카드 레이아웃
         /// (Detail186), 로비 · 경기 중계 · 라인업 · 스카우트 · 선수 관리 화면 가독성 패스(ReadableFontPass).
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~186)")]
+        /// <remarks>
+        /// [TASK-KBO-187] 메뉴 이름을 TASK-168~187로 갱신. 마지막 단계로 SetupTask187.ApplyAll()을 실행한다 - 치어리더 [응원단 성장](강화 · ★각성 · 도감).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~187)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -101,7 +104,8 @@ namespace KBOManager.EditorTools
             SetupTask184.ApplyAll();
             SetupTask185.ApplyAll();
             SetupTask186.ApplyAll();
-            Debug.Log("[SetupMasterBinding] TASK-168~186 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTask187.ApplyAll();
+            Debug.Log("[SetupMasterBinding] TASK-168~187 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

@@ -224,6 +224,36 @@ namespace KBOManager.Models
             return bonus > MaxStatBonus ? MaxStatBonus : bonus;
         }
 
+        // ------------------------------------------------------------------ [TASK-KBO-187] 대승 스코어 감쇠
+        // Δ ≥ 8 체급 가산(+10~+24)이 타석마다 그대로 누적돼 53:0 같은 스코어가 나왔다. 승부(투수 쪽 가산)는 그대로 두고, 이미 크게 앞선 팀의
+        // 타격만 실제 대승 경기처럼 식힌다: ① 리드 5점부터 타격 체급 가산을 줄여 8점 이상이면 0, ② 큰 리드 · 빅이닝 · 두 자릿수 득점에서
+        // 타자 긍정 결과(안타 · 볼넷)를 일정 확률로 범타 처리(주전 휴식 · 대타 기용 · 상대 필승조 아닌 투수의 버티기 효과).
+        public const int BlowoutLeadStart = 5;
+        public const int BlowoutLeadFull = 8;
+        public const int BigInningRuns = 4;
+        public const int DoubleDigitRuns = 10;
+        /// <summary>검증 리포트(감쇠 전/후 비교) 전용 스위치. 게임 코드는 바꾸지 않는다.</summary>
+        public static bool BlowoutDampingEnabled = true;
+
+        /// <summary>타격 쪽 체급 가산(리드가 클수록 감쇠). 수비(투수) 쪽 가산은 그대로라 Δ ≥ 8 승률은 유지된다.</summary>
+        public static int BattingClassBonus(int classBonus, int lead)
+        {
+            if (!BlowoutDampingEnabled || classBonus <= 0 || lead < BlowoutLeadStart) return classBonus;
+            if (lead >= BlowoutLeadFull) return 0;
+            return classBonus * (BlowoutLeadFull - lead) / (BlowoutLeadFull - BlowoutLeadStart + 1);
+        }
+
+        /// <summary>타자 긍정 결과를 범타로 바꿀 확률(0 = 감쇠 없음). lead = 공격 팀 리드, teamRuns = 공격 팀 누적 득점, inningRuns = 이번 하프이닝 득점.</summary>
+        public static float BlowoutDampingChance(int lead, int teamRuns, int inningRuns)
+        {
+            float chance = 0f;
+            if (!BlowoutDampingEnabled) return chance;
+            if (inningRuns >= BigInningRuns) chance = Math.Max(chance, Math.Min(0.75f, 0.35f + 0.1f * (inningRuns - BigInningRuns)));
+            if (lead >= BlowoutLeadFull) chance = Math.Max(chance, Math.Min(0.8f, 0.45f + 0.05f * (lead - BlowoutLeadFull)));
+            if (teamRuns >= DoubleDigitRuns && lead > 0) chance = Math.Max(chance, Math.Min(0.9f, 0.6f + 0.05f * (teamRuns - DoubleDigitRuns)));
+            return chance;
+        }
+
         public static string Describe(int myOvr, int opponentOvr)
         {
             int gap = myOvr - opponentOvr;

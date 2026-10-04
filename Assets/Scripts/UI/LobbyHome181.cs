@@ -115,7 +115,8 @@ namespace KBOManager.UI
             {
                 venueText.text = fixture == null
                     ? "예정된 경기가 없습니다"
-                    : $"{fixture.GameNumber}번째 경기 · {(fixture.HomeTeam == league.UserTeam ? "홈" : "원정")} · {CompyaUiKit.Stadium(fixture.HomeTeam)}";
+                    : $"{fixture.GameNumber}번째 경기 · {(fixture.HomeTeam == league.UserTeam ? "홈" : "원정")} · {CompyaUiKit.Stadium(fixture.HomeTeam)}\n" +
+                      KBOManager.Controllers.CompyaMatchView.ProbableStartersLine(league, fixture); // [TASK-KBO-187] 예고 선발
             }
         }
 

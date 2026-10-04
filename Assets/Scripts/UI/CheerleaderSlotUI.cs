@@ -70,7 +70,7 @@ namespace KBOManager.UI
                 return;
             }
 
-            if (nameText != null) nameText.text = data.Name;
+            if (nameText != null) nameText.text = $"{data.Name} <color=#FFD54A>{CheerGrowth.StarBadge(data)}</color>{(data.ReinforceLevel > 0 ? $" +{CheerGrowth.Reinforce(data)}강" : "")}"; // [TASK-KBO-187] ★ 각성 · 강화 배지
             // [TASK-KBO-175] 단일 연도 대신 "소속 구단 + 활동 기간"을 등급 옆에 표기(예: "LEGEND · KIA 2020~2021").
             if (gradeText != null)
             {

@@ -120,42 +120,49 @@ namespace KBOManager.Models
         }
 
         /// <summary>선발 1~5 + 불펜(승리조 2 · 추격조 4 · 롱릴리프 1 · 마무리 1) + 추가 칸. 반환: (선발, 불펜).</summary>
-        public static (List<Entry> Starters, List<Entry> Bullpen) BuildPitchers(IEnumerable<Player> roster)
-        {
-            var pitchers = Valid(roster).Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
-            var overflow = new List<Player>();
+        public static (List<Entry> Starters, List<Entry> Bullpen) BuildPitchers(IEnumerable<Player> roster) => BuildPitchers(roster, null);
 
-            // [TASK-KBO-186] 보직 = LineupAssignment.RoleOf(유저 선발 ↔ 불펜 맞교환 반영)
-            var starterPool = pitchers.Where(p => LineupAssignment.RoleOf(p) == PitcherRole.StartingPitcher).ToList();
+        /// <summary>[TASK-KBO-187] assignment(null이면 LineupAssignment.Active)의 13칸 고정(PitcherSlots)을 먼저 그 자리에 놓고, 남은 칸은
+        /// 기존 규칙(보직별 OVR 순 → 넘친 투수 대체 배치 → 추가 칸)으로 채운다. 유저가 고정한 자리는 OVR로 다시 정렬되지 않는다.</summary>
+        public static (List<Entry> Starters, List<Entry> Bullpen) BuildPitchers(IEnumerable<Player> roster, LineupAssignment assignment)
+        {
+            assignment = assignment ?? LineupAssignment.Active;
+            var pitchers = Valid(roster).Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
+
             var starters = new List<Entry>();
             for (int i = 0; i < StartingPitcherSize; i++)
-            {
-                starters.Add(new Entry
-                {
-                    Kind = RosterSlotLayout.SlotKind.Pitcher, Role = PitcherRole.StartingPitcher, Header = $"{i + 1}선발", Group = "선발",
-                    Player = i < starterPool.Count ? starterPool[i] : null,
-                });
-            }
-            overflow.AddRange(starterPool.Skip(StartingPitcherSize));
-
+                starters.Add(new Entry { Kind = RosterSlotLayout.SlotKind.Pitcher, Role = PitcherRole.StartingPitcher, Header = $"{i + 1}선발", Group = "선발" });
             var bullpen = new List<Entry>();
             foreach (var (role, count, group) in BullpenGroups)
-            {
-                var ofRole = pitchers.Where(p => LineupAssignment.RoleOf(p) == role).ToList();
                 for (int i = 0; i < count; i++)
+                    bullpen.Add(new Entry { Kind = RosterSlotLayout.SlotKind.Pitcher, Role = role, Group = group, Header = count > 1 ? $"{group} {i + 1}" : group });
+            var slots = starters.Concat(bullpen).ToList();
+            var used = new HashSet<Player>();
+
+            // 1) 유저 고정 자리
+            if (assignment != null)
+            {
+                foreach (var pin in assignment.PitcherSlots)
                 {
-                    bullpen.Add(new Entry
-                    {
-                        Kind = RosterSlotLayout.SlotKind.Pitcher, Role = role, Group = group,
-                        Header = count > 1 ? $"{group} {i + 1}" : group,
-                        Player = i < ofRole.Count ? ofRole[i] : null,
-                    });
+                    if (pin.Slot < 0 || pin.Slot >= slots.Count || slots[pin.Slot].Player != null) continue;
+                    var player = pitchers.FirstOrDefault(p => p.InstanceId == pin.InstanceId && !used.Contains(p));
+                    if (player == null) continue;
+                    slots[pin.Slot].Player = player;
+                    used.Add(player);
                 }
-                overflow.AddRange(ofRole.Skip(count));
             }
 
-            // 넘친 투수(OVR 순)로 빈 불펜 칸 → 빈 선발 칸을 채운다(엔진은 실제 보직 목록으로 기용하므로 표시만 대체).
-            overflow = overflow.OrderByDescending(p => p.CalculateOVR(false)).ToList();
+            // 2) 남은 칸 - 같은 보직(LineupAssignment.RoleOf) OVR 순
+            foreach (var entry in slots.Where(e => e.Player == null))
+            {
+                var pick = pitchers.FirstOrDefault(p => !used.Contains(p) && LineupAssignment.RoleOf(p, assignment) == entry.Role);
+                if (pick == null) continue;
+                entry.Player = pick;
+                used.Add(pick);
+            }
+
+            // 3) 넘친 투수(OVR 순)로 빈 불펜 칸 → 빈 선발 칸을 채운다.
+            var overflow = pitchers.Where(p => !used.Contains(p)).ToList();
             foreach (var entry in bullpen.Concat(starters).Where(e => e.Player == null))
             {
                 if (overflow.Count == 0) break;
@@ -167,7 +174,7 @@ namespace KBOManager.Models
             {
                 bullpen.Add(new Entry
                 {
-                    Kind = RosterSlotLayout.SlotKind.Pitcher, Role = LineupAssignment.RoleOf(extra), Group = "추가",
+                    Kind = RosterSlotLayout.SlotKind.Pitcher, Role = LineupAssignment.RoleOf(extra, assignment), Group = "추가",
                     Header = "투수 추가", Player = extra, IsExtra = true,
                 });
             }

@@ -363,9 +363,17 @@ namespace KBOManager.Models
             string badge;
             if (outgoing.Template.IsPitcher)
             {
-                bool rotation = LineupAssignment.IsStartingPitcher(outgoing);
-                partners = roster.Where(p => p?.Template != null && p.Template.IsPitcher && p != outgoing && LineupAssignment.IsStartingPitcher(p) != rotation);
-                badge = rotation ? BullpenSwapBadge : RotationSwapBadge;
+                // [TASK-KBO-187] 투수 13칸은 어느 자리끼리든 맞교환(1선발 ↔ 3선발 · 선발 ↔ 마무리 등). 배지에 상대의 현재 자리를 적는다.
+                var (rotationEntries, bullpenEntries) = LineupView.BuildPitchers(roster);
+                foreach (var entry in rotationEntries.Concat(bullpenEntries).Where(e => e.Player != null && e.Player != outgoing))
+                {
+                    result.Add(new Candidate
+                    {
+                        Player = entry.Player, ProjectedScore = score, ScoreDelta = 0, InRoster = true,
+                        Badge = $"현재 {entry.Header} · 위치 맞교환",
+                    });
+                }
+                return result;
             }
             else
             {
@@ -410,7 +418,7 @@ namespace KBOManager.Models
             var outT = outgoing.Template;
             var inT = incoming.Template;
             if (outT.IsPitcher != inT.IsPitcher) return false;
-            if (outT.IsPitcher) return outT.PitcherRole == inT.PitcherRole;
+            if (outT.IsPitcher) return true; // [TASK-KBO-187] 투수 칸은 자리(1~5선발 · 불펜) 기준 - 들어온 카드가 그 자리를 그대로 이어받는다
             return IsBenchBatter(roster, outgoing) || outT.BatterPosition == inT.BatterPosition;
         }
 
@@ -614,11 +622,30 @@ namespace KBOManager.Models
             var pitchers = valid.Where(p => p.Template.IsPitcher).OrderByDescending(p => p.CalculateOVR(false)).ToList();
 
             ClassifyBatters(valid, out var starters, out var bench);
-            var sp = pitchers.Where(p => p.Template.PitcherRole == PitcherRole.StartingPitcher).Take(StartingPitcherSlots);
-            var bullpen = pitchers.Where(p => p.Template.PitcherRole != PitcherRole.StartingPitcher).Take(BullpenSlots);
+            // [TASK-KBO-187] 투수 = 라인업 투수 탭 13칸과 같은 배치(LineupView.BuildPitchers - 유저 고정 자리 반영): 1~5선발 칸 전원 +
+            // 나머지 투수 중 OVR 상위 7인(불펜). 28인 중 이 규칙으로 빠지는 1인은 카드에 "제외"(SD 0)로 표시된다.
+            var (rotationEntries, _) = LineupView.BuildPitchers(valid);
+            var sp = rotationEntries.Where(e => e.Player != null).Select(e => e.Player).Take(StartingPitcherSlots).ToList();
+            var bullpen = pitchers.Where(p => !sp.Contains(p)).Take(BullpenSlots);
 
             return starters.Concat(bench).Concat(sp).Concat(bullpen).ToList();
         }
+
+        /// <summary>[TASK-KBO-187] 카드 기본 세트덱 스코어(등급 + 각성 - 구단/편성과 무관한 카드 고유값).</summary>
+        public static int GetBaseCardSetDeckScore(Player card) => card?.SetDeckScore ?? 0;
+
+        /// <summary>[TASK-KBO-187] 단일 진실 공급원 - 이 카드가 activeTeam 세트덱 총점에 실제로 더하는 값(구단 불일치 · 다이너스티 미발동이면 0).</summary>
+        public static int GetEffectiveCardSetDeckScore(Player card, Team activeTeam, bool dynastyActive = true) =>
+            ContributionScore(card, activeTeam, dynastyActive);
+
+        /// <summary>[TASK-KBO-187] 평가 결과 기준 카드별 합산값 - 27인 슬롯 밖(제외)이거나 미합산이면 0. 라인업 카드 SD 배지가 쓰는 값이며
+        /// 로스터 전원의 이 값 합계 == result.Score.</summary>
+        public static int CardScoreIn(SetDeckResult result, Player card) =>
+            result != null && card != null && result.CountedPlayers.Contains(card)
+                ? GetEffectiveCardSetDeckScore(card, result.DeckTeam, result.IsDynastyActive) : 0;
+
+        public static bool IsExcludedFromSlots(SetDeckResult result, Player card) =>
+            result != null && card != null && !result.SlotPlayers.Contains(card);
 
         /// <summary>[TASK-KBO-176] 로스터 타자를 주전 9(포지션별 최고 OVR)와 후보 6(나머지 OVR 순)으로 나눈다 -
         /// SelectSlots()와 로스터 화면의 주전/후보 구역 표시가 같은 규칙을 쓰도록 분리했다.</summary>
@@ -679,7 +706,7 @@ namespace KBOManager.Models
                 if (player.Template.Grade == Grade.DYNASTY && !result.IsDynastyActive) counts = false;
                 if (!counts) continue;
 
-                result.Score += ContributionScore(player, result.DeckTeam, result.IsDynastyActive);
+                result.Score += GetEffectiveCardSetDeckScore(player, result.DeckTeam, result.IsDynastyActive);
                 result.CountedPlayers.Add(player);
             }
 

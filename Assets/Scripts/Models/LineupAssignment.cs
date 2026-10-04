@@ -29,8 +29,18 @@ namespace KBOManager.Models
             public PitcherRole Role;
         }
 
+        /// <summary>[TASK-KBO-187] 투수 13칸 고정(0~4 = 1~5선발, 5~12 = 불펜 칸 - LineupView.BullpenGroups 순서).</summary>
+        [Serializable]
+        public struct PitcherSlotPin
+        {
+            public string InstanceId;
+            public int Slot;
+        }
+
         public List<StarterPin> Starters = new List<StarterPin>();
+        /// <summary>[TASK-KBO-186] 보직 핀(구버전 호환). [TASK-KBO-187]부터 투수는 PitcherSlots(13칸 자리 고정)가 우선한다.</summary>
         public List<RolePin> Roles = new List<RolePin>();
+        public List<PitcherSlotPin> PitcherSlots = new List<PitcherSlotPin>();
 
         /// <summary>유저 구단 지정(GameManager.Awake가 연결). null이면 지정 없음(기본 OVR 편성).</summary>
         public static LineupAssignment Active;
@@ -43,12 +53,13 @@ namespace KBOManager.Models
             public bool IsPinned;   // 유저 맞교환으로 고정된 칸
         }
 
-        public bool IsEmpty => Starters.Count == 0 && Roles.Count == 0;
+        public bool IsEmpty => Starters.Count == 0 && Roles.Count == 0 && PitcherSlots.Count == 0;
 
         public void Clear()
         {
             Starters.Clear();
             Roles.Clear();
+            PitcherSlots.Clear();
         }
 
         public void CopyFrom(LineupAssignment other)
@@ -57,6 +68,7 @@ namespace KBOManager.Models
             if (other == null) return;
             if (other.Starters != null) Starters.AddRange(other.Starters.Where(p => !string.IsNullOrEmpty(p.InstanceId)));
             if (other.Roles != null) Roles.AddRange(other.Roles.Where(p => !string.IsNullOrEmpty(p.InstanceId)));
+            if (other.PitcherSlots != null) PitcherSlots.AddRange(other.PitcherSlots.Where(p => !string.IsNullOrEmpty(p.InstanceId)));
         }
 
         /// <summary>카드가 같은 자리의 다른 카드로 바뀌었을 때(보유 카드 교체) 고정 자리/보직을 그대로 물려준다.</summary>
@@ -67,6 +79,8 @@ namespace KBOManager.Models
                 if (Starters[i].InstanceId == oldId) Starters[i] = new StarterPin { InstanceId = newId, Position = Starters[i].Position };
             for (int i = 0; i < Roles.Count; i++)
                 if (Roles[i].InstanceId == oldId) Roles[i] = new RolePin { InstanceId = newId, Role = Roles[i].Role };
+            for (int i = 0; i < PitcherSlots.Count; i++)
+                if (PitcherSlots[i].InstanceId == oldId) PitcherSlots[i] = new PitcherSlotPin { InstanceId = newId, Slot = PitcherSlots[i].Slot };
         }
 
         // ------------------------------------------------------------------ 타자
@@ -146,12 +160,44 @@ namespace KBOManager.Models
 
         // ------------------------------------------------------------------ 투수
 
+        /// <summary>투수 고정 칸 수(1~5선발 + 불펜 8칸).</summary>
+        public static int PitcherSlotCount => LineupView.StartingPitcherSize + LineupView.BullpenGroups.Sum(g => g.Count);
+
+        /// <summary>칸 인덱스의 보직(0~4 선발, 그 뒤 승리조 · 추격조 · 롱릴리프 · 마무리 순).</summary>
+        public static PitcherRole SlotRole(int slot)
+        {
+            if (slot < LineupView.StartingPitcherSize) return PitcherRole.StartingPitcher;
+            int i = slot - LineupView.StartingPitcherSize;
+            foreach (var (role, count, _) in LineupView.BullpenGroups)
+            {
+                if (i < count) return role;
+                i -= count;
+            }
+            return PitcherRole.Closer;
+        }
+
+        public static bool TryPitcherSlot(Player pitcher, out int slot, LineupAssignment assignment = null)
+        {
+            slot = -1;
+            assignment = assignment ?? Active;
+            if (pitcher == null || assignment == null) return false;
+            foreach (var pin in assignment.PitcherSlots)
+            {
+                if (pin.InstanceId != pitcher.InstanceId) continue;
+                slot = pin.Slot;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>투수 보직: 고정 칸 → [TASK-186] 보직 핀 → 카드 보직.</summary>
         public static PitcherRole RoleOf(Player pitcher, LineupAssignment assignment = null)
         {
             if (pitcher?.Template == null) return PitcherRole.StartingPitcher;
             assignment = assignment ?? Active;
             if (assignment != null)
             {
+                if (TryPitcherSlot(pitcher, out int slot, assignment)) return SlotRole(slot);
                 foreach (var pin in assignment.Roles)
                     if (pin.InstanceId == pitcher.InstanceId) return pin.Role;
             }
@@ -161,25 +207,39 @@ namespace KBOManager.Models
         public static bool IsStartingPitcher(Player pitcher, LineupAssignment assignment = null) =>
             pitcher?.Template != null && pitcher.Template.IsPitcher && RoleOf(pitcher, assignment) == PitcherRole.StartingPitcher;
 
-        /// <summary>두 투수의 보직을 맞바꾼다(선발 ↔ 불펜 등). 같은 보직이면(같은 그룹 안 순서는 OVR 순) false.</summary>
+        /// <summary>현재 투수 13칸 배치(LineupView.BuildPitchers)를 그대로 고정한다(다른 칸이 OVR 재정렬로 움직이지 않게).</summary>
+        public void FreezePitchers(IEnumerable<Player> roster)
+        {
+            var slots = PitcherSlotEntries(roster, this);
+            PitcherSlots = slots.Select((e, i) => (e, i)).Where(x => x.e.Player != null)
+                .Select(x => new PitcherSlotPin { InstanceId = x.e.Player.InstanceId, Slot = x.i }).ToList();
+            Roles.Clear();
+        }
+
+        /// <summary>13칸(선발 5 + 불펜 8) 엔트리 - 정원 밖 "추가" 칸은 제외.</summary>
+        public static List<LineupView.Entry> PitcherSlotEntries(IEnumerable<Player> roster, LineupAssignment assignment)
+        {
+            var (rotation, bullpen) = LineupView.BuildPitchers(roster, assignment);
+            return rotation.Concat(bullpen.Where(e => !e.IsExtra)).ToList();
+        }
+
+        /// <summary>[TASK-KBO-187] 두 투수의 자리를 1:1로 맞바꾼다(1~5선발 · 불펜 13칸 어느 자리끼리든). 13칸 전체를 고정해
+        /// OVR 재정렬이 일어나지 않는다. 같은 보직끼리(1선발 ↔ 3선발)도 로테이션 순서가 바뀌므로 허용한다.</summary>
         public bool SwapPitchers(IEnumerable<Player> roster, Player a, Player b)
         {
             var list = (roster ?? Enumerable.Empty<Player>()).ToList();
             if (a?.Template == null || b?.Template == null || a == b || !a.Template.IsPitcher || !b.Template.IsPitcher) return false;
             if (!list.Contains(a) || !list.Contains(b)) return false;
 
-            var roleA = RoleOf(a, this);
-            var roleB = RoleOf(b, this);
-            if (roleA == roleB) return false;
-            PinRole(a, roleB);
-            PinRole(b, roleA);
+            var slots = PitcherSlotEntries(list, this);
+            int ia = slots.FindIndex(e => e.Player == a), ib = slots.FindIndex(e => e.Player == b);
+            if (ia < 0 && ib < 0) return false;
+            if (ia >= 0) slots[ia].Player = b;
+            if (ib >= 0) slots[ib].Player = a;
+            PitcherSlots = slots.Select((e, i) => (e, i)).Where(x => x.e.Player != null)
+                .Select(x => new PitcherSlotPin { InstanceId = x.e.Player.InstanceId, Slot = x.i }).ToList();
+            Roles.Clear();
             return true;
-        }
-
-        private void PinRole(Player pitcher, PitcherRole role)
-        {
-            Roles.RemoveAll(p => p.InstanceId == pitcher.InstanceId);
-            if (pitcher.Template.PitcherRole != role) Roles.Add(new RolePin { InstanceId = pitcher.InstanceId, Role = role });
         }
 
         /// <summary>같은 그룹(타자/투수) 두 선수를 맞교환한다.</summary>

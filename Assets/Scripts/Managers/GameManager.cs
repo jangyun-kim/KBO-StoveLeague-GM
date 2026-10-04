@@ -240,61 +240,45 @@ namespace KBOManager.Managers
             if (newCheerleader == null) return;
             if (OwnedCheerleaders == null) OwnedCheerleaders = new List<Cheerleader>();
 
-            bool hasCatalogId = !string.IsNullOrEmpty(newCheerleader.CatalogId);
-            bool isDuplicate = hasCatalogId &&
-                OwnedCheerleaders.Any(c => c.CatalogId == newCheerleader.CatalogId);
-
-            if (isDuplicate)
-            {
-                int convertedAmount = ResolveCheerleaderDuplicateConversionValue(newCheerleader.Grade);
-                string currencyName = ApplyCheerleaderDuplicateConversion(newCheerleader.Grade, convertedAmount);
-                Debug.Log($"[GameManager] 중복 획득으로 재화 변환됨: {newCheerleader.Name} " +
-                    $"(CatalogId={newCheerleader.CatalogId}, Grade={newCheerleader.Grade}) -> {currencyName} +{convertedAmount}");
-                return;
-            }
-
+            // [TASK-KBO-187] 중복 자동 재화 변환 폐지 - 같은 카드도 보유 목록에 그대로 추가해 ★각성 재료(동일 인물 +2★ / 동일 구단 +1★)로 쓴다.
+            if (string.IsNullOrEmpty(newCheerleader.InstanceId)) newCheerleader.InstanceId = Guid.NewGuid().ToString();
+            else if (OwnedCheerleaders.Any(c => c != null && c.InstanceId == newCheerleader.InstanceId)) return; // 같은 인스턴스 재추가 방지
+            if (newCheerleader.StarLevel < CheerGrowth.MinStars) newCheerleader.StarLevel = CheerGrowth.MinStars;
             OwnedCheerleaders.Add(newCheerleader);
+            OnCheerleaderChanged?.Invoke();
         }
 
-        /// <summary>등급에 대응하는 응원봉 재화에 변환량을 더하고, 지급된 재화명을 로그용으로 반환한다.</summary>
-        private string ApplyCheerleaderDuplicateConversion(CheerleaderGrade grade, int amount)
+        /// <summary>[TASK-KBO-187] 응원단 강화(+1강, 포인트 소모, 최대 +10강).</summary>
+        public bool TryReinforceCheerleader(Cheerleader target, out string message)
         {
-            switch (grade)
+            if (CheerSquad.IsEmpty(target) || OwnedCheerleaders == null || !OwnedCheerleaders.Contains(target)) { message = "강화할 치어리더를 선택하십시오."; return false; }
+            if (CheerGrowth.Reinforce(target) >= CheerGrowth.MaxReinforce) { message = $"{target.Name}은(는) 이미 +{CheerGrowth.MaxReinforce}강입니다."; return false; }
+            int cost = CheerGrowth.ReinforceCost(target.ReinforceLevel);
+            if (GameGold < cost) { message = $"포인트가 부족합니다(필요 {cost:N0} / 보유 {GameGold:N0})."; return false; }
+            GameGold -= cost;
+            target.ReinforceLevel = CheerGrowth.Reinforce(target) + 1;
+            message = $"{target.Name} +{target.ReinforceLevel}강 강화 성공 (-{cost:N0} 포인트)";
+            OnCheerleaderChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>[TASK-KBO-187] ★각성 - 재료(동일 인물 +2★ / 동일 구단 +1★)를 소모한다. 편성 중인 카드는 재료로 쓸 수 없다.</summary>
+        public bool TryAwakenCheerleader(Cheerleader target, Cheerleader material, out string message)
+        {
+            if (OwnedCheerleaders == null || !OwnedCheerleaders.Contains(target) || !OwnedCheerleaders.Contains(material))
             {
-                case CheerleaderGrade.ICON:
-                    StarCheerStick += amount;
-                    return nameof(StarCheerStick);
-                case CheerleaderGrade.LEGEND:
-                    LegendCheerStick += amount;
-                    return nameof(LegendCheerStick);
-                case CheerleaderGrade.SEASON_LIMITED:
-                    LimitedCheerStick += amount;
-                    return nameof(LimitedCheerStick);
-                case CheerleaderGrade.LIVE_NORMAL:
-                case CheerleaderGrade.LIVE_EPIC:
-                default:
-                    LiveCheerStick += amount;
-                    return nameof(LiveCheerStick);
+                message = "보유한 치어리더만 각성할 수 있습니다.";
+                return false;
             }
+            if (!CheerGrowth.CanAwaken(target, material, CheerSquadSlots, out message)) return false;
+            int gained = CheerGrowth.ApplyAwaken(target, material);
+            OwnedCheerleaders.Remove(material);
+            message = $"{target.Name} 각성 +{gained}★ → {CheerGrowth.StarBadge(target)}" +
+                      (CheerGrowth.Stars(target) == CheerGrowth.MaxStars ? " (최종 임계점 도달!)" : CheerGrowth.Stars(target) >= CheerGrowth.FirstStarThreshold ? " (1차 임계점 효과 적용)" : "");
+            OnCheerleaderChanged?.Invoke();
+            return true;
         }
 
-        /// <summary>[TASK-KBO-064/127/128/129] docs/16_shop_and_gacha_policy.md 4절이 제안한 등급별
-        /// 마일리지 환급량([Draft], v0.2 밸런싱에서 조정 가능) - PM 확정 5단계(TASK-KBO-127)에 맞춰
-        /// 갱신했다. [TASK-KBO-128 하향 조정] TASK-KBO-127이 매겼던 값(10/50/200/1000/3000)은 최상위
-        /// 2개 등급(LEGEND=1000, SEASON_LIMITED=3000)이 10연뽑 비용(구 CheerleaderGachaService.
-        /// CostPerRoll=100 x 10=1000)과 같거나 초과해, 중복 1장만 나와도 10연뽑 비용 전액(또는 그 이상)이
-        /// 환급되는 재화 무한 증식 밸런스 붕괴가 있었다 - 5단계 전부 10연뽑 비용(1000)보다 확실히 낮은
-        /// 값으로 하향했다. 정식 등급(LIVE_NORMAL~SEASON_LIMITED) 외의 값(NONE/TEST 등 구버전 더미
-        /// 등급)은 최저 등급(LIVE_NORMAL)과 동일하게 취급한다.</summary>
-        private static int ResolveCheerleaderDuplicateConversionValue(CheerleaderGrade grade) => grade switch
-        {
-            CheerleaderGrade.LIVE_NORMAL => 10,
-            CheerleaderGrade.LIVE_EPIC => 30,
-            CheerleaderGrade.ICON => 50,
-            CheerleaderGrade.LEGEND => 100,
-            CheerleaderGrade.SEASON_LIMITED => 300,
-            _ => 10,
-        };
 
 #if UNITY_EDITOR
         [Tooltip("[에디터 전용] true면 Awake() 시 EquippedCheerleader가 비어 있을 때만 테스트용 치어리더를 " +
@@ -575,6 +559,8 @@ namespace KBOManager.Managers
 
             var swapped = RosterSwapRules.BuildSwappedRoster(roster, outgoing, incoming);
             if (swapped == null) return false;
+            // [TASK-KBO-187] 투수는 현재 13칸 배치를 고정한 뒤 들어온 카드가 나간 카드의 자리(예: 3선발)를 그대로 이어받는다.
+            if (outgoing.Template.IsPitcher) LineupAssignment.FreezePitchers(roster);
 
             roster.Clear();
             roster.AddRange(swapped);

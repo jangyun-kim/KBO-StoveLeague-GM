@@ -153,6 +153,7 @@ namespace KBOManager.EditorTests
             CollectionAssert.DoesNotContain(order, catcher);
         }
 
+        /// <summary>[TASK-KBO-187] 투수 맞교환은 13칸 자리 고정(PitcherSlots)으로 바뀌었다 - 같은 보직끼리도 순서 교환이 허용된다.</summary>
         [Test]
         public void SwapPitchers_RotationWithBullpen_ExchangesRoles()
         {
@@ -169,9 +170,9 @@ namespace KBOManager.EditorTests
             var (rotation, bullpen) = LineupView.BuildPitchers(roster);
             CollectionAssert.Contains(rotation.Select(e => e.Player).ToList(), cl);
             Assert.AreEqual(sp, bullpen.First(e => e.Group == "마무리").Player);
-            Assert.IsFalse(assignment.SwapPitchers(roster, others[0], others[1]), "같은 보직끼리는 대상 아님");
             Assert.IsTrue(assignment.SwapPitchers(roster, sp, cl));
-            Assert.AreEqual(0, assignment.Roles.Count, "원래 보직으로 돌아오면 핀 제거");
+            Assert.AreEqual(PitcherRole.StartingPitcher, LineupAssignment.RoleOf(sp), "다시 맞바꾸면 원래 자리");
+            Assert.AreEqual(0, assignment.Roles.Count, "구 보직 핀은 쓰지 않는다(13칸 고정)");
         }
 
         [Test]
@@ -192,7 +193,7 @@ namespace KBOManager.EditorTests
             var pitchRoster = roster.Append(sp).Append(mu).ToList();
             var forSp = RosterSwapRules.GetLineupSwapCandidates(pitchRoster, sp);
             Assert.AreEqual(mu, forSp.Single().Player);
-            Assert.AreEqual(RosterSwapRules.BullpenSwapBadge, forSp.Single().Badge);
+            Assert.AreEqual("현재 추격조 1 · 위치 맞교환", forSp.Single().Badge, "[TASK-187] 상대의 현재 자리를 배지에 표시");
         }
 
         [Test]
@@ -378,7 +379,8 @@ namespace KBOManager.EditorTests
             var awayRecord = (RectTransform)result.Find("AwayRecord");
             var awayName = (RectTransform)result.Find("AwayPitcherName");
             var homeRecord = (RectTransform)result.Find("HomeRecord");
-            Assert.LessOrEqual(awayName.anchorMax.x, awayRecord.anchorMin.x + 0.0001f);
+            // [TASK-KBO-187] 기록은 이름 아래 줄, 각 열 안쪽에만(AWAY 열 < HOME 열) - 가운데에서 만나지 않는다.
+            Assert.LessOrEqual(awayRecord.anchorMax.y, awayName.anchorMin.y + 0.0001f, "기록 = 이름 아래 줄");
             Assert.LessOrEqual(awayRecord.anchorMax.x, homeRecord.anchorMin.x + 0.0001f, "W-L 기록 칸 겹침 없음");
         }
     }

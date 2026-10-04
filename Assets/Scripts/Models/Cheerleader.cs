@@ -115,6 +115,12 @@ namespace KBOManager.Models
             ? string.Empty
             : string.IsNullOrEmpty(ActivePeriod) ? Team.ToString() : $"{Team} {ActivePeriod}";
 
+        /// <summary>[TASK-KBO-187] 응원단 강화 단계(+0~+10강, 포인트 소모). CheerGrowth 참고.</summary>
+        public int ReinforceLevel;
+
+        /// <summary>[TASK-KBO-187] ★ 각성 단계(★1~★5, 동일 인물 재료 +2★ / 동일 구단 재료 +1★). 구버전 세이브(0)는 ★1로 읽는다.</summary>
+        public int StarLevel = 1;
+
         public Cheerleader() { }
 
         public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier,

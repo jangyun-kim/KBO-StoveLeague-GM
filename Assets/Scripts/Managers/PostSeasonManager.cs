@@ -179,7 +179,11 @@ namespace KBOManager.Managers
 
             var homeModifiers = BuildTeamPowerModifiers(CurrentSeries.HigherSeed, homeRoster, isHome: true);
             var awayModifiers = BuildTeamPowerModifiers(CurrentSeries.LowerSeed, awayRoster, isHome: false);
-            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig);
+            var engine = new MatchEngine(homeRoster, awayRoster, homeModifiers, awayModifiers, skillDB, engineConfig)
+            {
+                HomeDesignatedStarter = leagueManager.GetNextStartingPitcher(CurrentSeries.HigherSeed), // [TASK-KBO-187] 로테이션 선발
+                AwayDesignatedStarter = leagueManager.GetNextStartingPitcher(CurrentSeries.LowerSeed),
+            };
             var result = engine.PlayFullMatch(CurrentSeries.HigherSeed.ToString(), CurrentSeries.LowerSeed.ToString(), isPostSeason: true);
 
             if (result.WinnerTeamName == CurrentSeries.HigherSeed.ToString()) CurrentSeries.WinsHigherSeed++;
