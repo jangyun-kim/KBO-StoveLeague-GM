@@ -471,7 +471,10 @@ namespace KBOManager.Controllers
             toastValue = kit.LabelOn(CompyaUiKit.Norm(toastRoot, "Value", 0.76f, 0.08f, 0.98f, 0.92f), "", 34, TextAnchor.MiddleCenter, White, true);
 
             BuildScorebug(p);
-            relayProgress = BuildProgress(p, 160, 243);
+            // [TASK-KBO-193] 전광판 바로 아래 떠 있던 반복과제 미니 바("N개 달성" · 0/35/60)는 중계 화면에서 숨긴다(결과 3 화면에는 그대로).
+            var relayProgressGroup = CompyaUiKit.Fill(p, RelayProgressGroupName);
+            relayProgress = BuildProgress(relayProgressGroup, 160, 243);
+            relayProgressGroup.gameObject.SetActive(false);
 
             // 승률 브릿지 바 + 좌우 구단 사선 띠/로고 + 사다리꼴 카운트 박스
             kit.GradientBox(p, "PctShade", 0, 845, 1248, 895, new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.6f), false);
@@ -613,12 +616,17 @@ namespace KBOManager.Controllers
             w.Checks[2].SetActive(count >= 60);
         }
 
+        // [TASK-KBO-193] 중계 정보 박스 헤더 라벨 · 행 크기, 숨기는 반복과제 미니 바 그룹 이름
+        public const string AtBatHeader = "AT BAT", MoundHeader = "ON THE MOUND", RelayProgressGroupName = "RelayProgress193";
+        public const int HeaderLabelPt = 16, InfoRowPt = 16;
+
         private InfoBox BuildInfoBox(Transform p, string name, float dx)
         {
             var box = new InfoBox();
             var header = CompyaUiKit.Place(p, name + "Header", 14 + dx, 1027, 605 + dx, 1082);
             box.HeaderBg = kit.Gradient(header, Color.gray, Color.gray, true);
-            box.HeaderText = kit.Label(p, name + "HeaderText", "", 24 + dx, 1027, 600 + dx, 1082, 40, TextAnchor.MiddleLeft, White, true);
+            // [TASK-KBO-193] 헤더 바는 라벨(ON THE MOUND / AT BAT)만 16pt - 성적은 아래 정보 칸에 이미 있어 중복으로 넣지 않는다.
+            box.HeaderText = TextFit193.Fit(kit.Label(p, name + "HeaderText", "", 24 + dx, 1027, 600 + dx, 1082, 40, TextAnchor.MiddleLeft, White, true), HeaderLabelPt, 14);
             CompyaUiKit.Box(p, name + "Border", 14 + dx, 1095, 604 + dx, 1306, new Color(0.74f, 0.76f, 0.81f));
             CompyaUiKit.Box(p, name + "Inner", 16 + dx, 1097, 602 + dx, 1304, White);
             box.Card = BuildCard(p, name + "Card", 18 + dx, 1100, 190 + dx, 1302, false);
@@ -627,8 +635,9 @@ namespace KBOManager.Controllers
             for (int r = 0; r < 3; r++)
             {
                 float y0 = 1146 + r * 50f;
-                box.RowLabels[r] = kit.Label(p, $"{name}RowLabel{r}", "", 207 + dx, y0, 360 + dx, y0 + 48, 34, TextAnchor.MiddleLeft, Ink);
-                box.RowValues[r] = kit.Label(p, $"{name}RowValue{r}", "", 360 + dx, y0, 596 + dx, y0 + 48, 54, TextAnchor.MiddleRight, Ink, true);
+                // [TASK-KBO-193] 라벨 칸을 줄이고(207~300) 값 칸을 넓혀(300~596) "시즌 | 2승 4패 ERA 2.08"이 두 줄로 꺾이지 않게 16pt 한 줄.
+                box.RowLabels[r] = TextFit193.Fit(kit.Label(p, $"{name}RowLabel{r}", "", 207 + dx, y0, 300 + dx, y0 + 48, 34, TextAnchor.MiddleLeft, Ink), InfoRowPt, 13);
+                box.RowValues[r] = TextFit193.SingleLine(kit.Label(p, $"{name}RowValue{r}", "", 300 + dx, y0, 596 + dx, y0 + 48, 54, TextAnchor.MiddleRight, Ink, true), InfoRowPt);
             }
             for (int b = 0; b < 6; b++)
             {
@@ -901,7 +910,7 @@ namespace KBOManager.Controllers
         private void FillAtBat(InfoBox box, Player batter, CompyaGameTracker t)
         {
             box.HeaderBg.texture = kit.GradientTexture(new Color(0.78f, 0.18f, 0.2f), new Color(0.62f, 0.62f, 0.68f), true);
-            box.HeaderText.text = batter != null ? $"AT BAT  <size=70%>{t.LiveBattingOf(batter).Summary}</size>" : "AT BAT"; // [TASK-KBO-188]
+            box.HeaderText.text = AtBatHeader; // [TASK-KBO-193] 성적 중복 제거(아래 시즌 타율 · 홈런·타점 칸)
             FillCard(box.Card, batter);
             box.NameText.text = batter != null ? $"{PositionLabel(batter)} {DisplayName(batter)}" : "";
             var line = t.BatOf(batter);
@@ -928,7 +937,7 @@ namespace KBOManager.Controllers
         private void FillMound(InfoBox box, Player pitcher, CompyaGameTracker t)
         {
             box.HeaderBg.texture = kit.GradientTexture(new Color(0.33f, 0.35f, 0.42f), new Color(0.63f, 0.65f, 0.71f), true);
-            box.HeaderText.text = pitcher != null ? $"ON THE MOUND  <size=70%>{t.LivePitchingOf(pitcher).Summary}</size>" : "ON THE MOUND"; // [TASK-KBO-188]
+            box.HeaderText.text = MoundHeader; // [TASK-KBO-193] 성적 중복 제거(아래 "시즌" 칸)
             FillCard(box.Card, pitcher);
             box.NameText.text = pitcher != null ? $"{PositionLabel(pitcher)} {DisplayName(pitcher)}" : "";
             var line = t.PitchOf(pitcher);

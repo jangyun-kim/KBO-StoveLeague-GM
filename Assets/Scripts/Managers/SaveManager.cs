@@ -87,6 +87,17 @@ namespace KBOManager.Managers
         public string HomeRunLeader;
         public string WinsLeader;
         public string EraLeader;
+        // [TASK-KBO-193] v13 리그 기록실 명예의 전당 - 시즌 번호 · 리그 단계 · 최종 순위/전적 · 한국시리즈 우승 · 시즌 MVP · 타이틀 수상 내역
+        public int SeasonNumber;
+        public string TierName;
+        public int FinalRank;
+        public int RegularSeasonRank;
+        public int Wins;
+        public int Draws;
+        public int Losses;
+        public bool KoreanSeriesWon;
+        public string Mvp;
+        public List<string> Titles = new List<string>();
     }
 
     /// <summary>PostSeasonManager 브래킷 진행 상태의 저장 포맷. Dictionary&lt;Team,int&gt;(FinalRanks)는
@@ -143,7 +154,9 @@ namespace KBOManager.Managers
         //      LeagueTier가 없는 구버전 세이브(-1)는 저장된 구단 OVR의 권장 리그(최소 아마추어)로 복원한다.
         // v11: 라인업 선발(주전) ↔ 후보 맞교환 고정(LineupAssignment - 주전 자리/투수 보직 InstanceId 핀) 추가(TASK-KBO-186). 없으면 기본 OVR 편성.
         // v12: 카드 3슬롯 스킬(PlayerSaveData.SkillSlots)과 스킬 변경권 · 고급 스킬 변경권 추가(TASK-KBO-190). 슬롯 없는 카드는 로드 시 결정적 부여.
-        public int SaveVersion = 12;
+        // v13: 스토브리그 시즌 상태(StoveLeague)와 명예의 전당 확장 필드(시즌 번호 · 리그 · 전적 · KS 우승 · MVP · 타이틀) 추가(TASK-KBO-193).
+        //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
+        public int SaveVersion = 13;
         public string SavedAtUtc;
 
         // GameManager
@@ -183,6 +196,7 @@ namespace KBOManager.Managers
         public bool TutorialCompleted = true; // [TASK-KBO-181] v8 - 구버전 세이브는 가이드 생략
         public List<string> BattingOrder = new List<string>(); // [TASK-KBO-182] v9
         public LineupAssignment Lineup = new LineupAssignment(); // [TASK-KBO-186] v11
+        public StoveLeagueState StoveLeague = new StoveLeagueState(); // [TASK-KBO-193] v13
 
         // LeagueManager
         public bool HasLeagueData;
@@ -347,6 +361,7 @@ namespace KBOManager.Managers
                 data.BattingOrder = gm.BattingOrderOverride.ToList();
                 data.Lineup = new LineupAssignment();
                 data.Lineup.CopyFrom(gm.LineupAssignment);
+                data.StoveLeague = gm.StoveLeague; // [TASK-KBO-193]
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
                 data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
@@ -392,6 +407,16 @@ namespace KBOManager.Managers
                     HomeRunLeader = e.HomeRunLeader,
                     WinsLeader = e.WinsLeader,
                     EraLeader = e.EraLeader,
+                    SeasonNumber = e.SeasonNumber,
+                    TierName = e.TierName,
+                    FinalRank = e.FinalRank,
+                    RegularSeasonRank = e.RegularSeasonRank,
+                    Wins = e.Wins,
+                    Draws = e.Draws,
+                    Losses = e.Losses,
+                    KoreanSeriesWon = e.KoreanSeriesWon,
+                    Mvp = e.Mvp,
+                    Titles = (e.Titles ?? new List<string>()).ToList(),
                 }).ToList();
             }
 
@@ -482,6 +507,7 @@ namespace KBOManager.Managers
                 gm.TutorialCompleted = data.TutorialCompleted;
                 gm.SetBattingOrderOverride(data.BattingOrder);
                 gm.RestoreLineupAssignment(data.Lineup);
+                gm.RestoreStoveLeague(data.StoveLeague); // [TASK-KBO-193]
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
                 gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)
@@ -567,6 +593,16 @@ namespace KBOManager.Managers
                         HomeRunLeader = saved.HomeRunLeader,
                         WinsLeader = saved.WinsLeader,
                         EraLeader = saved.EraLeader,
+                        SeasonNumber = saved.SeasonNumber,
+                        TierName = saved.TierName,
+                        FinalRank = saved.FinalRank,
+                        RegularSeasonRank = saved.RegularSeasonRank,
+                        Wins = saved.Wins,
+                        Draws = saved.Draws,
+                        Losses = saved.Losses,
+                        KoreanSeriesWon = saved.KoreanSeriesWon,
+                        Mvp = saved.Mvp,
+                        Titles = (saved.Titles ?? new List<string>()).ToList(),
                     });
                 SeasonRollover.Instance.ReplaceHallOfFame(restoredEntries);
             }

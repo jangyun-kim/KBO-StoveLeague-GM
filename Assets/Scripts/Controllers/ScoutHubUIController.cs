@@ -57,11 +57,13 @@ namespace KBOManager.Controllers
         public GameObject SpecialSection => specialSection;
         public GameObject ShopSection => shopSection;
 
-        [Header("Tab Style (TASK-KBO-178 - 활성 탭 네이비 + 흰 글씨, 비활성 흰 바탕 + 회색 글씨)")]
-        [SerializeField] private Color activeTabColor = new Color(0.06f, 0.17f, 0.45f, 1f);
-        [SerializeField] private Color inactiveTabColor = new Color(0.94f, 0.95f, 0.97f, 1f);
-        [SerializeField] private Color activeTabTextColor = Color.white;
-        [SerializeField] private Color inactiveTabTextColor = new Color(0.5f, 0.53f, 0.6f, 1f);
+        // [TASK-KBO-193] 탭 명도 대비 복구 - 예전 직렬화 색(비활성 흰 바탕 + 연회색 글씨)이 씬에 남아 비활성 탭 글씨가 안 보였다.
+        //   씬 값에 기대지 않고 코드 상수로 고정: 비활성 = 네이비 #1E293B + #CBD5E1 18pt / 활성 = 블루 #2563EB + 흰색 20pt(모두 Normal).
+        public static readonly Color ActiveTabColor = new Color32(0x25, 0x63, 0xEB, 0xFF);
+        public static readonly Color InactiveTabColor = new Color32(0x1E, 0x29, 0x3B, 0xFF);
+        public static readonly Color ActiveTabTextColor = Color.white;
+        public static readonly Color InactiveTabTextColor = new Color32(0xCB, 0xD5, 0xE1, 0xFF);
+        public const int ActiveTabPt = 20, InactiveTabPt = 18;
 
         private void Awake()
         {
@@ -119,6 +121,9 @@ namespace KBOManager.Controllers
             StyleTabs(1);
         }
 
+        /// <summary>[TASK-KBO-193] 탭 스타일만 다시 칠한다(Setup에서 씬 저장 전 호출 - 현재 활성 = 선수 스카우트).</summary>
+        public void ApplyTabStyle(int active = 0) => StyleTabs(active);
+
         public void ShowCheerleaderSection()
         {
             LogSectionToggle(nameof(ShowCheerleaderSection), activate: cheerleaderSection, deactivate: playerSection);
@@ -159,12 +164,19 @@ namespace KBOManager.Controllers
         private void StyleTab(Button tab, bool active)
         {
             if (tab == null) return;
-            if (tab.targetGraphic != null) tab.targetGraphic.color = active ? activeTabColor : inactiveTabColor;
+            if (tab.targetGraphic != null) tab.targetGraphic.color = active ? ActiveTabColor : InactiveTabColor;
+            // 버튼 틴트(normal/highlighted)가 흰색이 아니면 배경색이 탁해진다 - 기본 흰색 틴트로 둔다.
+            var colors = tab.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.92f, 0.94f, 1f);
+            colors.selectedColor = Color.white;
+            tab.colors = colors;
             var label = tab.GetComponentInChildren<Text>(true);
             if (label != null)
             {
-                label.color = active ? activeTabTextColor : inactiveTabTextColor;
-                label.fontStyle = FontStyle.Normal;
+                label.color = active ? ActiveTabTextColor : InactiveTabTextColor;
+                KBOManager.UI.TextFit193.Fit(label, active ? ActiveTabPt : InactiveTabPt, 14);
+                foreach (var o in label.GetComponents<Outline>()) o.enabled = false; // 밝은 글씨 + 어두운 바탕 - 외곽선 불필요
             }
         }
 

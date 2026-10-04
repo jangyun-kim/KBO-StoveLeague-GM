@@ -73,6 +73,11 @@ namespace KBOManager.Managers
         [SerializeField] private LineupAssignment lineupAssignment = new LineupAssignment();
         public LineupAssignment LineupAssignment => lineupAssignment ?? (lineupAssignment = new LineupAssignment());
 
+        [Tooltip("[TASK-KBO-193] 스토브리그(FA 계약 · 트레이드 라운드 · 신인 지명 · 외국인 영입) 시즌별 진행 상태.")]
+        [SerializeField] private StoveLeagueState stoveLeague = new StoveLeagueState();
+        public StoveLeagueState StoveLeague => stoveLeague ?? (stoveLeague = new StoveLeagueState());
+        public void RestoreStoveLeague(StoveLeagueState state) => stoveLeague = state ?? new StoveLeagueState();
+
         /// <summary>[TASK-KBO-186] 로스터 안 두 선수(주전 ↔ 후보, 선발 ↔ 불펜)의 자리를 1:1로 맞바꾼다. 타자는 타순 지정 자리도 함께 바꾼다.</summary>
         public bool SwapLineupPositions(Player a, Player b)
         {
@@ -523,6 +528,7 @@ namespace KBOManager.Managers
             liveCheerStick = d[6]; starCheerStick = d[7]; legendCheerStick = d[8]; limitedCheerStick = d[9]; gameGold = d[10]; uniform = d[11]; ticket = d[12];
             growthCoin = awakenTicket = transcendTicket = trainingTicket = 0; // [TASK-KBO-189]
             skillChangeTicket = premiumSkillChangeTicket = 0; // [TASK-KBO-190]
+            stoveLeague = new StoveLeagueState(); // [TASK-KBO-193]
         }
 
         // ----- 인벤토리/로스터 헬퍼 -----

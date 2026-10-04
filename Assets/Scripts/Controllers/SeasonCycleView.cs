@@ -37,7 +37,9 @@ namespace KBOManager.Controllers
         private CompyaUiKit kit;
         private RectTransform root;
         private Text titleText, subText, leftText, rightText, resultText;
-        private Button primaryButton, closeButton;
+        private Button primaryButton, closeButton, stoveButton;
+        public const string StoveButtonName = "StoveLeague";
+        public const string StoveButtonLabel = "스토브리그 전력 보강 (FA · 트레이드 · 드래프트)";
         private Stage stage = Stage.Hidden;
         private SeasonEndReport report;
 
@@ -119,13 +121,17 @@ namespace KBOManager.Controllers
                 t.resizeTextMaxSize = t.fontSize;
             }
 
-            resultText = kit.Label(root, "Result", "", 60, 1510, 1188, 1610, 28, TextAnchor.MiddleCenter, Cyan, true);
+            resultText = kit.Label(root, "Result", "", 60, 1506, 1188, 1566, 28, TextAnchor.MiddleCenter, Cyan, true);
             resultText.resizeTextForBestFit = true;
             resultText.resizeTextMinSize = Mathf.Min(resultText.fontSize, TextTidy.AutoMin); // [TASK-KBO-192] 12 → 15
             resultText.resizeTextMaxSize = resultText.fontSize;
-            primaryButton = kit.GradientButton(root, "Primary", "", 120, 1620, 1128, 1735, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 44);
+            // [TASK-KBO-193] 시즌 결산 → 스토브리그(FA · 트레이드 · 신인 드래프트 · 외국인 영입) 진입
+            stoveButton = kit.Button(root, StoveButtonName, StoveButtonLabel, 120, 1574, 1128, 1646, new Color(0.15f, 0.39f, 0.92f), White, 30);
+            stoveButton.onClick.AddListener(() => StoveLeagueView.OpenStove());
+            TextFit193.FitButton(stoveButton, 20, 16);
+            primaryButton = kit.GradientButton(root, "Primary", "", 120, 1656, 1128, 1756, new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 44);
             primaryButton.onClick.AddListener(OnPrimary);
-            closeButton = kit.Button(root, "Close", "닫기 (로비에서 다시 열림)", 120, 1750, 1128, 1838, new Color(0.25f, 0.28f, 0.38f), White, 30);
+            closeButton = kit.Button(root, "Close", "닫기 (로비에서 다시 열림)", 120, 1766, 1128, 1846, new Color(0.25f, 0.28f, 0.38f), White, 30);
             closeButton.onClick.AddListener(Hide);
 
             root.gameObject.SetActive(false);
@@ -180,6 +186,7 @@ namespace KBOManager.Controllers
             rightText.text = sb.ToString();
             resultText.text = "";
             CompyaUiKit.SetButtonText(primaryButton, eligible ? "포스트시즌 진행 · 시즌 결산" : "시즌 결산 · 시상식");
+            stoveButton.gameObject.SetActive(true);
             primaryButton.interactable = true;
             closeButton.gameObject.SetActive(true);
         }
@@ -207,6 +214,7 @@ namespace KBOManager.Controllers
                 ? $"축하합니다! {LeagueTierTable.DisplayName(r.Tier)} → {LeagueTierTable.DisplayName(r.NextTier)} 승격!"
                 : "다음 시즌도 같은 리그에서 우승(정규시즌 1위 · 한국시리즈)에 도전하십시오.";
             CompyaUiKit.SetButtonText(primaryButton, "다음 시즌 시작 ▶");
+            stoveButton.gameObject.SetActive(true);
             primaryButton.interactable = league != null;
             closeButton.gameObject.SetActive(true);
         }
@@ -238,6 +246,7 @@ namespace KBOManager.Controllers
             rightText.text = sb.ToString();
             resultText.text = "정규시즌 1경기부터 다시 시작합니다. 저장 완료.";
             CompyaUiKit.SetButtonText(primaryButton, "확인");
+            stoveButton.gameObject.SetActive(false);
             primaryButton.interactable = true;
             closeButton.gameObject.SetActive(false);
         }

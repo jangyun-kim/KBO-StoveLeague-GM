@@ -237,8 +237,33 @@ namespace KBOManager.Controllers
             executeButton = kit.GradientButton(root, "Execute", "실행", 20, 1720, 1228, 1840,
                 new Color(1f, 0.8f, 0.25f), new Color(0.93f, 0.55f, 0.1f), Dark, 44);
             executeButton.onClick.AddListener(() => Execute());
+            ApplyReadableSizes();
 
             if (Application.isPlaying) Refresh();
+        }
+
+        /// <summary>[TASK-KBO-193] 글씨 폭주 · 흰 바탕 흰 글씨 점검 - 모든 텍스트를 목표 pt로 고정(최대 = 목표) + 세로 Truncate.
+        /// 타이틀 26 · 실행 26 · 탭/선택기/버튼 18~20 · 상품명 19 · 설명/보유 16~17. 상품 행은 RectMask2D로 행 밖 그리기를 막는다.</summary>
+        private void ApplyReadableSizes()
+        {
+            TextFit193.Fit(root.Find("Title")?.GetComponent<Text>(), 26, 18);
+            TextFit193.Fit(walletText, 16);
+            foreach (var b in subTabButtons) TextFit193.FitButton(b, 18);
+            TextFit193.Fit(descText, 17);
+            TextFit193.FitButton(positionButton, 19);
+            TextFit193.FitButton(gradeButton, 19);
+            for (int i = 0; i < ProductRows; i++)
+            {
+                TextFit193.Mask(productBoxes[i]);
+                TextFit193.Fit(productTitles[i], 19);
+                TextFit193.Fit(productDescs[i], 16);
+                TextFit193.FitButton(buyButtons[i], 18);
+            }
+            TextFit193.Fit(listTitleText, 18);
+            TextFit193.FitButton(clearButton, 18);
+            TextFit193.Fit(guideText, 17);
+            TextFit193.Fit(resultText, 18);
+            TextFit193.FitButton(executeButton, 26, 18);
         }
 
         private static RectTransform ScrollList(Transform parent, string name, float x0, float y0, float x1, float y1)
@@ -408,7 +433,9 @@ namespace KBOManager.Controllers
                     : $"{CompyaUiKit.ShortName(p.Template.Team)} · OVR {p.CalculateNeutralOVR()}";
                 var l1 = kit.LabelOn(CompyaUiKit.Norm(cell, "Line1", 0.03f, 0.5f, 0.97f, 0.97f), $"{(on ? "✔ " : "")}{CardDisplay.TargetLine1(p)}", 22, TextAnchor.MiddleCenter, color, true);
                 var l2 = kit.LabelOn(CompyaUiKit.Norm(cell, "Line2", 0.03f, 0.04f, 0.97f, 0.5f), $"{CardGrowthRules.DisplayName(p.Template.Grade)} {p.ReinforceLevel}강 · {extra}", 17, TextAnchor.MiddleCenter, color, false);
-                foreach (var l in new[] { l1, l2 }) { l.verticalOverflow = VerticalWrapMode.Truncate; l.resizeTextMinSize = Mathf.Min(l.fontSize, TextTidy.AutoMin); }
+                TextFit193.Mask(cell);
+                TextFit193.Fit(l1, 16, 12); // [TASK-KBO-193] 22 → 16pt
+                TextFit193.Fit(l2, 14, 12); // [TASK-KBO-193] 17 → 14pt
             }
         }
 

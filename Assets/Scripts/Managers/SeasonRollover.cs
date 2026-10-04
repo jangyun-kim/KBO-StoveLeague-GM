@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Models;
 using UnityEngine;
 
@@ -20,6 +21,18 @@ namespace KBOManager.Managers
         public string HomeRunLeader;
         public string WinsLeader;
         public string EraLeader;
+
+        // [TASK-KBO-193] 리그 기록실 명예의 전당 - 시즌 번호 · 리그 단계 · 최종 순위/전적 · 한국시리즈 우승 · 시즌 MVP · 타이틀 수상 내역
+        public int SeasonNumber;
+        public string TierName;
+        public int FinalRank;
+        public int RegularSeasonRank;
+        public int Wins;
+        public int Draws;
+        public int Losses;
+        public bool KoreanSeriesWon;
+        public string Mvp;
+        public List<string> Titles = new List<string>();
     }
 
     /// <summary>
@@ -94,16 +107,26 @@ namespace KBOManager.Managers
 
             int teamGamesPlayed = leagueManager.PlayedGameCount;
 
-            var entry = new HallOfFameEntry
-            {
-                SeasonYear = LeagueCalendar.Instance != null ? LeagueCalendar.Instance.CurrentDate.Year : DateTime.Now.Year,
-                ChampionTeam = postSeasonManager?.ChampionTeam ?? Team.None,
-                BattingAverageLeader = FirstLeaderLabel(seasonStatManager.GetBattingAverageLeaders(teamGamesPlayed, 1),
-                    s => $"{s.BattingAverage:F3}"),
-                HomeRunLeader = FirstLeaderLabel(seasonStatManager.GetHomeRunLeaders(1), s => $"{s.HomeRuns}개"),
-                WinsLeader = FirstLeaderLabel(seasonStatManager.GetWinLeaders(1), s => $"{s.Wins}승"),
-                EraLeader = FirstLeaderLabel(seasonStatManager.GetEraLeaders(teamGamesPlayed, 1), s => $"{s.EarnedRunAverage:F2}"),
-            };
+            // [TASK-KBO-193] 시즌 번호 · 리그 · 최종 순위/전적 · KS 우승 · MVP · 타이틀 6부문까지 함께 남긴다(결산 리포트가 없으면 시상 규칙으로 다시 계산).
+            var report = (seasonRewardManager != null ? seasonRewardManager : SeasonRewardManager.Instance)?.LastReport;
+            var gm = GameManager.Instance;
+            var titles = report?.Titles != null && report.Titles.Count > 0
+                ? report.Titles
+                : SeasonAwardRules.Compute(seasonStatManager.AllBatterStats, seasonStatManager.AllPitcherStats, teamGamesPlayed,
+                    p => gm != null && (gm.Roster.Contains(p) || gm.Inventory.Contains(p)));
+            var user = leagueManager.GetTeamInfo(leagueManager.UserTeam);
+            int regularRank = leagueManager.UserFinalRank ?? 0;
+            var champion = postSeasonManager?.ChampionTeam ?? Team.None;
+            int finalRank = report != null && report.FinalRank > 0 ? report.FinalRank : champion != Team.None && champion == leagueManager.UserTeam ? 1 : regularRank;
+            var entry = LeagueRecordsRules.BuildEntry(hallOfFame.Count + 1,
+                LeagueCalendar.Instance != null ? LeagueCalendar.Instance.CurrentDate.Year : DateTime.Now.Year,
+                leagueManager.CurrentTier, finalRank, regularRank, user?.Wins ?? 0, user?.Draws ?? 0, user?.Losses ?? 0,
+                champion, leagueManager.UserTeam,
+                LeagueRecordsRules.SeasonMvp(seasonStatManager.AllBatterStats, seasonStatManager.AllPitcherStats), titles);
+            entry.BattingAverageLeader = FirstLeaderLabel(seasonStatManager.GetBattingAverageLeaders(teamGamesPlayed, 1), s => $"{s.BattingAverage:F3}");
+            entry.HomeRunLeader = FirstLeaderLabel(seasonStatManager.GetHomeRunLeaders(1), s => $"{s.HomeRuns}개");
+            entry.WinsLeader = FirstLeaderLabel(seasonStatManager.GetWinLeaders(1), s => $"{s.Wins}승");
+            entry.EraLeader = FirstLeaderLabel(seasonStatManager.GetEraLeaders(teamGamesPlayed, 1), s => $"{s.EarnedRunAverage:F2}");
 
             hallOfFame.Add(entry);
         }
