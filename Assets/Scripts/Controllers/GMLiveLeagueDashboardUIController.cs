@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KBOManager.Core;
@@ -43,6 +44,20 @@ namespace KBOManager.Controllers
         private RectTransform emblemHolder;
         private Text seasonTitle, gameCounter, statusText, lastGameText;
         private Button modeSingle, modeHalf, modeFull, speed1, speed2, speed4, pauseButton, closeButton, tabBatter, tabPitcher;
+        // [TASK-GM-03] 새 시즌 설정 · 직전 경기 결과
+        private Button newSeasonButton, lastBoxButton;
+        private RectTransform seasonModal;
+        private Text seasonModalDesc;
+        private readonly Button[] modeButtons = new Button[3];
+        private readonly Button[] teamButtons = new Button[10];
+        private Button virtualToggle, seasonStart, seasonCancel;
+        private GMStartMode pendingMode = GMStartMode.RealCurrent2026;
+        private string pendingTeam = NameAliasTable.SAM;
+        private bool pendingVirtual;
+
+        /// <summary>[TASK-GM-03] 새 시즌 리그 생성기(모드 · 구단 코드 · 가상명). 비우면 GameManager.StartGMLeague(없으면 GMRosterLoader)를 쓴다 - 테스트가 주입한다.</summary>
+        public Func<GMStartMode, string, bool, GMLeagueState> LeagueFactory { get; set; }
+        public bool IsSeasonModalOpen => seasonModal != null && seasonModal.gameObject.activeSelf;
         private readonly Image[] rowBgs = new Image[StandingRows];
         private readonly Text[,] cells = new Text[StandingRows, 8];
         private readonly RawImage[] rowLogos = new RawImage[StandingRows];
@@ -143,15 +158,17 @@ namespace KBOManager.Controllers
 
             // ---- 헤더
             headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1248, 248, TeamThemePalette.Primary(Team.Samsung));
-            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 620, 74, TitlePt, TextAnchor.MiddleLeft, White);
-            gameCounter = L(kit, "GameCounter", "G 000 / 144", 640, 10, 1090, 74, CounterPt, TextAnchor.MiddleRight, Gold);
+            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 550, 74, TitlePt, TextAnchor.MiddleLeft, White);
+            gameCounter = L(kit, "GameCounter", "G 000 / 144", 560, 10, 860, 74, CounterPt, TextAnchor.MiddleRight, Gold);
+            newSeasonButton = Btn(kit, "NewSeasonButton", "새 시즌 설정", 870, 10, 1100, 74, ButtonIdle, ButtonPt - 2);
+            newSeasonButton.onClick.AddListener(OpenSeasonModal);
             closeButton = Btn(kit, "CloseButton", "X", 1110, 10, 1228, 74, ButtonIdle, ButtonPt + 2);
             closeButton.onClick.AddListener(Close);
 
             modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 86, 400, 160, ButtonIdle, ButtonPt);
             modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 414, 86, 834, 160, ButtonIdle, ButtonPt);
             modeFull = Btn(kit, "ModeFull", "한 시즌", 848, 86, 1228, 160, ButtonIdle, ButtonPt);
-            modeSingle.onClick.AddListener(() => Run(GMRunMode.SingleGame));
+            modeSingle.onClick.AddListener(OpenPreGameOrRun);
             modeHalf.onClick.AddListener(() => Run(GMRunMode.FirstHalf));
             modeFull.onClick.AddListener(() => Run(GMRunMode.FullSeason));
 
@@ -211,8 +228,10 @@ namespace KBOManager.Controllers
 
             // ---- 패널 3: 최신 소식
             CompyaUiKit.Box(root, "NewsPanel", 12, 1522, 1236, 1964, PanelColor);
-            L(kit, "NewsTitle", "최신 소식", 24, 1528, 400, 1572, SectionPt, TextAnchor.MiddleLeft, Gold);
-            lastGameText = L(kit, "LastGame", "", 410, 1528, 1224, 1572, HeadPt, TextAnchor.MiddleRight, White);
+            L(kit, "NewsTitle", "최신 소식", 24, 1528, 300, 1572, SectionPt, TextAnchor.MiddleLeft, Gold);
+            lastBoxButton = Btn(kit, "LastBoxButton", "직전 경기 결과", 310, 1526, 640, 1574, ButtonIdle, ButtonPt - 3);
+            lastBoxButton.onClick.AddListener(OpenLastBoxScore);
+            lastGameText = L(kit, "LastGame", "", 650, 1528, 1224, 1572, HeadPt, TextAnchor.MiddleRight, White);
             for (int i = 0; i < NewsRows; i++)
             {
                 float y0 = 1578 + i * 64, y1 = y0 + 58;
@@ -243,6 +262,142 @@ namespace KBOManager.Controllers
             popupPrimary.onClick.AddListener(OnPopupPrimary);
             popupSecondary.onClick.AddListener(OnPopupSecondary);
             popup.gameObject.SetActive(false);
+
+            BuildSeasonModal(kit);
+        }
+
+        // ================================================================== [TASK-GM-03] 새 시즌 설정 모달
+
+        private static readonly (GMStartMode mode, string label, string desc)[] ModeDefs =
+        {
+            (GMStartMode.RealCurrent2026, "2026 현역", "2026 현역 모드 - 현역 선수로 10구단 28인을 구성해 2026 스토브리그부터 시작합니다."),
+            (GMStartMode.AllTimeDream, "올타임 드림", "올타임 드림 모드 - 1986~2026 구단 계보별 최고 시즌 선수로 드림 로스터와 FA 시장을 꾸립니다. 슈퍼스타 과밀 부작용에 주의하십시오."),
+            (GMStartMode.StoryCampaign, "스토리 캠페인", "스토리 캠페인 「꼴찌 구단의 겨울」 - 4년 연속 최하위 · 예산 20% 삭감 · 노장 4번 타자의 트레이드 요구 속에서 포스트시즌을 노립니다."),
+        };
+
+        private void BuildSeasonModal(CompyaUiKit kit)
+        {
+            seasonModal = CompyaUiKit.Fill(root, "SeasonModal");
+            CompyaUiKit.Paint(seasonModal, new Color(0f, 0f, 0f, 0.72f), true);
+            CompyaUiKit.Box(seasonModal, "SeasonModalBox", 60, 300, 1188, 1640, new Color(0.1f, 0.12f, 0.2f, 0.98f));
+            L(kit, "SeasonModalTitle", "새 시즌 설정", 100, 330, 1148, 392, PopupTitlePt, TextAnchor.MiddleLeft, Gold, seasonModal);
+            L(kit, "ModeLabel", "시작 모드", 100, 400, 1148, 440, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
+            for (int i = 0; i < 3; i++)
+            {
+                var mode = ModeDefs[i].mode;
+                float x0 = 100 + i * 354;
+                modeButtons[i] = Btn(kit, $"Mode_{mode}", ModeDefs[i].label, x0, 446, x0 + 340, 526, ButtonIdle, ButtonPt, seasonModal);
+                modeButtons[i].onClick.AddListener(() => SelectSeasonMode(mode));
+            }
+            L(kit, "TeamLabel", "구단 선택", 100, 546, 1148, 586, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
+            for (int i = 0; i < NameAliasTable.CanonicalTeamCodes.Length; i++)
+            {
+                string code = NameAliasTable.CanonicalTeamCodes[i];
+                float x0 = 100 + (i % 5) * 212, y0 = 592 + (i / 5) * 92;
+                teamButtons[i] = Btn(kit, $"Team_{code}", CompyaUiKit.ShortName(NameAliasTable.ToTeam(code)), x0, y0, x0 + 200, y0 + 80, ButtonIdle, ButtonPt, seasonModal);
+                teamButtons[i].onClick.AddListener(() => SelectSeasonTeam(code));
+            }
+            virtualToggle = Btn(kit, "VirtualToggle", "", 100, 790, 1148, 870, ButtonIdle, ButtonPt, seasonModal);
+            virtualToggle.onClick.AddListener(() => SetSeasonVirtualNames(!pendingVirtual));
+            seasonModalDesc = L(kit, "SeasonModalDesc", "", 100, 890, 1148, 1300, PopupBodyPt - 1, TextAnchor.UpperLeft, White, seasonModal);
+            seasonModalDesc.lineSpacing = 1.2f;
+            seasonStart = Btn(kit, "SeasonStart", "새 시즌 시작", 100, 1500, 610, 1600, new Color(0.15f, 0.45f, 0.85f), ButtonPt + 1, seasonModal);
+            seasonCancel = Btn(kit, "SeasonCancel", "취소", 638, 1500, 1148, 1600, new Color(0.3f, 0.34f, 0.46f), ButtonPt + 1, seasonModal);
+            seasonStart.onClick.AddListener(() => ConfirmNewSeason());
+            seasonCancel.onClick.AddListener(CloseSeasonModal);
+            seasonModal.gameObject.SetActive(false);
+        }
+
+        public void OpenSeasonModal()
+        {
+            if (root == null) Build();
+            var league = simulator?.League;
+            pendingMode = league?.Mode ?? GMStartMode.RealCurrent2026;
+            pendingTeam = league?.SelectedTeamCode ?? NameAliasTable.SAM;
+            pendingVirtual = league?.UseVirtualNames ?? GameSettings.UseVirtualNames;
+            paused = true;
+            seasonModal.gameObject.SetActive(true);
+            seasonModal.SetAsLastSibling();
+            RefreshSeasonModal();
+        }
+
+        public void CloseSeasonModal()
+        {
+            if (seasonModal != null) seasonModal.gameObject.SetActive(false);
+            Refresh();
+        }
+
+        public void SelectSeasonMode(GMStartMode mode) { pendingMode = mode; RefreshSeasonModal(); }
+        public void SelectSeasonTeam(string code) { pendingTeam = NameAliasTable.ResolveCanonicalTeamCode(code) ?? pendingTeam; RefreshSeasonModal(); }
+        public void SetSeasonVirtualNames(bool on) { pendingVirtual = on; RefreshSeasonModal(); }
+
+        private void RefreshSeasonModal()
+        {
+            for (int i = 0; i < 3; i++) Highlight(modeButtons[i], ModeDefs[i].mode == pendingMode);
+            for (int i = 0; i < teamButtons.Length; i++) Highlight(teamButtons[i], NameAliasTable.CanonicalTeamCodes[i] == pendingTeam);
+            CompyaUiKit.SetButtonText(virtualToggle, pendingVirtual ? "선수 이름: 가상명 (눌러서 실명)" : "선수 이름: 실명 (눌러서 가상명)");
+            Highlight(virtualToggle, pendingVirtual);
+            var def = ModeDefs.First(d => d.mode == pendingMode);
+            seasonModalDesc.text = $"{def.desc}\n\n선택 구단: {NameAliasTable.DisplayTeamName(pendingTeam)}\n진행 중인 시즌 기록은 새 시즌으로 초기화됩니다.";
+        }
+
+        /// <summary>선택한 모드 · 구단 · 이름 설정으로 리그를 즉시 다시 만들고 대시보드를 새 시즌에 연결한다. 실패하면 null.</summary>
+        public GMLiveSeasonSimulator ConfirmNewSeason()
+        {
+            if (simulator != null) simulator.Stop();
+            GMLeagueState league;
+            GMLiveSeasonSimulator sim = null;
+            if (LeagueFactory != null) league = LeagueFactory(pendingMode, pendingTeam, pendingVirtual);
+            else if (GameManager.Instance != null)
+            {
+                league = GameManager.Instance.StartGMLeague(pendingMode, pendingTeam, pendingVirtual);
+                sim = GameManager.Instance.GMSimulator;
+            }
+            else league = GMRosterLoader.LoadModeRoster(pendingMode, pendingTeam, pendingVirtual);
+            if (league == null) return null;
+            sim = sim ?? new GMLiveSeasonSimulator(league);
+            seasonModal.gameObject.SetActive(false);
+            Bind(sim);
+            return sim;
+        }
+
+        // ================================================================== [TASK-GM-03] 한 경기 전력 비교 · 직전 경기 결과
+
+        private GMMatchPrePostUIController PrePost
+        {
+            get
+            {
+                var view = FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);
+                if (view != null)
+                {
+                    view.OnClosed -= OnPrePostClosed;
+                    view.OnClosed += OnPrePostClosed;
+                }
+                return view;
+            }
+        }
+
+        /// <summary>[한 경기] - 전력 비교 화면이 있으면 먼저 띄운다(경기 시작은 그 화면에서). 없으면 바로 1경기 진행.</summary>
+        public void OpenPreGameOrRun()
+        {
+            var view = PrePost;
+            if (view != null && simulator != null && simulator.PendingInterrupt == null && view.ShowPreGameView(simulator)) return;
+            Run(GMRunMode.SingleGame);
+        }
+
+        public void OpenLastBoxScore()
+        {
+            var last = simulator?.League?.LastUserMatchBoxScore;
+            var view = PrePost;
+            if (last == null || view == null) { if (statusText != null) statusText.text = "아직 경기 기록 없음"; return; }
+            view.Attach(simulator);
+            view.ShowPostGameBoxScoreView(last);
+        }
+
+        private void OnPrePostClosed()
+        {
+            Refresh();
+            if (simulator?.PendingInterrupt != null) ShowInterrupt(simulator.PendingInterrupt);
         }
 
         private Text L(CompyaUiKit kit, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color, Transform parent = null)
@@ -331,6 +486,7 @@ namespace KBOManager.Controllers
             statusText.text = done ? "정규시즌 종료" : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
                 paused ? "일시정지" : simulator.IsRunning ? $"진행 중 · {speed}x" : "대기 중";
             lastGameText.text = simulator?.LastUserGameLine ?? "";
+            lastBoxButton.interactable = simulator?.League?.LastUserMatchBoxScore != null;
 
             RefreshStandings();
             RefreshLeaders();

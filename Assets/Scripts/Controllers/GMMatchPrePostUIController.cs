@@ -1,0 +1,507 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KBOManager.Data;
+using KBOManager.Managers;
+using KBOManager.Models;
+using KBOManager.Simulation;
+using KBOManager.UI;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace KBOManager.Controllers
+{
+    /// <summary>
+    /// [TASK-GM-03] 한 경기 시뮬레이션 화면(1080×1920 Portrait, 1248×1972 레퍼런스 좌표, 모든 글씨 Normal · 15pt 이상).
+    ///   - PreGame(기획서 2.2.1): 매치업 헤더(경기 번호 · 날짜 · 구장 · 양 팀 로고 · 시즌 성적 · 순위 · 최근 5경기) · 선발투수 맞대결 ·
+    ///     5대 전력 비교 바 + 팀워크/실효 전력/부작용 배지 · 오늘의 치어리더 엔트리(4~6인)와 응원 버프 · [경기 시작] [라인업/치어리더 점검] [대시보드로 돌아가기]
+    ///   - PostGame(기획서 2.2.2): KBO 전광판(1~9회, 연장 최대 12회 · R/H/E) · 자동 기사(헤드라인 + 4문단) · 승리 확률 그래프 + 결정적 플레이 TOP 3 ·
+    ///     원정/홈 × 타자/투수 박스스코어 탭 + 주석(2루타 · 3루타 · 홈런 · 도루 · 병살타 · 실책 · 비자책)
+    /// </summary>
+    public class GMMatchPrePostUIController : MonoBehaviour
+    {
+        public const string PreRootName = "PreGameRoot", PostRootName = "PostGameRoot";
+        public const int TitlePt = 24, SubPt = 17, NamePt = 22, BodyPt = 18, SmallPt = 16, ButtonPt = 20, MetricPt = 17, GridPt = 16, HeadlinePt = 21;
+        public const int MaxInnings = 12, GridRows = 12, GridCols = 10;
+
+        private static readonly Color Bg = new Color(0.07f, 0.09f, 0.16f);
+        private static readonly Color Panel = new Color(1f, 1f, 1f, 0.06f);
+        private static readonly Color White = new Color(0.96f, 0.97f, 0.99f);
+        private static readonly Color Muted = new Color(0.74f, 0.8f, 0.9f);
+        private static readonly Color Gold = new Color(1f, 0.84f, 0.3f);
+        private static readonly Color Green = new Color(0.45f, 0.92f, 0.55f);
+        private static readonly Color ButtonIdle = new Color(1f, 1f, 1f, 0.12f);
+        private static readonly Color ButtonOn = new Color(0.15f, 0.45f, 0.85f);
+
+        [SerializeField] private Font regularFont;
+
+        private CompyaUiKit kit;
+        private RectTransform preRoot, postRoot;
+
+        // ---- PreGame
+        private Text preGameLabel, preDate, preAwayName, preHomeName, preAwayRecord, preHomeRecord, preAwayStarter, preHomeStarter;
+        private Text preAwayTeamwork, preHomeTeamwork, preAwayBadges, preHomeBadges, preAwayCheer, preHomeCheer;
+        private RawImage preAwayLogo, preHomeLogo;
+        private readonly Text[] metricAway = new Text[5], metricHome = new Text[5];
+        private readonly RectTransform[] barAway = new RectTransform[5], barHome = new RectTransform[5];
+        private Button startButton, checkButton, backButton;
+
+        // ---- PostGame
+        private Text postSubtitle, headline, recapBody, wpaTitle, footnote;
+        private readonly Text[,] lineScore = new Text[3, MaxInnings + 4]; // [행(헤더/원정/홈), 열(팀 · 1~12회 · R · H · E)]
+        private readonly RawImage[] lineLogos = new RawImage[2];
+        private readonly Text[] keyPlays = new Text[3];
+        private readonly Text[,] grid = new Text[GridRows, GridCols];
+        private WpaLineGraphic wpaLine;
+        private Button tabAway, tabHome, tabBatting, tabPitching, postClose;
+
+        private GMLiveSeasonSimulator simulator;
+        private GMMatchPreview preview;
+        private GMMatchBoxScoreData box;
+        private bool showHome, showPitching;
+
+        public event Action OnClosed;
+
+        public RectTransform PreRoot => preRoot;
+        public RectTransform PostRoot => postRoot;
+        public GMMatchPreview CurrentPreview => preview;
+        public GMMatchBoxScoreData CurrentBoxScore => box;
+        public bool ShowingHome => showHome;
+        public bool ShowingPitching => showPitching;
+
+        public void Configure(Font regular) => regularFont = regular;
+
+        private void Awake()
+        {
+            if (preRoot == null || postRoot == null) Build();
+        }
+
+        // ================================================================== 공개 진입점
+
+        /// <summary>진행기를 연결한다(직전 경기 결과만 열 때 - 내 구단 탭 기본 선택용).</summary>
+        public void Attach(GMLiveSeasonSimulator sim) => simulator = sim;
+
+        /// <summary>대시보드 [한 경기] - 다음 내 구단 경기의 전력 비교를 띄운다. 시즌이 끝났으면 false.</summary>
+        public bool ShowPreGameView(GMLiveSeasonSimulator sim)
+        {
+            simulator = sim;
+            var p = GMMatchPreview.Build(sim);
+            if (p == null) return false;
+            ShowPreGameView(p);
+            return true;
+        }
+
+        public void ShowPreGameView(GMMatchPreview scheduledMatch)
+        {
+            if (preRoot == null) Build();
+            preview = scheduledMatch;
+            gameObject.SetActive(true);
+            transform.SetAsLastSibling();
+            postRoot.gameObject.SetActive(false);
+            preRoot.gameObject.SetActive(true);
+            BindPreview();
+        }
+
+        public void ShowPostGameBoxScoreView(GMMatchBoxScoreData boxScore)
+        {
+            if (postRoot == null) Build();
+            if (boxScore == null) return;
+            box = boxScore;
+            gameObject.SetActive(true);
+            transform.SetAsLastSibling();
+            preRoot.gameObject.SetActive(false);
+            postRoot.gameObject.SetActive(true);
+            string user = simulator?.League?.SelectedTeamCode;
+            showHome = user != null ? user == box.HomeCode : false;
+            showPitching = false;
+            BindBoxScore();
+        }
+
+        /// <summary>[경기 시작 (결과 보기)] - 하루(5경기)를 진행하고 내 구단 경기 박스스코어를 띄운다.</summary>
+        public bool StartMatch()
+        {
+            if (simulator == null || simulator.IsSeasonComplete || simulator.PendingInterrupt != null) return false;
+            if (!simulator.StartRun(GMRunMode.SingleGame)) return false;
+            simulator.StepGameDay();
+            ShowPostGameBoxScoreView(simulator.League.LastUserMatchBoxScore);
+            return true;
+        }
+
+        public void CloseAll()
+        {
+            if (preRoot != null) preRoot.gameObject.SetActive(false);
+            if (postRoot != null) postRoot.gameObject.SetActive(false);
+            gameObject.SetActive(false);
+            OnClosed?.Invoke();
+        }
+
+        public void SelectTab(bool home, bool pitching)
+        {
+            showHome = home;
+            showPitching = pitching;
+            BindGrid();
+        }
+
+        // ================================================================== 조립
+
+        public void Build()
+        {
+            foreach (var n in new[] { PreRootName, PostRootName })
+            {
+                var old = transform.Find(n);
+                if (old == null) continue;
+                old.name = "_" + n + "_old";
+                old.gameObject.SetActive(false);
+                if (Application.isPlaying) Destroy(old.gameObject); else DestroyImmediate(old.gameObject);
+            }
+            var font = regularFont != null ? regularFont : TextTidy.BodyFont;
+            kit = new CompyaUiKit(font, font);
+            BuildPre();
+            BuildPost();
+            preRoot.gameObject.SetActive(false);
+            postRoot.gameObject.SetActive(false);
+        }
+
+        private Text L(Transform parent, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)
+        {
+            var t = kit.Label(parent, name, text, x0, y0, x1, y1, pt / 0.9f, anchor, color);
+            return TextTidy.Exact(t, pt);
+        }
+
+        private Button Btn(Transform parent, string name, string text, float x0, float y0, float x1, float y1, Color bg, int pt)
+        {
+            var b = kit.Button(parent, name, text, x0, y0, x1, y1, bg, White, pt / 0.9f, bold: false);
+            TextTidy.ExactButton(b, pt);
+            return b;
+        }
+
+        private void BuildPre()
+        {
+            preRoot = CompyaUiKit.Fill(transform, PreRootName);
+            CompyaUiKit.Paint(preRoot, Bg, true);
+            preGameLabel = L(preRoot, "GameLabel", "", 20, 12, 1228, 64, TitlePt, TextAnchor.MiddleLeft, Gold);
+            preDate = L(preRoot, "DateStadium", "", 20, 68, 1228, 112, SubPt, TextAnchor.MiddleLeft, Muted);
+
+            preAwayLogo = CompyaUiKit.Logo(preRoot, "AwayLogo", 60, 124, 360, 324);
+            preHomeLogo = CompyaUiKit.Logo(preRoot, "HomeLogo", 888, 124, 1188, 324);
+            L(preRoot, "Versus", "VS", 520, 190, 728, 260, TitlePt + 6, TextAnchor.MiddleCenter, White);
+            L(preRoot, "AwayTag", "원정", 400, 140, 560, 180, SmallPt, TextAnchor.MiddleCenter, Muted);
+            L(preRoot, "HomeTag", "홈", 688, 140, 848, 180, SmallPt, TextAnchor.MiddleCenter, Muted);
+            preAwayName = L(preRoot, "AwayName", "", 20, 332, 610, 380, NamePt, TextAnchor.MiddleCenter, White);
+            preHomeName = L(preRoot, "HomeName", "", 638, 332, 1228, 380, NamePt, TextAnchor.MiddleCenter, White);
+            preAwayRecord = L(preRoot, "AwayRecord", "", 20, 384, 610, 428, SmallPt, TextAnchor.MiddleCenter, Muted);
+            preHomeRecord = L(preRoot, "HomeRecord", "", 638, 384, 1228, 428, SmallPt, TextAnchor.MiddleCenter, Muted);
+
+            CompyaUiKit.Box(preRoot, "StarterPanel", 12, 436, 1236, 784, Panel);
+            L(preRoot, "StarterTitle", "선발투수 맞대결", 24, 440, 1224, 484, BodyPt + 2, TextAnchor.MiddleLeft, Gold);
+            preAwayStarter = L(preRoot, "AwayStarter", "", 24, 490, 610, 778, BodyPt, TextAnchor.UpperLeft, White);
+            preHomeStarter = L(preRoot, "HomeStarter", "", 638, 490, 1224, 778, BodyPt, TextAnchor.UpperLeft, White);
+            preAwayStarter.lineSpacing = preHomeStarter.lineSpacing = 1.15f;
+
+            CompyaUiKit.Box(preRoot, "PowerPanel", 12, 794, 1236, 1306, Panel);
+            L(preRoot, "PowerTitle", "구단 5대 전력 & 팀워크", 24, 798, 1224, 842, BodyPt + 2, TextAnchor.MiddleLeft, Gold);
+            for (int k = 0; k < 5; k++)
+            {
+                float y0 = 850 + k * 64, y1 = y0 + 56;
+                metricAway[k] = L(preRoot, $"MetricAway{k}", "", 20, y0, 130, y1, MetricPt + 2, TextAnchor.MiddleCenter, White);
+                barAway[k] = Bar(preRoot, $"BarAway{k}", 140, y0 + 14, 520, y1 - 14, true);
+                L(preRoot, $"MetricLabel{k}", GMMatchPreview.MetricLabels[k], 530, y0, 718, y1, MetricPt, TextAnchor.MiddleCenter, Muted);
+                barHome[k] = Bar(preRoot, $"BarHome{k}", 728, y0 + 14, 1108, y1 - 14, false);
+                metricHome[k] = L(preRoot, $"MetricHome{k}", "", 1118, y0, 1228, y1, MetricPt + 2, TextAnchor.MiddleCenter, White);
+            }
+            preAwayTeamwork = L(preRoot, "AwayTeamwork", "", 20, 1174, 610, 1232, SmallPt + 1, TextAnchor.MiddleLeft, White);
+            preHomeTeamwork = L(preRoot, "HomeTeamwork", "", 638, 1174, 1228, 1232, SmallPt + 1, TextAnchor.MiddleRight, White);
+            preAwayBadges = L(preRoot, "AwayBadges", "", 20, 1236, 610, 1300, SmallPt, TextAnchor.MiddleLeft, Gold);
+            preHomeBadges = L(preRoot, "HomeBadges", "", 638, 1236, 1228, 1300, SmallPt, TextAnchor.MiddleRight, Gold);
+
+            CompyaUiKit.Box(preRoot, "CheerPanel", 12, 1316, 1236, 1660, Panel);
+            L(preRoot, "CheerTitle", "오늘의 치어리더 엔트리 (4~6인)", 24, 1320, 1224, 1364, BodyPt + 2, TextAnchor.MiddleLeft, Gold);
+            preAwayCheer = L(preRoot, "AwayCheer", "", 24, 1370, 610, 1654, SmallPt, TextAnchor.UpperLeft, White);
+            preHomeCheer = L(preRoot, "HomeCheer", "", 638, 1370, 1224, 1654, SmallPt, TextAnchor.UpperLeft, White);
+
+            startButton = Btn(preRoot, "StartButton", "경기 시작 (결과 보기)", 20, 1676, 610, 1786, ButtonOn, ButtonPt + 2);
+            checkButton = Btn(preRoot, "CheckButton", "라인업/치어리더 점검", 638, 1676, 1228, 1786, new Color(0.55f, 0.22f, 0.45f), ButtonPt + 2);
+            backButton = Btn(preRoot, "BackButton", "대시보드로 돌아가기", 20, 1806, 1228, 1910, ButtonIdle, ButtonPt);
+            startButton.onClick.AddListener(() => StartMatch());
+            checkButton.onClick.AddListener(OpenLineupCheck);
+            backButton.onClick.AddListener(CloseAll);
+        }
+
+        private RectTransform Bar(Transform parent, string name, float x0, float y0, float x1, float y1, bool fromRight)
+        {
+            var bg = CompyaUiKit.Box(parent, name, x0, y0, x1, y1, new Color(1f, 1f, 1f, 0.1f));
+            var fill = CompyaUiKit.Fill(bg.transform, "Fill");
+            CompyaUiKit.Paint(fill, fromRight ? new Color(0.95f, 0.55f, 0.25f) : new Color(0.3f, 0.6f, 1f));
+            fill.pivot = new Vector2(fromRight ? 1f : 0f, 0.5f);
+            return fill;
+        }
+
+        private void BuildPost()
+        {
+            postRoot = CompyaUiKit.Fill(transform, PostRootName);
+            CompyaUiKit.Paint(postRoot, Bg, true);
+            L(postRoot, "KboTitle", "KOREAN BASEBALL ORGANIZATION", 20, 10, 1000, 56, TitlePt - 2, TextAnchor.MiddleLeft, Gold);
+            postSubtitle = L(postRoot, "Subtitle", "", 20, 62, 1000, 108, SubPt, TextAnchor.MiddleLeft, Muted);
+            postClose = Btn(postRoot, "CloseButton", "대시보드로", 1020, 12, 1228, 104, ButtonIdle, ButtonPt);
+            postClose.onClick.AddListener(CloseAll);
+
+            // 전광판
+            CompyaUiKit.Box(postRoot, "LineScorePanel", 12, 114, 1236, 280, Panel);
+            for (int r = 0; r < 3; r++)
+            {
+                float y0 = r == 0 ? 118 : r == 1 ? 162 : 220, y1 = r == 0 ? 158 : r == 1 ? 216 : 274;
+                if (r > 0) lineLogos[r - 1] = CompyaUiKit.Logo(postRoot, $"LineLogo{r}", 20, y0 + 4, 70, y1 - 4);
+                for (int c = 0; c < MaxInnings + 4; c++)
+                    lineScore[r, c] = L(postRoot, $"LS{r}_{c}", "", 0, y0, 10, y1, r == 0 ? SmallPt : BodyPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, r == 0 ? Muted : White);
+            }
+
+            // 기사
+            CompyaUiKit.Box(postRoot, "RecapPanel", 12, 286, 646, 1062, Panel);
+            headline = L(postRoot, "Headline", "", 24, 290, 640, 380, HeadlinePt, TextAnchor.MiddleLeft, Gold);
+            recapBody = L(postRoot, "RecapBody", "", 24, 386, 640, 1058, SmallPt + 1, TextAnchor.UpperLeft, White);
+            recapBody.lineSpacing = 1.12f;
+            recapBody.verticalOverflow = VerticalWrapMode.Truncate;
+
+            // 승리 확률 그래프
+            CompyaUiKit.Box(postRoot, "WpaPanel", 654, 286, 1236, 1062, Panel);
+            wpaTitle = L(postRoot, "WpaTitle", "승리 확률 변동(WPA)", 664, 290, 1228, 332, BodyPt, TextAnchor.MiddleLeft, Gold);
+            var area = CompyaUiKit.Box(postRoot, "WpaArea", 670, 338, 1220, 740, new Color(0f, 0f, 0f, 0.3f));
+            var mid = CompyaUiKit.Norm(area.transform, "Baseline", 0f, 0.497f, 1f, 0.503f);
+            CompyaUiKit.Paint(mid, new Color(1f, 1f, 1f, 0.45f));
+            var lineRect = CompyaUiKit.Fill(area.transform, "WpaLine");
+            wpaLine = lineRect.gameObject.AddComponent<WpaLineGraphic>();
+            wpaLine.color = new Color(0.4f, 0.85f, 1f);
+            L(postRoot, "AxisHome", "▲ 홈 승리", 664, 746, 940, 782, SmallPt - 1, TextAnchor.MiddleLeft, Muted);
+            L(postRoot, "AxisAway", "▼ 원정 승리", 944, 746, 1228, 782, SmallPt - 1, TextAnchor.MiddleRight, Muted);
+            L(postRoot, "KeyPlaysTitle", "결정적 플레이 TOP 3", 664, 790, 1228, 830, BodyPt, TextAnchor.MiddleLeft, Gold);
+            for (int k = 0; k < 3; k++)
+                keyPlays[k] = L(postRoot, $"KeyPlay{k}", "", 664, 836 + k * 74, 1228, 904 + k * 74, SmallPt, TextAnchor.MiddleLeft, Green);
+
+            // 박스스코어 탭 · 표 · 주석
+            tabAway = Btn(postRoot, "TabAway", "원정", 20, 1070, 320, 1124, ButtonIdle, ButtonPt - 2);
+            tabHome = Btn(postRoot, "TabHome", "홈", 330, 1070, 630, 1124, ButtonIdle, ButtonPt - 2);
+            tabBatting = Btn(postRoot, "TabBatting", "타자 기록", 650, 1070, 930, 1124, ButtonIdle, ButtonPt - 2);
+            tabPitching = Btn(postRoot, "TabPitching", "투수 기록", 940, 1070, 1228, 1124, ButtonIdle, ButtonPt - 2);
+            tabAway.onClick.AddListener(() => SelectTab(false, showPitching));
+            tabHome.onClick.AddListener(() => SelectTab(true, showPitching));
+            tabBatting.onClick.AddListener(() => SelectTab(showHome, false));
+            tabPitching.onClick.AddListener(() => SelectTab(showHome, true));
+            CompyaUiKit.Box(postRoot, "GridPanel", 12, 1128, 1236, 1726, Panel);
+            for (int r = 0; r < GridRows; r++)
+            {
+                float y0 = r == 0 ? 1130 : 1176 + (r - 1) * 50, y1 = r == 0 ? 1172 : y0 + 46;
+                for (int c = 0; c < GridCols; c++)
+                {
+                    float x0 = c == 0 ? 20 : 350 + (c - 1) * 97.5f, x1 = c == 0 ? 346 : x0 + 95;
+                    grid[r, c] = L(postRoot, $"Grid{r}_{c}", "", x0, y0, x1, y1, GridPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, r == 0 ? Muted : White);
+                }
+            }
+            footnote = L(postRoot, "Footnote", "", 20, 1732, 1228, 1962, SmallPt, TextAnchor.UpperLeft, Muted);
+            footnote.lineSpacing = 1.1f;
+        }
+
+        // ================================================================== PreGame 바인딩
+
+        private void BindPreview()
+        {
+            var p = preview;
+            if (p == null) return;
+            preGameLabel.text = p.GameLabel;
+            preDate.text = $"{p.DateLabel} · {p.Stadium}";
+            CompyaUiKit.SetLogo(preAwayLogo, p.Away.Team, 1f);
+            CompyaUiKit.SetLogo(preHomeLogo, p.Home.Team, 1f);
+            preAwayName.text = p.Away.Name;
+            preHomeName.text = p.Home.Name;
+            preAwayRecord.text = TeamLine(p.Away);
+            preHomeRecord.text = TeamLine(p.Home);
+            preAwayStarter.text = StarterCard(p.Away);
+            preHomeStarter.text = StarterCard(p.Home);
+            for (int k = 0; k < 5; k++)
+            {
+                int a = p.Away.Metric(k), h = p.Home.Metric(k);
+                metricAway[k].text = a.ToString();
+                metricHome[k].text = h.ToString();
+                SetFill(barAway[k], a, true);
+                SetFill(barHome[k], h, false);
+            }
+            preAwayTeamwork.text = $"팀워크 {p.Away.Teamwork} · 실효 전력 x{p.Away.PowerMultiplier:0.00}";
+            preHomeTeamwork.text = $"팀워크 {p.Home.Teamwork} · 실효 전력 x{p.Home.PowerMultiplier:0.00}";
+            preAwayBadges.text = string.Join(" · ", p.Away.Badges);
+            preHomeBadges.text = string.Join(" · ", p.Home.Badges);
+            preAwayCheer.text = CheerCard(p.Away);
+            preHomeCheer.text = CheerCard(p.Home);
+            startButton.interactable = simulator != null && !simulator.IsSeasonComplete && simulator.PendingInterrupt == null;
+        }
+
+        public static string TeamLine(GMTeamPreview t) => $"{t.RecordLabel} · {t.Rank}위 · 최근 {t.Recent5}";
+
+        public static string StarterCard(GMTeamPreview t) =>
+            t.Starter == null ? "선발 미정"
+                : $"{t.Starter.Template.PlayerName} ({(t.IsHome ? "홈" : "원정")} 선발)\n{t.StarterSeasonLabel}\n{t.StarterRatingLabel}\n컨디션 {t.StarterConditionLabel}";
+
+        public static string CheerCard(GMTeamPreview t)
+        {
+            if (t.CheerEntry.Count == 0) return "엔트리 없음";
+            var names = string.Join(" · ", t.CheerEntry.Select(c => c.DisplayName));
+            return $"{t.CheerEntry.Count}인: {names}\n리더십·팀워크 +{t.Leadership} / 타격 버프 +{t.BattingBuff} / 마운드 버프 +{t.MoundBuff}";
+        }
+
+        private static void SetFill(RectTransform fill, int value, bool fromRight)
+        {
+            float v = Mathf.Clamp01(value / 100f);
+            fill.anchorMin = new Vector2(fromRight ? 1f - v : 0f, 0f);
+            fill.anchorMax = new Vector2(fromRight ? 1f : v, 1f);
+            fill.offsetMin = fill.offsetMax = Vector2.zero;
+        }
+
+        private void OpenLineupCheck()
+        {
+            CloseAll();
+            var dash = FindAnyObjectByType<GMLiveLeagueDashboardUIController>(FindObjectsInactive.Include);
+            if (dash != null) dash.gameObject.SetActive(false);
+            PlayerManagementUIController.OpenGrowthHub(); // 단장 모드 = [계약·연봉·팀워크 진단](치어리더 엔트리 · 관리 바로가기)
+        }
+
+        // ================================================================== PostGame 바인딩
+
+        private void BindBoxScore()
+        {
+            var b = box;
+            string away = NameAliasTable.DisplayTeamName(b.AwayCode), home = NameAliasTable.DisplayTeamName(b.HomeCode);
+            postSubtitle.text = $"{b.Stadium} · {b.DateLabel} · {away} vs {home} · Game #{b.GameIndex + 1:000}";
+            BindLineScore();
+            headline.text = b.Recap?.Headline ?? "";
+            recapBody.text = b.Recap?.Body ?? "";
+            var pts = b.WpaPoints ?? new List<WPAPoint>();
+            int n = Math.Max(1, pts.Count - 1);
+            wpaLine.SetPoints(pts.Select((p, i) => new Vector2(i / (float)n, p.HomeWinProbability)), 4f);
+            for (int k = 0; k < 3; k++)
+                keyPlays[k].text = b.KeyPlays != null && k < b.KeyPlays.Count ? $"{k + 1}. {b.KeyPlays[k].Label}" : "";
+            CompyaUiKit.SetButtonText(tabAway, $"원정: {CompyaUiKit.ShortName(NameAliasTable.ToTeam(b.AwayCode))}");
+            CompyaUiKit.SetButtonText(tabHome, $"홈: {CompyaUiKit.ShortName(NameAliasTable.ToTeam(b.HomeCode))}");
+            BindGrid();
+        }
+
+        private void BindLineScore()
+        {
+            int innings = Math.Min(MaxInnings, Math.Max(9, box.Innings));
+            float teamX1 = 240, innX0 = 250, innX1 = 1000, w = (innX1 - innX0) / innings;
+            float[] rx = { 1006, 1080, 1154, 1228 };
+            for (int r = 0; r < 3; r++)
+            {
+                for (int c = 0; c < MaxInnings + 4; c++)
+                {
+                    var t = lineScore[r, c];
+                    var rect = (RectTransform)t.transform;
+                    float y0 = r == 0 ? 118 : r == 1 ? 162 : 220, y1 = r == 0 ? 158 : r == 1 ? 216 : 274;
+                    bool used = c == 0 || (c <= MaxInnings && c <= innings) || c > MaxInnings;
+                    t.gameObject.SetActive(used);
+                    if (!used) continue;
+                    if (c == 0) CompyaUiKit.SetBox(rect, r == 0 ? 20 : 76, y0, teamX1, y1);
+                    else if (c <= MaxInnings) CompyaUiKit.SetBox(rect, innX0 + (c - 1) * w, y0, innX0 + c * w - 2, y1);
+                    else CompyaUiKit.SetBox(rect, rx[c - MaxInnings - 1], y0, rx[c - MaxInnings] - 2, y1);
+                }
+            }
+            string[] rhe = { "R", "H", "E" };
+            lineScore[0, 0].text = "구단";
+            for (int i = 1; i <= innings; i++) lineScore[0, i].text = i.ToString();
+            for (int k = 0; k < 3; k++) lineScore[0, MaxInnings + 1 + k].text = rhe[k];
+            for (int side = 0; side < 2; side++)
+            {
+                bool isHome = side == 1;
+                int r = side + 1;
+                string code = isHome ? box.HomeCode : box.AwayCode;
+                var runs = isHome ? box.HomeInningRuns : box.AwayInningRuns;
+                CompyaUiKit.SetLogo(lineLogos[side], NameAliasTable.ToTeam(code), 1f);
+                lineScore[r, 0].text = CompyaUiKit.ShortName(NameAliasTable.ToTeam(code));
+                for (int i = 1; i <= innings; i++)
+                    lineScore[r, i].text = i - 1 < runs.Count ? (runs[i - 1] < 0 ? "X" : runs[i - 1].ToString()) : "";
+                lineScore[r, MaxInnings + 1].text = (isHome ? box.HomeR : box.AwayR).ToString();
+                lineScore[r, MaxInnings + 2].text = (isHome ? box.HomeH : box.AwayH).ToString();
+                lineScore[r, MaxInnings + 3].text = (isHome ? box.HomeE : box.AwayE).ToString();
+            }
+        }
+
+        private void BindGrid()
+        {
+            if (box == null) return;
+            Highlight(tabAway, !showHome); Highlight(tabHome, showHome);
+            Highlight(tabBatting, !showPitching); Highlight(tabPitching, showPitching);
+            for (int r = 0; r < GridRows; r++) for (int c = 0; c < GridCols; c++) grid[r, c].text = "";
+
+            if (!showPitching)
+            {
+                string[] head = { "선수", "타수", "득점", "안타", "타점", "볼넷", "삼진", "타율", "홈런", "시즌타점" };
+                for (int c = 0; c < GridCols; c++) grid[0, c].text = head[c];
+                var rows = box.BattersOf(showHome);
+                int shown = Math.Min(rows.Count, GridRows - 2);
+                for (int i = 0; i < shown; i++)
+                {
+                    var b = rows[i];
+                    string[] v = { $"{b.Order}. {b.Name} {b.Position}", b.AB.ToString(), b.R.ToString(), b.H.ToString(), b.RBI.ToString(), b.BB.ToString(), b.SO.ToString(), Avg(b.SeasonAVG), b.SeasonHR.ToString(), b.SeasonRBI.ToString() };
+                    for (int c = 0; c < GridCols; c++) grid[i + 1, c].text = v[c];
+                }
+                string[] tot = { "Totals", rows.Sum(x => x.AB).ToString(), rows.Sum(x => x.R).ToString(), rows.Sum(x => x.H).ToString(), rows.Sum(x => x.RBI).ToString(), rows.Sum(x => x.BB).ToString(), rows.Sum(x => x.SO).ToString(), "", "", "" };
+                for (int c = 0; c < GridCols; c++) grid[shown + 1, c].text = tot[c];
+                footnote.text = BattingFootnote(rows, showHome ? box.AwayE : box.HomeE);
+            }
+            else
+            {
+                string[] head = { "투수", "이닝", "피안타", "실점", "자책", "볼넷", "삼진", "피홈런", "투구수", "시즌ERA" };
+                for (int c = 0; c < GridCols; c++) grid[0, c].text = head[c];
+                var rows = box.PitchersOf(showHome);
+                int shown = Math.Min(rows.Count, GridRows - 2);
+                for (int i = 0; i < shown; i++)
+                {
+                    var p = rows[i];
+                    string[] v = { $"{p.Name}{(string.IsNullOrEmpty(p.Decision) ? "" : $" ({p.Decision})")}", p.IPLabel, p.H.ToString(), p.R.ToString(), p.ER.ToString(), p.BB.ToString(), p.SO.ToString(), p.HR.ToString(), p.NP.ToString(), p.SeasonERA.ToString("0.00") };
+                    for (int c = 0; c < GridCols; c++) grid[i + 1, c].text = v[c];
+                }
+                int outs = rows.Sum(x => x.Outs);
+                string ip = outs % 3 == 0 ? $"{outs / 3}" : $"{outs / 3} {outs % 3}/3";
+                string[] tot = { "Totals", ip, rows.Sum(x => x.H).ToString(), rows.Sum(x => x.R).ToString(), rows.Sum(x => x.ER).ToString(), rows.Sum(x => x.BB).ToString(), rows.Sum(x => x.SO).ToString(), rows.Sum(x => x.HR).ToString(), rows.Sum(x => x.NP).ToString(), "" };
+                for (int c = 0; c < GridCols; c++) grid[shown + 1, c].text = tot[c];
+                footnote.text = PitchingFootnote(rows, showHome ? box.HomeE : box.AwayE);
+            }
+        }
+
+        private static string Avg(double v) => v >= 1 ? v.ToString("0.000") : v.ToString(".000");
+
+        /// <summary>타격 · 수비 주석 - 해당 기록이 있는 선수(시즌 누적). defenseErrors = 상대 수비 실책 수(이 팀이 얻은 실책 출루).</summary>
+        public static string BattingFootnote(List<BatterBoxScoreLine> rows, int opponentErrors)
+        {
+            var lines = new List<string>();
+            void Add(string label, Func<BatterBoxScoreLine, int> game, Func<BatterBoxScoreLine, int> season)
+            {
+                var who = rows.Where(r => game(r) > 0).Select(r => $"{r.Name}{(game(r) > 1 ? $" {game(r)}개" : "")}(시즌 {season(r)})").ToList();
+                if (who.Count > 0) lines.Add($"{label}: {string.Join(", ", who)}");
+            }
+            Add("2루타(2B)", r => r.Doubles, r => r.SeasonDoubles);
+            Add("3루타(3B)", r => r.Triples, r => r.SeasonTriples);
+            Add("홈런(HR)", r => r.HR, r => r.SeasonHR);
+            Add("도루(SB)", r => r.SB, r => r.SeasonSB);
+            var gidp = rows.Where(r => r.GIDP > 0).Select(r => r.Name).ToList();
+            if (gidp.Count > 0) lines.Add($"병살타(GIDP): {string.Join(", ", gidp)}");
+            if (opponentErrors > 0) lines.Add($"실책(E): 상대 수비 실책 {opponentErrors}개(실책 출루는 안타 · 타점 제외)");
+            return lines.Count == 0 ? "특이 기록 없음" : string.Join("\n", lines);
+        }
+
+        public static string PitchingFootnote(List<PitcherBoxScoreLine> rows, int ownErrors)
+        {
+            var lines = new List<string>();
+            var unearned = rows.Where(p => p.R > p.ER).Select(p => $"{p.Name} {p.R - p.ER}점").ToList();
+            if (unearned.Count > 0) lines.Add($"비자책 실점: {string.Join(", ", unearned)}(실책 이후 실점)");
+            if (ownErrors > 0) lines.Add($"수비 실책(E): {ownErrors}개");
+            var decisions = rows.Where(p => !string.IsNullOrEmpty(p.Decision))
+                .Select(p => $"{p.Name}({p.Decision} · 시즌 {p.SeasonW}승 {p.SeasonL}패 {p.SeasonSV}세 {p.SeasonHLD}홀)").ToList();
+            if (decisions.Count > 0) lines.Add($"결정: {string.Join(", ", decisions)}");
+            lines.Add("투구수(NP)는 타석 결과 기반 추정치입니다.");
+            return string.Join("\n", lines);
+        }
+
+        private static void Highlight(Button b, bool on)
+        {
+            if (b?.targetGraphic != null) b.targetGraphic.color = on ? ButtonOn : ButtonIdle;
+        }
+    }
+}

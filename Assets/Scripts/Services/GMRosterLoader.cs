@@ -87,6 +87,18 @@ namespace KBOManager.Services
             if (News.Count > MaxNews) News.RemoveRange(MaxNews, News.Count - MaxNews);
         }
 
+        // [TASK-GM-03] 내 구단 경기 박스스코어 - 고속 진행 중 · 직후에도 직전 경기 상세를 볼 수 있게 최근 10경기를 보관(최신순).
+        public const int MaxRecentBoxScores = 10;
+        public readonly List<GMMatchBoxScoreData> RecentUserBoxScores = new List<GMMatchBoxScoreData>();
+        public GMMatchBoxScoreData LastUserMatchBoxScore => RecentUserBoxScores.Count > 0 ? RecentUserBoxScores[0] : null;
+
+        public void AddBoxScore(GMMatchBoxScoreData box)
+        {
+            if (box == null) return;
+            RecentUserBoxScores.Insert(0, box);
+            if (RecentUserBoxScores.Count > MaxRecentBoxScores) RecentUserBoxScores.RemoveRange(MaxRecentBoxScores, RecentUserBoxScores.Count - MaxRecentBoxScores);
+        }
+
         public Player FindPlayer(string instanceId) => AllPlayers.FirstOrDefault(p => p.InstanceId == instanceId);
         public string TeamCodeOf(Player player) => Teams.Values.FirstOrDefault(t => t.Roster.Contains(player))?.TeamCode;
 
@@ -107,6 +119,7 @@ namespace KBOManager.Services
             GamesPlayed = 0; // [TASK-GM-02] 새 시즌 - 성적 · 기록 초기화(소식 피드는 유지)
             Records.Clear();
             Stats.Clear();
+            RecentUserBoxScores.Clear();
             foreach (var p in Teams.Values.SelectMany(t => t.Roster).Concat(FreeAgents))
             {
                 p.Age = Math.Min(Player.MaxAge, p.Age + 1);

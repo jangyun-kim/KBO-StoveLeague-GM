@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KBOManager.Core;
 using KBOManager.Managers;
 using KBOManager.Models;
@@ -22,6 +23,23 @@ namespace KBOManager.Simulation
         public string TeamCode;
         public int G, W, D, L, RunsScored, RunsAllowed, Streak; // Streak: +연승 / -연패
         public int TeamHomeRuns;
+        /// <summary>[TASK-GM-03] 최근 경기 흐름(최대 10경기, 오래된 순) - 'W' 승 · 'L' 패 · 'D' 무.</summary>
+        public string Recent = "";
+
+        public void PushRecent(char result)
+        {
+            Recent = (Recent ?? "") + result;
+            if (Recent.Length > 10) Recent = Recent.Substring(Recent.Length - 10);
+        }
+
+        /// <summary>최근 n경기 흐름 표기 "승 승 패 무 승"(오래된 → 최근).</summary>
+        public string RecentLabel(int n = 5)
+        {
+            string r = Recent ?? "";
+            if (r.Length == 0) return "-";
+            r = r.Length > n ? r.Substring(r.Length - n) : r;
+            return string.Join(" ", r.Select(c => c == 'W' ? "승" : c == 'L' ? "패" : "무"));
+        }
 
         /// <summary>KBO 승률 = 승 / (승 + 패) - 무승부 제외.</summary>
         public double Pct => W + L == 0 ? 0 : (double)W / (W + L);
@@ -252,5 +270,6 @@ namespace KBOManager.Simulation
         public List<GMTeamRecord> Records = new List<GMTeamRecord>();
         public List<GMPlayerSeasonStats> Stats = new List<GMPlayerSeasonStats>();
         public List<GMNewsItem> News = new List<GMNewsItem>();
+        public List<GMMatchBoxScoreData> RecentUserBoxScores = new List<GMMatchBoxScoreData>(); // [TASK-GM-03] 최근 10경기(최신순)
     }
 }

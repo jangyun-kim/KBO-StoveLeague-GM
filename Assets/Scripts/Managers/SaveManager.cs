@@ -531,6 +531,7 @@ namespace KBOManager.Managers
             data.Records = league.Records.Values.ToList();
             data.Stats = league.Stats.Values.ToList();
             data.News = new List<GMNewsItem>(league.News);
+            data.RecentUserBoxScores = new List<GMMatchBoxScoreData>(league.RecentUserBoxScores); // [TASK-GM-03]
             return data;
         }
 
@@ -582,6 +583,7 @@ namespace KBOManager.Managers
             foreach (var r in data.Records ?? new List<GMTeamRecord>()) if (!string.IsNullOrEmpty(r.TeamCode)) league.Records[r.TeamCode] = r;
             foreach (var s in data.Stats ?? new List<GMPlayerSeasonStats>()) if (!string.IsNullOrEmpty(s.PlayerId)) league.Stats[s.PlayerId] = s;
             league.News.AddRange(data.News ?? new List<GMNewsItem>());
+            league.RecentUserBoxScores.AddRange((data.RecentUserBoxScores ?? new List<GMMatchBoxScoreData>()).Where(b => b != null && !string.IsNullOrEmpty(b.HomeCode)));
             return league;
         }
 

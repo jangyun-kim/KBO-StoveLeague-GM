@@ -126,6 +126,8 @@ namespace KBOManager.Engine
         public MatchTactic Tactic;
         /// <summary>[TASK-KBO-180] 타석 "전"에 일어난 주자 이동(도루 성공 1→2 / 도루 실패 1→-1).</summary>
         public List<RunnerMovement> PreAtBatMovements = new List<RunnerMovement>();
+        /// <summary>[TASK-GM-03] 이 타석 결과가 수비 실책 출루인지(Result = Single로 진루 처리 · 안타 아님 · 이후 실점은 비자책).</summary>
+        public bool IsError;
     }
 
     /// <summary>
@@ -619,15 +621,17 @@ namespace KBOManager.Engine
 
             // [TASK-GM-02] 케미스트리 ①④ 실책 배수 - 수비 팀 범타가 일정 확률로 실책 출루(단타 처리)가 된다.
             var defenseChem = DefenseChemistry(pitcherForThisAtBat);
+            bool reachedOnError = false;
             if (currentTactic == MatchTactic.None && defenseChem != null && defenseChem.ErrorRateMultiplier > 1f
                 && (result == AtBatResult.Groundout || result == AtBatResult.Flyout)
                 && random.NextDouble() < GMChemistryModifiers.BaseErrorChance * (defenseChem.ErrorRateMultiplier - 1f))
             {
                 result = AtBatResult.Single;
+                reachedOnError = true;
             }
 
             // [TASK-KBO-187] 대승 스코어 감쇠 - 큰 리드 · 빅이닝 · 두 자릿수 득점 중인 공격 팀의 안타/볼넷을 일정 확률로 범타 처리(53:0 방지).
-            if (currentTactic == MatchTactic.None && IsBatterPositive(result)) // 작전(고의사구 등) 결과는 건드리지 않는다
+            if (currentTactic == MatchTactic.None && IsBatterPositive(result) && !reachedOnError) // 작전(고의사구 등) · [TASK-GM-03] 실책 출루는 건드리지 않는다
             {
                 var attack = isTopHalf ? awayState : homeState;
                 var defense = isTopHalf ? homeState : awayState;
@@ -709,6 +713,7 @@ namespace KBOManager.Engine
                 PlateAppearance = plateAppearance,
                 Tactic = ConsumeTactic(),
                 PreAtBatMovements = preAtBatMovements,
+                IsError = reachedOnError,
             };
         }
 
