@@ -1,3 +1,4 @@
+using KBOManager.Core;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -81,13 +82,22 @@ namespace KBOManager.Controllers
             if (cheerleaderTabButton != null) cheerleaderTabButton.onClick.AddListener(ShowCheerleaderSection);
             if (specialTabButton != null) specialTabButton.onClick.AddListener(ShowSpecialSection);
             if (shopTabButton != null) shopTabButton.onClick.AddListener(() => ShowShopSection(ShopSubTab.PointShop));
+
+            // [TASK-GM-01] 선수 가챠 스카우트 · 특별 영입(카드 재료 영입)이 꺼져 있으면 두 탭을 숨긴다 - 응원단 영입 · 상점 탭은 유지(치어리더 축소 금지).
+            if (!GMFeatureFlags.IsPlayerGachaEnabled)
+            {
+                if (playerTabButton != null) playerTabButton.gameObject.SetActive(false);
+                if (specialTabButton != null) specialTabButton.gameObject.SetActive(false);
+            }
         }
 
         /// <summary>화면이 켜질 때마다(UIManager.ShowScreen()의 SetActive(true)) 항상 선수 영입 탭을
         /// 기본으로 보여준다 - 이전에 어느 탭을 보고 있었는지와 무관하게 진입 지점을 고정한다.</summary>
         private void OnEnable()
         {
-            ShowPlayerSection();
+            // [TASK-GM-01] 선수 뽑기가 꺼져 있으면 응원단 영입 탭이 기본 진입점이다.
+            if (GMFeatureFlags.IsPlayerGachaEnabled) ShowPlayerSection();
+            else ShowCheerleaderSection();
         }
 
         public void ShowPlayerSection()

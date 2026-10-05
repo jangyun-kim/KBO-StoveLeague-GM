@@ -128,6 +128,12 @@ namespace KBOManager.Controllers
         /// <summary>[TASK-KBO-185] 로비 타일용 - 라인업 화면으로 이동한 뒤 세트덱 버프 선택 팝업을 연다.</summary>
         public static void OpenSetDeckBuffsFromLobby()
         {
+            // [TASK-GM-01] 세트덱이 꺼져 있으면(단장 모드) 예전 로비 타일 배선이 남아 있어도 [계약·연봉·팀워크 진단]으로 보낸다.
+            if (!KBOManager.Core.GMFeatureFlags.IsSetDeckEnabled)
+            {
+                PlayerManagementUIController.OpenGrowthHub();
+                return;
+            }
             UIManager.Instance?.ShowScreen(ScreenType.Roster);
             var roster = FindAnyObjectByType<RosterUIController>(FindObjectsInactive.Include);
             if (roster != null) roster.OpenSetDeckBuffSelection();

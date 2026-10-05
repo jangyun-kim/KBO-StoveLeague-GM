@@ -231,6 +231,9 @@ namespace KBOManager.Managers
                     "템플릿으로 폴백 등록했습니다.");
             }
 
+            // [TASK-GM-01] 실명/가상명 설정(GameSettings.UseVirtualNames)을 표시 이름에 반영한다(기본값 false = 실명 그대로).
+            NameAliasTable.ApplyDisplayNames(templates.Values, KBOManager.Core.GameSettings.UseVirtualNames);
+
             Debug.Log($"[PlayerDatabase] 카드 CSV {cardsCsvAssets.Length}개 파일 병합 파싱 완료. " +
                 $"최종 템플릿 {templates.Count}개 등록 완료 " +
                 $"(선수 {baseTemplates.Count}명 중 카드 조인 {playerIdsWithCards.Count}명 / 폴백 {fallbackCount}명).");
@@ -287,8 +290,11 @@ namespace KBOManager.Managers
                     template.TemplateId = playerId;
                     template.RealPlayerId = playerId;
                     template.PlayerName = name;
+                    template.RealName = name; // [TASK-GM-01] 실명 원본(표시 이름은 NameAliasTable이 바꾼다)
                     template.SeasonYear = year;
                     template.Team = team;
+                    template.CurrentTeam = team; // [TASK-GM-01] players.csv team_id = 현 소속
+                    template.IsActive = string.Equals(columns[12].Trim(), "TRUE", StringComparison.OrdinalIgnoreCase);
                     template.IsPitcher = isPitcher;
                     // [TASK-KBO-155] SEASON 삭제 이전에는 이 필드를 비워 둬도 C# enum 기본값(정수 0)이
                     // 곧 SEASON이라 우연히 맞았다 - 이제 0번 값에 대응하는 명명된 등급이 없으므로, 카드
@@ -503,6 +509,9 @@ namespace KBOManager.Managers
         {
             var clone = ScriptableObject.CreateInstance<PlayerTemplate>();
             clone.PlayerName = source.PlayerName;
+            clone.RealName = source.RealName;
+            clone.IsActive = source.IsActive;
+            clone.CurrentTeam = source.CurrentTeam;
             clone.SeasonYear = source.SeasonYear;
             clone.Team = source.Team;
             clone.IsPitcher = source.IsPitcher;

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Core;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -71,12 +72,34 @@ namespace KBOManager.Controllers
                 };
                 squadPanel.OnSlotCleared += role => GameManager.Instance?.UnequipCheerleader(role);
             }
-            if (closeButton != null) closeButton.onClick.AddListener(() => UIManager.Instance?.ShowScreen(ScreenType.Lobby));
+            // [TASK-GM-01] 닫기 동선 보장 - 직렬화 참조가 끊겨도 자식의 닫기/뒤로 버튼을 찾아 로비로 돌아간다.
+            if (closeButton == null) closeButton = FindCloseButton(transform);
+            if (closeButton != null) closeButton.onClick.AddListener(Close);
             if (filterAllButton != null) filterAllButton.onClick.AddListener(() => { tierFilter = null; teamFilter = Team.None; RefreshInventory(); });
             if (filterTeamButton != null) filterTeamButton.onClick.AddListener(CycleTeamFilter);
             if (filterLiveButton != null) filterLiveButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.LIVE_NORMAL));
             if (filterIconButton != null) filterIconButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.ICON));
             if (filterLegendButton != null) filterLegendButton.onClick.AddListener(() => ToggleTier(CheerleaderGrade.LEGEND));
+        }
+
+        /// <summary>[TASK-GM-01] 닫기([X]) 버튼 - 로비로 돌아간다.</summary>
+        public Button CloseButton => closeButton;
+
+        public void Close() => UIManager.Instance?.ShowScreen(ScreenType.Lobby);
+
+        /// <summary>[TASK-GM-01] 이름이 Close/Back이거나 라벨이 X · 닫기 · 뒤로인 첫 버튼.</summary>
+        public static Button FindCloseButton(Transform root)
+        {
+            if (root == null) return null;
+            foreach (var button in root.GetComponentsInChildren<Button>(true))
+            {
+                string n = button.name;
+                if (n.IndexOf("Close", System.StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("Back", System.StringComparison.OrdinalIgnoreCase) >= 0) return button;
+                var label = button.GetComponentInChildren<Text>(true);
+                string t = label != null ? label.text.Trim() : string.Empty;
+                if (t == "X" || t == "✕" || t.Contains("닫기") || t.Contains("뒤로")) return button;
+            }
+            return null;
         }
 
         private void OnEnable()
@@ -198,7 +221,10 @@ namespace KBOManager.Controllers
                 {
                     int filled = CheerSquad.Filled(gm.CheerSquadSlots).Count();
                     int active = CheerSquad.Filled(gm.CheerSquadSlots).Count(c => CheerleaderSynergy.IsActive(c, deck));
-                    equippedSummaryText.text = $"편성 {filled}/6 · 시너지 발동 {active}명 (세트덱 {deck}) · 배치 대상: {(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}" +
+                    // [TASK-GM-01] 경기 엔트리 4~6명 규칙 표기(6인 역할 슬롯 중 채운 인원 = 엔트리).
+                    string entryNote = GMCheerleaderRules.IsValidEntryCount(filled) ? "" : $" · {GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MIN}명 이상 편성 필요";
+                    equippedSummaryText.text = $"엔트리 {filled}/{GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MAX}명 ({GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MIN}~{GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MAX}명){entryNote} · " +
+                        $"시너지 발동 {active}명 (기준 구단 {deck}) · 배치 대상: {(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}" +
                         (string.IsNullOrEmpty(statusMessage) ? "" : $"\n{statusMessage}");
                 }
                 return;

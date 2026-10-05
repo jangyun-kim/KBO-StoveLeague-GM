@@ -1,0 +1,353 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using KBOManager.Core;
+using KBOManager.Data;
+using KBOManager.Managers;
+using KBOManager.Models;
+using UnityEngine;
+
+namespace KBOManager.Services
+{
+    /// <summary>[TASK-GM-01] 한 구단의 단장 모드 상태(28인 로스터 · 재정 · 치어리더 풀/엔트리 · 스토리 플래그).</summary>
+    public class GMTeamState
+    {
+        public string TeamCode;
+        public Team Team;
+        public string DisplayName;
+        public bool IsUserTeam;
+
+        public readonly List<Player> Roster = new List<Player>();
+        public IEnumerable<Player> Batters => Roster.Where(p => !p.IsPitcher);
+        public IEnumerable<Player> Pitchers => Roster.Where(p => p.IsPitcher);
+
+        // 재정(단위: 만 원)
+        public long Budget;
+        public int PayrollCap;
+        public int Payroll => Roster.Sum(p => p.Salary);
+
+        // 치어리더 - 구단 풀 최대 15명, 경기 엔트리 4~6명(기본 5명)
+        public readonly List<Cheerleader> CheerleaderPool = new List<Cheerleader>();
+        public int CheerEntrySize = GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT;
+        public IEnumerable<Cheerleader> CheerEntry => CheerleaderPool.Take(CheerEntrySize);
+        public int CheerLeadershipBuff => GMCheerleaderRules.LeadershipBuff(CheerEntry);
+
+        // 스토리 캠페인 「꼴찌 구단의 겨울」
+        public int ConsecutiveLastPlaceSeasons;
+        public bool OwnerPostseasonPressure;
+        public string TradeRequestPlayerId; // 트레이드를 요구한 선수(RealPlayerId)
+    }
+
+    /// <summary>[TASK-GM-01] 단장 모드 리그 전체 상태 + 시즌 연도 상태 머신(시상식 종료 → 다음 해 스토브리그).</summary>
+    public class GMLeagueState
+    {
+        public GMStartMode Mode;
+        public int SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR;
+        public GMSeasonPhase Phase = GMSeasonPhase.StoveLeague;
+        public string SelectedTeamCode;
+        public bool UseVirtualNames;
+        public readonly Dictionary<string, GMTeamState> Teams = new Dictionary<string, GMTeamState>();
+        public readonly List<Player> FreeAgents = new List<Player>();
+
+        public GMTeamState UserTeam => SelectedTeamCode != null && Teams.TryGetValue(SelectedTeamCode, out var t) ? t : null;
+
+        /// <summary>
+        /// 다음 단계로 진행한다: 스토브리그 → 정규시즌 → 포스트시즌 → 시상식 → (해 넘김) 다음 해 스토브리그.
+        /// 해가 넘어갈 때 전원 나이 +1, 잔여 계약 -1(0 하한), 부상 일수 초기화. 반환값 = 해가 넘어갔는지.
+        /// </summary>
+        public bool AdvancePhase()
+        {
+            if (Phase != GMSeasonPhase.AwardsCeremony)
+            {
+                Phase = (GMSeasonPhase)((int)Phase + 1);
+                return false;
+            }
+
+            SeasonYear++;
+            Phase = GMSeasonPhase.StoveLeague;
+            foreach (var p in Teams.Values.SelectMany(t => t.Roster).Concat(FreeAgents))
+            {
+                p.Age = Math.Min(Player.MaxAge, p.Age + 1);
+                p.ContractYears = Math.Max(0, p.ContractYears - 1);
+                p.InjuryRemainingDays = 0;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// [TASK-GM-01] 3대 시작 모드 로스터 로더. 10개 구단 28인(타자 15 · 투수 13) 로스터와 구단 재정, 치어리더 풀을 초기화한다.
+    ///   - RealCurrent2026: 현역(players.csv active) 선수를 현 소속(team_id) 기준으로 배치, 2026 스토브리그 시작.
+    ///   - AllTimeDream: 1986~2026 카드(발급 구단 = 그 시즌 계보)에서 선수별 최고 시즌을 골라 구단 계보별 드림 로스터 + FA 시장.
+    ///   - StoryCampaign: 현역 로스터 + 선택 구단을 4년 연속 최하위 위기(예산 20% 삭감, Ego 5 35세 노장 4번 타자 트레이드 요구, 구단주 압박)로.
+    /// 구단 후보가 모자라면 아직 배정되지 않은 다른 선수로 채워 28인을 보장한다(같은 선수가 두 구단에 들어가지 않는다).
+    /// </summary>
+    public static class GMRosterLoader
+    {
+        public const int BatterCount = 15;
+        public const int PitcherCount = 13;
+        public const int StartingPitcherCount = 5;
+        public const int FreeAgentMarketSize = 30;
+        // KBO 샐러리캡(상위 40인 기준 137억 원대)을 28인 기준 가정값으로 둔다 - 단위 만 원.
+        public const int DefaultPayrollCap = 1370000;
+        public const int BudgetToCapPercent = 130;  // 운영 예산 = 샐러리캡의 130%
+        public const int StoryBudgetPercent = 80;   // 스토리 캠페인 예산 20% 삭감
+        public const int StoryVeteranAge = 35;
+
+        private static readonly BatterPosition[] StarterPositions =
+        {
+            BatterPosition.Catcher, BatterPosition.FirstBase, BatterPosition.SecondBase, BatterPosition.ThirdBase, BatterPosition.ShortStop,
+            BatterPosition.LeftField, BatterPosition.CenterField, BatterPosition.RightField, BatterPosition.DesignatedHitter,
+        };
+
+        /// <summary>지시서 시그니처 - 씬의 PlayerDatabase와 치어리더 카탈로그를 쓴다.</summary>
+        public static GMLeagueState LoadModeRoster(GMStartMode mode, string selectedTeamCode, bool useVirtualNames)
+        {
+            var db = PlayerDatabase.Instance != null ? PlayerDatabase.Instance : UnityEngine.Object.FindAnyObjectByType<PlayerDatabase>(FindObjectsInactive.Include);
+            if (db == null)
+            {
+                Debug.LogError("[GMRosterLoader] PlayerDatabase가 없어 로스터를 만들 수 없습니다.");
+                return null;
+            }
+            return LoadModeRoster(mode, selectedTeamCode, useVirtualNames, db.AllTemplates, AllCheerleaderTemplates());
+        }
+
+        /// <summary>테스트/툴용 - 템플릿과 치어리더 카탈로그를 직접 넘긴다.</summary>
+        public static GMLeagueState LoadModeRoster(GMStartMode mode, string selectedTeamCode, bool useVirtualNames,
+            IReadOnlyList<PlayerTemplate> templates, IReadOnlyList<Cheerleader> cheerCatalog)
+        {
+            string userCode = NameAliasTable.ResolveCanonicalTeamCode(selectedTeamCode) ?? NameAliasTable.SAM;
+            NameAliasTable.ApplyDisplayNames(templates, useVirtualNames);
+
+            var state = new GMLeagueState
+            {
+                Mode = mode,
+                SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR,
+                Phase = GMSeasonPhase.StoveLeague,
+                SelectedTeamCode = userCode,
+                UseVirtualNames = useVirtualNames,
+            };
+
+            var all = (templates ?? Array.Empty<PlayerTemplate>()).Where(t => t != null && !string.IsNullOrEmpty(t.RealPlayerId)).ToList();
+            var byPerson = all.GroupBy(t => t.RealPlayerId).ToDictionary(g => g.Key, g => g.ToList());
+            var debutYear = byPerson.ToDictionary(p => p.Key, p => p.Value.Min(t => t.SeasonYear));
+            var awards = byPerson.ToDictionary(p => p.Key, p => AwardsOf(p.Value));
+
+            // 모드별 후보: 구단 코드 → (대표 템플릿, 평가 점수, 기준 시즌 연도)
+            var candidates = mode == GMStartMode.AllTimeDream ? DreamCandidates(byPerson) : CurrentCandidates(byPerson);
+            var used = new HashSet<string>();
+
+            foreach (var code in NameAliasTable.CanonicalTeamCodes)
+            {
+                var team = new GMTeamState
+                {
+                    TeamCode = code,
+                    Team = NameAliasTable.ToTeam(code),
+                    DisplayName = NameAliasTable.DisplayTeamName(code),
+                    IsUserTeam = code == userCode,
+                    PayrollCap = DefaultPayrollCap,
+                };
+                team.Budget = (long)team.PayrollCap * BudgetToCapPercent / 100;
+
+                var picks = PickRoster(candidates.TryGetValue(code, out var list) ? list : new List<Candidate>(), candidates.Values.SelectMany(c => c), used);
+                foreach (var c in picks)
+                {
+                    var player = new Player(Guid.NewGuid().ToString(), c.Template);
+                    player.CareerAwardIds = new List<string>(awards[c.Template.RealPlayerId]);
+                    player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
+                    team.Roster.Add(player);
+                }
+                // 알파독 판정은 "팀 내 최상위 OVR"이 정해진 뒤 다시 한 번 한다(상위 3인).
+                foreach (var top in team.Roster.OrderByDescending(p => p.BaseOverall).Take(3).ToList())
+                {
+                    var c = picks.First(x => x.Template == top.Template);
+                    top.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[top.Template.RealPlayerId], isTeamTopOverall: true);
+                }
+                if (!team.IsUserTeam) AppointCaptain(team); // AI 구단은 자동 주장 · 유저 구단은 단장이 임명한다
+
+                LoadCheerleaderPool(team, cheerCatalog, mode == GMStartMode.AllTimeDream ? 0 : state.SeasonYear, useVirtualNames);
+                state.Teams[code] = team;
+            }
+
+            BuildFreeAgentMarket(state, candidates, used, debutYear, awards);
+            if (mode == GMStartMode.StoryCampaign) ApplyStoryCampaign(state.UserTeam);
+            return state;
+        }
+
+        // ================================================================== 후보
+
+        private sealed class Candidate
+        {
+            public PlayerTemplate Template;
+            public int Score;
+            public int SeasonYear;
+        }
+
+        /// <summary>현역(active) 선수 - 현 소속(CurrentTeam) 기준, 선수당 최신 시즌 템플릿 1장. 현역이 모자란 구단은 은퇴 선수가 뒤를 채운다.</summary>
+        private static Dictionary<string, List<Candidate>> CurrentCandidates(Dictionary<string, List<PlayerTemplate>> byPerson)
+        {
+            var result = NameAliasTable.CanonicalTeamCodes.ToDictionary(c => c, c => new List<Candidate>());
+            foreach (var person in byPerson.Values)
+            {
+                var latest = person.OrderByDescending(t => t.SeasonYear).ThenByDescending(t => (int)t.Grade).First();
+                var home = person.Select(t => t.CurrentTeam).FirstOrDefault(t => t != Team.None);
+                if (home == Team.None) home = latest.Team;
+                string code = NameAliasTable.ToCode(home);
+                if (code == null) continue;
+                bool active = person.Any(t => t.IsActive);
+                // 현역을 먼저 뽑도록 은퇴 선수 점수를 크게 낮춘다(모자랄 때만 채움용으로 쓰인다).
+                result[code].Add(new Candidate { Template = latest, Score = latest.GetBaseOverall() - (active ? 0 : 1000), SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR });
+            }
+            return result;
+        }
+
+        /// <summary>올타임 드림 - 선수별 최고 시즌(등급 → 연도 순) 카드를 그 시즌 발급 구단 계보에 넣는다. 점수 = OVR + 등급 가중.</summary>
+        private static Dictionary<string, List<Candidate>> DreamCandidates(Dictionary<string, List<PlayerTemplate>> byPerson)
+        {
+            var result = NameAliasTable.CanonicalTeamCodes.ToDictionary(c => c, c => new List<Candidate>());
+            foreach (var person in byPerson.Values)
+            {
+                var best = person.OrderByDescending(t => (int)t.Grade).ThenByDescending(t => t.SeasonYear).First();
+                string code = NameAliasTable.ToCode(best.Team != Team.None ? best.Team : best.CurrentTeam);
+                if (code == null) continue;
+                result[code].Add(new Candidate { Template = best, Score = best.GetBaseOverall() + (int)best.Grade * 3, SeasonYear = best.SeasonYear });
+            }
+            return result;
+        }
+
+        /// <summary>9개 수비 위치 주전 → 벤치 6 → 선발 5 → 불펜 8. 구단 후보가 모자라면 전체 미배정 후보로 채운다.</summary>
+        private static List<Candidate> PickRoster(List<Candidate> own, IEnumerable<Candidate> global, HashSet<string> used)
+        {
+            var picks = new List<Candidate>();
+            var ownSorted = own.OrderByDescending(c => c.Score).ToList();
+            List<Candidate> globalSorted = null;
+
+            Candidate Take(Func<Candidate, bool> filter)
+            {
+                var c = ownSorted.FirstOrDefault(x => !used.Contains(x.Template.RealPlayerId) && filter(x));
+                if (c == null)
+                {
+                    if (globalSorted == null) globalSorted = global.OrderByDescending(x => x.Score).ToList();
+                    c = globalSorted.FirstOrDefault(x => !used.Contains(x.Template.RealPlayerId) && filter(x));
+                }
+                if (c != null) { used.Add(c.Template.RealPlayerId); picks.Add(c); }
+                return c;
+            }
+
+            foreach (var pos in StarterPositions)
+            {
+                if (Take(c => !c.Template.IsPitcher && c.Template.BatterPosition == pos) == null) Take(c => !c.Template.IsPitcher);
+            }
+            while (picks.Count(c => !c.Template.IsPitcher) < BatterCount && Take(c => !c.Template.IsPitcher) != null) { }
+
+            for (int i = 0; i < StartingPitcherCount; i++)
+            {
+                if (Take(c => c.Template.IsPitcher && c.Template.PitcherRole == PitcherRole.StartingPitcher) == null) Take(c => c.Template.IsPitcher);
+            }
+            if (Take(c => c.Template.IsPitcher && c.Template.PitcherRole == PitcherRole.Closer) == null) Take(c => c.Template.IsPitcher);
+            while (picks.Count(c => c.Template.IsPitcher) < PitcherCount)
+            {
+                if (Take(c => c.Template.IsPitcher && c.Template.PitcherRole != PitcherRole.StartingPitcher) == null && Take(c => c.Template.IsPitcher) == null) break;
+            }
+            return picks;
+        }
+
+        /// <summary>카드 등급에서 수상 이력 태그를 만든다(타이틀 홀더 · 골든글러브 · 왕조 = 한국시리즈 우승).</summary>
+        private static List<string> AwardsOf(List<PlayerTemplate> person)
+        {
+            var tags = new List<string>();
+            foreach (var t in person.OrderBy(t => t.SeasonYear))
+            {
+                switch (t.Grade)
+                {
+                    case Grade.TITLE_HOLDER: tags.Add($"TITLE_HOLDER_{t.SeasonYear}"); break;
+                    case Grade.GOLDEN_GLOVE: tags.Add($"GOLDEN_GLOVE_{t.SeasonYear}"); break;
+                    case Grade.DYNASTY: tags.Add($"KS_CHAMPION_{t.SeasonYear}"); break;
+                }
+            }
+            return tags.Distinct().ToList();
+        }
+
+        private static void AppointCaptain(GMTeamState team)
+        {
+            var captain = team.Roster.Where(p => p.RoleArchetype == LockerRoomRole.DugoutLeader).OrderByDescending(p => p.Age).FirstOrDefault()
+                          ?? team.Roster.Where(p => !p.IsPitcher).OrderByDescending(p => p.Age).FirstOrDefault();
+            if (captain != null) captain.IsCaptain = true;
+        }
+
+        private static void BuildFreeAgentMarket(GMLeagueState state, Dictionary<string, List<Candidate>> candidates, HashSet<string> used,
+            Dictionary<string, int> debutYear, Dictionary<string, List<string>> awards)
+        {
+            var pool = candidates.Values.SelectMany(c => c).Where(c => !used.Contains(c.Template.RealPlayerId) && c.Score > 0)
+                .OrderByDescending(c => c.Score).Take(FreeAgentMarketSize);
+            foreach (var c in pool)
+            {
+                var player = new Player(Guid.NewGuid().ToString(), c.Template);
+                player.CareerAwardIds = new List<string>(awards[c.Template.RealPlayerId]);
+                player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
+                player.ContractYears = 0; // FA = 계약 만료
+                state.FreeAgents.Add(player);
+            }
+        }
+
+        /// <summary>「꼴찌 구단의 겨울」 - 4년 연속 최하위 · 예산 20% 삭감 · 35세 Ego 5 노장 4번 타자 트레이드 요구 · 구단주 포스트시즌 압박.</summary>
+        private static void ApplyStoryCampaign(GMTeamState team)
+        {
+            if (team == null) return;
+            team.ConsecutiveLastPlaceSeasons = 4;
+            team.OwnerPostseasonPressure = true;
+            team.Budget = team.Budget * StoryBudgetPercent / 100;
+
+            var cleanup = team.Batters.OrderByDescending(p => p.Template.BatterStats.Power).ThenByDescending(p => p.BaseOverall).FirstOrDefault();
+            if (cleanup == null) return;
+            cleanup.Age = StoryVeteranAge;
+            cleanup.EgoLevel = 5;
+            cleanup.RoleArchetype = LockerRoomRole.AlphaDog;
+            cleanup.PersonalMorale = Math.Min(cleanup.PersonalMorale, 35);
+            team.TradeRequestPlayerId = cleanup.Template.RealPlayerId;
+        }
+
+        // ================================================================== 치어리더
+
+        /// <summary>카탈로그 전 등급 원본(중복 인물 포함).</summary>
+        public static List<Cheerleader> AllCheerleaderTemplates()
+        {
+            var list = new List<Cheerleader>();
+            foreach (CheerleaderGrade grade in Enum.GetValues(typeof(CheerleaderGrade))) list.AddRange(CheerleaderCatalog.GetCheerleadersByGrade(grade));
+            return list;
+        }
+
+        /// <summary>
+        /// 구단 소속 치어리더를 인물 단위(동명 = 같은 사람)로 최대 15명 뽑는다 - 그 시즌 활동 중인 카드 우선, 같은 사람이면 높은 등급.
+        /// seasonYear가 0이면(올타임 드림) 활동 시기를 가리지 않는다. 엔트리는 앞 5명(기본, 4~6명 가변).
+        /// </summary>
+        public static void LoadCheerleaderPool(GMTeamState team, IReadOnlyList<Cheerleader> catalog, int seasonYear, bool useVirtualNames)
+        {
+            team.CheerleaderPool.Clear();
+            if (catalog == null) return;
+            var people = catalog.Where(c => c != null && c.Team == team.Team && !string.IsNullOrEmpty(c.Name))
+                .GroupBy(c => c.Name.Trim())
+                .Select(g => g.OrderByDescending(c => seasonYear > 0 && CheerleaderActivePeriod.Contains(c.ActivePeriod, seasonYear))
+                              .ThenByDescending(c => (int)c.Grade).First())
+                .OrderByDescending(c => seasonYear > 0 && CheerleaderActivePeriod.Contains(c.ActivePeriod, seasonYear))
+                .ThenByDescending(c => (int)c.Grade).ThenBy(c => c.Name)
+                .Take(GMFeatureFlags.CHEERLEADER_TEAM_ROSTER_MAX);
+
+            foreach (var t in people)
+            {
+                team.CheerleaderPool.Add(new Cheerleader(
+                    instanceId: Guid.NewGuid().ToString(),
+                    name: NameAliasTable.GetDisplayCheerleaderName(t.Name, useVirtualNames),
+                    grade: t.Grade,
+                    conditionBuff: t.ConditionBuff,
+                    clutchMultiplier: t.ClutchMultiplier,
+                    economicBonusRate: t.EconomicBonusRate,
+                    sentimentDefense: t.SentimentDefense,
+                    catalogId: t.CatalogId,
+                    team: t.Team,
+                    activePeriod: t.ActivePeriod));
+            }
+            team.CheerEntrySize = GMCheerleaderRules.ClampEntrySize(Math.Min(GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT, team.CheerleaderPool.Count));
+        }
+    }
+}

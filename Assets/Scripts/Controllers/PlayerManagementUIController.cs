@@ -1,3 +1,4 @@
+using KBOManager.Core;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -69,6 +70,10 @@ namespace KBOManager.Controllers
         [Tooltip("하단 [선수 관리] 탭이 곧바로 여는 성장 전용 허브(강화/각성/한계 돌파/훈련·특훈 + 대상 변경 + 재료 선택).")]
         [SerializeField] private GrowthCenterView growthCenter;
 
+        [Header("TASK-GM-01 - 단장 모드")]
+        [Tooltip("카드 성장(강화 · 각성 · 초월)이 GMFeatureFlags로 꺼져 있으면 성장 센터 대신 여는 [계약·연봉·팀워크 진단] 화면. 비우면 같은 오브젝트에서 찾거나 붙인다.")]
+        [SerializeField] private GMDiagnosticView diagnosticView;
+
         private Player currentPlayer;
 
         /// <summary>SkillRerollManager에 F등급 확정 대기가 걸려 있는 선수. InventoryUIController.
@@ -86,6 +91,25 @@ namespace KBOManager.Controllers
             if (materialSelect != null) materialSelect.OnActionCompleted += RefreshTarget;
             if (cardClickButton != null) cardClickButton.onClick.AddListener(OnClickCardPortrait);
             if (closeButton != null) closeButton.onClick.AddListener(Close);
+            HideDisabledGrowthMenus();
+        }
+
+        /// <summary>[TASK-GM-01] GMFeatureFlags로 꺼진 카드 성장 타일([강화] · [각성] · [한계 돌파] · [훈련] · [스킬 변경])을 숨긴다.</summary>
+        private void HideDisabledGrowthMenus()
+        {
+            if (GMFeatureFlags.IsCardGrowthEnabled) return;
+            foreach (var button in new[] { trainButton, enhanceButton, breakthroughButton, skillChangeButton, awakenButton })
+                if (button != null) button.gameObject.SetActive(false);
+        }
+
+        /// <summary>[TASK-GM-01] 진단 화면(없으면 이 패널에 붙인다).</summary>
+        public GMDiagnosticView DiagnosticView
+        {
+            get
+            {
+                if (diagnosticView == null && !TryGetComponent(out diagnosticView)) diagnosticView = gameObject.AddComponent<GMDiagnosticView>();
+                return diagnosticView;
+            }
         }
 
         private void OnEnable()
@@ -147,6 +171,14 @@ namespace KBOManager.Controllers
         public void Show(Player player)
         {
             var gm = GameManager.Instance;
+            // [TASK-GM-01] 단장 모드 - 카드 성장이 꺼져 있으면 성장 센터 대신 [계약·연봉·팀워크 진단]을 연다.
+            if (!GMFeatureFlags.IsCardGrowthEnabled)
+            {
+                var from = UIManager.Instance != null ? UIManager.Instance.CurrentScreen : ScreenType.Lobby;
+                UIManager.Instance?.ShowScreen(ScreenType.PlayerManagementHub);
+                DiagnosticView.Open(from);
+                return;
+            }
             if (player?.Template == null) player = GrowthCenterRules.DefaultTarget(gm?.Roster, gm?.Inventory);
             if (growthCenter == null) growthCenter = GetComponent<GrowthCenterView>();
             if (growthCenter != null)

@@ -16,6 +16,11 @@ namespace KBOManager.Data
                                             // -> 각성 재료 판정("같은 등급의 다른 종류 동일 선수카드")에 사용
         public string PlayerName;          // 카드 표기 이름
         public int SeasonYear;             // 기준 시즌 연도 (타이틀 홀더/골든글러브/시그니처/왕조 등에서 사용)
+        // [TASK-GM-01] 실명 원본(PlayerName은 GameSettings.UseVirtualNames에 따라 실명/가상명 표시값으로 바뀐다 - NameAliasTable).
+        public string RealName;
+        // [TASK-GM-01] players.csv active 컬럼(현역 여부)과 team_id(현 소속). 카드 템플릿의 Team은 "카드 발급 구단"이라 별도로 둔다.
+        public bool IsActive;
+        public Team CurrentTeam;
 
         [Header("Team & Grade")]
         public Team Team;

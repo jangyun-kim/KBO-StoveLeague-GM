@@ -85,7 +85,10 @@ namespace KBOManager.EditorTools
         /// <remarks>
         /// [TASK-KBO-189] 메뉴 이름을 TASK-168~189로 갱신. 마지막 단계로 SetupTask189.ApplyAll()을 실행한다 - 스카우트 허브 [상점 · 교환소] 섹션 + 4번째 탭.
         /// </remarks>
-        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~193)")]
+        /// <remarks>
+        /// [TASK-GM-01] 마지막 단계로 SetupTaskGM01.ApplyAll()을 실행한다 - 『스토브리그: 단장의 시간』 전환(로비 타일 · 진단 화면 · 치어리더 동선).
+        /// </remarks>
+        [MenuItem("KBO Manager/Setup/Apply Latest UI (TASK-168~193 + GM-01)")]
         public static void ApplyLatestUI()
         {
             if (UnityEngine.Object.FindAnyObjectByType<ScoutUIController>(FindObjectsInactive.Include) == null ||
@@ -117,7 +120,8 @@ namespace KBOManager.EditorTools
             SetupTask191.ApplyAll(); // [TASK-KBO-191] 전 화면 텍스트 정리(Bold 해제 · 계층 크기 · 자간) - 다른 Setup이 만든 글씨까지 덮도록 마지막
             SetupTask192.ApplyAll(); // [TASK-KBO-192] 일반 UI 글씨 복원(16~30pt · Best Fit 최소 15) · TASK-191 크기 1회 이전 집계
             SetupTask193.ApplyAll(); // [TASK-KBO-193] 스카우트 탭 명도 대비 · 섹션 텍스트 상한 · 스토브리그 · 리그 기록실
-            Debug.Log("[SetupMasterBinding] TASK-168~193 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTaskGM01.ApplyAll(); // [TASK-GM-01] 단장 모드 전환 - 로비 타일 · 계약·연봉·팀워크 진단 · 치어리더 관리 동선 점검
+            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

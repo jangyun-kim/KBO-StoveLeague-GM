@@ -189,6 +189,7 @@ namespace KBOManager.EditorTests
         }
 
         [Test]
+        [Ignore("TASK-GM-01: 세트덱(200P) 비활성화 - 로비 [세트덱 & 버프 선택] 타일은 [계약·연봉·팀워크 진단]으로 교체됐다(GM01VerificationRunner가 검증).")]
         public void LobbySetDeckTile_OpensBuffPopup()
         {
             OpenScene();

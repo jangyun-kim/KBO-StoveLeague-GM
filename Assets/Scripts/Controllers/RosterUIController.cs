@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Core;
 using KBOManager.Managers;
 using KBOManager.Models;
 using KBOManager.UI;
@@ -136,6 +137,8 @@ namespace KBOManager.Controllers
             if (batterTabButton != null) batterTabButton.onClick.AddListener(() => ShowTab(false));
             if (pitcherTabButton != null) pitcherTabButton.onClick.AddListener(() => ShowTab(true));
             AwakeCompya();
+            // [TASK-GM-01] 세트덱(200P)이 GMFeatureFlags로 꺼져 있으면 라인업 하단 [세트덱 버프 선택] 버튼을 숨긴다.
+            if (!GMFeatureFlags.IsSetDeckEnabled && setDeckOptionButton != null) setDeckOptionButton.gameObject.SetActive(false);
         }
 
         /// <summary>[TASK-KBO-181] [타자 라인업 (15인)] / [투수 로스터 (13인)] 탭 전환.</summary>

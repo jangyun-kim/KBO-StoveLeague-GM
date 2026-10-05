@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using KBOManager.Core;
 using KBOManager.Data;
 using UnityEngine;
 
@@ -276,11 +278,160 @@ namespace KBOManager.Models
         private static float AverageOf(BatterStats stats) => (stats.Power + stats.Contact + stats.Discipline) / 3f;
         private static float AverageOf(PitcherStats stats) => (stats.Stuff + stats.Velocity + stats.Movement + stats.Control) / 4f;
 
-        // [TASK-KBO-173, Salary ↔ 세트덱 스코어 일원화] 구 GDD v4.0 샐러리 코스트(GradeBaseCostFor + (최종 OVR - 60)
-        // + 각성 * 1.5)와 CalculateSalaryCost()를 삭제했다. 카드의 "Salary"는 이제 곧 개인 세트덱 스코어다:
-        // Salary(명함 기준, cards_*.csv salary_cost와 동일) = CardGrowthRules.BaseSetDeckScore(),
-        // 현재 기여값 = SetDeckScore(각성/초월 반영). 최상위 카드 도배 방지는 샐러리 캡 대신 역전 스코어
-        // (종결 카드일수록 낮음) + 27인 세트덱 편성 규칙(RosterManager, SetDeckEvaluator)이 맡는다.
-        public int Salary => Template != null ? CardGrowthRules.BaseSetDeckScore(Template.Grade) : 0;
+        // ================================================================== [TASK-GM-01] 단장(GM) 시뮬레이션 속성
+        // 구 카드 Salary(= 개인 세트덱 스코어, TASK-KBO-173)는 참조처가 없어 GM 연봉(만 원)으로 대체했다 - 세트덱 스코어는 SetDeckScore를 쓴다.
+
+        public const int MinAge = 19, MaxAge = 42;
+        public const int MinSalary = 3000;      // 최저연봉 3,000만 원
+        public const int MaxSalary = 200000;    // 20억 원
+        public const int MaxContractYears = 5;
+        public const int DefaultPersonalMorale = 70;
+
+        public int Age;                         // 나이(시즌 연도 기준, 19~42세)
+        public int Salary;                      // 연봉(단위: 만 원. 3000 = 3,000만 원, 150000 = 15억 원)
+        public int ContractYears;               // 잔여 계약 기간 0~5년(0이면 스토브리그 재계약/FA 대상)
+        public int EgoLevel = 1;                // 자존심 1~5단계
+        public LockerRoomRole RoleArchetype = LockerRoomRole.UnsungHero; // 5대 라커룸 성향
+        public int PersonalMorale = DefaultPersonalMorale; // 개인 만족도 0~100
+        public bool IsCaptain;                  // 주장 임명 여부
+        public bool HasRoleConcessionBonus;     // 보직 양보 인센티브 수령 여부
+        public bool IsScouted;                  // 타 구단/FA 선수 스카우팅 완료 여부
+        public int InjuryRemainingDays;         // 부상 결장 잔여 일수(0이면 정상 출전)
+        public List<string> CareerAwardIds = new List<string>(); // 누적 · 인시즌 수상 이력 태그(예: "GOLDEN_GLOVE_2024")
+
+        public bool IsPitcher => Template != null && Template.IsPitcher;
+
+        /// <summary>포지션 약칭 코드(C/1B/2B/3B/SS/LF/CF/RF/DH, 투수는 SP/CP/RP/MR/LR). TeamChemistryEngine 센터라인 판정용.</summary>
+        public string Position
+        {
+            get
+            {
+                if (Template == null) return string.Empty;
+                if (Template.IsPitcher)
+                {
+                    switch (Template.PitcherRole)
+                    {
+                        case PitcherRole.StartingPitcher: return "SP";
+                        case PitcherRole.Closer: return "CP";
+                        case PitcherRole.LongReliever: return "LR";
+                        case PitcherRole.MopUpReliever: return "MR";
+                        default: return "RP";
+                    }
+                }
+                switch (Template.BatterPosition)
+                {
+                    case BatterPosition.Catcher: return "C";
+                    case BatterPosition.FirstBase: return "1B";
+                    case BatterPosition.SecondBase: return "2B";
+                    case BatterPosition.ThirdBase: return "3B";
+                    case BatterPosition.ShortStop: return "SS";
+                    case BatterPosition.LeftField: return "LF";
+                    case BatterPosition.CenterField: return "CF";
+                    case BatterPosition.RightField: return "RF";
+                    default: return "DH";
+                }
+            }
+        }
+
+        /// <summary>수비 스탯(타자 BatterStats.Defense, 투수는 0).</summary>
+        public int DefenseStat => Template != null && !Template.IsPitcher ? Template.BatterStats.Defense : 0;
+
+        /// <summary>순수 시즌 성적 기반 OVR(카드 성장 · 세트덱 · 컨디션 제외 = PlayerTemplate.GetBaseOverall()).</summary>
+        public int BaseOverall => BaseOvr;
+
+        public bool HasMajorAward => CareerAwardIds != null && CareerAwardIds.Any(IsMajorAward);
+
+        /// <summary>MVP · 골든글러브 · 타이틀 홀더 계열 태그(자존심 5 판정 기준).</summary>
+        public static bool IsMajorAward(string awardId) => !string.IsNullOrEmpty(awardId) &&
+            (awardId.StartsWith("MVP", StringComparison.Ordinal) || awardId.StartsWith("GOLDEN_GLOVE", StringComparison.Ordinal) ||
+             awardId.StartsWith("TITLE_HOLDER", StringComparison.Ordinal));
+
+        /// <summary>
+        /// 단장 모드 실효 OVR. GMFeatureFlags로 카드 성장(강화 · 각성 · 초월)이 꺼져 있으면 순수 BaseOverall만 쓰고,
+        /// 켜져 있을 때만 구 4대 성장치를 더한다. 세트덱 보너스는 어느 경우에도 포함하지 않는다.
+        /// </summary>
+        public int GetEffectiveOverall() => GMFeatureFlags.IsCardGrowthEnabled ? CalculateNeutralOVR() : BaseOverall;
+
+        /// <summary>
+        /// 시즌 성적(BaseOverall) · 수상 경력 · 나이로 자존심 · 라커룸 성향 · 연봉 · 계약 기간을 자동 산출한다.
+        /// debutYear(첫 시즌 연도)가 있으면 나이를 "21세 + 경력 연수"로 추정한다(생년 데이터 없음 - 19~42세로 자른다).
+        /// isTeamTopOverall은 로스터 로더가 "팀 내 최상위 OVR"일 때 넘긴다(알파독 판정).
+        /// </summary>
+        public void InitializeGMAttributesFromStats(int seasonYear = GMFeatureFlags.DEFAULT_START_YEAR, int debutYear = 0, bool isTeamTopOverall = false)
+        {
+            if (CareerAwardIds == null) CareerAwardIds = new List<string>();
+            int ovr = BaseOverall;
+
+            if (debutYear > 0) Age = Clamp(21 + (seasonYear - debutYear), MinAge, MaxAge);
+            else if (Age <= 0) Age = 27;
+
+            EgoLevel = ComputeEgoLevel(ovr, HasMajorAward);
+            RoleArchetype = ComputeRole(isTeamTopOverall || CareerAwardIds.Count(IsMajorAward) >= 3);
+            Salary = ComputeSalary(ovr, EgoLevel, CareerAwardIds.Count(IsMajorAward));
+            ContractYears = ComputeContractYears();
+            if (PersonalMorale <= 0) PersonalMorale = DefaultPersonalMorale;
+        }
+
+        public static int ComputeEgoLevel(int baseOverall, bool hasMajorAward)
+        {
+            if (baseOverall >= 90 || hasMajorAward) return 5;
+            if (baseOverall >= 84) return 4;
+            if (baseOverall >= 77) return 3;
+            if (baseOverall >= 70) return 2;
+            return 1;
+        }
+
+        private LockerRoomRole ComputeRole(bool isFranchiseTop)
+        {
+            if (EgoLevel == 5 && isFranchiseTop) return LockerRoomRole.AlphaDog;
+            if (EgoLevel >= 4 && IsStatSpecialist()) return LockerRoomRole.Ambitious;
+            if (Age >= 31 && IsDisciplinedVeteran()) return LockerRoomRole.DugoutLeader;
+            if (Age > 0 && Age <= 24) return LockerRoomRole.Prospect;
+            return LockerRoomRole.UnsungHero; // 수비 · 작전 · 불펜 궂은일 담당(그 외 기본값)
+        }
+
+        /// <summary>홈런 · 타점(파워형 타자) / 다승 · 탈삼진(구위형 선발 · 마무리) 특화형.</summary>
+        private bool IsStatSpecialist()
+        {
+            if (Template == null) return false;
+            if (Template.IsPitcher)
+            {
+                var p = Template.PitcherStats;
+                bool headline = Template.PitcherRole == PitcherRole.StartingPitcher || Template.PitcherRole == PitcherRole.Closer;
+                return headline && p.Stuff >= 65 && p.Stuff >= p.Control;
+            }
+            var b = Template.BatterStats;
+            return b.Power >= 65 && b.Power >= b.Contact && b.Power >= b.Discipline;
+        }
+
+        /// <summary>수비(타자) 또는 제구(투수) 지표가 우수한 베테랑 - 워크에식 대용 지표.</summary>
+        private bool IsDisciplinedVeteran()
+        {
+            if (Template == null) return false;
+            return Template.IsPitcher ? Template.PitcherStats.Control >= 65 : Template.BatterStats.Defense >= 65;
+        }
+
+        /// <summary>OVR · 자존심 · 수상 경력 비례 연봉(만 원): 3,000 + (OVR-50)² × 70 + (Ego-1) × 5,000 + 주요 수상 × 3,000(최대 5회분), 3,000~200,000.</summary>
+        public static int ComputeSalary(int baseOverall, int egoLevel, int majorAwardCount)
+        {
+            int over = Math.Max(0, baseOverall - 50);
+            long salary = MinSalary + (long)over * over * 70 + Math.Max(0, egoLevel - 1) * 5000L + Math.Min(5, Math.Max(0, majorAwardCount)) * 3000L;
+            return (int)Math.Max(MinSalary, Math.Min(MaxSalary, salary));
+        }
+
+        /// <summary>잔여 계약 0~5년 - 유망주 장기, 스타 3~4년, 베테랑 단기. 같은 선수는 항상 같은 값(InstanceId/RealPlayerId 해시).</summary>
+        private int ComputeContractYears()
+        {
+            string seed = Template != null && !string.IsNullOrEmpty(Template.RealPlayerId) ? Template.RealPlayerId : InstanceId ?? string.Empty;
+            int h = 0;
+            foreach (char c in seed) h = (h * 31 + c) & 0x7FFFFFFF;
+            int years = h % 4; // 0~3
+            if (RoleArchetype == LockerRoomRole.Prospect) years += 2;
+            else if (EgoLevel >= 4) years += 1;
+            if (Age >= 36) years = Math.Min(years, 1);
+            return Clamp(years, 0, MaxContractYears);
+        }
+
+        private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
     }
 }
