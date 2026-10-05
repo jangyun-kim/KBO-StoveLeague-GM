@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Core;
 using KBOManager.Data;
 using KBOManager.Models;
+using KBOManager.Simulation;
 using UnityEngine;
 using Random = System.Random; // UnityEngine.Random과의 이름 충돌 방지
 
@@ -223,11 +225,16 @@ namespace KBOManager.Engine
         /// <summary>[TASK-KBO-183] 이 팀의 구단 OVR(TeamOvrCalculator - 기본 + 팀 시너지). 'OVR 7 격차 법칙' 판정에 쓴다.
         /// 0이면 MatchEngine이 로스터로 직접 계산한다(시너지는 최다 구단 기준 세트덱만).</summary>
         public readonly int TeamOvr;
+        /// <summary>[TASK-GM-02] 선수단 케미스트리(TeamChemistryReport 6대 역학) 계수. null이면 효과 없음.</summary>
+        public readonly GMChemistryModifiers Chemistry;
         public int TotalBuff => SynergyBuff + ConditionBuff;
+        /// <summary>[TASK-GM-02] 세트덱(200P)이 GMFeatureFlags로 꺼져 있으면 세트덱 누적 버프(SynergyBuff)를 빼고 계산한다.</summary>
+        public int EffectiveTotalBuff => (GMFeatureFlags.IsSetDeckEnabled ? SynergyBuff : 0) + ConditionBuff;
 
         public TeamPowerModifiers(int synergyBuff, int conditionBuff = 0, float clutchMultiplier = 1.0f,
-            SetDeckBuffProfile setDeckProfile = null, CheerSquadEffects cheer = null, int teamOvr = 0)
+            SetDeckBuffProfile setDeckProfile = null, CheerSquadEffects cheer = null, int teamOvr = 0, GMChemistryModifiers chemistry = null)
         {
+            Chemistry = chemistry;
             SynergyBuff = synergyBuff;
             ConditionBuff = conditionBuff;
             ClutchMultiplier = clutchMultiplier;
@@ -418,6 +425,13 @@ namespace KBOManager.Engine
         public MatchResult Result { get; private set; }
         public bool IsGameOver { get; private set; }
 
+        /// <summary>[TASK-GM-02] 단장 모드 구단별 라인업 지정(부상 대체 핀). null이면 기존 유저 지정(LineupAssignment.Active).</summary>
+        public LineupAssignment HomeAssignment { get; set; }
+        public LineupAssignment AwayAssignment { get; set; }
+        /// <summary>[TASK-GM-02] 이번 경기 '스타 군단의 방심'(⑥) 발동 여부.</summary>
+        public bool HomeUpsetTriggered { get; private set; }
+        public bool AwayUpsetTriggered { get; private set; }
+
         /// <summary>[TASK-KBO-183] 경기 시작 시 판정한 양 팀 구단 OVR과 체급 우위 가산(OvrGapLaw).</summary>
         public int HomeTeamOvr { get; private set; }
         public int AwayTeamOvr { get; private set; }
@@ -473,8 +487,8 @@ namespace KBOManager.Engine
         /// </summary>
         public void BeginMatch(string homeTeamName = "Home", string awayTeamName = "Away", bool isPostSeason = false)
         {
-            homeState = BuildTeamState(homeRoster, homeTeamName);
-            awayState = BuildTeamState(awayRoster, awayTeamName);
+            homeState = BuildTeamState(homeRoster, homeTeamName, HomeAssignment);
+            awayState = BuildTeamState(awayRoster, awayTeamName, AwayAssignment);
             homeState.DesignatedStarter = HomeDesignatedStarter;
             awayState.DesignatedStarter = AwayDesignatedStarter;
 
@@ -483,6 +497,9 @@ namespace KBOManager.Engine
             AwayTeamOvr = awayModifiers.TeamOvr > 0 ? awayModifiers.TeamOvr : TeamOvrCalculator.Calculate(awayRoster).Total;
             homeClassBonus = OvrGapLaw.ClassAdvantageBonus(HomeTeamOvr, AwayTeamOvr);
             awayClassBonus = OvrGapLaw.ClassAdvantageBonus(AwayTeamOvr, HomeTeamOvr);
+            // [TASK-GM-02] ⑥ 스타 군단의 방심 - 구단 OVR이 UpsetOvrMargin 이상 앞선 팀이 약팀을 만나면 경기 전 확률 판정.
+            HomeUpsetTriggered = RollUpset(homeModifiers.Chemistry, HomeTeamOvr - AwayTeamOvr);
+            AwayUpsetTriggered = RollUpset(awayModifiers.Chemistry, AwayTeamOvr - HomeTeamOvr);
             this.homeTeamName = homeTeamName;
             this.awayTeamName = awayTeamName;
             isPostSeasonMatch = isPostSeason;
@@ -600,6 +617,15 @@ namespace KBOManager.Engine
 
             var result = SimulateAtBat(batter, pitcherForThisAtBat, currentAtBatState);
 
+            // [TASK-GM-02] 케미스트리 ①④ 실책 배수 - 수비 팀 범타가 일정 확률로 실책 출루(단타 처리)가 된다.
+            var defenseChem = DefenseChemistry(pitcherForThisAtBat);
+            if (currentTactic == MatchTactic.None && defenseChem != null && defenseChem.ErrorRateMultiplier > 1f
+                && (result == AtBatResult.Groundout || result == AtBatResult.Flyout)
+                && random.NextDouble() < GMChemistryModifiers.BaseErrorChance * (defenseChem.ErrorRateMultiplier - 1f))
+            {
+                result = AtBatResult.Single;
+            }
+
             // [TASK-KBO-187] 대승 스코어 감쇠 - 큰 리드 · 빅이닝 · 두 자릿수 득점 중인 공격 팀의 안타/볼넷을 일정 확률로 범타 처리(53:0 방지).
             if (currentTactic == MatchTactic.None && IsBatterPositive(result)) // 작전(고의사구 등) 결과는 건드리지 않는다
             {
@@ -621,6 +647,7 @@ namespace KBOManager.Engine
             var situationBeforePlay = currentAtBatState.Clone();
             int outsBeforePlay = currentAtBatState.Outs;
 
+            currentBatterChemistry = GetModifiersFor(batter).Chemistry;
             var (runs, runnerMovements) = ResolveAtBatEffect(result, currentAtBatState);
             bool isDoublePlay = result == AtBatResult.Groundout && currentAtBatState.Outs - outsBeforePlay == 2;
 
@@ -942,6 +969,15 @@ namespace KBOManager.Engine
                 if (isScoringPosition) batterClutchMultiplier = Mathf.Max(batterClutchMultiplier, batterCheer.LateRispMultiplier);
             }
 
+            // [TASK-GM-02] 케미스트리 - ① 클러치(7회 이후 2점 차 이내 득점권) 보정, ③ Hero Ball(득점권 삼진 가중치 증가)
+            var batterChem = GetModifiersFor(batter).Chemistry;
+            float chemClutch = 1f, chemRispStrikeout = 1f;
+            if (batterChem != null && isScoringPosition)
+            {
+                if (state.Inning >= 7 && Mathf.Abs(TeamScoreDiff(batter)) <= 2) chemClutch = Mathf.Max(0.5f, 1f + batterChem.ClutchHitModifier);
+                chemRispStrikeout = batterChem.DoublePlayRiskMultiplier;
+            }
+
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
@@ -965,6 +1001,8 @@ namespace KBOManager.Engine
                     weight *= batterClutchMultiplier; // 기존 로지스틱/가중치 계산 결과에 단순 곱셈으로만 개입
                 }
                 if (isBatterPositive && closeLateMultiplier > 1f) weight *= closeLateMultiplier; // [TASK-KBO-180] 위기 응원
+                if (isBatterPositive && chemClutch != 1f) weight *= chemClutch;                 // [TASK-GM-02] 케미스트리 클러치
+                if (result == AtBatResult.Strikeout && chemRispStrikeout != 1f) weight *= chemRispStrikeout; // [TASK-GM-02] Hero Ball
 
                 weights[i] = weight;
                 total += weight;
@@ -982,6 +1020,24 @@ namespace KBOManager.Engine
         }
 
         private float NormalizeDiff(float diff) => Mathf.Clamp(diff / StatDiffNormalizer, -1f, 1f);
+
+        /// <summary>[TASK-GM-02] 케미스트리 실효 전력(전 스탯 가산) + ⑥ 방심 발동 시 -4.</summary>
+        private int ChemistryStatBonus(Player player, TeamPowerModifiers modifiers)
+        {
+            var chem = modifiers.Chemistry;
+            if (chem == null) return 0;
+            bool isHome = player != null && homeRoster.Contains(player);
+            bool upset = isHome ? HomeUpsetTriggered : AwayUpsetTriggered;
+            return chem.PowerBonus - (upset ? GMChemistryModifiers.UpsetStatPenalty : 0);
+        }
+
+        /// <summary>[TASK-GM-02] 수비 팀(투수 소속) 케미스트리.</summary>
+        private GMChemistryModifiers DefenseChemistry(Player pitcher) => GetModifiersFor(pitcher).Chemistry;
+
+        // [TASK-GM-02] ③ Hero Ball - 공격 팀 병살 확률 배수(이번 타석 타자 소속 팀).
+        private GMChemistryModifiers currentBatterChemistry;
+        private static double DoublePlayChanceFor(GMChemistryModifiers chem) =>
+            chem == null ? DoublePlayChance : Math.Min(0.9, DoublePlayChance * chem.DoublePlayRiskMultiplier);
 
         // ----- [TASK-KBO-180] 작전/치어리더 상황 판정 헬퍼 -----
 
@@ -1066,7 +1122,20 @@ namespace KBOManager.Engine
         public Player HomeDesignatedStarter { get; set; }
         public Player AwayDesignatedStarter { get; set; }
 
-        private TeamGameState BuildTeamState(List<Player> roster, string teamName)
+        private bool RollUpset(GMChemistryModifiers chem, int ovrLead) =>
+            chem != null && chem.UpsetVulnerabilityChance > 0f && ovrLead >= GMChemistryModifiers.UpsetOvrMargin
+            && random.NextDouble() < chem.UpsetVulnerabilityChance;
+
+        /// <summary>[TASK-GM-02] 타자 세부 스탯 원본 - 카드 성장(강화 · 각성 · 초월)이 꺼져 있으면 순수 시즌 성적 스탯만 쓴다.</summary>
+        private static BatterStats BaseBatterStats(Player p) =>
+            GMFeatureFlags.IsCardGrowthEnabled ? p.GetEffectiveBatterStats() : (p.Template != null && !p.Template.IsPitcher ? p.Template.BatterStats : default);
+
+        private static PitcherStats BasePitcherStats(Player p) =>
+            GMFeatureFlags.IsCardGrowthEnabled ? p.GetEffectivePitcherStats() : (p.Template != null && p.Template.IsPitcher ? p.Template.PitcherStats : default);
+
+        private static int EngineOvr(Player p) => GMFeatureFlags.IsCardGrowthEnabled ? p.CalculateOVR(false) : p.GetEffectiveOverall();
+
+        private TeamGameState BuildTeamState(List<Player> roster, string teamName, LineupAssignment assignment = null)
         {
             var valid = (roster ?? new List<Player>()).Where(p => p?.Template != null).ToList();
 
@@ -1074,13 +1143,13 @@ namespace KBOManager.Engine
             {
                 // 세트덱 배율은 TASK-KBO-037에서 제거됨(팀 버프는 이제 homeModifiers/awayModifiers를 통한
                 // 균등 가산으로만 반영된다) - 순수 강화/각성만 반영한 OVR.
-                baseOvrCache[player] = player.CalculateOVR(false);
+                baseOvrCache[player] = EngineOvr(player); // [TASK-GM-02] 성장 비활성화 시 순수 OVR
             }
 
             return new TeamGameState
             {
                 TeamName = teamName,
-                BattingOrder = BuildBattingOrder(valid),
+                BattingOrder = BuildBattingOrder(valid, assignment),
                 // [TASK-KBO-187] 투수 운용 = 라인업 투수 탭 13칸 그대로(유저 고정 자리 반영, AI는 보직별 OVR 순): 선발 = 1~5선발 칸 순서,
                 // 불펜 그룹 = 그 칸의 보직(대체 배치 포함). 정원 밖 "추가" 투수는 자기 보직 그룹 뒤에 붙는다.
                 Starters = PitchingStaff(valid).Rotation,
@@ -1109,10 +1178,10 @@ namespace KBOManager.Engine
             return staff;
         }
 
-        private static List<Player> BuildBattingOrder(List<Player> teamRoster)
+        private static List<Player> BuildBattingOrder(List<Player> teamRoster, LineupAssignment assignment = null)
         {
             // [TASK-KBO-186] 포지션당 1명(유저 맞교환 고정 → OVR 최우선) + 빈 포지션은 남은 타자 OVR 상위로 대체(LineupAssignment - 라인업 화면과 같은 기준).
-            var order = LineupAssignment.DefaultBattingOrder(teamRoster);
+            var order = LineupAssignment.DefaultBattingOrder(teamRoster, assignment); // [TASK-GM-02] 단장 모드 구단은 자기 라인업 지정
 
             // [TASK-KBO-182] 라인업 [타순 변경] 유저 지정 타순 - 유저 구단 InstanceId에만 매칭되므로 AI 로스터는 그대로다.
             return LineupOrder.Apply(order, KBOManager.Managers.GameManager.Instance != null ? KBOManager.Managers.GameManager.Instance.BattingOrderOverride : null);
@@ -1126,7 +1195,7 @@ namespace KBOManager.Engine
         private int GetBaseOvr(Player player)
         {
             if (player == null) return 0;
-            return baseOvrCache.TryGetValue(player, out var cached) ? cached : player.CalculateOVR(false);
+            return baseOvrCache.TryGetValue(player, out var cached) ? cached : EngineOvr(player);
         }
 
         /// <summary>player가 homeRoster 소속이면 homeModifiers를, 그 외(awayRoster 소속 등)에는
@@ -1145,7 +1214,7 @@ namespace KBOManager.Engine
         /// </summary>
         private BatterStats ResolveEffectiveBatterStats(Player batter, Player pitcher, MatchState state)
         {
-            var stats = batter.GetEffectiveBatterStats(); // Base + Growth
+            var stats = BaseBatterStats(batter); // Base + Growth([TASK-GM-02] 성장 비활성화 시 Base만)
             if (batter.ConditionStatBonus != 0) stats = AddTeamBuff(stats, batter.ConditionStatBonus); // [TASK-KBO-184] 컨디션 = 경기 안 가변 요소
 
             // 본인이 보유한 Target=Self 스킬
@@ -1157,8 +1226,9 @@ namespace KBOManager.Engine
 
             var batterModifiers = GetModifiersFor(batter);
             // [TASK-KBO-183] 체급 우위(Δ ≥ 8) - [TASK-KBO-187] 타격 쪽은 리드가 클수록 감쇠(OvrGapLaw.BattingClassBonus)
-            stats = AddTeamBuff(stats, batterModifiers.TotalBuff + OvrGapLaw.BattingClassBonus(ClassBonusFor(batter), LeadOf(batter)));
-            if (batterModifiers.SetDeckProfile != null)
+            stats = AddTeamBuff(stats, batterModifiers.EffectiveTotalBuff + OvrGapLaw.BattingClassBonus(ClassBonusFor(batter), LeadOf(batter))
+                + ChemistryStatBonus(batter, batterModifiers));
+            if (batterModifiers.SetDeckProfile != null && GMFeatureFlags.IsSetDeckEnabled)
             {
                 // [TASK-KBO-172] 세트덱 대상 한정 효과(타순 1~9 기준 상위/중심/하위 타선 등)를 추가 가산한다.
                 stats = AddTeamBuff(stats, batterModifiers.SetDeckProfile.GetBatterBonus(batter, BattingOrderSlotOf(batter)));
@@ -1169,7 +1239,7 @@ namespace KBOManager.Engine
             {
                 // [TASK-KBO-180] 치어리더 6인 편성: 응원단장(세트덱 적용률 보강분) + 직접 보정(스탯별 합계 DirectStatCap 상한).
                 // 전 스탯(홈 응원·연패 대응·응원단장 보강) 합계는 GeneralStatCap, 담당 스탯(정확·선구)은 DirectStatCap까지.
-                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + cheer.SetDeckAmplifyBonus;
+                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + (GMFeatureFlags.IsSetDeckEnabled ? cheer.SetDeckAmplifyBonus : 0);
                 int contactEye = all + cheer.BatterContactDiscipline
                     + (TeamScoreDiff(batter) <= -cheer.TrailingThreshold ? cheer.TrailingBatterBonus : 0);
                 int a = CheerSquadEffects.CapGeneral(all), ce = CheerSquadEffects.Cap(contactEye);
@@ -1190,7 +1260,7 @@ namespace KBOManager.Engine
         /// </summary>
         private PitcherStats ResolveEffectivePitcherStats(Player pitcher, Player batter, MatchState state)
         {
-            var stats = pitcher.GetEffectivePitcherStats(); // Base + Growth
+            var stats = BasePitcherStats(pitcher); // Base + Growth([TASK-GM-02] 성장 비활성화 시 Base만)
             if (pitcher.ConditionStatBonus != 0) stats = AddTeamBuff(stats, pitcher.ConditionStatBonus); // [TASK-KBO-184] 컨디션 = 경기 안 가변 요소
 
             if (pitcher.IsLowStamina)
@@ -1204,8 +1274,14 @@ namespace KBOManager.Engine
             if (HasSkillSlots(pitcher)) stats = stats + PlayerSkillRules.PitcherBonus(pitcher, SkillSituationFor(pitcher, batter, state));
 
             var pitcherModifiers = GetModifiersFor(pitcher);
-            stats = AddTeamBuff(stats, pitcherModifiers.TotalBuff + ClassBonusFor(pitcher)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
-            if (pitcherModifiers.SetDeckProfile != null)
+            stats = AddTeamBuff(stats, pitcherModifiers.EffectiveTotalBuff + ClassBonusFor(pitcher) + ChemistryStatBonus(pitcher, pitcherModifiers)); // [TASK-KBO-183] 체급 우위(Δ ≥ 8)
+            if (pitcherModifiers.Chemistry != null && pitcherModifiers.Chemistry.PitcherStatPenalty > 0)
+            {
+                // [TASK-GM-02] ④ 센터라인 수비 붕괴 → 투수 구위 · 변화 감산(ERA 가산 효과)
+                int pen = pitcherModifiers.Chemistry.PitcherStatPenalty;
+                stats = AddTeamBuff(stats, new PitcherStats(-pen, 0, -pen, 0, 0));
+            }
+            if (pitcherModifiers.SetDeckProfile != null && GMFeatureFlags.IsSetDeckEnabled)
             {
                 stats = AddTeamBuff(stats, pitcherModifiers.SetDeckProfile.GetPitcherBonus(pitcher)); // [TASK-KBO-172]
             }
@@ -1214,7 +1290,7 @@ namespace KBOManager.Engine
             if (cheer != null)
             {
                 // [TASK-KBO-180] 치어리더 6인 편성(투수 쪽): 응원단장 + 직접 보정(스탯별 DirectStatCap 상한).
-                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + cheer.SetDeckAmplifyBonus;
+                int all = cheer.LosingStreakBonus + cheer.HomeAllStatsBonus + (GMFeatureFlags.IsSetDeckEnabled ? cheer.SetDeckAmplifyBonus : 0);
                 int a = CheerSquadEffects.CapGeneral(all), cs = CheerSquadEffects.Cap(all + cheer.PitcherControlStuff);
                 stats = AddTeamBuff(stats, new PitcherStats(cs, a, a, cs, a));
             }
@@ -1449,7 +1525,7 @@ namespace KBOManager.Engine
             }
 
             if (result == AtBatResult.Groundout && state.RunnerOnFirst && state.Outs < 2
-                && random.NextDouble() < DoublePlayChance)
+                && random.NextDouble() < DoublePlayChanceFor(currentBatterChemistry))
             {
                 // 병살타: 배터 + 1루 주자 아웃 (2아웃 동시 소모), 다른 주자는 그대로
                 state.RunnerOnFirst = false;

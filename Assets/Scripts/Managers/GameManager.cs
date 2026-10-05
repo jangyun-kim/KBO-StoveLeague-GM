@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Core;
 using KBOManager.Models;
+using KBOManager.Services;
+using KBOManager.Simulation;
 using UnityEngine;
 
 namespace KBOManager.Managers
@@ -77,6 +80,40 @@ namespace KBOManager.Managers
         [SerializeField] private StoveLeagueState stoveLeague = new StoveLeagueState();
         public StoveLeagueState StoveLeague => stoveLeague ?? (stoveLeague = new StoveLeagueState());
         public void RestoreStoveLeague(StoveLeagueState state) => stoveLeague = state ?? new StoveLeagueState();
+
+        // ================================================================== [TASK-GM-02] 단장 모드 리그
+        private GMLeagueState gmLeague;
+        private GMLiveSeasonSimulator gmSimulator;
+
+        /// <summary>[TASK-GM-02] 단장 모드 리그 상태(선택 모드 · 연도 · 경기 진행 인덱스 · 개인 누적 기록). 시작 전이면 null.</summary>
+        public GMLeagueState GMLeague => gmLeague;
+
+        /// <summary>[TASK-GM-02] 정규시즌 진행기(리그가 있으면 지연 생성).</summary>
+        public GMLiveSeasonSimulator GMSimulator => gmSimulator ?? (gmLeague != null ? gmSimulator = new GMLiveSeasonSimulator(gmLeague) : null);
+
+        /// <summary>[TASK-GM-02] 새 단장 모드 리그를 시작한다(GMRosterLoader 3대 모드). 실패하면 null.</summary>
+        public GMLeagueState StartGMLeague(GMStartMode mode, string teamCode, bool useVirtualNames)
+        {
+            var state = GMRosterLoader.LoadModeRoster(mode, teamCode, useVirtualNames);
+            RestoreGMLeague(state);
+            return state;
+        }
+
+        /// <summary>[TASK-GM-02] 세이브에서 복원했거나 새로 만든 리그를 연결한다(진행기는 새로 만든다).</summary>
+        public void RestoreGMLeague(GMLeagueState state)
+        {
+            gmLeague = state;
+            gmSimulator = null;
+            if (state != null) GameSettings.UseVirtualNames = state.UseVirtualNames;
+        }
+
+        /// <summary>[TASK-GM-02] 리그가 없으면 기본(2026 현역 · 선호 구단, 없으면 삼성)으로 시작한다 - [플레이 볼] 대시보드 진입용.</summary>
+        public GMLeagueState EnsureGMLeague()
+        {
+            if (gmLeague != null) return gmLeague;
+            string code = KBOManager.Data.NameAliasTable.ToCode(FavoriteTeam) ?? KBOManager.Data.NameAliasTable.SAM;
+            return StartGMLeague(GMStartMode.RealCurrent2026, code, GameSettings.UseVirtualNames);
+        }
 
         /// <summary>[TASK-KBO-186] 로스터 안 두 선수(주전 ↔ 후보, 선발 ↔ 불펜)의 자리를 1:1로 맞바꾼다. 타자는 타순 지정 자리도 함께 바꾼다.</summary>
         public bool SwapLineupPositions(Player a, Player b)
@@ -529,6 +566,7 @@ namespace KBOManager.Managers
             growthCoin = awakenTicket = transcendTicket = trainingTicket = 0; // [TASK-KBO-189]
             skillChangeTicket = premiumSkillChangeTicket = 0; // [TASK-KBO-190]
             stoveLeague = new StoveLeagueState(); // [TASK-KBO-193]
+            RestoreGMLeague(null); // [TASK-GM-02]
         }
 
         // ----- 인벤토리/로스터 헬퍼 -----

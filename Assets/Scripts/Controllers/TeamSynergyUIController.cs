@@ -73,7 +73,7 @@ namespace KBOManager.Controllers
             }
 
             int bonusPercent = Mathf.RoundToInt(cheerleader.EconomicBonusRate * 100f);
-            string text = $"편성 {filled}/6 · 시너지 {active}명 · 응원단장 {cheerleader.Name} (관중 수익 {bonusPercent}%)";
+            string text = $"편성 {filled}/6 · 시너지 {active}명 · 응원단장 {cheerleader.DisplayName} (관중 수익 {bonusPercent}%)";
 
             // [TASK-KBO-175] 구단 시너지 - 치어리더 소속 구단(활동 기간 기준)이 세트덱 기준 구단과 같을 때만 경기 버프 발동.
             if (cheerleader.Team != Team.None)

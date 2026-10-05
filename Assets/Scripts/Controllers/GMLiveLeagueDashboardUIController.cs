@@ -1,0 +1,494 @@
+using System.Collections.Generic;
+using System.Linq;
+using KBOManager.Core;
+using KBOManager.Data;
+using KBOManager.Managers;
+using KBOManager.Models;
+using KBOManager.Services;
+using KBOManager.Simulation;
+using KBOManager.UI;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace KBOManager.Controllers
+{
+    /// <summary>
+    /// [TASK-GM-02] 리그 플레이 실시간 144경기 대시보드(기획서 2절 · 2.1, 1080×1920 Portrait). 로비 [플레이 볼]이 연다.
+    ///   - 배경: 선택 구단 대표색(TeamThemePalette) + 중앙 구단 마크(Pulse Scale · Shimmer Alpha · 미세 플로팅)
+    ///   - 헤더: 2026 KBO 시즌 · G 000 / 144 · [한 경기] [전반기 진행 → 후반기 진행] [한 시즌] · 1x/2x/4x · 일시정지
+    ///   - 패널 1 순위표(순위 · 구단 · G · W · D · L · PCT · GB, 내 구단 강조, 5위 아래 포스트시즌 커트라인)
+    ///   - 패널 2 개인 성적 TOP 3(타자 8 · 투수 7 탭, 2열 카드)
+    ///   - 패널 3 최신 소식(날짜 · 제목, 누르면 본문 팝업)
+    ///   - 인터럽트 팝업: 대기록 [확인 후 계속 진행] / 부상 [대체 선수 자동 콜업 후 계속] · [라인업/엔트리 직접 관리]
+    /// 1x 기준 경기일 1.75초 틱(144경기 ≈ 4.2분), 2x/4x 배속. 모든 글씨 Normal · 15pt 이상.
+    /// </summary>
+    public class GMLiveLeagueDashboardUIController : MonoBehaviour
+    {
+        public const string RootName = "GMLiveRoot";
+        public const float TickSeconds = 1.75f;
+        public const int TitlePt = 26, CounterPt = 26, ButtonPt = 21, SectionPt = 22, RowPt = 19, HeadPt = 17, LeaderTitlePt = 19, LeaderBodyPt = 17, NewsPt = 17, PopupTitlePt = 24, PopupBodyPt = 20;
+        public const int NewsRows = 6, LeaderCells = 8, StandingRows = 10;
+
+        private static readonly Color White = new Color(0.96f, 0.97f, 0.99f);
+        private static readonly Color Muted = new Color(0.78f, 0.83f, 0.92f);
+        private static readonly Color Gold = new Color(1f, 0.84f, 0.3f);
+        private static readonly Color PanelColor = new Color(0f, 0f, 0f, 0.38f);
+        private static readonly Color ButtonIdle = new Color(1f, 1f, 1f, 0.12f);
+
+        [SerializeField] private Font regularFont;
+
+        private RectTransform root;
+        private Image background, headerBar;
+        private RawImage emblem;
+        private RectTransform emblemHolder;
+        private Text seasonTitle, gameCounter, statusText, lastGameText;
+        private Button modeSingle, modeHalf, modeFull, speed1, speed2, speed4, pauseButton, closeButton, tabBatter, tabPitcher;
+        private readonly Image[] rowBgs = new Image[StandingRows];
+        private readonly Text[,] cells = new Text[StandingRows, 8];
+        private readonly RawImage[] rowLogos = new RawImage[StandingRows];
+        private readonly Image[] leaderBgs = new Image[LeaderCells];
+        private readonly Text[] leaderTitles = new Text[LeaderCells];
+        private readonly Text[] leaderBodies = new Text[LeaderCells];
+        private readonly Button[] newsButtons = new Button[NewsRows];
+        private readonly Text[] newsTexts = new Text[NewsRows];
+        private RectTransform popup;
+        private Text popupTitle, popupBody;
+        private Button popupPrimary, popupSecondary;
+        private readonly Button[] candidateButtons = new Button[3];
+
+        private GMLiveSeasonSimulator simulator;
+        private bool showPitchers;
+        private bool paused;
+        private int speed = 1;
+        private float tickTimer;
+        private GMNewsItem viewingNews;
+        private bool manualSelecting;
+        private Team themeTeam = Team.None;
+        private List<GMNewsItem> shownNews = new List<GMNewsItem>();
+
+        public RectTransform Root => root;
+        public GMLiveSeasonSimulator Simulator => simulator;
+        public int Speed => speed;
+        public bool IsPaused => paused;
+        public bool ShowingPitchers => showPitchers;
+        public Team ThemeTeam => themeTeam;
+        public bool IsPopupOpen => popup != null && popup.gameObject.activeSelf;
+        public string HalfButtonText => modeHalf != null ? modeHalf.GetComponentInChildren<Text>(true).text : null;
+
+        public void Configure(Font regular) => regularFont = regular;
+
+        private void Awake()
+        {
+            if (root == null) Build();
+        }
+
+        /// <summary>로비 [플레이 볼] - 단장 모드 리그(없으면 기본 시작)를 붙이고 대시보드를 띄운다.</summary>
+        public static GMLiveLeagueDashboardUIController OpenFromLobby()
+        {
+            var view = FindAnyObjectByType<GMLiveLeagueDashboardUIController>(FindObjectsInactive.Include);
+            if (view == null) return null;
+            var gm = GameManager.Instance;
+            if (gm != null) gm.EnsureGMLeague();
+            view.Open(gm != null ? gm.GMSimulator : null);
+            return view;
+        }
+
+        public void Open(GMLiveSeasonSimulator sim)
+        {
+            if (root == null) Build();
+            gameObject.SetActive(true);
+            transform.SetAsLastSibling();
+            Bind(sim);
+        }
+
+        /// <summary>진행기를 연결하고 구단 테마를 적용한다(테스트에서도 직접 호출).</summary>
+        public void Bind(GMLiveSeasonSimulator sim)
+        {
+            if (root == null) Build();
+            simulator = sim;
+            var user = sim?.League?.UserTeam;
+            ApplyTheme(user != null ? user.Team : Team.Samsung);
+            paused = false;
+            HidePopup();
+            Refresh();
+        }
+
+        public void Close()
+        {
+            if (simulator != null) simulator.Stop();
+            HidePopup();
+            gameObject.SetActive(false);
+            UIManager.Instance?.ShowScreen(ScreenType.Lobby);
+        }
+
+        // ================================================================== 조립
+
+        public void Build()
+        {
+            var old = transform.Find(RootName);
+            if (old != null)
+            {
+                old.name = "_" + RootName + "_old";
+                old.gameObject.SetActive(false);
+                if (Application.isPlaying) Destroy(old.gameObject); else DestroyImmediate(old.gameObject);
+            }
+            var font = regularFont != null ? regularFont : TextTidy.BodyFont;
+            var kit = new CompyaUiKit(font, font);
+            root = CompyaUiKit.Fill(transform, RootName);
+            background = CompyaUiKit.Paint(root, TeamThemePalette.Background(Team.Samsung), true);
+
+            // 중앙 구단 마크(은은한 반짝임)
+            emblem = CompyaUiKit.Logo(root, "Emblem", 274, 620, 974, 1320);
+            emblemHolder = (RectTransform)emblem.transform.parent;
+
+            // ---- 헤더
+            headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1248, 248, TeamThemePalette.Primary(Team.Samsung));
+            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 620, 74, TitlePt, TextAnchor.MiddleLeft, White);
+            gameCounter = L(kit, "GameCounter", "G 000 / 144", 640, 10, 1090, 74, CounterPt, TextAnchor.MiddleRight, Gold);
+            closeButton = Btn(kit, "CloseButton", "X", 1110, 10, 1228, 74, ButtonIdle, ButtonPt + 2);
+            closeButton.onClick.AddListener(Close);
+
+            modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 86, 400, 160, ButtonIdle, ButtonPt);
+            modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 414, 86, 834, 160, ButtonIdle, ButtonPt);
+            modeFull = Btn(kit, "ModeFull", "한 시즌", 848, 86, 1228, 160, ButtonIdle, ButtonPt);
+            modeSingle.onClick.AddListener(() => Run(GMRunMode.SingleGame));
+            modeHalf.onClick.AddListener(() => Run(GMRunMode.FirstHalf));
+            modeFull.onClick.AddListener(() => Run(GMRunMode.FullSeason));
+
+            speed1 = Btn(kit, "Speed1x", "1x", 20, 172, 190, 238, ButtonIdle, ButtonPt);
+            speed2 = Btn(kit, "Speed2x", "2x", 204, 172, 374, 238, ButtonIdle, ButtonPt);
+            speed4 = Btn(kit, "Speed4x", "4x", 388, 172, 558, 238, ButtonIdle, ButtonPt);
+            pauseButton = Btn(kit, "PauseButton", "일시정지", 572, 172, 800, 238, ButtonIdle, ButtonPt);
+            speed1.onClick.AddListener(() => SetSpeed(1));
+            speed2.onClick.AddListener(() => SetSpeed(2));
+            speed4.onClick.AddListener(() => SetSpeed(4));
+            pauseButton.onClick.AddListener(TogglePause);
+            statusText = L(kit, "StatusText", "대기 중", 816, 172, 1228, 238, HeadPt, TextAnchor.MiddleRight, Muted);
+
+            // ---- 패널 1: 순위표
+            CompyaUiKit.Box(root, "StandingsPanel", 12, 254, 1236, 874, PanelColor);
+            L(kit, "StandingsTitle", "KBO 2026 시즌 실시간 순위표", 24, 258, 1224, 300, SectionPt, TextAnchor.MiddleLeft, Gold);
+            float[] colX = { 20, 100, 156, 420, 530, 640, 740, 850, 1020, 1228 };
+            string[] heads = { "순위", "", "구단", "G", "W", "D", "L", "PCT", "GB" };
+            int[] colOf = { 0, 2, 3, 4, 5, 6, 7, 8 }; // 셀 열 → colX 시작 인덱스(1 = 로고 칸)
+            for (int c = 0; c < 8; c++)
+            {
+                int ci = colOf[c];
+                float x0 = c == 1 ? colX[2] : colX[ci], x1 = colX[ci + 1];
+                if (c == 1) x0 = colX[2];
+                L(kit, $"StandHead{c}", heads[ci], x0, 304, x1, 344, HeadPt, c == 1 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, Muted);
+            }
+            for (int r = 0; r < StandingRows; r++)
+            {
+                float y0 = 348 + r * 52, y1 = y0 + 48;
+                rowBgs[r] = CompyaUiKit.Box(root, $"RowBg{r}", 16, y0, 1232, y1, new Color(1f, 1f, 1f, 0.05f));
+                rowLogos[r] = CompyaUiKit.Logo(root, $"RowLogo{r}", colX[1], y0 + 4, colX[2] - 6, y1 - 4);
+                for (int c = 0; c < 8; c++)
+                {
+                    int ci = colOf[c];
+                    float x0 = c == 1 ? colX[2] : colX[ci], x1 = colX[ci + 1];
+                    cells[r, c] = L(kit, $"Cell{r}_{c}", "", x0, y0, x1, y1, RowPt, c == 1 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, White);
+                }
+            }
+            CompyaUiKit.Box(root, "PostseasonCutline", 16, 348 + 5 * 52 - 3, 1232, 348 + 5 * 52 - 1, Gold);
+
+            // ---- 패널 2: 개인 성적 TOP 3
+            CompyaUiKit.Box(root, "LeadersPanel", 12, 880, 1236, 1516, PanelColor);
+            L(kit, "LeadersTitle", "KBO 개인 성적 TOP 3", 24, 884, 620, 932, SectionPt, TextAnchor.MiddleLeft, Gold);
+            tabBatter = Btn(kit, "TabBatter", "타자 8개 부문", 640, 884, 930, 932, ButtonIdle, ButtonPt - 2);
+            tabPitcher = Btn(kit, "TabPitcher", "투수 7개 부문", 944, 884, 1228, 932, ButtonIdle, ButtonPt - 2);
+            tabBatter.onClick.AddListener(() => { showPitchers = false; Refresh(); });
+            tabPitcher.onClick.AddListener(() => { showPitchers = true; Refresh(); });
+            for (int i = 0; i < LeaderCells; i++)
+            {
+                float x0 = 20 + (i % 2) * 610, x1 = x0 + 598;
+                float y0 = 940 + (i / 2) * 144, y1 = y0 + 136;
+                leaderBgs[i] = CompyaUiKit.Box(root, $"LeaderBg{i}", x0, y0, x1, y1, new Color(1f, 1f, 1f, 0.07f));
+                leaderTitles[i] = L(kit, $"LeaderTitle{i}", "", x0 + 14, y0 + 4, x1 - 10, y0 + 40, LeaderTitlePt, TextAnchor.MiddleLeft, Gold);
+                leaderBodies[i] = L(kit, $"LeaderBody{i}", "", x0 + 14, y0 + 42, x1 - 10, y1 - 4, LeaderBodyPt, TextAnchor.UpperLeft, White);
+                leaderBodies[i].lineSpacing = 1.05f;
+            }
+
+            // ---- 패널 3: 최신 소식
+            CompyaUiKit.Box(root, "NewsPanel", 12, 1522, 1236, 1964, PanelColor);
+            L(kit, "NewsTitle", "최신 소식", 24, 1528, 400, 1572, SectionPt, TextAnchor.MiddleLeft, Gold);
+            lastGameText = L(kit, "LastGame", "", 410, 1528, 1224, 1572, HeadPt, TextAnchor.MiddleRight, White);
+            for (int i = 0; i < NewsRows; i++)
+            {
+                float y0 = 1578 + i * 64, y1 = y0 + 58;
+                int index = i;
+                newsButtons[i] = kit.Button(root, $"News{i}", "", 20, y0, 1228, y1, new Color(1f, 1f, 1f, 0.06f), White, 24, bold: false);
+                newsTexts[i] = newsButtons[i].GetComponentInChildren<Text>(true);
+                newsTexts[i].alignment = TextAnchor.MiddleLeft;
+                TextTidy.Exact(newsTexts[i], NewsPt);
+                ((RectTransform)newsTexts[i].transform).offsetMin = new Vector2(14, 0);
+                newsButtons[i].onClick.AddListener(() => OpenNews(index));
+            }
+
+            // ---- 인터럽트 · 소식 팝업
+            popup = CompyaUiKit.Fill(root, "Popup");
+            CompyaUiKit.Paint(popup, new Color(0f, 0f, 0f, 0.7f), true);
+            CompyaUiKit.Box(popup, "PopupBox", 100, 560, 1148, 1420, new Color(0.1f, 0.12f, 0.2f, 0.98f));
+            popupTitle = L(kit, "PopupTitle", "", 140, 590, 1108, 660, PopupTitlePt, TextAnchor.MiddleLeft, Gold, popup);
+            popupBody = L(kit, "PopupBody", "", 140, 670, 1108, 960, PopupBodyPt, TextAnchor.UpperLeft, White, popup);
+            popupBody.lineSpacing = 1.2f;
+            for (int k = 0; k < candidateButtons.Length; k++)
+            {
+                int index = k;
+                candidateButtons[k] = Btn(kit, $"Candidate{k}", "", 140, 980 + k * 90, 1108, 1060 + k * 90, new Color(0.2f, 0.32f, 0.6f), ButtonPt - 1, popup);
+                candidateButtons[k].onClick.AddListener(() => ChooseCandidate(index));
+            }
+            popupPrimary = Btn(kit, "PopupPrimary", "확인 후 계속 진행", 140, 1270, 610, 1380, new Color(0.15f, 0.45f, 0.85f), ButtonPt, popup);
+            popupSecondary = Btn(kit, "PopupSecondary", "라인업/엔트리 직접 관리", 638, 1270, 1108, 1380, new Color(0.3f, 0.34f, 0.46f), ButtonPt, popup);
+            popupPrimary.onClick.AddListener(OnPopupPrimary);
+            popupSecondary.onClick.AddListener(OnPopupSecondary);
+            popup.gameObject.SetActive(false);
+        }
+
+        private Text L(CompyaUiKit kit, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color, Transform parent = null)
+        {
+            var t = kit.Label(parent ?? root, name, text, x0, y0, x1, y1, pt / 0.9f, anchor, color);
+            return TextTidy.Exact(t, pt);
+        }
+
+        private Button Btn(CompyaUiKit kit, string name, string text, float x0, float y0, float x1, float y1, Color bg, int pt, Transform parent = null)
+        {
+            var b = kit.Button(parent ?? root, name, text, x0, y0, x1, y1, bg, White, pt / 0.9f, bold: false);
+            TextTidy.ExactButton(b, pt);
+            return b;
+        }
+
+        // ================================================================== 테마 · 애니메이션
+
+        public void ApplyTheme(Team team)
+        {
+            themeTeam = team;
+            if (background != null) background.color = TeamThemePalette.Background(team);
+            if (headerBar != null) headerBar.color = CompyaUiKit.Darken(TeamThemePalette.Primary(team), 0.8f);
+            CompyaUiKit.SetLogo(emblem, team, 0.14f);
+            if (emblem != null) emblem.gameObject.SetActive(true);
+        }
+
+        private void Update()
+        {
+            if (emblemHolder != null)
+            {
+                float t = Time.unscaledTime;
+                float scale = 1f + 0.035f * Mathf.Sin(t * 1.8f);                       // Pulse Scale
+                emblemHolder.localScale = new Vector3(scale, scale, 1f);
+                emblemHolder.anchoredPosition = new Vector2(0f, 8f * Mathf.Sin(t * 0.7f)); // 미세 플로팅
+                if (emblem != null && emblem.texture != null)
+                    emblem.color = new Color(1f, 1f, 1f, 0.1f + 0.07f * (0.5f + 0.5f * Mathf.Sin(t * 2.6f))); // Shimmer Alpha
+            }
+
+            if (simulator == null || paused || !simulator.IsRunning) return;
+            tickTimer += Time.unscaledDeltaTime * speed;
+            if (tickTimer < TickSeconds) return;
+            tickTimer = 0f;
+            simulator.StepGameDay();
+            Refresh();
+            if (simulator.PendingInterrupt != null) ShowInterrupt(simulator.PendingInterrupt);
+        }
+
+        // ================================================================== 조작
+
+        public void Run(GMRunMode mode)
+        {
+            if (simulator == null) return;
+            if (!simulator.StartRun(mode)) { if (statusText != null) statusText.text = "시즌 종료"; return; }
+            paused = false;
+            tickTimer = TickSeconds; // 첫 틱은 바로
+            Refresh();
+        }
+
+        public void SetSpeed(int value)
+        {
+            speed = value == 4 ? 4 : value == 2 ? 2 : 1;
+            Refresh();
+        }
+
+        public void TogglePause()
+        {
+            paused = !paused;
+            Refresh();
+        }
+
+        // ================================================================== 갱신
+
+        public void Refresh()
+        {
+            if (root == null) return;
+            var league = simulator?.League;
+            int played = simulator?.GamesPlayed ?? 0;
+            seasonTitle.text = $"{league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR} KBO 시즌";
+            gameCounter.text = $"G {played:000} / {GMLiveSeasonSimulator.SeasonGames}";
+            CompyaUiKit.SetButtonText(modeHalf, simulator != null ? simulator.HalfButtonLabel : "전반기 진행");
+            bool done = simulator == null || simulator.IsSeasonComplete;
+            modeSingle.interactable = modeHalf.interactable = modeFull.interactable = !done;
+            CompyaUiKit.SetButtonText(pauseButton, paused ? "계속" : "일시정지");
+            Highlight(speed1, speed == 1); Highlight(speed2, speed == 2); Highlight(speed4, speed == 4);
+            Highlight(tabBatter, !showPitchers); Highlight(tabPitcher, showPitchers);
+            statusText.text = done ? "정규시즌 종료" : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
+                paused ? "일시정지" : simulator.IsRunning ? $"진행 중 · {speed}x" : "대기 중";
+            lastGameText.text = simulator?.LastUserGameLine ?? "";
+
+            RefreshStandings();
+            RefreshLeaders();
+            RefreshNews();
+        }
+
+        private void Highlight(Button b, bool on)
+        {
+            if (b?.targetGraphic == null) return;
+            b.targetGraphic.color = on ? CompyaUiKit.Darken(TeamThemePalette.Primary(themeTeam), 1f) : ButtonIdle;
+        }
+
+        private void RefreshStandings()
+        {
+            var rows = simulator != null ? simulator.Standings() : new List<GMTeamRecord>();
+            var leader = rows.FirstOrDefault();
+            string userCode = simulator?.League?.SelectedTeamCode;
+            for (int r = 0; r < StandingRows; r++)
+            {
+                var rec = r < rows.Count ? rows[r] : null;
+                bool mine = rec != null && rec.TeamCode == userCode;
+                rowBgs[r].color = mine ? new Color(TeamThemePalette.Primary(themeTeam).r, TeamThemePalette.Primary(themeTeam).g, TeamThemePalette.Primary(themeTeam).b, 0.75f) : new Color(1f, 1f, 1f, r % 2 == 0 ? 0.05f : 0.02f);
+                var team = rec != null ? NameAliasTable.ToTeam(rec.TeamCode) : Team.None;
+                CompyaUiKit.SetLogo(rowLogos[r], team, 1f);
+                cells[r, 0].text = rec != null ? (r + 1).ToString() : "";
+                cells[r, 1].text = rec != null ? NameAliasTable.DisplayTeamName(rec.TeamCode) : "";
+                cells[r, 2].text = rec?.G.ToString() ?? "";
+                cells[r, 3].text = rec?.W.ToString() ?? "";
+                cells[r, 4].text = rec?.D.ToString() ?? "";
+                cells[r, 5].text = rec?.L.ToString() ?? "";
+                cells[r, 6].text = rec != null ? GMTeamRecord.PctLabel(rec.Pct) : "";
+                cells[r, 7].text = rec != null && leader != null ? GMLiveSeasonSimulator.GamesBehindLabel(GMLiveSeasonSimulator.GamesBehind(leader, rec)) : "";
+            }
+        }
+
+        private void RefreshLeaders()
+        {
+            var cats = showPitchers ? GMLeaderCategories.Pitcher : GMLeaderCategories.Batter;
+            for (int i = 0; i < LeaderCells; i++)
+            {
+                bool used = i < cats.Length;
+                leaderBgs[i].gameObject.SetActive(used);
+                leaderTitles[i].gameObject.SetActive(used);
+                leaderBodies[i].gameObject.SetActive(used);
+                if (!used) continue;
+                var cat = cats[i];
+                leaderTitles[i].text = GMLeaderCategories.Label(cat);
+                var top = simulator != null ? simulator.Leaders(cat) : new List<GMLeaderEntry>();
+                leaderBodies[i].text = top.Count == 0
+                    ? "기록 집계 전"
+                    : string.Join("\n", top.Select((e, k) => $"{k + 1}. {e.Name}({CompyaUiKit.ShortName(NameAliasTable.ToTeam(e.TeamCode))})  {e.ValueLabel}"));
+            }
+        }
+
+        private void RefreshNews()
+        {
+            shownNews = simulator?.League?.News.Take(NewsRows).ToList() ?? new List<GMNewsItem>();
+            for (int i = 0; i < NewsRows; i++)
+            {
+                var n = i < shownNews.Count ? shownNews[i] : null;
+                newsButtons[i].gameObject.SetActive(n != null);
+                if (n != null) newsTexts[i].text = $"{n.DateLabel}   {(n.IsUserTeam ? "★ " : "")}{n.Title}";
+            }
+        }
+
+        // ================================================================== 팝업
+
+        private void OpenNews(int index)
+        {
+            if (index >= shownNews.Count) return;
+            viewingNews = shownNews[index];
+            ShowPopup(viewingNews.Title, $"{viewingNews.DateLabel}\n{viewingNews.Body}", "확인", null);
+        }
+
+        public void ShowInterrupt(GMSimInterrupt interrupt)
+        {
+            viewingNews = null;
+            manualSelecting = false;
+            if (interrupt.Kind == GMInterruptKind.Injury)
+                ShowPopup($"부상 발생 · {interrupt.News.Title}", $"{interrupt.News.DateLabel}\n{interrupt.News.Body}\n대체 선수를 어떻게 처리할까요?",
+                    "대체 선수 자동 콜업 후 계속", interrupt.Player != null && !interrupt.Player.IsPitcher && interrupt.ReplacementCandidates.Count > 0 ? "라인업/엔트리 직접 관리" : null);
+            else
+                ShowPopup(interrupt.News.Title, $"{interrupt.News.DateLabel}\n{interrupt.News.Body}", "확인 후 계속 진행", null);
+        }
+
+        private void ShowPopup(string title, string body, string primary, string secondary)
+        {
+            popup.gameObject.SetActive(true);
+            popup.SetAsLastSibling();
+            popupTitle.text = title;
+            popupBody.text = body;
+            CompyaUiKit.SetButtonText(popupPrimary, primary);
+            popupSecondary.gameObject.SetActive(secondary != null);
+            if (secondary != null) CompyaUiKit.SetButtonText(popupSecondary, secondary);
+            foreach (var b in candidateButtons) b.gameObject.SetActive(false);
+        }
+
+        private void HidePopup()
+        {
+            if (popup != null) popup.gameObject.SetActive(false);
+            manualSelecting = false;
+        }
+
+        private void OnPopupPrimary()
+        {
+            var pending = simulator?.PendingInterrupt;
+            if (viewingNews == null && pending != null)
+                simulator.ResolveInterrupt(pending.Kind == GMInterruptKind.Injury ? GMInterruptChoice.AutoCallUp : GMInterruptChoice.Continue);
+            viewingNews = null;
+            AfterPopup();
+        }
+
+        private void OnPopupSecondary()
+        {
+            var pending = simulator?.PendingInterrupt;
+            if (pending == null || pending.Kind != GMInterruptKind.Injury) return;
+            manualSelecting = true;
+            popupBody.text = $"{pending.News.Body}\n{LineupLabel(pending.Position)} 자리에 넣을 선수를 고르십시오.";
+            for (int k = 0; k < candidateButtons.Length; k++)
+            {
+                bool has = k < pending.ReplacementCandidates.Count;
+                candidateButtons[k].gameObject.SetActive(has);
+                if (!has) continue;
+                var c = pending.ReplacementCandidates[k];
+                CompyaUiKit.SetButtonText(candidateButtons[k], $"{c.Template.PlayerName} ({LineupLabel(c.Template.BatterPosition)} · OVR {c.GetEffectiveOverall()})");
+            }
+            popupSecondary.gameObject.SetActive(false);
+        }
+
+        private void ChooseCandidate(int index)
+        {
+            var pending = simulator?.PendingInterrupt;
+            if (!manualSelecting || pending == null || index >= pending.ReplacementCandidates.Count) return;
+            simulator.ResolveInterrupt(GMInterruptChoice.ManualLineup, pending.ReplacementCandidates[index]);
+            AfterPopup();
+        }
+
+        private void AfterPopup()
+        {
+            HidePopup();
+            if (simulator?.PendingInterrupt != null) ShowInterrupt(simulator.PendingInterrupt);
+            Refresh();
+        }
+
+        private static string LineupLabel(BatterPosition pos)
+        {
+            switch (pos)
+            {
+                case BatterPosition.Catcher: return "포수";
+                case BatterPosition.FirstBase: return "1루수";
+                case BatterPosition.SecondBase: return "2루수";
+                case BatterPosition.ThirdBase: return "3루수";
+                case BatterPosition.ShortStop: return "유격수";
+                case BatterPosition.LeftField: return "좌익수";
+                case BatterPosition.CenterField: return "중견수";
+                case BatterPosition.RightField: return "우익수";
+                default: return "지명타자";
+            }
+        }
+    }
+}

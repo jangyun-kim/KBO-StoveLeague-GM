@@ -5,6 +5,7 @@ using KBOManager.Core;
 using KBOManager.Data;
 using KBOManager.Managers;
 using KBOManager.Models;
+using KBOManager.Simulation;
 using UnityEngine;
 
 namespace KBOManager.Services
@@ -36,6 +37,11 @@ namespace KBOManager.Services
         public int ConsecutiveLastPlaceSeasons;
         public bool OwnerPostseasonPressure;
         public string TradeRequestPlayerId; // 트레이드를 요구한 선수(RealPlayerId)
+
+        // [TASK-GM-02] 단장 지정 라인업(부상 시 [라인업 직접 관리] 대체 선수 핀) - 경기 엔진 타순에 반영된다.
+        public LineupAssignment Lineup = new LineupAssignment();
+        /// <summary>[TASK-GM-02] 부상자를 뺀 출전 가능 선수.</summary>
+        public List<Player> AvailableRoster => Roster.Where(p => p.InjuryRemainingDays <= 0).ToList();
     }
 
     /// <summary>[TASK-GM-01] 단장 모드 리그 전체 상태 + 시즌 연도 상태 머신(시상식 종료 → 다음 해 스토브리그).</summary>
@@ -51,6 +57,39 @@ namespace KBOManager.Services
 
         public GMTeamState UserTeam => SelectedTeamCode != null && Teams.TryGetValue(SelectedTeamCode, out var t) ? t : null;
 
+        // [TASK-GM-02] 정규시즌 진행 상태 - 경기 진행 인덱스(0~144) · 구단 성적 · 선수 누적 기록 · 최신 소식.
+        public int GamesPlayed;
+        public int Seed = 20260328;
+        public readonly Dictionary<string, GMTeamRecord> Records = new Dictionary<string, GMTeamRecord>();
+        public readonly Dictionary<string, GMPlayerSeasonStats> Stats = new Dictionary<string, GMPlayerSeasonStats>();
+        public readonly List<GMNewsItem> News = new List<GMNewsItem>();
+        public const int MaxNews = 120;
+
+        public IEnumerable<Player> AllPlayers => Teams.Values.SelectMany(t => t.Roster);
+
+        public GMTeamRecord RecordOf(string teamCode)
+        {
+            if (!Records.TryGetValue(teamCode, out var record)) Records[teamCode] = record = new GMTeamRecord { TeamCode = teamCode };
+            return record;
+        }
+
+        public GMPlayerSeasonStats StatsOf(Player player, string teamCode)
+        {
+            if (!Stats.TryGetValue(player.InstanceId, out var stats))
+                Stats[player.InstanceId] = stats = new GMPlayerSeasonStats { PlayerId = player.InstanceId, TeamCode = teamCode, IsPitcher = player.IsPitcher };
+            return stats;
+        }
+
+        public void AddNews(GMNewsItem item)
+        {
+            if (item == null) return;
+            News.Insert(0, item); // 최신순
+            if (News.Count > MaxNews) News.RemoveRange(MaxNews, News.Count - MaxNews);
+        }
+
+        public Player FindPlayer(string instanceId) => AllPlayers.FirstOrDefault(p => p.InstanceId == instanceId);
+        public string TeamCodeOf(Player player) => Teams.Values.FirstOrDefault(t => t.Roster.Contains(player))?.TeamCode;
+
         /// <summary>
         /// 다음 단계로 진행한다: 스토브리그 → 정규시즌 → 포스트시즌 → 시상식 → (해 넘김) 다음 해 스토브리그.
         /// 해가 넘어갈 때 전원 나이 +1, 잔여 계약 -1(0 하한), 부상 일수 초기화. 반환값 = 해가 넘어갔는지.
@@ -65,6 +104,9 @@ namespace KBOManager.Services
 
             SeasonYear++;
             Phase = GMSeasonPhase.StoveLeague;
+            GamesPlayed = 0; // [TASK-GM-02] 새 시즌 - 성적 · 기록 초기화(소식 피드는 유지)
+            Records.Clear();
+            Stats.Clear();
             foreach (var p in Teams.Values.SelectMany(t => t.Roster).Concat(FreeAgents))
             {
                 p.Age = Math.Min(Player.MaxAge, p.Age + 1);
@@ -337,7 +379,7 @@ namespace KBOManager.Services
             {
                 team.CheerleaderPool.Add(new Cheerleader(
                     instanceId: Guid.NewGuid().ToString(),
-                    name: NameAliasTable.GetDisplayCheerleaderName(t.Name, useVirtualNames),
+                    name: t.Name, // [TASK-GM-02] 실명 보존 - 표시는 Cheerleader.DisplayName(NameAliasTable)
                     grade: t.Grade,
                     conditionBuff: t.ConditionBuff,
                     clutchMultiplier: t.ClutchMultiplier,

@@ -130,7 +130,7 @@ namespace KBOManager.Models
                 if (i == (int)role || IsEmpty(slots[i])) continue;
                 if (PersonKey(slots[i]) == key)
                 {
-                    reason = $"{candidate.Name}은(는) 이미 {i + 1}.{RoleName((CheerRole)i)} 슬롯에 편성돼 있습니다(동일 인물 중복 편성 금지).";
+                    reason = $"{candidate.DisplayName}은(는) 이미 {i + 1}.{RoleName((CheerRole)i)} 슬롯에 편성돼 있습니다(동일 인물 중복 편성 금지).";
                     return false;
                 }
             }
@@ -153,7 +153,7 @@ namespace KBOManager.Models
                 var role = (CheerRole)i;
                 if (!CheerleaderSynergy.IsActive(c, deckTeam))
                 {
-                    fx.Lines.Add($"{i + 1}.{RoleName(role)} {c.Name}: 구단 시너지 미발동({c.Team} ≠ 세트덱 {deckTeam})");
+                    fx.Lines.Add($"{i + 1}.{RoleName(role)} {c.DisplayName}: 구단 시너지 미발동({c.Team} ≠ 세트덱 {deckTeam})");
                     continue;
                 }
                 int t = CheerGrowth.EffectiveTier(c); // [TASK-KBO-187] 등급 + ★3/★5 각성 도약
@@ -162,20 +162,20 @@ namespace KBOManager.Models
                     case CheerRole.Leader:
                         fx.SetDeckAmplifyPercent = LeaderAmplifyPercent[t] + CheerGrowth.LeaderAmplifyBonusPercent(c);
                         fx.SetDeckAmplifyBonus = (int)System.Math.Round(setDeckFlatBuff * fx.SetDeckAmplifyPercent / 100.0, System.MidpointRounding.AwayFromZero);
-                        fx.Lines.Add($"1.응원단장 {c.Name}: 세트덱 적용률 +{fx.SetDeckAmplifyPercent}% (모든 능력치 +{fx.SetDeckAmplifyBonus})");
+                        fx.Lines.Add($"1.응원단장 {c.DisplayName}: 세트덱 적용률 +{fx.SetDeckAmplifyPercent}% (모든 능력치 +{fx.SetDeckAmplifyBonus})");
                         break;
                     case CheerRole.Batting:
                         fx.BatterContactDiscipline = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
-                        fx.Lines.Add($"2.타격 응원 {c.Name}: 타자 정확·선구 +{fx.BatterContactDiscipline}");
+                        fx.Lines.Add($"2.타격 응원 {c.DisplayName}: 타자 정확·선구 +{fx.BatterContactDiscipline}");
                         break;
                     case CheerRole.Pitching:
                         fx.PitcherControlStuff = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
-                        fx.Lines.Add($"3.투수 응원 {c.Name}: 투수 제구·구위 +{fx.PitcherControlStuff}");
+                        fx.Lines.Add($"3.투수 응원 {c.DisplayName}: 투수 제구·구위 +{fx.PitcherControlStuff}");
                         break;
                     case CheerRole.MoodMaker:
                         fx.LosingStreakBonus = losingStreak >= 2 ? StreakBonus[t] : 0;
                         fx.TrailingBatterBonus = TrailingBonus[t] + CheerGrowth.RoleStatBonus(c);
-                        fx.Lines.Add($"4.분위기 메이커 {c.Name}: {(losingStreak >= 2 ? $"{losingStreak}연패 대응 전 스탯 +{fx.LosingStreakBonus}, " : "")}" +
+                        fx.Lines.Add($"4.분위기 메이커 {c.DisplayName}: {(losingStreak >= 2 ? $"{losingStreak}연패 대응 전 스탯 +{fx.LosingStreakBonus}, " : "")}" +
                                      $"{fx.TrailingThreshold}점 이상 열세 시 타자 정확·선구 +{fx.TrailingBatterBonus}");
                         break;
                     case CheerRole.Home:
@@ -183,15 +183,15 @@ namespace KBOManager.Models
                         {
                             fx.HomeAllStatsBonus = RoleStatBonus[t] + CheerGrowth.RoleStatBonus(c);
                             fx.OpponentControlPenalty = HomePressure[t];
-                            fx.Lines.Add($"5.홈 응원 {c.Name}: 홈 컨디션 전 스탯 +{fx.HomeAllStatsBonus}, 상대 투수 제구 -{fx.OpponentControlPenalty}");
+                            fx.Lines.Add($"5.홈 응원 {c.DisplayName}: 홈 컨디션 전 스탯 +{fx.HomeAllStatsBonus}, 상대 투수 제구 -{fx.OpponentControlPenalty}");
                         }
-                        else fx.Lines.Add($"5.홈 응원 {c.Name}: 원정 경기 - 미발동");
+                        else fx.Lines.Add($"5.홈 응원 {c.DisplayName}: 원정 경기 - 미발동");
                         break;
                     default:
                         fx.CloseLateMultiplier = System.Math.Min(1.15f, CloseLate[t] + CheerGrowth.CloseLateBonus(c));
                         float card = c.ClutchMultiplier;
                         fx.LateRispMultiplier = float.IsNaN(card) || float.IsInfinity(card) ? 1f : System.Math.Max(1f, System.Math.Min(card, 1.1f));
-                        fx.Lines.Add($"6.위기 응원 {c.Name}: {fx.CloseLateFromInning}회 이후 {fx.CloseLateMaxDiff}점 차 접전 타격 x{fx.CloseLateMultiplier:F2}" +
+                        fx.Lines.Add($"6.위기 응원 {c.DisplayName}: {fx.CloseLateFromInning}회 이후 {fx.CloseLateMaxDiff}점 차 접전 타격 x{fx.CloseLateMultiplier:F2}" +
                                      (fx.LateRispMultiplier > 1f ? $", 후반 득점권 x{fx.LateRispMultiplier:F2}" : ""));
                         break;
                 }

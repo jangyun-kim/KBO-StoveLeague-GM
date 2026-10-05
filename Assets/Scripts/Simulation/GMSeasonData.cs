@@ -1,0 +1,256 @@
+using System;
+using System.Collections.Generic;
+using KBOManager.Core;
+using KBOManager.Managers;
+using KBOManager.Models;
+
+namespace KBOManager.Simulation
+{
+    /// <summary>[TASK-GM-02] 리그 플레이 진행 방식(기획서 2절): 한 경기 | 전반기(→ 후반기) | 한 시즌.</summary>
+    public enum GMRunMode
+    {
+        SingleGame = 0,  // 1경기(하루 5경기 중 내 구단 경기 포함 1일)
+        FirstHalf = 1,   // 개막 ~ 올스타 브레이크(72경기)
+        SecondHalf = 2,  // 73 ~ 144경기
+        FullSeason = 3,  // 1 ~ 144경기
+    }
+
+    /// <summary>[TASK-GM-02] 구단 시즌 성적(순위표 한 행).</summary>
+    [Serializable]
+    public class GMTeamRecord
+    {
+        public string TeamCode;
+        public int G, W, D, L, RunsScored, RunsAllowed, Streak; // Streak: +연승 / -연패
+        public int TeamHomeRuns;
+
+        /// <summary>KBO 승률 = 승 / (승 + 패) - 무승부 제외.</summary>
+        public double Pct => W + L == 0 ? 0 : (double)W / (W + L);
+        public static string PctLabel(double pct) => pct >= 1 ? "1.000" : pct.ToString(".000", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>[TASK-GM-02] 선수 시즌 누적 기록(타자 · 투수 공용). PlayerId = Player.InstanceId.</summary>
+    [Serializable]
+    public class GMPlayerSeasonStats
+    {
+        public string PlayerId;
+        public string TeamCode;
+        public bool IsPitcher;
+
+        // 타격
+        public int G, PA, AB, H, Doubles, Triples, HR, RBI, R, SB, BB, SO;
+        public int CurrentHitStreak, MaxHitStreak, CurrentHrStreak;
+        // 투구
+        public int PG, GS, W, L, SV, HLD, OutsPitched, ER, PSO, PBB, HA, HRA;
+        // 시뮬레이터가 갱신 시 계산(리그 평균 기반)
+        public float BatterWAR, PitcherWAR;
+
+        public int Singles => H - Doubles - Triples - HR;
+        public int TotalBases => Singles + Doubles * 2 + Triples * 3 + HR * 4;
+        public double AVG => AB == 0 ? 0 : (double)H / AB;
+        public double OBP => PA == 0 ? 0 : (double)(H + BB) / PA;
+        public double SLG => AB == 0 ? 0 : (double)TotalBases / AB;
+        public double IP => OutsPitched / 3.0;
+        public double ERA => OutsPitched == 0 ? 99.99 : ER * 27.0 / OutsPitched;
+        public double WHIP => OutsPitched == 0 ? 9.99 : (HA + PBB) * 3.0 / OutsPitched;
+        /// <summary>이닝 표기 "152 1/3".</summary>
+        public string IPLabel => OutsPitched % 3 == 0 ? $"{OutsPitched / 3}" : $"{OutsPitched / 3} {OutsPitched % 3}/3";
+    }
+
+    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8 }
+
+    /// <summary>[TASK-GM-02] 최신 소식 피드 한 줄(날짜 + 제목 + 본문).</summary>
+    [Serializable]
+    public class GMNewsItem
+    {
+        public int GameIndex;
+        public string DateLabel;   // "MM/DD/2026"
+        public GMNewsKind Kind;
+        public string Title;
+        public string Body;
+        public bool IsUserTeam;
+        public bool IsMajor;
+    }
+
+    /// <summary>[TASK-GM-02] 개인 성적 TOP 3 한 칸.</summary>
+    public class GMLeaderEntry
+    {
+        public string PlayerId;
+        public string Name;
+        public string TeamCode;
+        public double Value;
+        public string ValueLabel;
+    }
+
+    /// <summary>[TASK-GM-02] 개인 성적 부문 - 타자 8 · 투수 7(기획서 2.1).</summary>
+    public enum GMLeaderCategory
+    {
+        AVG = 0, HR = 1, RBI = 2, SB = 3, OBP = 4, SLG = 5, BatterWAR = 6, HitStreak = 7,
+        ERA = 8, Wins = 9, Strikeouts = 10, Saves = 11, Holds = 12, WHIP = 13, PitcherWAR = 14,
+    }
+
+    public static class GMLeaderCategories
+    {
+        public static readonly GMLeaderCategory[] Batter =
+            { GMLeaderCategory.AVG, GMLeaderCategory.HR, GMLeaderCategory.RBI, GMLeaderCategory.SB, GMLeaderCategory.OBP, GMLeaderCategory.SLG, GMLeaderCategory.BatterWAR, GMLeaderCategory.HitStreak };
+        public static readonly GMLeaderCategory[] Pitcher =
+            { GMLeaderCategory.ERA, GMLeaderCategory.Wins, GMLeaderCategory.Strikeouts, GMLeaderCategory.Saves, GMLeaderCategory.Holds, GMLeaderCategory.WHIP, GMLeaderCategory.PitcherWAR };
+
+        public static bool IsPitching(GMLeaderCategory c) => c >= GMLeaderCategory.ERA;
+        /// <summary>낮을수록 좋은 부문(ERA · WHIP).</summary>
+        public static bool LowerIsBetter(GMLeaderCategory c) => c == GMLeaderCategory.ERA || c == GMLeaderCategory.WHIP;
+        /// <summary>규정 타석 · 규정 이닝이 필요한 비율 부문.</summary>
+        public static bool NeedsQualification(GMLeaderCategory c) =>
+            c == GMLeaderCategory.AVG || c == GMLeaderCategory.OBP || c == GMLeaderCategory.SLG || c == GMLeaderCategory.ERA || c == GMLeaderCategory.WHIP;
+
+        public static string Label(GMLeaderCategory c)
+        {
+            switch (c)
+            {
+                case GMLeaderCategory.AVG: return "타율";
+                case GMLeaderCategory.HR: return "홈런";
+                case GMLeaderCategory.RBI: return "타점";
+                case GMLeaderCategory.SB: return "도루";
+                case GMLeaderCategory.OBP: return "출루율";
+                case GMLeaderCategory.SLG: return "장타율";
+                case GMLeaderCategory.BatterWAR: return "타자 WAR";
+                case GMLeaderCategory.HitStreak: return "연속 안타";
+                case GMLeaderCategory.ERA: return "평균자책점";
+                case GMLeaderCategory.Wins: return "승리";
+                case GMLeaderCategory.Strikeouts: return "탈삼진";
+                case GMLeaderCategory.Saves: return "세이브";
+                case GMLeaderCategory.Holds: return "홀드";
+                case GMLeaderCategory.WHIP: return "WHIP";
+                default: return "투수 WAR";
+            }
+        }
+
+        public static double Value(GMLeaderCategory c, GMPlayerSeasonStats s)
+        {
+            switch (c)
+            {
+                case GMLeaderCategory.AVG: return s.AVG;
+                case GMLeaderCategory.HR: return s.HR;
+                case GMLeaderCategory.RBI: return s.RBI;
+                case GMLeaderCategory.SB: return s.SB;
+                case GMLeaderCategory.OBP: return s.OBP;
+                case GMLeaderCategory.SLG: return s.SLG;
+                case GMLeaderCategory.BatterWAR: return s.BatterWAR;
+                case GMLeaderCategory.HitStreak: return s.MaxHitStreak;
+                case GMLeaderCategory.ERA: return s.ERA;
+                case GMLeaderCategory.Wins: return s.W;
+                case GMLeaderCategory.Strikeouts: return s.PSO;
+                case GMLeaderCategory.Saves: return s.SV;
+                case GMLeaderCategory.Holds: return s.HLD;
+                case GMLeaderCategory.WHIP: return s.WHIP;
+                default: return s.PitcherWAR;
+            }
+        }
+
+        public static string Format(GMLeaderCategory c, double v)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            switch (c)
+            {
+                case GMLeaderCategory.AVG:
+                case GMLeaderCategory.OBP:
+                case GMLeaderCategory.SLG: return v >= 1 ? v.ToString("0.000", inv) : v.ToString(".000", inv);
+                case GMLeaderCategory.ERA:
+                case GMLeaderCategory.WHIP:
+                case GMLeaderCategory.BatterWAR:
+                case GMLeaderCategory.PitcherWAR: return v.ToString("0.00", inv);
+                default: return ((int)Math.Round(v)).ToString(inv);
+            }
+        }
+    }
+
+    /// <summary>[TASK-GM-02] 인터럽트 팝업 종류 - 대기록 뉴스 / 내 구단 주전 부상.</summary>
+    public enum GMInterruptKind { Record = 0, Injury = 1 }
+
+    public enum GMInterruptChoice { Continue = 0, AutoCallUp = 1, ManualLineup = 2 }
+
+    /// <summary>[TASK-GM-02] 시뮬레이션을 멈추고 띄우는 팝업 1건.</summary>
+    public class GMSimInterrupt
+    {
+        public GMInterruptKind Kind;
+        public GMNewsItem News;
+        public Player Player;                       // 부상 선수(부상 팝업)
+        public string TeamCode;
+        public BatterPosition Position;             // 부상 타자 포지션(직접 관리 시 대체 자리)
+        public readonly List<Player> ReplacementCandidates = new List<Player>();
+    }
+
+    /// <summary>
+    /// [TASK-GM-02] TeamChemistryReport 6대 역학 계수를 MatchEngine이 쓰는 형태로 옮긴 값.
+    /// TeamPowerModifiers.Chemistry로 전달되며, 엔진은 아래 규칙으로 타석 판정에 반영한다.
+    ///   - PowerBonus: 실효 전력 계수(0.80~1.15) → 전 스탯 가산(-4 ~ +3)
+    ///   - ClutchHitModifier: 7회 이후 2점 차 이내 득점권 타자 긍정 결과 가중치 × (1 + 값)
+    ///   - ErrorRateMultiplier: 수비 팀 실책(범타 → 출루) 확률 = 1.2% × (배수 - 1)
+    ///   - DoublePlayRiskMultiplier: 공격 팀 병살 확률 · 득점권 삼진 가중치 배수
+    ///   - PitcherEraPenalty: 투수 구위 · 변화 감산(ERA +0.85 → -3)
+    ///   - UpsetVulnerabilityChance: 약팀 상대(구단 OVR 3 이상 우위) 경기 전 방심 판정 확률 → 발동 시 그 경기 전 스탯 -4
+    /// </summary>
+    public class GMChemistryModifiers
+    {
+        public int PowerBonus;
+        public float ClutchHitModifier;
+        public float ErrorRateMultiplier = 1f;
+        public float DoublePlayRiskMultiplier = 1f;
+        public int PitcherStatPenalty;
+        public float UpsetVulnerabilityChance;
+
+        public const float BaseErrorChance = 0.012f;
+        public const int UpsetStatPenalty = 4;
+        public const int UpsetOvrMargin = 3;
+
+        public static GMChemistryModifiers From(TeamChemistryReport report)
+        {
+            if (report == null) return null;
+            return new GMChemistryModifiers
+            {
+                PowerBonus = (int)Math.Round((report.EffectivePowerMultiplier - 1f) * 20f, MidpointRounding.AwayFromZero),
+                ClutchHitModifier = report.ClutchHitModifier,
+                ErrorRateMultiplier = report.ErrorRateMultiplier,
+                DoublePlayRiskMultiplier = report.DoublePlayRiskMultiplier,
+                PitcherStatPenalty = (int)Math.Round(report.PitcherEraPenalty * 4f, MidpointRounding.AwayFromZero),
+                UpsetVulnerabilityChance = report.UpsetVulnerabilityChance,
+            };
+        }
+    }
+
+    // ================================================================== 세이브(v14)
+
+    [Serializable]
+    public class GMTeamSaveData
+    {
+        public string TeamCode;
+        public bool IsUserTeam;
+        public long Budget;
+        public int PayrollCap;
+        public List<PlayerSaveData> Roster = new List<PlayerSaveData>();
+        public List<Cheerleader> CheerleaderPool = new List<Cheerleader>();
+        public int CheerEntrySize = GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT;
+        public int ConsecutiveLastPlaceSeasons;
+        public bool OwnerPostseasonPressure;
+        public string TradeRequestPlayerId;
+        public LineupAssignment Lineup = new LineupAssignment();
+    }
+
+    /// <summary>[TASK-GM-02] 단장 모드 리그 저장 데이터(GameSaveData.GMLeague). HasData가 false면 단장 모드 미시작(구버전 세이브 포함).</summary>
+    [Serializable]
+    public class GMLeagueSaveData
+    {
+        public bool HasData;
+        public GMStartMode Mode;
+        public int SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR;
+        public GMSeasonPhase Phase;
+        public string SelectedTeamCode;
+        public bool UseVirtualNames;
+        public int GamesPlayed;
+        public int Seed;
+        public List<GMTeamSaveData> Teams = new List<GMTeamSaveData>();
+        public List<PlayerSaveData> FreeAgents = new List<PlayerSaveData>();
+        public List<GMTeamRecord> Records = new List<GMTeamRecord>();
+        public List<GMPlayerSeasonStats> Stats = new List<GMPlayerSeasonStats>();
+        public List<GMNewsItem> News = new List<GMNewsItem>();
+    }
+}

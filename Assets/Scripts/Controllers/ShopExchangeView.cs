@@ -196,6 +196,8 @@ namespace KBOManager.Controllers
                 subTabButtons[i] = kit.Button(root, $"Sub_{t}", names[i], x0, 162, x0 + 238, 240, TabOff, White, 30);
                 subTabButtons[i].onClick.AddListener(() => SelectSubTab(t));
             }
+            // [TASK-GM-02] 단장 모드 - 선수 카드 3:1 재조합(합성)은 카드 수집형 기능이라 탭을 숨긴다(GMFeatureFlags, 코드 · 데이터는 유지).
+            if (!KBOManager.Core.GMFeatureFlags.IsPlayerGachaEnabled) subTabButtons[(int)ShopSubTab.Recombine].gameObject.SetActive(false);
             descText = kit.Label(root, "Desc", "", 28, 246, 1220, 320, 25, TextAnchor.MiddleLeft, White);
 
             // ---- 선택기(포지션 · 등급)

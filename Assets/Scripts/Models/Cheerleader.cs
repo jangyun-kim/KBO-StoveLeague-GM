@@ -57,6 +57,10 @@ namespace KBOManager.Models
         public string Name;
         public CheerleaderGrade Grade = CheerleaderGrade.NONE;
 
+        /// <summary>[TASK-GM-02] 화면 표시 이름 - GameSettings.UseVirtualNames면 가상명(NameAliasTable, 실명 시드라 같은 사람은 같은 이름).
+        /// 저장 · 동일 인물 판정(CheerSquad.PersonKey)은 실명(Name)을 그대로 쓴다.</summary>
+        public string DisplayName => KBOManager.Data.NameAliasTable.GetDisplayCheerleaderName(Name, KBOManager.Core.GameSettings.UseVirtualNames);
+
         /// <summary>
         /// [TASK-KBO-048] 유저 팀의 홈 경기에서만(BuildTeamPowerModifiers 계열 호출부가 판별) 기본
         /// 홈 어드밴티지(Engine.TeamPowerModifiers.HomeAdvantageConditionBuff, +2)에 가산되는

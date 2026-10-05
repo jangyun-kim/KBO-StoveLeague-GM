@@ -26,7 +26,8 @@ namespace KBOManager.Simulation
     /// <summary>
     /// [TASK-GM-01] 마스터 인계 문서 제4절 "성적이 좋은 선수들만 모였을 때의 6대 부작용과 해결책"을 계산하는 엔진(지시서 2.4절 사양 그대로).
     /// 해법: 주장 임명 · 더그아웃 리더 · 헌신형 살림꾼 배치, 보직 양보 인센티브, 전술 기조 '규율 우선', 치어리더 리더십 버프.
-    /// 주의: ② 보직 자존심 충돌은 사양대로 밀려난 스타의 PersonalMorale을 직접 깎는다(평가를 반복하면 하한 20/25까지 누적된다).
+    /// [TASK-GM-02] EvaluateRoster는 상태를 바꾸지 않는 순수 계산 함수다(진단 화면을 몇 번 열어도 만족도 불변).
+    /// 실제 만족도 · 컨디션 변동은 경기(일자) 진행 시 ApplyMatchChemistryTick()이 한 번씩 적용한다.
     /// </summary>
     public static class TeamChemistryEngine
     {
@@ -75,35 +76,8 @@ namespace KBOManager.Simulation
             }
 
             // [경우의 수 ②] 타순·보직 자존심 충돌 (중심타선 3·4·5번 / 1선발 독점욕)
-            var highEgoBatters = activeRoster.Where(p => !p.IsPitcher && p.EgoLevel >= 4).ToList();
-            var highEgoPitchers = activeRoster.Where(p => p.IsPitcher && p.EgoLevel >= 5).ToList();
-            int dissatisfiedStars = 0;
-
-            // 중심타선(3, 4, 5번 및 강한 2번 설득 포함 최대 4자리) 초과 스타 타자 체크
-            if (highEgoBatters.Count > 4)
-            {
-                foreach (var star in highEgoBatters.Skip(4))
-                {
-                    if (!star.HasRoleConcessionBonus)
-                    {
-                        dissatisfiedStars++;
-                        star.PersonalMorale = Math.Max(20, star.PersonalMorale - 25);
-                    }
-                }
-            }
-
-            // 1선발 에이스 자존심 충돌 체크 (Ego 5 투수가 3명 이상일 때)
-            if (highEgoPitchers.Count >= 3)
-            {
-                foreach (var pitcher in highEgoPitchers.Skip(2))
-                {
-                    if (!pitcher.HasRoleConcessionBonus)
-                    {
-                        dissatisfiedStars++;
-                        pitcher.PersonalMorale = Math.Max(25, pitcher.PersonalMorale - 20);
-                    }
-                }
-            }
+            // [TASK-GM-02] 순수 계산 - 밀려난 스타를 세기만 하고 만족도는 바꾸지 않는다(실제 변동은 ApplyMatchChemistryTick).
+            int dissatisfiedStars = GetDissatisfiedStars(activeRoster).Count;
 
             if (dissatisfiedStars > 0)
             {
@@ -175,6 +149,49 @@ namespace KBOManager.Simulation
 
             return report;
         }
+
+        /// <summary>② 중심타선(최대 4자리) · 1~2선발에서 밀려난 자존심 높은 스타(보직 양보 인센티브 수령자 제외). 상태 변경 없음.</summary>
+        public static List<Player> GetDissatisfiedStars(IReadOnlyList<Player> activeRoster)
+        {
+            var result = new List<Player>();
+            if (activeRoster == null) return result;
+            var highEgoBatters = activeRoster.Where(p => !p.IsPitcher && p.EgoLevel >= 4).ToList();
+            var highEgoPitchers = activeRoster.Where(p => p.IsPitcher && p.EgoLevel >= 5).ToList();
+            if (highEgoBatters.Count > 4) result.AddRange(highEgoBatters.Skip(4).Where(p => !p.HasRoleConcessionBonus));
+            if (highEgoPitchers.Count >= 3) result.AddRange(highEgoPitchers.Skip(2).Where(p => !p.HasRoleConcessionBonus));
+            return result;
+        }
+
+        public const int TickMoralePenalty = 3;   // 불만 스타 경기당 만족도 하락
+        public const int TickMoraleRecovery = 1;  // 그 외 선수 경기당 회복(기본 70까지)
+        public const int MoraleFloorBatter = 20, MoraleFloorPitcher = 25;
+
+        /// <summary>
+        /// [TASK-GM-02] 경기(일자) 진행 시점에만 호출하는 실제 케미스트리 변동: 밀려난 스타는 만족도 -3(타자 하한 20 · 투수 하한 25)과
+        /// 컨디션 한 단계 하락(만족도 40 미만), 나머지는 기본 만족도(70)까지 +1(분위기 '고무'면 +2) 회복한다.
+        /// </summary>
+        public static void ApplyMatchChemistryTick(IReadOnlyList<Player> activeRoster)
+        {
+            if (activeRoster == null || activeRoster.Count == 0) return;
+            var report = EvaluateRoster(activeRoster, 0);
+            var unhappy = new HashSet<Player>(GetDissatisfiedStars(activeRoster));
+            int recovery = report.MoraleState == TeamMoraleState.Boosted ? TickMoraleRecovery + 1 : TickMoraleRecovery;
+            foreach (var p in activeRoster)
+            {
+                if (unhappy.Contains(p))
+                {
+                    p.PersonalMorale = Math.Max(p.IsPitcher ? MoraleFloorPitcher : MoraleFloorBatter, p.PersonalMorale - TickMoralePenalty);
+                    if (p.PersonalMorale < 40) p.ShiftCondition(false);
+                }
+                else if (p.PersonalMorale < Player.DefaultPersonalMorale)
+                {
+                    p.PersonalMorale = Math.Min(Player.DefaultPersonalMorale, p.PersonalMorale + recovery);
+                }
+            }
+        }
+
+        /// <summary>지시서 1항 명칭 - ApplyMatchChemistryTick과 같다.</summary>
+        public static void ApplyChemistryTickEffects(IReadOnlyList<Player> activeRoster) => ApplyMatchChemistryTick(activeRoster);
 
         private static float GetCenterLineDefenseAverage(IReadOnlyList<Player> roster)
         {

@@ -214,6 +214,8 @@ namespace KBOManager.Controllers
         /// </summary>
         private void StartMatch()
         {
+            // [TASK-GM-02] 단장 모드 - [플레이 볼]은 리그 플레이 실시간 대시보드(한 경기 | 전반기/후반기 | 한 시즌)를 연다.
+            if (GMLiveLeagueDashboardUIController.OpenFromLobby() != null) return;
             if (playBallController == null) return;
 
             // [TASK-KBO-179] 컴프야V26 중계형 뷰가 씬에 있으면 "경기 유형 선택(빠른 진행/하이라이트/풀 플레이)" 화면을 먼저

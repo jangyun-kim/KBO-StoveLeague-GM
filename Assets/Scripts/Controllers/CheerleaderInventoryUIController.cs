@@ -193,7 +193,7 @@ namespace KBOManager.Controllers
                     onEquip: target =>
                     {
                         statusMessage = GameManager.Instance.TryEquipCheerleader(selectedRole, target, out var reason)
-                            ? $"{(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}에 {target.Name} 배치 완료"
+                            ? $"{(int)selectedRole + 1}.{CheerSquad.RoleName(selectedRole)}에 {target.DisplayName} 배치 완료"
                             : reason;
                         RefreshInventory();
                     },
@@ -247,7 +247,7 @@ namespace KBOManager.Controllers
                 : $"시너지 미발동 (세트덱 {deckTeam}) · 경기 버프 없음";
 
             equippedSummaryText.text =
-                $"장착 슬롯: [{CheerleaderSlotUI.TierLabel(equipped.Grade)}] {equipped.Name} · {affiliation}\n" +
+                $"장착 슬롯: [{CheerleaderSlotUI.TierLabel(equipped.Grade)}] {equipped.DisplayName} · {affiliation}\n" +
                 $"{synergyLine}\n상시 효과 · 관중 수익 x{equipped.EconomicBonusRate:F2} / 팬심 방어 +{equipped.SentimentDefense}";
         }
 

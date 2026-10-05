@@ -112,7 +112,7 @@ namespace KBOManager.UI
                     cell.Effect.text = CheerSquad.DescribeRoleEffect(role, null);
                     continue;
                 }
-                cell.Name.text = $"{c.Name} <color=#FFD54A>{CheerGrowth.StarBadge(c)}</color>{(c.ReinforceLevel > 0 ? $" +{CheerGrowth.Reinforce(c)}" : "")}"; // [TASK-KBO-187]
+                cell.Name.text = $"{c.DisplayName} <color=#FFD54A>{CheerGrowth.StarBadge(c)}</color>{(c.ReinforceLevel > 0 ? $" +{CheerGrowth.Reinforce(c)}" : "")}"; // [TASK-KBO-187]
                 string affiliation = string.IsNullOrEmpty(c.AffiliationLabel) ? "구단 무관" : c.AffiliationLabel;
                 cell.Meta.text = $"{c.Grade.Display()} · {affiliation}";
                 bool synergy = CheerleaderSynergy.IsActive(c, deckTeam);

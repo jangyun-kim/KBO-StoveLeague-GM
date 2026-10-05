@@ -123,6 +123,13 @@ namespace KBOManager.Controllers
         {
             if (root == null) return;
             var gm = GameManager.Instance;
+            // [TASK-GM-02] 단장 모드 리그가 있으면 내 구단 28인 · 치어리더 엔트리/풀을 진단한다.
+            var userTeam = gm?.GMLeague?.UserTeam;
+            if (userTeam != null)
+            {
+                Render(userTeam.AvailableRoster, userTeam.CheerEntry.ToList(), userTeam.CheerleaderPool.Count);
+                return;
+            }
             var roster = gm != null ? gm.Roster.Where(p => p?.Template != null).ToList() : new List<Player>();
             var entry = gm != null ? gm.CheerSquadSlots : null;
             int pool = gm?.OwnedCheerleaders?.Count ?? 0;

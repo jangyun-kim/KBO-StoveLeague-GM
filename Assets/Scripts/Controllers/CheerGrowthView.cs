@@ -207,7 +207,7 @@ namespace KBOManager.Controllers
             else
             {
                 var slot = gm.FindSlotOf(target);
-                nameText.text = $"[{CheerleaderSlotUI.TierLabel(target.Grade)}] {target.Name}  ·  {(string.IsNullOrEmpty(target.AffiliationLabel) ? "구단 무관" : target.AffiliationLabel)}  ({targetIndex + 1}/{targets.Count})";
+                nameText.text = $"[{CheerleaderSlotUI.TierLabel(target.Grade)}] {target.DisplayName}  ·  {(string.IsNullOrEmpty(target.AffiliationLabel) ? "구단 무관" : target.AffiliationLabel)}  ({targetIndex + 1}/{targets.Count})";
                 growthText.text = $"{CheerGrowth.StarBadge(target)}   +{CheerGrowth.Reinforce(target)}강   효과 티어 {CheerGrowth.EffectiveTier(target)}";
                 var lines = new List<string>
                 {
@@ -232,7 +232,7 @@ namespace KBOManager.Controllers
                 awakenInfo.text = starMax
                     ? "★5 최종 각성 완료"
                     : best != null
-                        ? $"재료 {materials.Count}장 보유 · 다음 재료: {best.Name} ({best.Team}) → +{CheerGrowth.AwakenGain(target, best)}★\n동일 인물 +2★ / 동일 구단 +1★\n★3 · ★5 달성 시 효과 티어 도약"
+                        ? $"재료 {materials.Count}장 보유 · 다음 재료: {best.DisplayName} ({best.Team}) → +{CheerGrowth.AwakenGain(target, best)}★\n동일 인물 +2★ / 동일 구단 +1★\n★3 · ★5 달성 시 효과 티어 도약"
                         : "재료 없음 - 동일 인물(+2★) / 동일 구단(+1★) 카드가 필요합니다\n★3 · ★5 달성 시 효과 티어 도약";
                 awakenButton.interactable = !starMax && best != null;
             }

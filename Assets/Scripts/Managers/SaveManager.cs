@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using KBOManager.Core;
+using KBOManager.Data;
 using KBOManager.Models;
+using KBOManager.Services;
+using KBOManager.Simulation;
 using UnityEngine;
 
 namespace KBOManager.Managers
@@ -38,6 +42,20 @@ namespace KBOManager.Managers
         // 롤 기준 기본값(완전 회복 상태)을 그대로 둔다 - 자세한 내용은 RestorePlayer() 참고.
         public int CurrentStamina;
         public int MaxStamina;
+
+        // [TASK-GM-02] v14 - 단장 모드 선수 속성(Player GM 필드). 필드 없는 구버전 세이브는 아래 기본값(만족도 70 · 자존심 1)으로 채워지고,
+        // 연봉이 0인 카드는 진단 화면/로더가 시즌 성적으로 1회 산출한다.
+        public int Age;
+        public int Salary;
+        public int ContractYears;
+        public int EgoLevel = 1;
+        public LockerRoomRole RoleArchetype = LockerRoomRole.UnsungHero;
+        public int PersonalMorale = Player.DefaultPersonalMorale;
+        public bool IsCaptain;
+        public bool HasRoleConcessionBonus;
+        public bool IsScouted;
+        public int InjuryRemainingDays;
+        public List<string> CareerAwardIds = new List<string>();
     }
 
     /// <summary>
@@ -156,7 +174,9 @@ namespace KBOManager.Managers
         // v12: 카드 3슬롯 스킬(PlayerSaveData.SkillSlots)과 스킬 변경권 · 고급 스킬 변경권 추가(TASK-KBO-190). 슬롯 없는 카드는 로드 시 결정적 부여.
         // v13: 스토브리그 시즌 상태(StoveLeague)와 명예의 전당 확장 필드(시즌 번호 · 리그 · 전적 · KS 우승 · MVP · 타이틀) 추가(TASK-KBO-193).
         //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
-        public int SaveVersion = 13;
+        // v14: 단장 모드(TASK-GM-02) - 선수 GM 속성(PlayerSaveData.Age ~ CareerAwardIds)과 리그 상태(GMLeague: 모드 · 연도 · 경기 진행 인덱스 ·
+        //      10구단 로스터/치어리더 풀 · 순위 · 개인 누적 기록 · 최신 소식). GMLeague.HasData가 false면 단장 모드 미시작.
+        public int SaveVersion = 14;
         public string SavedAtUtc;
 
         // GameManager
@@ -197,6 +217,7 @@ namespace KBOManager.Managers
         public List<string> BattingOrder = new List<string>(); // [TASK-KBO-182] v9
         public LineupAssignment Lineup = new LineupAssignment(); // [TASK-KBO-186] v11
         public StoveLeagueState StoveLeague = new StoveLeagueState(); // [TASK-KBO-193] v13
+        public GMLeagueSaveData GMLeague = new GMLeagueSaveData(); // [TASK-GM-02] v14
 
         // LeagueManager
         public bool HasLeagueData;
@@ -362,6 +383,7 @@ namespace KBOManager.Managers
                 data.Lineup = new LineupAssignment();
                 data.Lineup.CopyFrom(gm.LineupAssignment);
                 data.StoveLeague = gm.StoveLeague; // [TASK-KBO-193]
+                data.GMLeague = ToGMSaveData(gm.GMLeague); // [TASK-GM-02]
                 data.FanSentiment = gm.FanSentiment;
                 data.LosingStreak = gm.LosingStreak;
                 data.SetDeckSelection = new SetDeckSelection(); // [TASK-KBO-176] 사본 저장(런타임 객체 공유 방지)
@@ -460,7 +482,108 @@ namespace KBOManager.Managers
             SkillSlots = (player.SkillSlots ?? new List<PlayerSkillSlot>()).Where(s => s != null).Select(s => s.Clone()).ToList(),
             CurrentStamina = player.CurrentStamina,
             MaxStamina = player.MaxStamina,
+            Age = player.Age,
+            Salary = player.Salary,
+            ContractYears = player.ContractYears,
+            EgoLevel = player.EgoLevel,
+            RoleArchetype = player.RoleArchetype,
+            PersonalMorale = player.PersonalMorale,
+            IsCaptain = player.IsCaptain,
+            HasRoleConcessionBonus = player.HasRoleConcessionBonus,
+            IsScouted = player.IsScouted,
+            InjuryRemainingDays = player.InjuryRemainingDays,
+            CareerAwardIds = new List<string>(player.CareerAwardIds ?? new List<string>()),
         };
+
+        // ----- [TASK-GM-02] 단장 모드 리그 -----
+
+        public static GMLeagueSaveData ToGMSaveData(GMLeagueState league)
+        {
+            var data = new GMLeagueSaveData();
+            if (league == null) return data;
+            data.HasData = true;
+            data.Mode = league.Mode;
+            data.SeasonYear = league.SeasonYear;
+            data.Phase = league.Phase;
+            data.SelectedTeamCode = league.SelectedTeamCode;
+            data.UseVirtualNames = league.UseVirtualNames;
+            data.GamesPlayed = league.GamesPlayed;
+            data.Seed = league.Seed;
+            foreach (var team in league.Teams.Values)
+            {
+                var t = new GMTeamSaveData
+                {
+                    TeamCode = team.TeamCode,
+                    IsUserTeam = team.IsUserTeam,
+                    Budget = team.Budget,
+                    PayrollCap = team.PayrollCap,
+                    Roster = team.Roster.Select(ToSaveData).ToList(),
+                    CheerleaderPool = new List<Cheerleader>(team.CheerleaderPool),
+                    CheerEntrySize = team.CheerEntrySize,
+                    ConsecutiveLastPlaceSeasons = team.ConsecutiveLastPlaceSeasons,
+                    OwnerPostseasonPressure = team.OwnerPostseasonPressure,
+                    TradeRequestPlayerId = team.TradeRequestPlayerId,
+                };
+                t.Lineup.CopyFrom(team.Lineup);
+                data.Teams.Add(t);
+            }
+            data.FreeAgents = league.FreeAgents.Select(ToSaveData).ToList();
+            data.Records = league.Records.Values.ToList();
+            data.Stats = league.Stats.Values.ToList();
+            data.News = new List<GMNewsItem>(league.News);
+            return data;
+        }
+
+        /// <summary>저장 데이터 → 리그 상태. 선수 원본은 PlayerDatabase(TemplateId)에서 다시 붙인다. HasData가 false면 null.</summary>
+        public GMLeagueState FromGMSaveData(GMLeagueSaveData data) => FromGMSaveData(data, RestorePlayer);
+
+        public static GMLeagueState FromGMSaveData(GMLeagueSaveData data, Func<PlayerSaveData, Player> restore)
+        {
+            if (data == null || !data.HasData || data.Teams == null || data.Teams.Count == 0) return null;
+            var league = new GMLeagueState
+            {
+                Mode = data.Mode,
+                SeasonYear = data.SeasonYear,
+                Phase = data.Phase,
+                SelectedTeamCode = data.SelectedTeamCode,
+                UseVirtualNames = data.UseVirtualNames,
+                GamesPlayed = data.GamesPlayed,
+                Seed = data.Seed,
+            };
+            foreach (var t in data.Teams)
+            {
+                var team = new GMTeamState
+                {
+                    TeamCode = t.TeamCode,
+                    Team = NameAliasTable.ToTeam(t.TeamCode),
+                    DisplayName = NameAliasTable.DisplayTeamName(t.TeamCode),
+                    IsUserTeam = t.IsUserTeam,
+                    Budget = t.Budget,
+                    PayrollCap = t.PayrollCap,
+                    CheerEntrySize = GMCheerleaderRules.ClampEntrySize(t.CheerEntrySize),
+                    ConsecutiveLastPlaceSeasons = t.ConsecutiveLastPlaceSeasons,
+                    OwnerPostseasonPressure = t.OwnerPostseasonPressure,
+                    TradeRequestPlayerId = t.TradeRequestPlayerId,
+                };
+                team.Lineup.CopyFrom(t.Lineup);
+                foreach (var saved in t.Roster ?? new List<PlayerSaveData>())
+                {
+                    var p = restore(saved);
+                    if (p != null) team.Roster.Add(p);
+                }
+                team.CheerleaderPool.AddRange((t.CheerleaderPool ?? new List<Cheerleader>()).Where(c => !CheerSquad.IsEmpty(c)));
+                league.Teams[team.TeamCode] = team;
+            }
+            foreach (var saved in data.FreeAgents ?? new List<PlayerSaveData>())
+            {
+                var p = restore(saved);
+                if (p != null) league.FreeAgents.Add(p);
+            }
+            foreach (var r in data.Records ?? new List<GMTeamRecord>()) if (!string.IsNullOrEmpty(r.TeamCode)) league.Records[r.TeamCode] = r;
+            foreach (var s in data.Stats ?? new List<GMPlayerSeasonStats>()) if (!string.IsNullOrEmpty(s.PlayerId)) league.Stats[s.PlayerId] = s;
+            league.News.AddRange(data.News ?? new List<GMNewsItem>());
+            return league;
+        }
 
         // ----- 역직렬화 -----
 
@@ -508,6 +631,7 @@ namespace KBOManager.Managers
                 gm.SetBattingOrderOverride(data.BattingOrder);
                 gm.RestoreLineupAssignment(data.Lineup);
                 gm.RestoreStoveLeague(data.StoveLeague); // [TASK-KBO-193]
+                gm.RestoreGMLeague(FromGMSaveData(data.GMLeague)); // [TASK-GM-02]
                 gm.FanSentiment = data.FanSentiment;
                 gm.LosingStreak = data.LosingStreak;
                 gm.RestoreSetDeckSelection(data.SetDeckSelection); // [TASK-KBO-176] null/구버전이면 기본값(A안·자동 연도)
@@ -633,6 +757,22 @@ namespace KBOManager.Managers
             }
         }
 
+        /// <summary>[TASK-GM-02] 저장된 단장 모드 선수 속성을 복원한다.</summary>
+        public static void ApplyGMFields(Player player, PlayerSaveData saved)
+        {
+            player.Age = saved.Age;
+            player.Salary = saved.Salary;
+            player.ContractYears = saved.ContractYears;
+            player.EgoLevel = Math.Max(1, Math.Min(5, saved.EgoLevel));
+            player.RoleArchetype = saved.RoleArchetype;
+            player.PersonalMorale = Math.Max(0, Math.Min(100, saved.PersonalMorale));
+            player.IsCaptain = saved.IsCaptain;
+            player.HasRoleConcessionBonus = saved.HasRoleConcessionBonus;
+            player.IsScouted = saved.IsScouted;
+            player.InjuryRemainingDays = Math.Max(0, saved.InjuryRemainingDays);
+            player.CareerAwardIds = new List<string>(saved.CareerAwardIds ?? new List<string>());
+        }
+
         private Player RestorePlayer(PlayerSaveData saved)
         {
             if (playerDatabase == null || string.IsNullOrEmpty(saved.TemplateId)) return null;
@@ -658,6 +798,7 @@ namespace KBOManager.Managers
                 SkillSlots = (saved.SkillSlots ?? new List<PlayerSkillSlot>()).Where(s => s != null && !string.IsNullOrEmpty(s.SkillId)).Select(s => s.Clone()).ToList(),
             };
             PlayerSkillRules.EnsureSlots(player); // [TASK-KBO-190]
+            ApplyGMFields(player, saved); // [TASK-GM-02]
 
             // 체력 필드 도입(v2) 이전 세이브는 CurrentStamina/MaxStamina가 JSON에 아예 없어 역직렬화 시
             // 기본값(0)이 된다. 투수인데 MaxStamina가 0이면 "체력 데이터가 없던 구버전 세이브"로 간주해,

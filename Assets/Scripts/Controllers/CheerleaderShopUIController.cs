@@ -129,7 +129,7 @@ namespace KBOManager.Controllers
 
                 var c = results[i];
                 string affiliation = string.IsNullOrEmpty(c.AffiliationLabel) ? "" : $" · {c.AffiliationLabel}"; // [TASK-KBO-177]
-                builder.Append($"[{c.Grade.Display()}] {c.Name}{affiliation}  (컨디션 +{c.ConditionBuff} / 클러치 x{c.ClutchMultiplier:F2} / 수익 x{c.EconomicBonusRate:F2} / 팬심 +{c.SentimentDefense})");
+                builder.Append($"[{c.Grade.Display()}] {c.DisplayName}{affiliation}  (컨디션 +{c.ConditionBuff} / 클러치 x{c.ClutchMultiplier:F2} / 수익 x{c.EconomicBonusRate:F2} / 팬심 +{c.SentimentDefense})");
             }
 
             return builder.ToString();

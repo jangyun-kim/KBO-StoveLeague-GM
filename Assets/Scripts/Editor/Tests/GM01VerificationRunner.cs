@@ -274,7 +274,10 @@ namespace KBOManager.EditorTests
             conflict[5].HasRoleConcessionBonus = true;
             var r2 = TeamChemistryEngine.EvaluateRoster(conflict, 0);
             Assert.IsTrue(r2.Has(AllStarOverloadPenalty.LineupRoleConflict));
-            Assert.AreEqual(45, conflict[4].PersonalMorale, "밀려난 스타 만족도 70 → 45");
+            // [TASK-GM-02] 평가는 순수 계산 - 만족도 변동은 경기 틱(ApplyMatchChemistryTick)에서만 일어난다.
+            Assert.AreEqual(Player.DefaultPersonalMorale, conflict[4].PersonalMorale, "평가만으로는 만족도 불변");
+            TeamChemistryEngine.ApplyMatchChemistryTick(conflict);
+            Assert.AreEqual(Player.DefaultPersonalMorale - TeamChemistryEngine.TickMoralePenalty, conflict[4].PersonalMorale, "밀려난 스타 경기 틱 만족도 하락");
             Assert.AreEqual(Player.DefaultPersonalMorale, conflict[5].PersonalMorale, "양보 인센티브 수령자는 불만 없음");
 
             // ③ Hero Ball - 야망가 4명 · 살림꾼 1명, 규율 우선이면 해제
