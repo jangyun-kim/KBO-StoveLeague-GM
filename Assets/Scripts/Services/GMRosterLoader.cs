@@ -38,6 +38,9 @@ namespace KBOManager.Services
         public bool OwnerPostseasonPressure;
         public string TradeRequestPlayerId; // 트레이드를 요구한 선수(RealPlayerId)
 
+        // [TASK-GM-04] 구단 팬 지지율(0~100) - 내 구단 선수 월간 수상 시 상승
+        public int FanSupport = GMTeamFan.DefaultSupport;
+
         // [TASK-GM-02] 단장 지정 라인업(부상 시 [라인업 직접 관리] 대체 선수 핀) - 경기 엔진 타순에 반영된다.
         public LineupAssignment Lineup = new LineupAssignment();
         /// <summary>[TASK-GM-02] 부상자를 뺀 출전 가능 선수.</summary>
@@ -65,6 +68,10 @@ namespace KBOManager.Services
         public readonly List<GMNewsItem> News = new List<GMNewsItem>();
         public const int MaxNews = 120;
 
+        // [TASK-GM-04] 이번 시즌 시상 묶음(월간 · 올스타 · 포스트시즌 · KBO 시상식 · 골든글러브) + 역대 시즌 수상 기록(SeasonAwardsHistory)
+        public SeasonAwardCeremonyBundle Awards = new SeasonAwardCeremonyBundle { SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR };
+        public readonly List<SeasonAwardCeremonyBundle> SeasonAwardsHistory = new List<SeasonAwardCeremonyBundle>();
+
         public IEnumerable<Player> AllPlayers => Teams.Values.SelectMany(t => t.Roster);
 
         public GMTeamRecord RecordOf(string teamCode)
@@ -76,7 +83,11 @@ namespace KBOManager.Services
         public GMPlayerSeasonStats StatsOf(Player player, string teamCode)
         {
             if (!Stats.TryGetValue(player.InstanceId, out var stats))
-                Stats[player.InstanceId] = stats = new GMPlayerSeasonStats { PlayerId = player.InstanceId, TeamCode = teamCode, IsPitcher = player.IsPitcher };
+                Stats[player.InstanceId] = stats = new GMPlayerSeasonStats
+                {
+                    PlayerId = player.InstanceId, TeamCode = teamCode, IsPitcher = player.IsPitcher,
+                    DefRating = player.IsPitcher ? 50 : player.DefenseStat, // [TASK-GM-04] 수비 기여 점수 기준값
+                };
             return stats;
         }
 
@@ -105,6 +116,7 @@ namespace KBOManager.Services
         /// <summary>
         /// 다음 단계로 진행한다: 스토브리그 → 정규시즌 → 포스트시즌 → 시상식 → (해 넘김) 다음 해 스토브리그.
         /// 해가 넘어갈 때 전원 나이 +1, 잔여 계약 -1(0 하한), 부상 일수 초기화. 반환값 = 해가 넘어갔는지.
+        /// [TASK-GM-04] 이번 시즌 시상 묶음은 SeasonAwardsHistory로 옮기고(수상 이력 · 성향은 선수에 영구 보존) 새 시즌 묶음을 연다.
         /// </summary>
         public bool AdvancePhase()
         {
@@ -114,7 +126,9 @@ namespace KBOManager.Services
                 return false;
             }
 
+            if (Awards != null && Awards.HasAny) SeasonAwardsHistory.Add(Awards);
             SeasonYear++;
+            Awards = new SeasonAwardCeremonyBundle { SeasonYear = SeasonYear };
             Phase = GMSeasonPhase.StoveLeague;
             GamesPlayed = 0; // [TASK-GM-02] 새 시즌 - 성적 · 기록 초기화(소식 피드는 유지)
             Records.Clear();
@@ -125,6 +139,7 @@ namespace KBOManager.Services
                 p.Age = Math.Min(Player.MaxAge, p.Age + 1);
                 p.ContractYears = Math.Max(0, p.ContractYears - 1);
                 p.InjuryRemainingDays = 0;
+                if (p.MaxStamina > 0) p.CurrentStamina = p.MaxStamina;
             }
             return true;
         }

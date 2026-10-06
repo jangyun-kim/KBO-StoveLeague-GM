@@ -18,6 +18,7 @@ namespace KBOManager.Simulation
     ///   - 집계: 순위(승/무/패/승률/게임차) · 선수 누적 기록(타자 · 투수 · WAR · 연속 안타) · 최신 소식
     ///   - 인터럽트: 대기록(내 구단 또는 리그 최상급 기록) · 내 구단 주전 부상 시 일시정지 → ResolveInterrupt()
     ///   - 부상: 경미(담/타박상 5~7일) · 중등(햄스트링/내복사근 21~30일) · 중상(인대/골절 60~120일), 경기 일수마다 1일 차감 → 0이면 복귀 소식
+    ///   - [TASK-GM-04] 개인 수비(실책 · 처리 기회 · 호수비 · 포지션별 출전) 집계, 24경기마다 월간 시상(1.7), 72경기 직후 올스타전(1.6) - GMAwardEvaluator
     /// </summary>
     public class GMLiveSeasonSimulator
     {
@@ -37,6 +38,7 @@ namespace KBOManager.Simulation
         private readonly SkillDB skillDB;
         private readonly EngineConfig config;
         private readonly Random random;
+        private readonly Random defenseRandom; // [TASK-GM-04] 수비 기록 전용(경기 결과 난수열과 분리)
         private readonly List<(string home, string away)>[] schedule;
         private readonly Queue<GMSimInterrupt> interrupts = new Queue<GMSimInterrupt>();
         private readonly Dictionary<string, int> weeklyHits = new Dictionary<string, int>();
@@ -62,6 +64,9 @@ namespace KBOManager.Simulation
             this.skillDB = skillDB;
             this.config = config;
             random = new Random(league.Seed + league.SeasonYear * 7 + league.GamesPlayed * 131);
+            defenseRandom = new Random(league.Seed * 31 + league.SeasonYear + league.GamesPlayed * 17);
+            if (league.Awards == null || league.Awards.SeasonYear != league.SeasonYear && !league.Awards.HasAny)
+                league.Awards = new SeasonAwardCeremonyBundle { SeasonYear = league.SeasonYear };
             schedule = BuildSchedule(NameAliasTable.CanonicalTeamCodes);
             foreach (var code in NameAliasTable.CanonicalTeamCodes) league.RecordOf(code);
         }
@@ -97,11 +102,20 @@ namespace KBOManager.Simulation
             return result;
         }
 
+        public SkillDB SkillDB => skillDB;
+        public EngineConfig Config => config;
+        /// <summary>[TASK-GM-04] 시뮬레이터 외부(올스타 · 포스트시즌)에서 쓰는 재현 가능한 난수 시드.</summary>
+        public int NextSeed() => random.Next();
+
         public IReadOnlyList<(string home, string away)> MatchesOn(int dayIndex) => schedule[Math.Max(0, Math.Min(SeasonGames - 1, dayIndex))];
 
-        /// <summary>경기 일자(월요일 휴식 반영: 6경기마다 하루 휴식).</summary>
+        /// <summary>경기 일자(월요일 휴식 반영: 6경기마다 하루 휴식). 연도를 생략하면 2026시즌.</summary>
         public static DateTime DateOf(int dayIndex) => OpeningDay.AddDays(dayIndex + dayIndex / 6);
         public static string DateLabel(int dayIndex) => DateOf(dayIndex).ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+        /// <summary>[TASK-GM-04] 시즌 연도별 개막일(3월 28일) 기준 경기 일자 - 2027시즌부터 날짜 연도가 따라 바뀐다.</summary>
+        public static DateTime DateOf(int dayIndex, int year) => new DateTime(year, OpeningDay.Month, OpeningDay.Day).AddDays(dayIndex + dayIndex / 6);
+        public static string DateLabel(int dayIndex, int year) => DateOf(dayIndex, year).ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+        public string DayLabel(int dayIndex) => DateLabel(dayIndex, league.SeasonYear);
 
         // ================================================================== 진행 제어
 
@@ -176,7 +190,11 @@ namespace KBOManager.Simulation
 
             foreach (var team in league.Teams.Values) TeamChemistryEngine.ApplyMatchChemistryTick(team.AvailableRoster);
             league.GamesPlayed++;
+            UpdateWar();
             PeriodicNews(day);
+            // [TASK-GM-04] 월말(24경기 단위) 월간 시상 → 전반기 종료 직후 7월 올스타전
+            if (league.GamesPlayed % GMAwardEvaluator.MonthGames == 0) GMAwardEvaluator.EvaluateMonthlyAwards(this, day);
+            if (league.GamesPlayed == HalfGames) GMAwardEvaluator.HoldAllStarGame(this, day);
 
             if (IsSeasonComplete)
             {
@@ -189,7 +207,6 @@ namespace KBOManager.Simulation
                 AddNews(day, GMNewsKind.Season, "전반기 종료 · 올스타 브레이크", "72경기를 마쳤습니다. 후반기 진행으로 이어갑니다.", false, false);
             }
             if (ActiveMode.HasValue && league.GamesPlayed >= TargetGames) ActiveMode = null;
-            UpdateWar();
             OnDayCompleted?.Invoke();
             return true;
         }
@@ -208,6 +225,7 @@ namespace KBOManager.Simulation
         private sealed class BatLine { public int PA, AB, H, D2, D3, HR, RBI, R, BB, SO, SB, GIDP; }
         private sealed class PitchLine { public int Outs, R, ER, H, BB, SO, HR, BF, NP; }
         private sealed class Stint { public Player Pitcher; public int EntryLead; public int ExitLead; }
+        private sealed class FieldLine { public int Chances, Errors, Fine; }
         private sealed class PaRecord { public int Pa, Inning, Outs; public bool Top; public Player Batter; public string TeamCode; public AtBatResult Result; public bool Error, Gidp; public int Runs; public bool R1, R2, R3; public float Delta; }
 
         /// <summary>
@@ -246,6 +264,11 @@ namespace KBOManager.Simulation
             engine.BeginMatch(home.TeamCode, away.TeamCode);
             var homeOrder = engine.HomeBattingOrder != null ? engine.HomeBattingOrder.ToList() : new List<Player>();
             var awayOrder = engine.AwayBattingOrder != null ? engine.AwayBattingOrder.ToList() : new List<Player>();
+
+            // [TASK-GM-04] 수비 위치(0~7 = 포수~우익수, 8 = 지명타자) - 실책 · 처리 기회 · 호수비 귀속
+            var homeField = FieldersOf(homeRoster, home.Lineup);
+            var awayField = FieldersOf(awayRoster, away.Lineup);
+            var fielding = new Dictionary<Player, FieldLine>();
 
             var bat = new Dictionary<Player, BatLine>();
             var pit = new Dictionary<Player, PitchLine>();
@@ -335,6 +358,7 @@ namespace KBOManager.Simulation
                        : step.Result == AtBatResult.Walk ? 4 + random.Next(0, 4)
                        : 1 + random.Next(0, 5);
                 inningRuns[half] = inningRuns[half] + step.RunsScoredThisPlay;
+                RecordFielding(top ? homeField : awayField, step, fielding);
                 if (step.Result == AtBatResult.Groundout && step.RunnerMovements.Any(m => m.FromBase == 1 && m.ToBase == -1))
                 {
                     bl.GIDP++;
@@ -487,6 +511,30 @@ namespace KBOManager.Simulation
                 int allowed = code == home.TeamCode ? awayRuns : homeRuns;
                 CheckPitcherEvents(day, player, code, line, complete, allowed);
             }
+            // [TASK-GM-04] 개인 수비 누적(수비 출전 · 포지션별 출전 · 실책 · 처리 기회 · 호수비)
+            foreach (var (team, field) in new[] { (home, homeField), (away, awayField) })
+            {
+                foreach (var pair in field)
+                {
+                    var st = league.StatsOf(pair.Value, team.TeamCode);
+                    st.Positions[pair.Key]++;
+                    if (pair.Key != GMPlayerSeasonStats.DesignatedHitterSlot) st.DefG++;
+                }
+            }
+            foreach (var player in pit.Keys)
+            {
+                var st = league.StatsOf(player, home.Roster.Contains(player) ? home.TeamCode : away.TeamCode);
+                st.Positions[GMPlayerSeasonStats.PitcherSlot]++;
+                st.DefG++;
+            }
+            foreach (var pair in fielding)
+            {
+                var st = league.StatsOf(pair.Key, home.Roster.Contains(pair.Key) ? home.TeamCode : away.TeamCode);
+                st.Chances += pair.Value.Chances;
+                st.Errors += pair.Value.Errors;
+                st.FinePlays += pair.Value.Fine;
+            }
+
             CheckTeamHomeRunMilestone(day, home.TeamCode, homeTeamHrBefore, hr.TeamHomeRuns);
             CheckTeamHomeRunMilestone(day, away.TeamCode, awayTeamHrBefore, ar.TeamHomeRuns);
 
@@ -502,7 +550,7 @@ namespace KBOManager.Simulation
                 {
                     GameIndex = day,
                     SeasonYear = league.SeasonYear,
-                    DateLabel = DateLabel(day),
+                    DateLabel = DayLabel(day),
                     Stadium = KBOManager.UI.CompyaUiKit.Stadium(home.Team),
                     HomeCode = home.TeamCode,
                     AwayCode = away.TeamCode,
@@ -565,6 +613,59 @@ namespace KBOManager.Simulation
 
             RollInjury(day, home, bat, pit);
             RollInjury(day, away, bat, pit);
+        }
+
+        // ================================================================== [TASK-GM-04] 개인 수비 기록
+
+        // 처리 위치 가중치(인덱스 0~7 = 포수~우익수, 8 = 투수). 땅볼은 내야, 뜬공은 외야 중심, 실책은 유격 · 3루 · 2루 순.
+        private static readonly int[] GroundWeights = { 2, 14, 22, 18, 24, 0, 0, 0, 8 };
+        private static readonly int[] FlyWeights = { 3, 3, 4, 4, 5, 25, 30, 26, 0 };
+        private static readonly int[] ErrorWeights = { 5, 9, 16, 20, 24, 6, 6, 8, 6 };
+
+        /// <summary>구단 주전 수비 위치(지명타자 포함 9칸, 투수 제외) - 경기 엔진과 같은 LineupAssignment 규칙.</summary>
+        private static Dictionary<int, Player> FieldersOf(List<Player> roster, LineupAssignment lineup)
+        {
+            var map = new Dictionary<int, Player>();
+            foreach (var slot in LineupAssignment.AssignStarters(roster, lineup ?? new LineupAssignment()))
+                if (slot.Player != null) map[(int)slot.Position] = slot.Player;
+            return map;
+        }
+
+        /// <summary>
+        /// 타석 하나의 수비 처리를 수비수에게 귀속한다: 실책 출루 = 개인 실책 1, 땅볼 · 뜬공 아웃 = 처리 기회 1(+ 수비력 비례 호수비 확률),
+        /// 삼진 = 포수 처리 기회 1. 투수 처리분은 그 타석의 투수에게 간다.
+        /// </summary>
+        private void RecordFielding(Dictionary<int, Player> field, AtBatStepResult step, Dictionary<Player, FieldLine> fielding)
+        {
+            FieldLine F(Player p) { if (!fielding.TryGetValue(p, out var l)) fielding[p] = l = new FieldLine(); return l; }
+            Player Pick(int[] weights)
+            {
+                int total = 0;
+                for (int i = 0; i < weights.Length; i++) if (i == 8 || field.ContainsKey(i)) total += weights[i];
+                if (total <= 0) return step.Pitcher;
+                int roll = defenseRandom.Next(total);
+                for (int i = 0; i < weights.Length; i++)
+                {
+                    if (i != 8 && !field.ContainsKey(i)) continue;
+                    roll -= weights[i];
+                    if (roll < 0) return i == 8 ? step.Pitcher : field[i];
+                }
+                return step.Pitcher;
+            }
+
+            if (step.IsError) { var f = Pick(ErrorWeights); if (f != null) F(f).Errors++; return; }
+            if (step.Result == AtBatResult.Strikeout)
+            {
+                if (field.TryGetValue((int)BatterPosition.Catcher, out var c)) F(c).Chances++;
+                return;
+            }
+            if (step.Result != AtBatResult.Groundout && step.Result != AtBatResult.Flyout) return;
+            var fielder = Pick(step.Result == AtBatResult.Flyout ? FlyWeights : GroundWeights);
+            if (fielder == null) return;
+            var line = F(fielder);
+            line.Chances++;
+            int rating = fielder.IsPitcher ? 50 : fielder.DefenseStat;
+            if (defenseRandom.NextDouble() < 0.02 + Math.Max(0, rating - 50) / 1000.0) line.Fine++;
         }
 
         // ================================================================== [TASK-GM-03] 박스스코어 표기 · 기사
@@ -679,7 +780,7 @@ namespace KBOManager.Simulation
                 if (next.home != null)
                 {
                     string opp = next.home == me ? next.away : next.home;
-                    article.Paragraph4 = $"{Name(me)}는 {DateLabel(day + 1)} {KBOManager.UI.CompyaUiKit.Stadium(NameAliasTable.ToTeam(next.home))}에서 {Name(opp)}와(과) " +
+                    article.Paragraph4 = $"{Name(me)}는 {DayLabel(day + 1)} {KBOManager.UI.CompyaUiKit.Stadium(NameAliasTable.ToTeam(next.home))}에서 {Name(opp)}와(과) " +
                                          $"{(next.home == me ? "홈" : "원정")} 경기를 치른다.";
                 }
             }
@@ -687,7 +788,8 @@ namespace KBOManager.Simulation
             return article;
         }
 
-        private TeamPowerModifiers ModifiersFor(GMTeamState team, bool isHome)
+        /// <summary>구단 경기 보정(케미스트리 6대 역학 · 치어리더 엔트리 · 홈 어드밴티지). [TASK-GM-04] 포스트시즌도 같은 보정을 쓴다.</summary>
+        public TeamPowerModifiers ModifiersFor(GMTeamState team, bool isHome)
         {
             var available = team.AvailableRoster;
             var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.CheerLeadershipBuff);
@@ -817,13 +919,6 @@ namespace KBOManager.Simulation
                 }
                 weeklyHits.Clear();
             }
-            if (played % 24 == 0)
-            {
-                var mvp = league.Stats.Values.OrderByDescending(s => s.IsPitcher ? s.PitcherWAR : s.BatterWAR).FirstOrDefault();
-                var player = mvp != null ? league.FindPlayer(mvp.PlayerId) : null;
-                if (player != null)
-                    AddNews(day, GMNewsKind.Monthly, $"월간 MVP 후보: {player.Template.PlayerName}", $"{NameAliasTable.DisplayTeamName(mvp.TeamCode)} {player.Template.PlayerName} - 시즌 WAR {(mvp.IsPitcher ? mvp.PitcherWAR : mvp.BatterWAR):0.00}.", mvp.TeamCode == league.SelectedTeamCode, false);
-            }
             if (played % 20 == 10 && league.FreeAgents.Count > 0)
             {
                 var fa = league.FreeAgents[(played / 20) % league.FreeAgents.Count];
@@ -837,9 +932,18 @@ namespace KBOManager.Simulation
             }
         }
 
+        /// <summary>[TASK-GM-04] 시상 · 포스트시즌 소식(날짜 표기를 직접 지정 - "11/24/2026" 등). pause면 대기록처럼 시뮬레이션을 멈추고 팝업.</summary>
+        public GMNewsItem PostNews(int gameIndex, string dateLabel, GMNewsKind kind, string title, string body, bool userTeam, bool major, bool pause = false)
+        {
+            var item = new GMNewsItem { GameIndex = gameIndex, DateLabel = dateLabel ?? DayLabel(gameIndex), Kind = kind, Title = title, Body = body, IsUserTeam = userTeam, IsMajor = major };
+            league.AddNews(item);
+            if (pause) interrupts.Enqueue(new GMSimInterrupt { Kind = GMInterruptKind.Record, News = item });
+            return item;
+        }
+
         private GMNewsItem AddNews(int day, GMNewsKind kind, string title, string body, bool userTeam, bool major)
         {
-            var item = new GMNewsItem { GameIndex = day, DateLabel = DateLabel(day), Kind = kind, Title = title, Body = body, IsUserTeam = userTeam, IsMajor = major };
+            var item = new GMNewsItem { GameIndex = day, DateLabel = DayLabel(day), Kind = kind, Title = title, Body = body, IsUserTeam = userTeam, IsMajor = major };
             league.AddNews(item);
             return item;
         }
@@ -893,6 +997,8 @@ namespace KBOManager.Simulation
                 double wraa = (woba - lgWoba) / 1.15 * s.PA;
                 s.BatterWAR = (float)((wraa + s.PA * 20.0 / 600.0 + s.SB * 0.2) / 10.0);
             }
+
+            foreach (var s in league.Stats.Values) s.DefensiveScore = GMAwardEvaluator.DefensiveScore(s.DefG, s.Chances, s.Errors, s.FinePlays, s.DefRating); // [TASK-GM-04]
 
             var pitchers = league.Stats.Values.Where(s => s.OutsPitched > 0).ToList();
             double lgIp = pitchers.Sum(s => s.IP);

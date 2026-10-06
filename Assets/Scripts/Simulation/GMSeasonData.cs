@@ -62,6 +62,50 @@ namespace KBOManager.Simulation
         // 시뮬레이터가 갱신 시 계산(리그 평균 기반)
         public float BatterWAR, PitcherWAR;
 
+        // [TASK-GM-04] 개인 수비 - 수비 출전 경기 · 처리 기회(실책 제외) · 개인 실책 · 호수비, 포지션별 출전(0~8 = C~DH, 9 = 투수), 수비 기여 점수
+        public int DefG, Chances, Errors, FinePlays;
+        public int DefRating;
+        public int[] PosGames = new int[PositionSlots];
+        public float DefensiveScore;
+        // [TASK-GM-04] 월간 시상 구간 시작 시점 누적값(이번 달 = 현재 - 스냅샷)
+        public float MoWAR;
+        public int MoPA, MoH, MoHR, MoRBI, MoSB, MoW, MoSV, MoHLD, MoPSO, MoOuts, MoDefG, MoChances, MoErrors, MoFine;
+
+        public const int PositionSlots = 10;
+        public const int PitcherSlot = 9;
+        public const int DesignatedHitterSlot = 8;
+
+        public float WAR => IsPitcher ? PitcherWAR : BatterWAR;
+        public double TotalChances => Chances + Errors;
+        public double FieldingPct => Chances + Errors == 0 ? 1.0 : (double)Chances / (Chances + Errors);
+
+        public int[] Positions => PosGames != null && PosGames.Length == PositionSlots ? PosGames : (PosGames = Resize(PosGames));
+        /// <summary>가장 많이 출전한 수비 위치(0~8 = BatterPosition, 9 = 투수). 기록이 없으면 -1.</summary>
+        public int PrimarySlot
+        {
+            get
+            {
+                var g = Positions;
+                int best = -1;
+                for (int i = 0; i < g.Length; i++) if (g[i] > 0 && (best < 0 || g[i] > g[best])) best = i;
+                return best;
+            }
+        }
+
+        /// <summary>월간 구간 시작 - 현재 누적값을 스냅샷으로 남긴다.</summary>
+        public void SnapshotMonth()
+        {
+            MoWAR = WAR; MoPA = PA; MoH = H; MoHR = HR; MoRBI = RBI; MoSB = SB; MoW = W; MoSV = SV; MoHLD = HLD; MoPSO = PSO; MoOuts = OutsPitched;
+            MoDefG = DefG; MoChances = Chances; MoErrors = Errors; MoFine = FinePlays;
+        }
+
+        private static int[] Resize(int[] old)
+        {
+            var a = new int[PositionSlots];
+            if (old != null) Array.Copy(old, a, Math.Min(old.Length, PositionSlots));
+            return a;
+        }
+
         public int Singles => H - Doubles - Triples - HR;
         public int TotalBases => Singles + Doubles * 2 + Triples * 3 + HR * 4;
         public double AVG => AB == 0 ? 0 : (double)H / AB;
@@ -74,7 +118,7 @@ namespace KBOManager.Simulation
         public string IPLabel => OutsPitched % 3 == 0 ? $"{OutsPitched / 3}" : $"{OutsPitched / 3} {OutsPitched % 3}/3";
     }
 
-    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8 }
+    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8, Award = 9, Postseason = 10 }
 
     /// <summary>[TASK-GM-02] 최신 소식 피드 한 줄(날짜 + 제목 + 본문).</summary>
     [Serializable]
@@ -251,6 +295,15 @@ namespace KBOManager.Simulation
         public bool OwnerPostseasonPressure;
         public string TradeRequestPlayerId;
         public LineupAssignment Lineup = new LineupAssignment();
+        public int FanSupport = GMTeamFan.DefaultSupport; // [TASK-GM-04]
+    }
+
+    /// <summary>[TASK-GM-04] 구단 팬 지지율(0~100) - 내 구단 선수 월간 수상 시 보너스.</summary>
+    public static class GMTeamFan
+    {
+        public const int DefaultSupport = 50;
+        public const int MonthlyAwardBonus = 3;
+        public static int Clamp(int v) => Math.Max(0, Math.Min(100, v));
     }
 
     /// <summary>[TASK-GM-02] 단장 모드 리그 저장 데이터(GameSaveData.GMLeague). HasData가 false면 단장 모드 미시작(구버전 세이브 포함).</summary>
@@ -271,5 +324,7 @@ namespace KBOManager.Simulation
         public List<GMPlayerSeasonStats> Stats = new List<GMPlayerSeasonStats>();
         public List<GMNewsItem> News = new List<GMNewsItem>();
         public List<GMMatchBoxScoreData> RecentUserBoxScores = new List<GMMatchBoxScoreData>(); // [TASK-GM-03] 최근 10경기(최신순)
+        public SeasonAwardCeremonyBundle Awards = new SeasonAwardCeremonyBundle();                       // [TASK-GM-04] 이번 시즌 시상
+        public List<SeasonAwardCeremonyBundle> AwardsHistory = new List<SeasonAwardCeremonyBundle>();   // [TASK-GM-04] 역대 시즌 수상 기록
     }
 }

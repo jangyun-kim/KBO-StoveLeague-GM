@@ -396,7 +396,7 @@ namespace KBOManager.EditorTests
             data.StoveLeague.TradeRound = 3;
             data.HallOfFame.Add(new HallOfFameEntrySaveData { SeasonNumber = 2, TierName = "퓨처스", KoreanSeriesWon = true, Mvp = "구자욱", Titles = new List<string> { "타격왕 구자욱 .352 ★" } });
             var back = JsonUtility.FromJson<GameSaveData>(JsonUtility.ToJson(data));
-            Assert.AreEqual(14, back.SaveVersion); // [TASK-GM-02] v14 - 단장 모드 선수 속성 · 리그 상태 추가
+            Assert.AreEqual(15, back.SaveVersion); // [TASK-GM-04] v15 - 시상 묶음 · 역대 수상 · 팬 지지율 · 수비 기록 추가(v14 = GM-02 단장 모드)
             Assert.AreEqual(2026, back.StoveLeague.SeasonKey);
             CollectionAssert.AreEqual(new[] { "FA_1" }, back.StoveLeague.SignedFaIds);
             Assert.IsTrue(back.StoveLeague.DraftUsed);

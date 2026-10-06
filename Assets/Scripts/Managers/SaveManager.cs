@@ -176,7 +176,7 @@ namespace KBOManager.Managers
         //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
         // v14: 단장 모드(TASK-GM-02) - 선수 GM 속성(PlayerSaveData.Age ~ CareerAwardIds)과 리그 상태(GMLeague: 모드 · 연도 · 경기 진행 인덱스 ·
         //      10구단 로스터/치어리더 풀 · 순위 · 개인 누적 기록 · 최신 소식). GMLeague.HasData가 false면 단장 모드 미시작.
-        public int SaveVersion = 14;
+        public int SaveVersion = 15; // [TASK-GM-04] v15 - GMLeague.Awards · AwardsHistory · 구단 팬 지지율 · 선수 수비 기록
         public string SavedAtUtc;
 
         // GameManager
@@ -523,6 +523,7 @@ namespace KBOManager.Managers
                     ConsecutiveLastPlaceSeasons = team.ConsecutiveLastPlaceSeasons,
                     OwnerPostseasonPressure = team.OwnerPostseasonPressure,
                     TradeRequestPlayerId = team.TradeRequestPlayerId,
+                    FanSupport = team.FanSupport,
                 };
                 t.Lineup.CopyFrom(team.Lineup);
                 data.Teams.Add(t);
@@ -532,6 +533,8 @@ namespace KBOManager.Managers
             data.Stats = league.Stats.Values.ToList();
             data.News = new List<GMNewsItem>(league.News);
             data.RecentUserBoxScores = new List<GMMatchBoxScoreData>(league.RecentUserBoxScores); // [TASK-GM-03]
+            data.Awards = league.Awards ?? new SeasonAwardCeremonyBundle { SeasonYear = league.SeasonYear }; // [TASK-GM-04]
+            data.AwardsHistory = new List<SeasonAwardCeremonyBundle>(league.SeasonAwardsHistory);
             return data;
         }
 
@@ -565,6 +568,7 @@ namespace KBOManager.Managers
                     ConsecutiveLastPlaceSeasons = t.ConsecutiveLastPlaceSeasons,
                     OwnerPostseasonPressure = t.OwnerPostseasonPressure,
                     TradeRequestPlayerId = t.TradeRequestPlayerId,
+                    FanSupport = GMTeamFan.Clamp(t.FanSupport),
                 };
                 team.Lineup.CopyFrom(t.Lineup);
                 foreach (var saved in t.Roster ?? new List<PlayerSaveData>())
@@ -583,6 +587,10 @@ namespace KBOManager.Managers
             foreach (var r in data.Records ?? new List<GMTeamRecord>()) if (!string.IsNullOrEmpty(r.TeamCode)) league.Records[r.TeamCode] = r;
             foreach (var s in data.Stats ?? new List<GMPlayerSeasonStats>()) if (!string.IsNullOrEmpty(s.PlayerId)) league.Stats[s.PlayerId] = s;
             league.News.AddRange(data.News ?? new List<GMNewsItem>());
+            // [TASK-GM-04] 시상 묶음(구버전 세이브는 빈 묶음)
+            league.Awards = data.Awards ?? new SeasonAwardCeremonyBundle();
+            if (league.Awards.SeasonYear == 0) league.Awards.SeasonYear = data.SeasonYear;
+            league.SeasonAwardsHistory.AddRange((data.AwardsHistory ?? new List<SeasonAwardCeremonyBundle>()).Where(b => b != null && b.SeasonYear > 0));
             league.RecentUserBoxScores.AddRange((data.RecentUserBoxScores ?? new List<GMMatchBoxScoreData>()).Where(b => b != null && !string.IsNullOrEmpty(b.HomeCode)));
             return league;
         }

@@ -22,6 +22,8 @@ namespace KBOManager.Controllers
     ///   - 패널 3 최신 소식(날짜 · 제목, 누르면 본문 팝업)
     ///   - 인터럽트 팝업: 대기록 [확인 후 계속 진행] / 부상 [대체 선수 자동 콜업 후 계속] · [라인업/엔트리 직접 관리]
     /// 1x 기준 경기일 1.75초 틱(144경기 ≈ 4.2분), 2x/4x 배속. 모든 글씨 Normal · 15pt 이상.
+    /// [TASK-GM-04] 헤더 [시상 리포트](월간 · 올스타 · 시상식), 144경기 종료 시 진행 버튼 자리에 [포스트시즌 & 시상식 보기] · [20yy 시즌 전환],
+    /// 올스타전 팝업의 [올스타전 결과 & 시상 리포트].
     /// </summary>
     public class GMLiveLeagueDashboardUIController : MonoBehaviour
     {
@@ -46,6 +48,12 @@ namespace KBOManager.Controllers
         private Button modeSingle, modeHalf, modeFull, speed1, speed2, speed4, pauseButton, closeButton, tabBatter, tabPitcher;
         // [TASK-GM-03] 새 시즌 설정 · 직전 경기 결과
         private Button newSeasonButton, lastBoxButton;
+        // [TASK-GM-04] 시상 리포트 · 포스트시즌 & 시상식 · 연도 전환
+        private Button awardsReportButton, awardsButton, nextSeasonButton;
+        private bool popupOpensAwards, pausedForAwards;
+
+        /// <summary>[TASK-GM-04] 시상식 화면(비우면 씬에서 찾는다 - 테스트가 주입한다).</summary>
+        public GMAwardsCeremonyUIController AwardsView { get; set; }
         private RectTransform seasonModal;
         private Text seasonModalDesc;
         private readonly Button[] modeButtons = new Button[3];
@@ -158,7 +166,9 @@ namespace KBOManager.Controllers
 
             // ---- 헤더
             headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1248, 248, TeamThemePalette.Primary(Team.Samsung));
-            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 550, 74, TitlePt, TextAnchor.MiddleLeft, White);
+            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 330, 74, TitlePt, TextAnchor.MiddleLeft, White);
+            awardsReportButton = Btn(kit, "AwardsReportButton", "시상 리포트", 340, 10, 550, 74, ButtonIdle, ButtonPt - 2);
+            awardsReportButton.onClick.AddListener(() => OpenAwards(null));
             gameCounter = L(kit, "GameCounter", "G 000 / 144", 560, 10, 860, 74, CounterPt, TextAnchor.MiddleRight, Gold);
             newSeasonButton = Btn(kit, "NewSeasonButton", "새 시즌 설정", 870, 10, 1100, 74, ButtonIdle, ButtonPt - 2);
             newSeasonButton.onClick.AddListener(OpenSeasonModal);
@@ -171,6 +181,13 @@ namespace KBOManager.Controllers
             modeSingle.onClick.AddListener(OpenPreGameOrRun);
             modeHalf.onClick.AddListener(() => Run(GMRunMode.FirstHalf));
             modeFull.onClick.AddListener(() => Run(GMRunMode.FullSeason));
+            // [TASK-GM-04] 정규시즌 종료 후 진행 버튼 자리에 표시
+            awardsButton = Btn(kit, "AwardsButton", "포스트시즌 & 시상식 보기", 20, 86, 620, 160, new Color(0.15f, 0.45f, 0.85f), ButtonPt);
+            nextSeasonButton = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 634, 86, 1228, 160, new Color(0.62f, 0.42f, 0.1f), ButtonPt);
+            awardsButton.onClick.AddListener(() => OpenAwards(null));
+            nextSeasonButton.onClick.AddListener(() => AdvanceSeason());
+            awardsButton.gameObject.SetActive(false);
+            nextSeasonButton.gameObject.SetActive(false);
 
             speed1 = Btn(kit, "Speed1x", "1x", 20, 172, 190, 238, ButtonIdle, ButtonPt);
             speed2 = Btn(kit, "Speed2x", "2x", 204, 172, 374, 238, ButtonIdle, ButtonPt);
@@ -480,10 +497,19 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetButtonText(modeHalf, simulator != null ? simulator.HalfButtonLabel : "전반기 진행");
             bool done = simulator == null || simulator.IsSeasonComplete;
             modeSingle.interactable = modeHalf.interactable = modeFull.interactable = !done;
+            bool seasonOver = simulator != null && simulator.IsSeasonComplete; // [TASK-GM-04]
+            modeSingle.gameObject.SetActive(!seasonOver);
+            modeHalf.gameObject.SetActive(!seasonOver);
+            modeFull.gameObject.SetActive(!seasonOver);
+            awardsButton.gameObject.SetActive(seasonOver);
+            nextSeasonButton.gameObject.SetActive(seasonOver);
+            CompyaUiKit.SetButtonText(nextSeasonButton, $"{(league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR) + 1} 시즌 전환");
+            var awards = league?.Awards;
+            awardsReportButton.interactable = (awards != null && awards.HasAny) || seasonOver;
             CompyaUiKit.SetButtonText(pauseButton, paused ? "계속" : "일시정지");
             Highlight(speed1, speed == 1); Highlight(speed2, speed == 2); Highlight(speed4, speed == 4);
             Highlight(tabBatter, !showPitchers); Highlight(tabPitcher, showPitchers);
-            statusText.text = done ? "정규시즌 종료" : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
+            statusText.text = done ? (league?.Awards != null && league.Awards.IsComplete ? "시상식 종료" : "정규시즌 종료") : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
                 paused ? "일시정지" : simulator.IsRunning ? $"진행 중 · {speed}x" : "대기 중";
             lastGameText.text = simulator?.LastUserGameLine ?? "";
             lastBoxButton.interactable = simulator?.League?.LastUserMatchBoxScore != null;
@@ -569,7 +595,11 @@ namespace KBOManager.Controllers
                 ShowPopup($"부상 발생 · {interrupt.News.Title}", $"{interrupt.News.DateLabel}\n{interrupt.News.Body}\n대체 선수를 어떻게 처리할까요?",
                     "대체 선수 자동 콜업 후 계속", interrupt.Player != null && !interrupt.Player.IsPitcher && interrupt.ReplacementCandidates.Count > 0 ? "라인업/엔트리 직접 관리" : null);
             else
-                ShowPopup(interrupt.News.Title, $"{interrupt.News.DateLabel}\n{interrupt.News.Body}", "확인 후 계속 진행", null);
+            {
+                bool awardNews = interrupt.News.Kind == GMNewsKind.Award;
+                ShowPopup(interrupt.News.Title, $"{interrupt.News.DateLabel}\n{interrupt.News.Body}", "확인 후 계속 진행", awardNews ? "올스타전 결과 & 시상 리포트" : null);
+                popupOpensAwards = awardNews;
+            }
         }
 
         private void ShowPopup(string title, string body, string primary, string secondary)
@@ -588,6 +618,62 @@ namespace KBOManager.Controllers
         {
             if (popup != null) popup.gameObject.SetActive(false);
             manualSelecting = false;
+            popupOpensAwards = false;
+        }
+
+        // ================================================================== [TASK-GM-04] 시상식 · 연도 전환
+
+        private GMAwardsCeremonyUIController Awards
+        {
+            get
+            {
+                var view = AwardsView != null ? AwardsView : FindAnyObjectByType<GMAwardsCeremonyUIController>(FindObjectsInactive.Include);
+                if (view != null)
+                {
+                    view.OnClosed -= OnAwardsClosed;
+                    view.OnClosed += OnAwardsClosed;
+                    view.OnSeasonAdvanced -= OnSeasonAdvanced;
+                    view.OnSeasonAdvanced += OnSeasonAdvanced;
+                }
+                return view;
+            }
+        }
+
+        /// <summary>[시상 리포트] · [포스트시즌 & 시상식 보기] - 시상식 화면을 연다(정규시즌이 끝났으면 포스트시즌 → 11월 시상식 개최).</summary>
+        public void OpenAwards(GMAwardsTab? initialTab)
+        {
+            var view = Awards;
+            if (view == null || simulator == null) { if (statusText != null) statusText.text = "시상식 화면 없음"; return; }
+            view.Open(simulator, initialTab);
+        }
+
+        /// <summary>[20yy 시즌 전환] - 남은 포스트시즌 · 시상식을 마저 치르고 다음 해 0/144로 넘어간다. 새 진행기(실패하면 null).</summary>
+        public GMLiveSeasonSimulator AdvanceSeason()
+        {
+            if (simulator == null || !simulator.IsSeasonComplete) return null;
+            var league = simulator.League;
+            if (!GMAwardEvaluator.AdvanceToNextSeasonYear(simulator)) return null;
+            var gm = GameManager.Instance;
+            GMLiveSeasonSimulator next;
+            if (gm != null && gm.GMLeague == league)
+            {
+                gm.RestoreGMLeague(league);
+                next = gm.GMSimulator;
+            }
+            else next = new GMLiveSeasonSimulator(league);
+            Bind(next);
+            return next;
+        }
+
+        private void OnAwardsClosed()
+        {
+            if (pausedForAwards) paused = pausedForAwards = false; // 올스타 리포트를 보고 돌아오면 이어서 진행
+            Refresh();
+        }
+
+        private void OnSeasonAdvanced(GMLiveSeasonSimulator next)
+        {
+            if (next != null) Bind(next);
         }
 
         private void OnPopupPrimary()
@@ -601,6 +687,14 @@ namespace KBOManager.Controllers
 
         private void OnPopupSecondary()
         {
+            if (popupOpensAwards)
+            {
+                if (simulator?.PendingInterrupt != null && simulator.PendingInterrupt.Kind == GMInterruptKind.Record) simulator.ResolveInterrupt(GMInterruptChoice.Continue);
+                HidePopup();
+                paused = pausedForAwards = true;
+                OpenAwards(GMAwardsTab.AllStarMonthly);
+                return;
+            }
             var pending = simulator?.PendingInterrupt;
             if (pending == null || pending.Kind != GMInterruptKind.Injury) return;
             manualSelecting = true;

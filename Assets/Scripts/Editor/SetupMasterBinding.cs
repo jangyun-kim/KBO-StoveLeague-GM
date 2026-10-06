@@ -123,7 +123,8 @@ namespace KBOManager.EditorTools
             SetupTaskGM01.ApplyAll(); // [TASK-GM-01] 단장 모드 전환 - 로비 타일 · 계약·연봉·팀워크 진단 · 치어리더 관리 동선 점검
             SetupTaskGM02.ApplyAll(); // [TASK-GM-02] 리그 플레이 실시간 144경기 대시보드
             SetupTaskGM03.ApplyAll(); // [TASK-GM-03] 한 경기 전력 비교 · 박스스코어 · WPA 화면
-            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~03 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTaskGM04.ApplyAll(); // [TASK-GM-04] 시상식 & 포스트시즌 화면
+            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~04 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod
