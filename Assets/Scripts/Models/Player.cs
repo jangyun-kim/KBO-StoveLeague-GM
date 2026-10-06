@@ -433,5 +433,71 @@ namespace KBOManager.Models
         }
 
         private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
+
+        // ================================================================== [TASK-GM-06] ABS(자동 투구 판정) · 잠재력
+
+        public const int MinAbsSkill = 1, MaxAbsSkill = 99;
+        public const int HiddenAbsAdaptationRange = 12; // 숨은 ABS 적응도 -12 ~ +12(스카우팅 리포트로 공개)
+
+        /// <summary>[TASK-GM-06] ABS 적응 훈련 · 시나리오 보정(세이브 보존, 기본 0). ABSZoneSkill에 그대로 더한다.</summary>
+        public int AbsTrainingBonus;
+
+        /// <summary>[TASK-GM-06] 선수별 숨은 ABS 적응도(-12 ~ +12) - RealPlayerId 해시로 결정(같은 선수는 항상 같은 값). 스카우팅 전에는 화면에 공개하지 않는다.</summary>
+        public int HiddenAbsAdaptation
+        {
+            get
+            {
+                string seed = Template != null && !string.IsNullOrEmpty(Template.RealPlayerId) ? Template.RealPlayerId : InstanceId ?? string.Empty;
+                int h = 17;
+                foreach (char c in seed) h = (h * 131 + c * 7) & 0x7FFFFFFF;
+                return h % (HiddenAbsAdaptationRange * 2 + 1) - HiddenAbsAdaptationRange;
+            }
+        }
+
+        /// <summary>
+        /// [TASK-GM-06] ABS 존 공략력 1~99(순수 시즌 성적 스탯 기반 + 숨은 적응도 + 훈련 보정).
+        ///   - 투수: ABS 상하단 · 보더라인 공략력 = 제구 55% + 변화 25% + 구위 20%
+        ///   - 포수: ABS 시대 블로킹 · 도루저지 가치 = 수비 60% + 선구 20% + 주력 20%(프레이밍 가치는 ABS로 소멸)
+        ///   - 그 밖의 타자: ABS 고정 존 선구안 = 선구 65% + 정확 35%
+        /// </summary>
+        public int ABSZoneSkill
+        {
+            get
+            {
+                if (Template == null) return 50;
+                float baseValue;
+                if (Template.IsPitcher)
+                {
+                    var p = Template.PitcherStats;
+                    baseValue = p.Control * 0.55f + p.Movement * 0.25f + p.Stuff * 0.2f;
+                }
+                else if (Template.BatterPosition == BatterPosition.Catcher)
+                {
+                    var b = Template.BatterStats;
+                    baseValue = b.Defense * 0.6f + b.Discipline * 0.2f + b.Speed * 0.2f;
+                }
+                else
+                {
+                    var b = Template.BatterStats;
+                    baseValue = b.Discipline * 0.65f + b.Contact * 0.35f;
+                }
+                return Clamp(Mathf.RoundToInt(baseValue) + HiddenAbsAdaptation + AbsTrainingBonus, MinAbsSkill, MaxAbsSkill);
+            }
+        }
+
+        /// <summary>[TASK-GM-06] ABS 역할 라벨(투수 보더라인 · 포수 블로킹 · 타자 선구안).</summary>
+        public string AbsRoleLabel => IsPitcher ? "보더라인 공략" : Template != null && Template.BatterPosition == BatterPosition.Catcher ? "블로킹·도루저지" : "고정 존 선구안";
+
+        /// <summary>[TASK-GM-06] 잠재력(OVR 상한 추정) - 나이가 어릴수록 성장 여지가 크다. 유망주 성향 +3, 99 상한.</summary>
+        public int Potential
+        {
+            get
+            {
+                int ovr = BaseOverall;
+                int growth = Age <= 0 ? 0 : Age <= 21 ? 15 : Age <= 23 ? 11 : Age <= 25 ? 8 : Age <= 28 ? 4 : Age <= 31 ? 1 : 0;
+                if (RoleArchetype == LockerRoomRole.Prospect) growth += 3;
+                return Math.Min(99, Math.Max(ovr, ovr + growth));
+            }
+        }
     }
 }

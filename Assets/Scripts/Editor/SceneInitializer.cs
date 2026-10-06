@@ -112,7 +112,7 @@ namespace KBOManager.EditorTools
         }
 
         /// <summary>씬에 Canvas가 이미 있으면 그대로 재사용하고(설정을 건드리지 않는다), 없을 때만 새로 만들어
-        /// Scale With Screen Size / 1080x1920 기준 해상도로 세팅한다.</summary>
+        /// Scale With Screen Size / 1920x1080 기준 해상도로 세팅한다([TASK-GM-06] Landscape 전환, 구 1080x1920).</summary>
         private static Canvas SetUpCanvas(Scene scene)
         {
             var existing = FindInScene<Canvas>(scene);
@@ -126,7 +126,8 @@ namespace KBOManager.EditorTools
 
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.referenceResolution = new Vector2(1920f, 1080f); // [TASK-GM-06] 1920×1080 Landscape
+            scaler.matchWidthOrHeight = 0.5f;
 
             return canvas;
         }

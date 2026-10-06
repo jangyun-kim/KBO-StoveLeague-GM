@@ -23,6 +23,8 @@ namespace KBOManager.Simulation
         public string TeamCode;
         public int G, W, D, L, RunsScored, RunsAllowed, Streak; // Streak: +연승 / -연패
         public int TeamHomeRuns;
+        /// <summary>[TASK-GM-06] ABS 시즌 누적 - 보더라인 스트라이크 콜 획득(수비) · 루킹 삼진(수비) · 포수 블로킹 세이브 · 볼넷 출루(공격).</summary>
+        public int AbsBorderlineCalls, AbsLookingStrikeouts, AbsBlockSaves, AbsWalksDrawn;
         /// <summary>[TASK-GM-03] 최근 경기 흐름(최대 10경기, 오래된 순) - 'W' 승 · 'L' 패 · 'D' 무.</summary>
         public string Recent = "";
 
@@ -262,17 +264,20 @@ namespace KBOManager.Simulation
 
         public const float BaseErrorChance = 0.012f;
 
-        // [TASK-GM-05] 기본 실책률(GM-04 D.1) - 케미스트리 페널티가 없어도 범타의 0.7%(수비력 높을수록 감소)가 실책 출루, 치어리더 마운드 응원력이 최대 35% 억제.
-        public const float DefaultBaseErrorRate = 0.007f;
+        // [TASK-GM-05] 기본 실책률(GM-04 D.1) - 케미스트리 페널티가 없어도 범타의 일정 비율(수비력 높을수록 감소)이 실책 출루, 치어리더 마운드 응원력이 최대 35% 억제.
+        // [TASK-GM-06] GM-05 D.1 현실화 - 0.7% → 2.2%(KBO 팀당 시즌 실책 80~105개 스케일).
+        public const float DefaultBaseErrorRate = 0.022f;
         public float BaseErrorRate = DefaultBaseErrorRate;
         public float CheerErrorReduction;
 
         /// <summary>범타 1건이 실책 출루가 될 확률 = 기본 실책률 × (1 - 응원 억제율) + 케미스트리 추가분 1.2% × (배수 - 1).</summary>
         public double ErrorChance => Math.Max(0.0, BaseErrorRate * (1.0 - Math.Max(0f, Math.Min(0.35f, CheerErrorReduction))) + BaseErrorChance * Math.Max(0f, ErrorRateMultiplier - 1f));
 
-        /// <summary>수비 주전 평균 수비력 → 기본 실책률(수비 65 = 0.7%, 수비력 1점당 1/80 증감, 0.6~1.4배).</summary>
+        /// <summary>수비 주전 평균 수비력 → 기본 실책률(수비 65 = 2.2%, 수비력 1점당 1/80 증감, 0.6~1.4배).</summary>
         public static float BaseErrorRateFor(double averageDefense) =>
             DefaultBaseErrorRate * (float)Math.Max(0.6, Math.Min(1.4, 1.0 + (65.0 - averageDefense) / 80.0));
+        /// <summary>[TASK-GM-06] 이 팀 주전 포수의 ABS 블로킹 · 도루저지 가치(1~99, 기본 50) - 수비 시 볼넷 · 안타 억제.</summary>
+        public int AbsCatcherSkill = 50;
         public const int UpsetStatPenalty = 4;
         public const int UpsetOvrMargin = 3;
 
@@ -342,5 +347,7 @@ namespace KBOManager.Simulation
         public List<GMMatchBoxScoreData> RecentUserBoxScores = new List<GMMatchBoxScoreData>(); // [TASK-GM-03] 최근 10경기(최신순)
         public SeasonAwardCeremonyBundle Awards = new SeasonAwardCeremonyBundle();                       // [TASK-GM-04] 이번 시즌 시상
         public List<SeasonAwardCeremonyBundle> AwardsHistory = new List<SeasonAwardCeremonyBundle>();   // [TASK-GM-04] 역대 시즌 수상 기록
+        public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();                               // [TASK-GM-06] 프런트 오피스
+        public List<PlayerSaveData> DraftPool = new List<PlayerSaveData>();                             // [TASK-GM-06] 신인 드래프트 유망주
     }
 }

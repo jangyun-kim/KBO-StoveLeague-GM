@@ -22,7 +22,7 @@ namespace KBOManager.EditorTests
     /// <summary>
     /// [TASK-GM-01] 『스토브리그: 단장의 시간』 전환 5대 자동 검증(Unity CLI BatchPipelineGM01 1회 실행):
     ///   1) 10개 구단 계보 · 실명/가상명 전환  2) 3대 시작 모드 로스터(10구단 28인 · 치어리더 풀/엔트리 · 2026 시작 → 2027 해 넘김)
-    ///   3) 슈퍼스타 과밀 6대 부작용  4) 수집형 RPG 비활성화 · 치어리더 보존  5) UI 규격(진단 화면 겹침 0 · Bold 0 · 1080×1920 · 치어리더 동선)
+    ///   3) 슈퍼스타 과밀 6대 부작용  4) 수집형 RPG 비활성화 · 치어리더 보존  5) UI 규격(진단 화면 겹침 0 · Bold 0 · [TASK-GM-06] 1920×1080 · 치어리더 동선)
     /// </summary>
     public class GM01VerificationRunner
     {
@@ -367,13 +367,13 @@ namespace KBOManager.EditorTests
         // ================================================================== 5) UI 규격
 
         [Test]
-        public void T5_UiIntegrity_Portrait1080x1920_NoOverlap_NoBold_CheerRoute()
+        public void T5_UiIntegrity_Landscape1920x1080_NoOverlap_NoBold_CheerRoute()
         {
             OpenScene();
 
             var scaler = Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include).FirstOrDefault(s => s.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize);
             Assert.IsNotNull(scaler);
-            Assert.AreEqual(new Vector2(1080, 1920), scaler.referenceResolution, "1080×1920 Portrait");
+            Assert.AreEqual(new Vector2(1920, 1080), scaler.referenceResolution, "[TASK-GM-06] 1920×1080 Landscape");
 
             // 진단 화면 - 조립 · 바인딩 · 겹침 0 · Normal · 15pt 이상
             var hubCtrl = Object.FindAnyObjectByType<PlayerManagementUIController>(FindObjectsInactive.Include);

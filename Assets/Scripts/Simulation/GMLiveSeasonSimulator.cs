@@ -282,6 +282,8 @@ namespace KBOManager.Simulation
             int outsInHalf = 0;
             bool errorThisHalf = false;
             int homeE = 0, awayE = 0;
+            int homeAbsCalls = 0, awayAbsCalls = 0, homeBlocks = 0, awayBlocks = 0, homeLookingK = 0, awayLookingK = 0, homeAbsWalks = 0, awayAbsWalks = 0; // [TASK-GM-06]
+            int homeCatcherAbs = CatcherAbsSkill(homeRoster, home.Lineup), awayCatcherAbs = CatcherAbsSkill(awayRoster, away.Lineup);
             Player winCandHome = null, winCandAway = null, loseCandHome = null, loseCandAway = null;
             bool pendingWinHome = false, pendingWinAway = false;
             var wpa = new List<WPAPoint> { new WPAPoint { PlateAppearance = -1, Inning = 1, IsTop = true, HomeWinProbability = 0.5f } };
@@ -360,6 +362,12 @@ namespace KBOManager.Simulation
                        : 1 + random.Next(0, 5);
                 inningRuns[half] = inningRuns[half] + step.RunsScoredThisPlay;
                 RecordFielding(top ? homeField : awayField, step, fielding);
+                // [TASK-GM-06] ABS 기록(수비 난수열) - 보더라인 콜 · 루킹 삼진은 수비 투수진, 블로킹 세이브는 수비 포수, 볼넷은 공격 팀
+                {
+                    var abs = RollAbsEvents(step, bases[1] != null || bases[2] != null || bases[3] != null, top ? homeCatcherAbs : awayCatcherAbs);
+                    if (top) { homeAbsCalls += abs.calls; homeLookingK += abs.lookingK; homeBlocks += abs.block; if (step.Result == AtBatResult.Walk && !step.IsError) awayAbsWalks++; }
+                    else { awayAbsCalls += abs.calls; awayLookingK += abs.lookingK; awayBlocks += abs.block; if (step.Result == AtBatResult.Walk && !step.IsError) homeAbsWalks++; }
+                }
                 if (step.Result == AtBatResult.Groundout && step.RunnerMovements.Any(m => m.FromBase == 1 && m.ToBase == -1))
                 {
                     bl.GIDP++;
@@ -436,6 +444,10 @@ namespace KBOManager.Simulation
             var hr = league.RecordOf(home.TeamCode);
             var ar = league.RecordOf(away.TeamCode);
             hr.G++; ar.G++;
+            hr.AbsBorderlineCalls += homeAbsCalls; ar.AbsBorderlineCalls += awayAbsCalls; // [TASK-GM-06]
+            hr.AbsLookingStrikeouts += homeLookingK; ar.AbsLookingStrikeouts += awayLookingK;
+            hr.AbsBlockSaves += homeBlocks; ar.AbsBlockSaves += awayBlocks;
+            hr.AbsWalksDrawn += homeAbsWalks; ar.AbsWalksDrawn += awayAbsWalks;
             hr.RunsScored += homeRuns; hr.RunsAllowed += awayRuns;
             ar.RunsScored += awayRuns; ar.RunsAllowed += homeRuns;
             string winnerCode = homeRuns > awayRuns ? home.TeamCode : awayRuns > homeRuns ? away.TeamCode : null;
@@ -562,6 +574,9 @@ namespace KBOManager.Simulation
                     HomeR = homeRuns, AwayR = awayRuns,
                     HomeE = homeE, AwayE = awayE,
                     WpaPoints = wpa,
+                    HomeAbsCalls = homeAbsCalls, AwayAbsCalls = awayAbsCalls, HomeBlockSaves = homeBlocks, AwayBlockSaves = awayBlocks,
+                    HomeLookingK = homeLookingK, AwayLookingK = awayLookingK,
+                    HomeAbsIndex = AbsIndexOf(homeOrder, pitchOrder[home.TeamCode]), AwayAbsIndex = AbsIndexOf(awayOrder, pitchOrder[away.TeamCode]),
                 };
                 int innings = inningRuns.Keys.Select(k => k.Item1).DefaultIfEmpty(9).Max();
                 innings = Math.Max(9, innings);
@@ -622,6 +637,40 @@ namespace KBOManager.Simulation
 
             RollInjury(day, home, bat, pit);
             RollInjury(day, away, bat, pit);
+        }
+
+        // ================================================================== [TASK-GM-06] ABS(자동 투구 판정) 기록
+
+        /// <summary>타석 1건의 ABS 기록 - 보더라인 스트라이크 콜(0~2) · 루킹 삼진(삼진 중 존 판정) · 포수 블로킹 세이브(주자 있을 때).
+        /// 확률은 투수 · 타자 · 포수 ABSZoneSkill 차이로 정해지고, 경기 결과 난수열과 분리된 수비 난수열을 쓴다.</summary>
+        private (int calls, int lookingK, int block) RollAbsEvents(AtBatStepResult step, bool runnersOn, int catcherAbs)
+        {
+            float pAbs = (step.Pitcher.ABSZoneSkill - 50) / 50f, bAbs = (step.Batter.ABSZoneSkill - 50) / 50f, cAbs = (catcherAbs - 50) / 50f;
+            double borderline = Math.Max(0.05, Math.Min(0.85, AbsBorderlineBase + 0.32 * pAbs - 0.14 * bAbs));
+            int calls = 0;
+            if (defenseRandom.NextDouble() < borderline) calls++;
+            if (step.Result == AtBatResult.Strikeout && defenseRandom.NextDouble() < borderline) calls++;
+            int looking = 0;
+            if (step.Result == AtBatResult.Strikeout && !step.IsError && defenseRandom.NextDouble() < Math.Max(0.05, Math.Min(0.6, AbsLookingBase + 0.18 * pAbs - 0.08 * bAbs))) looking = 1;
+            int block = runnersOn && defenseRandom.NextDouble() < Math.Max(0.0, Math.Min(0.2, AbsBlockBase + 0.05 * cAbs)) ? 1 : 0;
+            return (calls, looking, block);
+        }
+
+        public const double AbsBorderlineBase = 0.34, AbsLookingBase = 0.24, AbsBlockBase = 0.045;
+
+        /// <summary>주전 포수(라인업 포수 자리, 없으면 포수 포지션 최고 OVR)의 ABS 블로킹 가치. 없으면 50.</summary>
+        public static int CatcherAbsSkill(List<Player> roster, LineupAssignment lineup)
+        {
+            var catcher = LineupAssignment.AssignStarters(roster, lineup).FirstOrDefault(s => s.Player != null && s.Position == BatterPosition.Catcher).Player
+                          ?? roster.Where(p => !p.IsPitcher && p.Template.BatterPosition == BatterPosition.Catcher).OrderByDescending(p => p.BaseOverall).FirstOrDefault();
+            return catcher != null ? catcher.ABSZoneSkill : 50;
+        }
+
+        /// <summary>ABS 존 적응 지수 - 그 경기 출전 타자 · 등판 투수 ABSZoneSkill 평균(1~99).</summary>
+        public static int AbsIndexOf(IEnumerable<Player> batters, IEnumerable<Player> pitchers)
+        {
+            var all = (batters ?? Enumerable.Empty<Player>()).Concat(pitchers ?? Enumerable.Empty<Player>()).Where(p => p?.Template != null).ToList();
+            return all.Count == 0 ? 50 : (int)Math.Round(all.Average(p => p.ABSZoneSkill));
         }
 
         // ================================================================== [TASK-GM-04] 개인 수비 기록
@@ -801,7 +850,7 @@ namespace KBOManager.Simulation
         public TeamPowerModifiers ModifiersFor(GMTeamState team, bool isHome)
         {
             var available = team.AvailableRoster;
-            var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.CheerLeadershipBuff);
+            var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.TeamworkBuff);
             var record = league.RecordOf(team.TeamCode);
             var entry = team.CheerEntry.ToList();
             var cheer = GMCheerleaderRoster.BuildMatchEffects(entry, team.Team, isHome, Math.Max(0, -record.Streak)); // [TASK-GM-05] 체력 30 미만 효율 50%
@@ -815,6 +864,7 @@ namespace KBOManager.Simulation
                 chem.BaseErrorRate = GMChemistryModifiers.BaseErrorRateFor(fielders.Count > 0 ? fielders.Average(p => p.DefenseStat) : 65.0);
                 chem.CheerErrorReduction = GMCheerleaderRoster.ErrorReduction(entry);
                 chem.ClutchHitModifier += GMCheerleaderRoster.ClutchBonus(entry);
+                chem.AbsCatcherSkill = CatcherAbsSkill(available, team.Lineup); // [TASK-GM-06] ABS 포수 블로킹 · 도루저지
             }
             return new TeamPowerModifiers(0, isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0, 1.0f, null, cheer, teamOvr, chem);
         }

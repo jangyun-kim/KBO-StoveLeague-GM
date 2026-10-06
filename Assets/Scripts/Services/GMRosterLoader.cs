@@ -33,8 +33,15 @@ namespace KBOManager.Services
         public IEnumerable<Cheerleader> CheerEntry => CheerleaderPool.Take(CheerEntrySize);
         /// <summary>[TASK-GM-05] 엔트리 ① 단장 리더십(체력 효율 반영) → 팀워크 +1~+12.</summary>
         public int CheerLeadershipBuff => GMCheerleaderRoster.LeadershipTeamworkBonus(CheerEntry);
-        /// <summary>[TASK-GM-05] 체력 30 미만 인원이 생기면 같은 인원수로 [최적 컨디션 자동 편성](AI 구단 기본 켬 · 유저 구단 기본 끔).</summary>
+        /// <summary>[TASK-GM-05] 체력 30 미만 인원이 생기면 같은 인원수로 [최적 컨디션 자동 편성].
+        /// [TASK-GM-06] GM-05 D.2 - 내 구단도 기본 켬(GMCheerleaderRoster.AutoRotateUserCheerleaders), 단장이 화면에서 끄고 수동 편성할 수 있다.</summary>
         public bool CheerAutoRotate = true;
+        /// <summary>[TASK-GM-06] 지시서 표기 - 내 구단 자동 로테이션(= CheerAutoRotate).</summary>
+        public bool AutoRotateUserCheerleaders { get => CheerAutoRotate; set => CheerAutoRotate = value; }
+        /// <summary>[TASK-GM-06] 스토리 안건 · 단장 결단으로 생긴 팀워크 가감(-20 ~ +20). 응원단 리더십과 함께 TeamChemistryEngine에 더해진다.</summary>
+        public int AgendaTeamworkBonus;
+        /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정.</summary>
+        public int TeamworkBuff => CheerLeadershipBuff + AgendaTeamworkBonus;
         /// <summary>[TASK-GM-05] 전담 응원 매칭(최대 2쌍).</summary>
         public readonly List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
         /// <summary>[TASK-GM-05] 홈 흥행 누적 관중 수익(팬 지지율 환산 잔여분, 만 원).</summary>
@@ -80,6 +87,10 @@ namespace KBOManager.Services
         public readonly List<SeasonAwardCeremonyBundle> SeasonAwardsHistory = new List<SeasonAwardCeremonyBundle>();
 
         public IEnumerable<Player> AllPlayers => Teams.Values.SelectMany(t => t.Roster);
+
+        // [TASK-GM-06] 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건 · 엔딩) + 신인 드래프트 유망주 풀
+        public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();
+        public readonly List<Player> DraftPool = new List<Player>();
 
         public GMTeamRecord RecordOf(string teamCode)
         {
@@ -241,7 +252,7 @@ namespace KBOManager.Services
                     top.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[top.Template.RealPlayerId], isTeamTopOverall: true);
                 }
                 if (!team.IsUserTeam) AppointCaptain(team); // AI 구단은 자동 주장 · 유저 구단은 단장이 임명한다
-                team.CheerAutoRotate = !team.IsUserTeam; // [TASK-GM-05] 유저 구단은 단장이 직접 로테이션
+                team.CheerAutoRotate = GMCheerleaderRoster.AutoRotateUserCheerleaders || !team.IsUserTeam; // [TASK-GM-06] D.2 내 구단도 기본 자동 로테이션
 
                 LoadCheerleaderPool(team, cheerCatalog, mode == GMStartMode.AllTimeDream ? 0 : state.SeasonYear, useVirtualNames);
                 state.Teams[code] = team;
@@ -249,6 +260,8 @@ namespace KBOManager.Services
 
             BuildFreeAgentMarket(state, candidates, used, debutYear, awards);
             if (mode == GMStartMode.StoryCampaign) ApplyStoryCampaign(state.UserTeam);
+            BuildDraftPool(state, byPerson, used, debutYear); // [TASK-GM-06]
+            GMFrontOffice.Initialize(state);                 // [TASK-GM-06] 구단주 · 목표 · 시즌 이력 · 스토리 안건
             return state;
         }
 
@@ -365,6 +378,30 @@ namespace KBOManager.Services
                 player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
                 player.ContractYears = 0; // FA = 계약 만료
                 state.FreeAgents.Add(player);
+            }
+        }
+
+        /// <summary>
+        /// [TASK-GM-06] 신인 드래프트 유망주 풀(10명) - 아직 어느 구단 · FA에도 없는 선수 중 데뷔가 가장 최근인(경력이 짧은) 선수의 최신 시즌 카드.
+        /// 19~22세 · 신인 계약(최저연봉 3,000만 원 · 5년) · 유망주 성향 · Ego 1로 재설정한다. 모자라면 남은 미배정 선수로 채운다.
+        /// </summary>
+        public static void BuildDraftPool(GMLeagueState state, Dictionary<string, List<PlayerTemplate>> byPerson, HashSet<string> used, Dictionary<string, int> debutYear)
+        {
+            state.DraftPool.Clear();
+            var taken = new HashSet<string>(used);
+            foreach (var fa in state.FreeAgents) if (fa.Template != null) taken.Add(fa.Template.RealPlayerId);
+            var picks = byPerson.Where(p => !taken.Contains(p.Key))
+                .Select(p => p.Value.OrderByDescending(t => t.SeasonYear).ThenByDescending(t => (int)t.Grade).First())
+                .OrderByDescending(t => debutYear.TryGetValue(t.RealPlayerId, out int d) ? d : 0)
+                .ThenByDescending(t => t.GetBaseOverall())
+                .Take(GMStoveLeagueMarket.DraftPoolSize).ToList();
+            int i = 0;
+            foreach (var t in picks)
+            {
+                var p = new Player(Guid.NewGuid().ToString(), t);
+                p.InitializeGMAttributesFromStats(state.SeasonYear, debutYear.TryGetValue(t.RealPlayerId, out int d) ? d : state.SeasonYear);
+                GMStoveLeagueMarket.MakeRookie(p, 19 + (i++ % 4));
+                state.DraftPool.Add(p);
             }
         }
 

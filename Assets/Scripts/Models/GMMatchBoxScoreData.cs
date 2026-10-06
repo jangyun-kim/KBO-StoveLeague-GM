@@ -88,6 +88,8 @@ namespace KBOManager.Models
         public List<int> HomeInningRuns = new List<int>();
         public List<int> AwayInningRuns = new List<int>();
         public int HomeR, HomeH, HomeE, AwayR, AwayH, AwayE;
+        // [TASK-GM-06] ABS - 보더라인 스트라이크 콜 획득(수비 투수진) · ABS 존 적응 지수(출전 선수 평균 1~99) · 포수 블로킹 세이브 · 루킹 삼진
+        public int HomeAbsCalls, AwayAbsCalls, HomeAbsIndex, AwayAbsIndex, HomeBlockSaves, AwayBlockSaves, HomeLookingK, AwayLookingK;
         public List<BatterBoxScoreLine> HomeBatters = new List<BatterBoxScoreLine>();
         public List<BatterBoxScoreLine> AwayBatters = new List<BatterBoxScoreLine>();
         public List<PitcherBoxScoreLine> HomePitchers = new List<PitcherBoxScoreLine>();

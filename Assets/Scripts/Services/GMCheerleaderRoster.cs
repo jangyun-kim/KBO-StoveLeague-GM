@@ -18,6 +18,8 @@ namespace KBOManager.Services
     public static class GMCheerleaderRoster
     {
         public const int MinPool = 12;
+        /// <summary>[TASK-GM-06] GM-05 D.2 - 내 구단 치어리더 자동 로테이션 기본값(켬). 한 시즌 고속 진행 중 체력 고갈로 효율이 떨어지지 않게 한다.</summary>
+        public const bool AutoRotateUserCheerleaders = true;
         public const int MaxDedications = 2;
         public const int DedicationMoraleBonus = 15;
         public const float MaxErrorReduction = 0.35f;
@@ -244,6 +246,76 @@ namespace KBOManager.Services
             player.PersonalMorale = Math.Min(100, player.PersonalMorale + DedicationMoraleBonus);
             team.CheerDedications.Add(d);
             return true;
+        }
+
+        /// <summary>[TASK-GM-06] GM-05 D.3 - 전담 응원 대상으로 지정할 수 있는 우리 구단 Ego 4+ 스타(불만 스타 우선 · 만족도 낮은 순).</summary>
+        public static List<Player> DedicationCandidates(GMTeamState team)
+        {
+            if (team == null) return new List<Player>();
+            var unhappy = new HashSet<Player>(TeamChemistryEngine.GetDissatisfiedStars(team.AvailableRoster));
+            return team.Roster.Where(p => p.EgoLevel >= 4)
+                .OrderByDescending(p => unhappy.Contains(p)).ThenBy(p => p.PersonalMorale).ThenBy(p => p.InstanceId).ToList();
+        }
+
+        /// <summary>[TASK-GM-06] 이 치어리더가 지금 전담 중인 선수(없으면 null).</summary>
+        public static Player DedicatedPlayerOf(GMTeamState team, Cheerleader cheerleader)
+        {
+            if (team == null || cheerleader == null) return null;
+            var d = team.CheerDedications.FirstOrDefault(x => x.CheerleaderId == cheerleader.InstanceId);
+            return d == null ? null : team.Roster.FirstOrDefault(p => p.InstanceId == d.PlayerId);
+        }
+
+        /// <summary>[TASK-GM-06] 전담 응원 해제 - 매칭으로 준 보직 양보 효과를 되돌린다.</summary>
+        public static bool ClearDedication(GMTeamState team, Cheerleader cheerleader)
+        {
+            if (team == null || cheerleader == null) return false;
+            var d = team.CheerDedications.FirstOrDefault(x => x.CheerleaderId == cheerleader.InstanceId);
+            if (d == null) return false;
+            var p = team.Roster.FirstOrDefault(x => x.InstanceId == d.PlayerId);
+            if (p != null && d.GrantedConcession) p.HasRoleConcessionBonus = false;
+            team.CheerDedications.Remove(d);
+            return true;
+        }
+
+        /// <summary>
+        /// [TASK-GM-06] GM-05 D.3 전담 응원 대상 직접 지정 - 이 치어리더의 기존 매칭을 풀고 player로 다시 매칭한다(다른 치어리더가 맡던 선수면 실패).
+        /// 실패하면 기존 매칭을 되돌린다.
+        /// </summary>
+        public static bool TryReassignDedication(GMTeamState team, Cheerleader cheerleader, Player player, out string reason)
+        {
+            reason = null;
+            if (team == null || cheerleader == null || player == null) { reason = "치어리더와 선수를 선택하십시오."; return false; }
+            var previous = DedicatedPlayerOf(team, cheerleader);
+            if (previous == player) { reason = $"{cheerleader.DisplayName}은(는) 이미 {player.Template.PlayerName}을(를) 전담 중입니다."; return false; }
+            bool hadConcession = previous != null && team.CheerDedications.First(x => x.CheerleaderId == cheerleader.InstanceId).GrantedConcession;
+            ClearDedication(team, cheerleader);
+            if (TryDedicate(team, cheerleader, player, out reason)) return true;
+            if (previous != null)
+            {
+                team.CheerDedications.Add(new GMCheerDedication { CheerleaderId = cheerleader.InstanceId, PlayerId = previous.InstanceId, GrantedConcession = hadConcession });
+                if (hadConcession) previous.HasRoleConcessionBonus = true;
+            }
+            return false;
+        }
+
+        /// <summary>[TASK-GM-06] [전담 대상 변경 ▶] - 후보 목록에서 지금 대상의 다음 선수로 순환 지정한다(다른 치어리더가 맡은 선수는 건너뛴다). 성공하면 새 대상.</summary>
+        public static Player CycleDedication(GMTeamState team, Cheerleader cheerleader, out string reason)
+        {
+            reason = null;
+            var candidates = DedicationCandidates(team);
+            if (candidates.Count == 0) { reason = "전담 응원이 필요한 Ego 4 이상 스타가 없습니다."; return null; }
+            var current = DedicatedPlayerOf(team, cheerleader);
+            int start = current != null ? candidates.IndexOf(current) : -1;
+            for (int k = 1; k <= candidates.Count; k++)
+            {
+                var next = candidates[(start + k + candidates.Count) % candidates.Count];
+                if (next == current) continue;
+                if (team.CheerDedications.Any(d => d.PlayerId == next.InstanceId && d.CheerleaderId != cheerleader.InstanceId)) continue;
+                if (TryReassignDedication(team, cheerleader, next, out reason)) return next;
+                if (reason != null && (reason.Contains("에이스") || reason.Contains("최대"))) return null;
+            }
+            reason = reason ?? "지정할 수 있는 다른 Ego 4+ 스타가 없습니다.";
+            return null;
         }
 
         /// <summary>엔트리에서 빠진 치어리더 · 떠난 선수의 매칭을 해제하고, 매칭으로 준 보직 양보 효과를 되돌린다.</summary>

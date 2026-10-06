@@ -14,7 +14,8 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// [TASK-GM-02] 리그 플레이 실시간 144경기 대시보드(기획서 2절 · 2.1, 1080×1920 Portrait). 로비 [플레이 볼]이 연다.
+    /// [TASK-GM-02] 리그 플레이 실시간 144경기 대시보드(기획서 2절 · 2.1). [TASK-GM-06] 1920×1080 Landscape 재배치(좌 순위표 · 우 TOP 3 · 하단 소식),
+    /// 새 시즌 설정에 4단계 난이도 · 하우스 룰. 로비 [플레이 볼] · 프런트 오피스 허브가 연다.
     ///   - 배경: 선택 구단 대표색(TeamThemePalette) + 중앙 구단 마크(Pulse Scale · Shimmer Alpha · 미세 플로팅)
     ///   - 헤더: 2026 KBO 시즌 · G 000 / 144 · [한 경기] [전반기 진행 → 후반기 진행] [한 시즌] · 1x/2x/4x · 일시정지
     ///   - 패널 1 순위표(순위 · 구단 · G · W · D · L · PCT · GB, 내 구단 강조, 5위 아래 포스트시즌 커트라인)
@@ -163,68 +164,69 @@ namespace KBOManager.Controllers
             }
             var font = regularFont != null ? regularFont : TextTidy.BodyFont;
             var kit = new CompyaUiKit(font, font);
+            using (CompyaUiKit.Wide()) // [TASK-GM-06] 1920×1080 Landscape 좌표
+            {
             root = CompyaUiKit.Fill(transform, RootName);
             background = CompyaUiKit.Paint(root, TeamThemePalette.Background(Team.Samsung), true);
 
             // 중앙 구단 마크(은은한 반짝임)
-            emblem = CompyaUiKit.Logo(root, "Emblem", 274, 620, 974, 1320);
+            emblem = CompyaUiKit.Logo(root, "Emblem", 660, 240, 1260, 840);
             emblemHolder = (RectTransform)emblem.transform.parent;
 
             // ---- 헤더
-            headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1248, 248, TeamThemePalette.Primary(Team.Samsung));
-            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 330, 74, TitlePt, TextAnchor.MiddleLeft, White);
-            awardsReportButton = Btn(kit, "AwardsReportButton", "시상 리포트", 340, 10, 550, 74, ButtonIdle, ButtonPt - 2);
+            headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1920, 150, TeamThemePalette.Primary(Team.Samsung));
+            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 330, 70, TitlePt, TextAnchor.MiddleLeft, White);
+            awardsReportButton = Btn(kit, "AwardsReportButton", "시상 리포트", 340, 10, 560, 70, ButtonIdle, ButtonPt - 2);
             awardsReportButton.onClick.AddListener(() => OpenAwards(null));
-            gameCounter = L(kit, "GameCounter", "G 000 / 144", 560, 10, 860, 74, CounterPt, TextAnchor.MiddleRight, Gold);
-            newSeasonButton = Btn(kit, "NewSeasonButton", "새 시즌 설정", 870, 10, 1100, 74, ButtonIdle, ButtonPt - 2);
+            gameCounter = L(kit, "GameCounter", "G 000 / 144", 570, 10, 860, 70, CounterPt, TextAnchor.MiddleRight, Gold);
+            newSeasonButton = Btn(kit, "NewSeasonButton", "새 시즌 설정", 870, 10, 1110, 70, ButtonIdle, ButtonPt - 2);
             newSeasonButton.onClick.AddListener(OpenSeasonModal);
-            closeButton = Btn(kit, "CloseButton", "X", 1110, 10, 1228, 74, ButtonIdle, ButtonPt + 2);
+            statusText = L(kit, "StatusText", "대기 중", 1120, 10, 1790, 70, HeadPt, TextAnchor.MiddleRight, Muted);
+            closeButton = Btn(kit, "CloseButton", "X", 1800, 10, 1908, 70, ButtonIdle, ButtonPt + 2);
             closeButton.onClick.AddListener(Close);
 
-            modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 86, 400, 160, ButtonIdle, ButtonPt);
-            modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 414, 86, 834, 160, ButtonIdle, ButtonPt);
-            modeFull = Btn(kit, "ModeFull", "한 시즌", 848, 86, 1228, 160, ButtonIdle, ButtonPt);
+            modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 80, 400, 142, ButtonIdle, ButtonPt);
+            modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 412, 80, 792, 142, ButtonIdle, ButtonPt);
+            modeFull = Btn(kit, "ModeFull", "한 시즌", 804, 80, 1184, 142, ButtonIdle, ButtonPt);
             modeSingle.onClick.AddListener(OpenPreGameOrRun);
             modeHalf.onClick.AddListener(() => Run(GMRunMode.FirstHalf));
             modeFull.onClick.AddListener(() => Run(GMRunMode.FullSeason));
             // [TASK-GM-04] 정규시즌 종료 후 진행 버튼 자리에 표시
-            awardsButton = Btn(kit, "AwardsButton", "포스트시즌 & 시상식 보기", 20, 86, 620, 160, new Color(0.15f, 0.45f, 0.85f), ButtonPt);
-            nextSeasonButton = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 634, 86, 1228, 160, new Color(0.62f, 0.42f, 0.1f), ButtonPt);
+            awardsButton = Btn(kit, "AwardsButton", "포스트시즌 & 시상식 보기", 20, 80, 700, 142, new Color(0.15f, 0.45f, 0.85f), ButtonPt);
+            nextSeasonButton = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 712, 80, 1184, 142, new Color(0.62f, 0.42f, 0.1f), ButtonPt);
             awardsButton.onClick.AddListener(() => OpenAwards(null));
             nextSeasonButton.onClick.AddListener(() => AdvanceSeason());
             awardsButton.gameObject.SetActive(false);
             nextSeasonButton.gameObject.SetActive(false);
 
-            speed1 = Btn(kit, "Speed1x", "1x", 20, 172, 190, 238, ButtonIdle, ButtonPt);
-            speed2 = Btn(kit, "Speed2x", "2x", 204, 172, 374, 238, ButtonIdle, ButtonPt);
-            speed4 = Btn(kit, "Speed4x", "4x", 388, 172, 558, 238, ButtonIdle, ButtonPt);
-            pauseButton = Btn(kit, "PauseButton", "일시정지", 572, 172, 760, 238, ButtonIdle, ButtonPt);
+            speed1 = Btn(kit, "Speed1x", "1x", 1196, 80, 1296, 142, ButtonIdle, ButtonPt);
+            speed2 = Btn(kit, "Speed2x", "2x", 1306, 80, 1406, 142, ButtonIdle, ButtonPt);
+            speed4 = Btn(kit, "Speed4x", "4x", 1416, 80, 1516, 142, ButtonIdle, ButtonPt);
+            pauseButton = Btn(kit, "PauseButton", "일시정지", 1526, 80, 1680, 142, ButtonIdle, ButtonPt);
             // [TASK-GM-05] 치어리더 관리 바로가기
-            cheerEntryButton = Btn(kit, "CheerEntryButton", "치어리더 엔트리 (4~6인)", 772, 172, 1062, 238, new Color(0.62f, 0.22f, 0.48f), ButtonPt - 2);
+            cheerEntryButton = Btn(kit, "CheerEntryButton", "치어리더 엔트리 (4~6인)", 1690, 80, 1908, 142, new Color(0.62f, 0.22f, 0.48f), ButtonPt - 3);
             cheerEntryButton.onClick.AddListener(OpenCheerEntry);
             speed1.onClick.AddListener(() => SetSpeed(1));
             speed2.onClick.AddListener(() => SetSpeed(2));
             speed4.onClick.AddListener(() => SetSpeed(4));
             pauseButton.onClick.AddListener(TogglePause);
-            statusText = L(kit, "StatusText", "대기 중", 1072, 172, 1228, 238, HeadPt, TextAnchor.MiddleRight, Muted);
 
-            // ---- 패널 1: 순위표
-            CompyaUiKit.Box(root, "StandingsPanel", 12, 254, 1236, 874, PanelColor);
-            L(kit, "StandingsTitle", "KBO 2026 시즌 실시간 순위표", 24, 258, 1224, 300, SectionPt, TextAnchor.MiddleLeft, Gold);
-            float[] colX = { 20, 100, 156, 420, 530, 640, 740, 850, 1020, 1228 };
+            // ---- 패널 1: 순위표(좌측)
+            CompyaUiKit.Box(root, "StandingsPanel", 12, 156, 700, 720, PanelColor);
+            L(kit, "StandingsTitle", "KBO 2026 시즌 실시간 순위표", 24, 160, 690, 198, SectionPt, TextAnchor.MiddleLeft, Gold);
+            float[] colX = { 20, 80, 124, 330, 390, 450, 505, 560, 640, 698 };
             string[] heads = { "순위", "", "구단", "G", "W", "D", "L", "PCT", "GB" };
             int[] colOf = { 0, 2, 3, 4, 5, 6, 7, 8 }; // 셀 열 → colX 시작 인덱스(1 = 로고 칸)
             for (int c = 0; c < 8; c++)
             {
                 int ci = colOf[c];
                 float x0 = c == 1 ? colX[2] : colX[ci], x1 = colX[ci + 1];
-                if (c == 1) x0 = colX[2];
-                L(kit, $"StandHead{c}", heads[ci], x0, 304, x1, 344, HeadPt, c == 1 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, Muted);
+                L(kit, $"StandHead{c}", heads[ci], x0, 200, x1, 234, HeadPt, c == 1 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, Muted);
             }
             for (int r = 0; r < StandingRows; r++)
             {
-                float y0 = 348 + r * 52, y1 = y0 + 48;
-                rowBgs[r] = CompyaUiKit.Box(root, $"RowBg{r}", 16, y0, 1232, y1, new Color(1f, 1f, 1f, 0.05f));
+                float y0 = 238 + r * 48, y1 = y0 + 44;
+                rowBgs[r] = CompyaUiKit.Box(root, $"RowBg{r}", 16, y0, 696, y1, new Color(1f, 1f, 1f, 0.05f));
                 rowLogos[r] = CompyaUiKit.Logo(root, $"RowLogo{r}", colX[1], y0 + 4, colX[2] - 6, y1 - 4);
                 for (int c = 0; c < 8; c++)
                 {
@@ -233,36 +235,36 @@ namespace KBOManager.Controllers
                     cells[r, c] = L(kit, $"Cell{r}_{c}", "", x0, y0, x1, y1, RowPt, c == 1 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, White);
                 }
             }
-            CompyaUiKit.Box(root, "PostseasonCutline", 16, 348 + 5 * 52 - 3, 1232, 348 + 5 * 52 - 1, Gold);
+            CompyaUiKit.Box(root, "PostseasonCutline", 16, 238 + 5 * 48 - 3, 696, 238 + 5 * 48 - 1, Gold);
 
-            // ---- 패널 2: 개인 성적 TOP 3
-            CompyaUiKit.Box(root, "LeadersPanel", 12, 880, 1236, 1516, PanelColor);
-            L(kit, "LeadersTitle", "KBO 개인 성적 TOP 3", 24, 884, 620, 932, SectionPt, TextAnchor.MiddleLeft, Gold);
-            tabBatter = Btn(kit, "TabBatter", "타자 8개 부문", 640, 884, 930, 932, ButtonIdle, ButtonPt - 2);
-            tabPitcher = Btn(kit, "TabPitcher", "투수 7개 부문", 944, 884, 1228, 932, ButtonIdle, ButtonPt - 2);
+            // ---- 패널 2: 개인 성적 TOP 3(우측, 4열 × 2행)
+            CompyaUiKit.Box(root, "LeadersPanel", 712, 156, 1908, 720, PanelColor);
+            L(kit, "LeadersTitle", "KBO 개인 성적 TOP 3", 724, 160, 1300, 198, SectionPt, TextAnchor.MiddleLeft, Gold);
+            tabBatter = Btn(kit, "TabBatter", "타자 8개 부문", 1320, 160, 1606, 198, ButtonIdle, ButtonPt - 2);
+            tabPitcher = Btn(kit, "TabPitcher", "투수 7개 부문", 1616, 160, 1900, 198, ButtonIdle, ButtonPt - 2);
             tabBatter.onClick.AddListener(() => { showPitchers = false; Refresh(); });
             tabPitcher.onClick.AddListener(() => { showPitchers = true; Refresh(); });
             for (int i = 0; i < LeaderCells; i++)
             {
-                float x0 = 20 + (i % 2) * 610, x1 = x0 + 598;
-                float y0 = 940 + (i / 2) * 144, y1 = y0 + 136;
+                float x0 = 720 + (i % 4) * 297, x1 = x0 + 289;
+                float y0 = 206 + (i / 4) * 256, y1 = y0 + 248;
                 leaderBgs[i] = CompyaUiKit.Box(root, $"LeaderBg{i}", x0, y0, x1, y1, new Color(1f, 1f, 1f, 0.07f));
-                leaderTitles[i] = L(kit, $"LeaderTitle{i}", "", x0 + 14, y0 + 4, x1 - 10, y0 + 40, LeaderTitlePt, TextAnchor.MiddleLeft, Gold);
-                leaderBodies[i] = L(kit, $"LeaderBody{i}", "", x0 + 14, y0 + 42, x1 - 10, y1 - 4, LeaderBodyPt, TextAnchor.UpperLeft, White);
-                leaderBodies[i].lineSpacing = 1.05f;
+                leaderTitles[i] = L(kit, $"LeaderTitle{i}", "", x0 + 12, y0 + 6, x1 - 8, y0 + 44, LeaderTitlePt, TextAnchor.MiddleLeft, Gold);
+                leaderBodies[i] = L(kit, $"LeaderBody{i}", "", x0 + 12, y0 + 48, x1 - 8, y1 - 8, LeaderBodyPt, TextAnchor.UpperLeft, White);
+                leaderBodies[i].lineSpacing = 1.25f;
             }
 
-            // ---- 패널 3: 최신 소식
-            CompyaUiKit.Box(root, "NewsPanel", 12, 1522, 1236, 1964, PanelColor);
-            L(kit, "NewsTitle", "최신 소식", 24, 1528, 300, 1572, SectionPt, TextAnchor.MiddleLeft, Gold);
-            lastBoxButton = Btn(kit, "LastBoxButton", "직전 경기 결과", 310, 1526, 640, 1574, ButtonIdle, ButtonPt - 3);
+            // ---- 패널 3: 최신 소식(하단 전폭)
+            CompyaUiKit.Box(root, "NewsPanel", 12, 728, 1908, 1072, PanelColor);
+            L(kit, "NewsTitle", "최신 소식", 24, 732, 300, 770, SectionPt, TextAnchor.MiddleLeft, Gold);
+            lastBoxButton = Btn(kit, "LastBoxButton", "직전 경기 결과", 310, 732, 640, 772, ButtonIdle, ButtonPt - 3);
             lastBoxButton.onClick.AddListener(OpenLastBoxScore);
-            lastGameText = L(kit, "LastGame", "", 650, 1528, 1224, 1572, HeadPt, TextAnchor.MiddleRight, White);
+            lastGameText = L(kit, "LastGame", "", 650, 732, 1900, 770, HeadPt, TextAnchor.MiddleRight, White);
             for (int i = 0; i < NewsRows; i++)
             {
-                float y0 = 1578 + i * 64, y1 = y0 + 58;
+                float y0 = 776 + i * 48, y1 = y0 + 44;
                 int index = i;
-                newsButtons[i] = kit.Button(root, $"News{i}", "", 20, y0, 1228, y1, new Color(1f, 1f, 1f, 0.06f), White, 24, bold: false);
+                newsButtons[i] = kit.Button(root, $"News{i}", "", 20, y0, 1900, y1, new Color(1f, 1f, 1f, 0.06f), White, 24, bold: false);
                 newsTexts[i] = newsButtons[i].GetComponentInChildren<Text>(true);
                 newsTexts[i].alignment = TextAnchor.MiddleLeft;
                 TextTidy.Exact(newsTexts[i], NewsPt);
@@ -273,23 +275,24 @@ namespace KBOManager.Controllers
             // ---- 인터럽트 · 소식 팝업
             popup = CompyaUiKit.Fill(root, "Popup");
             CompyaUiKit.Paint(popup, new Color(0f, 0f, 0f, 0.7f), true);
-            CompyaUiKit.Box(popup, "PopupBox", 100, 560, 1148, 1420, new Color(0.1f, 0.12f, 0.2f, 0.98f));
-            popupTitle = L(kit, "PopupTitle", "", 140, 590, 1108, 660, PopupTitlePt, TextAnchor.MiddleLeft, Gold, popup);
-            popupBody = L(kit, "PopupBody", "", 140, 670, 1108, 960, PopupBodyPt, TextAnchor.UpperLeft, White, popup);
+            CompyaUiKit.Box(popup, "PopupBox", 460, 190, 1460, 900, new Color(0.1f, 0.12f, 0.2f, 0.98f));
+            popupTitle = L(kit, "PopupTitle", "", 500, 210, 1420, 270, PopupTitlePt, TextAnchor.MiddleLeft, Gold, popup);
+            popupBody = L(kit, "PopupBody", "", 500, 280, 1420, 520, PopupBodyPt, TextAnchor.UpperLeft, White, popup);
             popupBody.lineSpacing = 1.2f;
             for (int k = 0; k < candidateButtons.Length; k++)
             {
                 int index = k;
-                candidateButtons[k] = Btn(kit, $"Candidate{k}", "", 140, 980 + k * 90, 1108, 1060 + k * 90, new Color(0.2f, 0.32f, 0.6f), ButtonPt - 1, popup);
+                candidateButtons[k] = Btn(kit, $"Candidate{k}", "", 500, 540 + k * 80, 1420, 610 + k * 80, new Color(0.2f, 0.32f, 0.6f), ButtonPt - 1, popup);
                 candidateButtons[k].onClick.AddListener(() => ChooseCandidate(index));
             }
-            popupPrimary = Btn(kit, "PopupPrimary", "확인 후 계속 진행", 140, 1270, 610, 1380, new Color(0.15f, 0.45f, 0.85f), ButtonPt, popup);
-            popupSecondary = Btn(kit, "PopupSecondary", "라인업/엔트리 직접 관리", 638, 1270, 1108, 1380, new Color(0.3f, 0.34f, 0.46f), ButtonPt, popup);
+            popupPrimary = Btn(kit, "PopupPrimary", "확인 후 계속 진행", 500, 800, 950, 880, new Color(0.15f, 0.45f, 0.85f), ButtonPt, popup);
+            popupSecondary = Btn(kit, "PopupSecondary", "라인업/엔트리 직접 관리", 970, 800, 1420, 880, new Color(0.3f, 0.34f, 0.46f), ButtonPt, popup);
             popupPrimary.onClick.AddListener(OnPopupPrimary);
             popupSecondary.onClick.AddListener(OnPopupSecondary);
             popup.gameObject.SetActive(false);
 
             BuildSeasonModal(kit);
+            }
         }
 
         // ================================================================== [TASK-GM-03] 새 시즌 설정 모달
@@ -305,34 +308,68 @@ namespace KBOManager.Controllers
         {
             seasonModal = CompyaUiKit.Fill(root, "SeasonModal");
             CompyaUiKit.Paint(seasonModal, new Color(0f, 0f, 0f, 0.72f), true);
-            CompyaUiKit.Box(seasonModal, "SeasonModalBox", 60, 300, 1188, 1640, new Color(0.1f, 0.12f, 0.2f, 0.98f));
-            L(kit, "SeasonModalTitle", "새 시즌 설정", 100, 330, 1148, 392, PopupTitlePt, TextAnchor.MiddleLeft, Gold, seasonModal);
-            L(kit, "ModeLabel", "시작 모드", 100, 400, 1148, 440, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
+            CompyaUiKit.Box(seasonModal, "SeasonModalBox", 260, 56, 1660, 1044, new Color(0.1f, 0.12f, 0.2f, 0.98f));
+            L(kit, "SeasonModalTitle", "새 시즌 설정", 300, 72, 1620, 122, PopupTitlePt, TextAnchor.MiddleLeft, Gold, seasonModal);
+            L(kit, "ModeLabel", "시작 모드", 300, 128, 1620, 160, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
             for (int i = 0; i < 3; i++)
             {
                 var mode = ModeDefs[i].mode;
-                float x0 = 100 + i * 354;
-                modeButtons[i] = Btn(kit, $"Mode_{mode}", ModeDefs[i].label, x0, 446, x0 + 340, 526, ButtonIdle, ButtonPt, seasonModal);
+                float x0 = 300 + i * 444;
+                modeButtons[i] = Btn(kit, $"Mode_{mode}", ModeDefs[i].label, x0, 164, x0 + 432, 224, ButtonIdle, ButtonPt, seasonModal);
                 modeButtons[i].onClick.AddListener(() => SelectSeasonMode(mode));
             }
-            L(kit, "TeamLabel", "구단 선택", 100, 546, 1148, 586, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
+            L(kit, "TeamLabel", "구단 선택", 300, 232, 1620, 264, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
             for (int i = 0; i < NameAliasTable.CanonicalTeamCodes.Length; i++)
             {
                 string code = NameAliasTable.CanonicalTeamCodes[i];
-                float x0 = 100 + (i % 5) * 212, y0 = 592 + (i / 5) * 92;
-                teamButtons[i] = Btn(kit, $"Team_{code}", CompyaUiKit.ShortName(NameAliasTable.ToTeam(code)), x0, y0, x0 + 200, y0 + 80, ButtonIdle, ButtonPt, seasonModal);
+                float x0 = 300 + (i % 5) * 266, y0 = 268 + (i / 5) * 66;
+                teamButtons[i] = Btn(kit, $"Team_{code}", CompyaUiKit.ShortName(NameAliasTable.ToTeam(code)), x0, y0, x0 + 254, y0 + 58, ButtonIdle, ButtonPt, seasonModal);
                 teamButtons[i].onClick.AddListener(() => SelectSeasonTeam(code));
             }
-            virtualToggle = Btn(kit, "VirtualToggle", "", 100, 790, 1148, 870, ButtonIdle, ButtonPt, seasonModal);
+            virtualToggle = Btn(kit, "VirtualToggle", "", 300, 406, 1620, 460, ButtonIdle, ButtonPt, seasonModal);
             virtualToggle.onClick.AddListener(() => SetSeasonVirtualNames(!pendingVirtual));
-            seasonModalDesc = L(kit, "SeasonModalDesc", "", 100, 890, 1148, 1300, PopupBodyPt - 1, TextAnchor.UpperLeft, White, seasonModal);
+            // [TASK-GM-06] OOTP 27 4단계 난이도 · 하우스 룰(연간 FA/트레이드 한도)
+            L(kit, "DifficultyLabel", "난이도 (FA 요구액 · AI 트레이드 요구 가치 · 구단주 신임도)", 300, 468, 1620, 500, HeadPt, TextAnchor.MiddleLeft, Muted, seasonModal);
+            for (int i = 0; i < difficultyButtons.Length; i++)
+            {
+                var d = GMFrontOffice.Difficulties[i];
+                float x0 = 300 + i * 332;
+                difficultyButtons[i] = Btn(kit, $"Difficulty_{d}", GMFrontOffice.DifficultyLabel(d), x0, 504, x0 + 320, 560, ButtonIdle, ButtonPt, seasonModal);
+                difficultyButtons[i].onClick.AddListener(() => SelectSeasonDifficulty(d));
+            }
+            houseRuleFA = Btn(kit, "HouseRuleFA", "", 300, 572, 950, 628, ButtonIdle, ButtonPt - 1, seasonModal);
+            houseRuleTrade = Btn(kit, "HouseRuleTrade", "", 970, 572, 1620, 628, ButtonIdle, ButtonPt - 1, seasonModal);
+            houseRuleFA.onClick.AddListener(() => CycleHouseRule(true));
+            houseRuleTrade.onClick.AddListener(() => CycleHouseRule(false));
+            seasonModalDesc = L(kit, "SeasonModalDesc", "", 300, 640, 1620, 900, PopupBodyPt - 1, TextAnchor.UpperLeft, White, seasonModal);
             seasonModalDesc.lineSpacing = 1.2f;
-            seasonStart = Btn(kit, "SeasonStart", "새 시즌 시작", 100, 1500, 610, 1600, new Color(0.15f, 0.45f, 0.85f), ButtonPt + 1, seasonModal);
-            seasonCancel = Btn(kit, "SeasonCancel", "취소", 638, 1500, 1148, 1600, new Color(0.3f, 0.34f, 0.46f), ButtonPt + 1, seasonModal);
+            seasonStart = Btn(kit, "SeasonStart", "새 시즌 시작", 300, 920, 950, 1010, new Color(0.15f, 0.45f, 0.85f), ButtonPt + 1, seasonModal);
+            seasonCancel = Btn(kit, "SeasonCancel", "취소", 970, 920, 1620, 1010, new Color(0.3f, 0.34f, 0.46f), ButtonPt + 1, seasonModal);
             seasonStart.onClick.AddListener(() => ConfirmNewSeason());
             seasonCancel.onClick.AddListener(CloseSeasonModal);
             seasonModal.gameObject.SetActive(false);
         }
+
+        // [TASK-GM-06] 새 시즌 설정 - 난이도 · 하우스 룰
+        private readonly Button[] difficultyButtons = new Button[4];
+        private Button houseRuleFA, houseRuleTrade;
+        private GMDifficulty pendingDifficulty = GMDifficulty.Majors;
+        private int pendingMaxFA, pendingMaxTrades;
+        public GMDifficulty PendingDifficulty => pendingDifficulty;
+
+        public void SelectSeasonDifficulty(GMDifficulty d) { pendingDifficulty = d; RefreshSeasonModal(); }
+
+        /// <summary>하우스 룰 순환(제한 없음 → 연 3회 → 연 1회).</summary>
+        public void CycleHouseRule(bool freeAgency)
+        {
+            var steps = GMFrontOffice.HouseRuleSteps;
+            int cur = freeAgency ? pendingMaxFA : pendingMaxTrades;
+            int next = steps[(Array.IndexOf(steps, cur) + 1 + steps.Length) % steps.Length];
+            if (freeAgency) pendingMaxFA = next; else pendingMaxTrades = next;
+            RefreshSeasonModal();
+        }
+
+        public void SetSeasonHouseRules(int maxFA, int maxTrades) { pendingMaxFA = Math.Max(0, maxFA); pendingMaxTrades = Math.Max(0, maxTrades); RefreshSeasonModal(); }
 
         public void OpenSeasonModal()
         {
@@ -341,6 +378,10 @@ namespace KBOManager.Controllers
             pendingMode = league?.Mode ?? GMStartMode.RealCurrent2026;
             pendingTeam = league?.SelectedTeamCode ?? NameAliasTable.SAM;
             pendingVirtual = league?.UseVirtualNames ?? GameSettings.UseVirtualNames;
+            var fo = league?.FrontOffice;
+            pendingDifficulty = fo?.Difficulty ?? GMDifficulty.Majors;
+            pendingMaxFA = fo?.HouseRuleMaxFA ?? 0;
+            pendingMaxTrades = fo?.HouseRuleMaxTrades ?? 0;
             paused = true;
             seasonModal.gameObject.SetActive(true);
             seasonModal.SetAsLastSibling();
@@ -363,8 +404,12 @@ namespace KBOManager.Controllers
             for (int i = 0; i < teamButtons.Length; i++) Highlight(teamButtons[i], NameAliasTable.CanonicalTeamCodes[i] == pendingTeam);
             CompyaUiKit.SetButtonText(virtualToggle, pendingVirtual ? "선수 이름: 가상명 (눌러서 실명)" : "선수 이름: 실명 (눌러서 가상명)");
             Highlight(virtualToggle, pendingVirtual);
+            for (int i = 0; i < difficultyButtons.Length; i++) Highlight(difficultyButtons[i], GMFrontOffice.Difficulties[i] == pendingDifficulty);
+            CompyaUiKit.SetButtonText(houseRuleFA, $"하우스 룰 · 연간 FA 영입: {GMFrontOffice.HouseRuleLabel(pendingMaxFA)}");
+            CompyaUiKit.SetButtonText(houseRuleTrade, $"하우스 룰 · 연간 트레이드: {GMFrontOffice.HouseRuleLabel(pendingMaxTrades)}");
             var def = ModeDefs.First(d => d.mode == pendingMode);
-            seasonModalDesc.text = $"{def.desc}\n\n선택 구단: {NameAliasTable.DisplayTeamName(pendingTeam)}\n진행 중인 시즌 기록은 새 시즌으로 초기화됩니다.";
+            seasonModalDesc.text = $"{def.desc}\n\n선택 구단: {NameAliasTable.DisplayTeamName(pendingTeam)} · 난이도 {GMFrontOffice.DifficultyLabel(pendingDifficulty)}" +
+                                   $" (FA 요구액 x{GMFrontOffice.DemandMultiplier(pendingDifficulty):0.00} · 트레이드 요구 x{GMFrontOffice.TradeMargin(pendingDifficulty):0.00} · 구단주 신임도 {GMFrontOffice.StartingTrust(pendingDifficulty)})\n진행 중인 시즌 기록은 새 시즌으로 초기화됩니다.";
         }
 
         /// <summary>선택한 모드 · 구단 · 이름 설정으로 리그를 즉시 다시 만들고 대시보드를 새 시즌에 연결한다. 실패하면 null.</summary>
@@ -381,6 +426,7 @@ namespace KBOManager.Controllers
             }
             else league = GMRosterLoader.LoadModeRoster(pendingMode, pendingTeam, pendingVirtual);
             if (league == null) return null;
+            GMFrontOffice.ApplySettings(league, pendingDifficulty, pendingMaxFA, pendingMaxTrades); // [TASK-GM-06]
             sim = sim ?? new GMLiveSeasonSimulator(league);
             seasonModal.gameObject.SetActive(false);
             Bind(sim);

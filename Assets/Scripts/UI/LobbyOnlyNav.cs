@@ -51,6 +51,8 @@ namespace KBOManager.UI
         private static bool CoversScreen(RectTransform rect)
         {
             // 전체 화면 패널(앵커가 부모 전체를 덮음)만 "다른 화면"으로 본다 - 토스트/작은 팝업은 탭 바를 숨기지 않는다.
+            // [TASK-GM-06] 1920×1080 전환 후 기존 세로 화면은 9:16 프레임(LegacyPortraitFrame, 중앙 앵커)이라 프레임 자체를 전체 화면으로 본다.
+            if (rect.GetComponent<LegacyPortraitFrame>() != null) return true;
             return rect.anchorMin.x <= 0.01f && rect.anchorMin.y <= 0.01f && rect.anchorMax.x >= 0.99f && rect.anchorMax.y >= 0.99f;
         }
 

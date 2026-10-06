@@ -22,9 +22,9 @@ namespace KBOManager.Controllers
     }
 
     /// <summary>
-    /// [TASK-GM-04] 시상식 & 포스트시즌 리포트(기획서 1.1~1.7, 1080×1920 Portrait, 1248×1972 레퍼런스 좌표, 모든 글씨 Normal · 15pt 이상).
+    /// [TASK-GM-04] 시상식 & 포스트시즌 리포트(기획서 1.1~1.7, 모든 글씨 Normal · 15pt 이상). [TASK-GM-06] 1920×1080 Landscape(4열 × 7행 수상 카드).
     ///   - 탭: [11월 KBO 시상식] [12월 골든글러브] [7월 올스타 · 월간] [포스트시즌 결과]
-    ///   - 본문: 2열 × 14행 수상 카드(부문 · 수상자 · 구단 · 기록), 내 구단 수상은 ★ · 구단색 강조
+    ///   - 본문: 4열 × 7행 수상 카드(부문 · 수상자 · 구단 · 기록), 내 구단 수상은 ★ · 구단색 강조
     ///   - 정규시즌 종료 후 열면 포스트시즌 → 11월 KBO 시상식을 순서대로 개최, 골든글러브는 12월 탭의 [골든글러브 시상식 개최]로 단독 개최
     ///   - 하단: [20yy 시즌 전환](남은 단계를 마저 치르고 연도 전환) · [대시보드로 돌아가기]
     /// 대시보드 [시상 리포트] · [포스트시즌 & 시상식 보기] · 올스타 팝업이 연다.
@@ -33,7 +33,7 @@ namespace KBOManager.Controllers
     {
         public const string RootName = "AwardsRoot";
         public const int TitlePt = 26, TabPt = 20, SummaryPt = 19, CellTitlePt = 17, CellBodyPt = 17, StatusPt = 17, ButtonPt = 21;
-        public const int Rows = 14, Cols = 2, CellCount = Rows * Cols;
+        public const int Rows = 7, Cols = 4, CellCount = Rows * Cols; // [TASK-GM-06] 1920×1080 4열 × 7행(28칸 유지)
 
         private static readonly Color Bg = new Color(0.06f, 0.08f, 0.15f);
         private static readonly Color White = new Color(0.96f, 0.97f, 0.99f);
@@ -85,40 +85,43 @@ namespace KBOManager.Controllers
             }
             var font = regularFont != null ? regularFont : TextTidy.BodyFont;
             var kit = new CompyaUiKit(font, font);
+            using (CompyaUiKit.Wide()) // [TASK-GM-06] 1920×1080 Landscape 좌표
+            {
             root = CompyaUiKit.Fill(transform, RootName);
             CompyaUiKit.Paint(root, Bg, true);
 
-            title = L(kit, "Title", "KBO 시상식 & 포스트시즌", 24, 16, 1090, 84, TitlePt, TextAnchor.MiddleLeft, Gold);
-            close = Btn(kit, "CloseButton", "X", 1110, 16, 1228, 84, ButtonIdle, ButtonPt + 2);
+            title = L(kit, "Title", "KBO 시상식 & 포스트시즌", 24, 12, 1780, 72, TitlePt, TextAnchor.MiddleLeft, Gold);
+            close = Btn(kit, "CloseButton", "X", 1800, 12, 1908, 72, ButtonIdle, ButtonPt + 2);
             close.onClick.AddListener(Close);
 
             for (int i = 0; i < tabs.Length; i++)
             {
                 var t = (GMAwardsTab)i;
-                float x0 = 20 + i * 305;
-                tabs[i] = Btn(kit, $"Tab_{t}", TabLabels[i], x0, 96, x0 + 293, 166, ButtonIdle, TabPt);
+                float x0 = 20 + i * 472;
+                tabs[i] = Btn(kit, $"Tab_{t}", TabLabels[i], x0, 80, x0 + 460, 140, ButtonIdle, TabPt);
                 tabs[i].onClick.AddListener(() => SelectTab(t));
             }
-            summary = L(kit, "Summary", "", 24, 176, 1224, 238, SummaryPt, TextAnchor.MiddleLeft, White);
+            summary = L(kit, "Summary", "", 24, 146, 1896, 196, SummaryPt, TextAnchor.MiddleLeft, White);
 
             for (int i = 0; i < CellCount; i++)
             {
                 int r = i / Cols, c = i % Cols;
-                float x0 = c == 0 ? 20 : 630, x1 = c == 0 ? 618 : 1228;
-                float y0 = 246 + r * 108, y1 = y0 + 100;
+                float x0 = 20 + c * 472, x1 = x0 + 462;
+                float y0 = 202 + r * 104, y1 = y0 + 98;
                 cellBgs[i] = CompyaUiKit.Box(root, $"CellBg{i}", x0, y0, x1, y1, CellIdle);
-                cellTitles[i] = L(kit, $"CellTitle{i}", "", x0 + 14, y0 + 4, x1 - 10, y0 + 42, CellTitlePt, TextAnchor.MiddleLeft, Gold);
-                cellBodies[i] = L(kit, $"CellBody{i}", "", x0 + 14, y0 + 44, x1 - 10, y1 - 4, CellBodyPt, TextAnchor.UpperLeft, White);
+                cellTitles[i] = L(kit, $"CellTitle{i}", "", x0 + 12, y0 + 4, x1 - 8, y0 + 40, CellTitlePt, TextAnchor.MiddleLeft, Gold);
+                cellBodies[i] = L(kit, $"CellBody{i}", "", x0 + 12, y0 + 42, x1 - 8, y1 - 4, CellBodyPt, TextAnchor.UpperLeft, White);
                 cellBodies[i].lineSpacing = 1.05f;
             }
 
-            holdGoldenGlove = Btn(kit, "HoldGoldenGlove", "12월 골든글러브 시상식 개최", 274, 820, 974, 930, ButtonOn, ButtonPt + 2);
+            holdGoldenGlove = Btn(kit, "HoldGoldenGlove", "12월 골든글러브 시상식 개최", 610, 420, 1310, 530, ButtonOn, ButtonPt + 2);
             holdGoldenGlove.onClick.AddListener(HoldGoldenGlove);
-            status = L(kit, "Status", "", 24, 1760, 1224, 1808, StatusPt, TextAnchor.MiddleLeft, Muted);
-            nextSeason = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 20, 1824, 610, 1940, ButtonOn, ButtonPt + 1);
-            back = Btn(kit, "BackButton", "대시보드로 돌아가기", 638, 1824, 1228, 1940, new Color(0.3f, 0.34f, 0.46f), ButtonPt + 1);
+            status = L(kit, "Status", "", 24, 932, 1896, 972, StatusPt, TextAnchor.MiddleLeft, Muted);
+            nextSeason = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 20, 978, 950, 1066, ButtonOn, ButtonPt + 1);
+            back = Btn(kit, "BackButton", "대시보드로 돌아가기", 970, 978, 1900, 1066, new Color(0.3f, 0.34f, 0.46f), ButtonPt + 1);
             nextSeason.onClick.AddListener(() => AdvanceSeason());
             back.onClick.AddListener(Close);
+            }
         }
 
         private Text L(CompyaUiKit kit, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)

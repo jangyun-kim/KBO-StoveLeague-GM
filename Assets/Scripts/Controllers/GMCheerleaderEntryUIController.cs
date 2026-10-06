@@ -13,7 +13,7 @@ using UnityEngine.UI;
 namespace KBOManager.Controllers
 {
     /// <summary>
-    /// [TASK-GM-05] 단장 모드 구단 치어리더 관리 화면(기획서 3절, 1080×1920 Portrait · 1248×1972 레퍼런스 좌표 · 모든 글씨 Normal · 15pt 이상).
+    /// [TASK-GM-05] 단장 모드 구단 치어리더 관리 화면(기획서 3절, 모든 글씨 Normal · 15pt 이상). [TASK-GM-06] 1920×1080 Landscape · 전담 대상 직접 지정.
     ///   - 상단: 구단 응원단 · 엔트리 n/6명(4~6명) · 구단 풀 n/15명 · 팀워크/실책 억제/홈 흥행 요약, [X] 닫기(이전 화면 복귀)
     ///   - 엔트리 6칸(1.응원단장 ~ 6.위기 응원, 비어 있는 칸은 "빈 슬롯")
     ///   - 선택 카드 상세: 이름 · 등급 · 강화/★각성(골드 · 프리즘 테두리) · 체력 · 열정도(CHEER) + 4대 응원 스탯 게이지
@@ -47,6 +47,7 @@ namespace KBOManager.Controllers
         private readonly Button[] poolButtons = new Button[PoolRows];
         private Image detailFrame;
         private Button closeButton, toggleButton, dedicateButton, autoButton, rotateButton, backButton;
+        private Button dedicationTargetButton; // [TASK-GM-06] D.3
 
         private GMTeamState team;
         private Cheerleader selected;
@@ -77,50 +78,56 @@ namespace KBOManager.Controllers
             }
             var font = regularFont != null ? regularFont : TextTidy.BodyFont;
             var kit = new CompyaUiKit(font, font);
+            using (CompyaUiKit.Wide()) // [TASK-GM-06] 1920×1080 Landscape(좌 엔트리 · 상세 · 조작 / 우 15인 풀)
+            {
             root = CompyaUiKit.Fill(transform, RootName);
             CompyaUiKit.Paint(root, Bg, true);
 
-            title = L(kit, "Title", "치어리더 엔트리", 24, 16, 1090, 84, TitlePt, TextAnchor.MiddleLeft, Pink);
-            closeButton = Btn(kit, "CloseButton", "X", 1110, 16, 1228, 84, ButtonIdle, ButtonPt + 2);
+            title = L(kit, "Title", "치어리더 엔트리", 24, 12, 1780, 72, TitlePt, TextAnchor.MiddleLeft, Pink);
+            closeButton = Btn(kit, "CloseButton", "X", 1800, 12, 1908, 72, ButtonIdle, ButtonPt + 2);
             closeButton.onClick.AddListener(Close);
-            summary = L(kit, "Summary", "", 24, 92, 1224, 144, SummaryPt, TextAnchor.MiddleLeft, White);
+            summary = L(kit, "Summary", "", 24, 78, 1908, 118, SummaryPt, TextAnchor.MiddleLeft, White);
 
             for (int i = 0; i < SlotCount; i++)
             {
                 int index = i;
-                float x0 = 20 + i * 203, x1 = x0 + 193;
-                slotRoles[i] = L(kit, $"SlotRole{i}", $"{i + 1}.{CheerSquad.RoleName((CheerRole)i)}", x0, 152, x1, 188, RolePt, TextAnchor.MiddleCenter, Muted);
-                slots[i] = Btn(kit, $"Slot{i}", "", x0, 192, x1, 300, ButtonIdle, SlotPt);
+                float x0 = 16 + i * 164, x1 = x0 + 156;
+                slotRoles[i] = L(kit, $"SlotRole{i}", $"{i + 1}.{CheerSquad.RoleName((CheerRole)i)}", x0, 124, x1, 156, RolePt, TextAnchor.MiddleCenter, Muted);
+                slots[i] = Btn(kit, $"Slot{i}", "", x0, 160, x1, 262, ButtonIdle, SlotPt);
                 slots[i].onClick.AddListener(() => SelectSlot(index));
             }
 
-            detailFrame = CompyaUiKit.Box(root, "DetailFrame", 12, 308, 1236, 664, new Color(1f, 1f, 1f, 0.05f));
-            detailName = L(kit, "DetailName", "", 24, 314, 880, 360, DetailNamePt, TextAnchor.MiddleLeft, White);
-            detailInfo = L(kit, "DetailInfo", "", 24, 362, 880, 406, DetailPt, TextAnchor.MiddleLeft, Muted);
-            detailCheer = L(kit, "DetailCheer", "", 900, 314, 1224, 406, CheerPt, TextAnchor.MiddleRight, Pink);
+            detailFrame = CompyaUiKit.Box(root, "DetailFrame", 12, 270, 1000, 620, new Color(1f, 1f, 1f, 0.05f));
+            detailName = L(kit, "DetailName", "", 24, 276, 700, 326, DetailNamePt, TextAnchor.MiddleLeft, White);
+            detailCheer = L(kit, "DetailCheer", "", 710, 272, 990, 330, CheerPt, TextAnchor.MiddleRight, Pink);
+            detailInfo = L(kit, "DetailInfo", "", 24, 330, 990, 370, DetailPt, TextAnchor.MiddleLeft, Muted);
             for (int k = 0; k < 4; k++)
             {
-                float y0 = 414 + k * 62;
-                L(kit, $"GaugeLabel{k}", GMCheerleaderStats.StatLabels[k], 24, y0, 300, y0 + 52, GaugePt, TextAnchor.MiddleLeft, White);
-                var bg = CompyaUiKit.Box(root, $"GaugeBg{k}", 310, y0 + 12, 1060, y0 + 40, new Color(1f, 1f, 1f, 0.1f));
+                float y0 = 376 + k * 60;
+                L(kit, $"GaugeLabel{k}", GMCheerleaderStats.StatLabels[k], 24, y0, 280, y0 + 52, GaugePt, TextAnchor.MiddleLeft, White);
+                var bg = CompyaUiKit.Box(root, $"GaugeBg{k}", 290, y0 + 12, 880, y0 + 40, new Color(1f, 1f, 1f, 0.1f));
                 gaugeFills[k] = CompyaUiKit.Fill(bg.transform, "Fill");
                 CompyaUiKit.Paint(gaugeFills[k], GaugeColors[k]);
-                gaugeValues[k] = L(kit, $"GaugeValue{k}", "", 1076, y0, 1224, y0 + 52, GaugePt + 1, TextAnchor.MiddleRight, White);
+                gaugeValues[k] = L(kit, $"GaugeValue{k}", "", 890, y0, 990, y0 + 52, GaugePt + 1, TextAnchor.MiddleRight, White);
             }
 
-            toggleButton = Btn(kit, "ToggleEntryButton", "엔트리 배치", 20, 672, 410, 744, EntryOn, ButtonPt);
-            dedicateButton = Btn(kit, "DedicateButton", "전담 응원 지정", 424, 672, 814, 744, new Color(0.45f, 0.3f, 0.65f), ButtonPt);
-            autoButton = Btn(kit, "AutoArrangeButton", "최적 컨디션 5인 자동 편성", 828, 672, 1228, 744, new Color(0.15f, 0.45f, 0.85f), ButtonPt - 1);
+            toggleButton = Btn(kit, "ToggleEntryButton", "엔트리 배치", 12, 630, 330, 690, EntryOn, ButtonPt);
+            dedicateButton = Btn(kit, "DedicateButton", "전담 응원 지정", 340, 630, 660, 690, new Color(0.45f, 0.3f, 0.65f), ButtonPt);
+            autoButton = Btn(kit, "AutoArrangeButton", "최적 컨디션 5인 자동 편성", 670, 630, 1000, 690, new Color(0.15f, 0.45f, 0.85f), ButtonPt - 1);
             toggleButton.onClick.AddListener(() => ToggleSelected());
             dedicateButton.onClick.AddListener(() => DedicateSelected());
             autoButton.onClick.AddListener(AutoArrange);
-            message = L(kit, "Message", "", 24, 750, 1224, 802, DetailPt, TextAnchor.MiddleLeft, Pink);
+            // [TASK-GM-06] GM-05 D.3 - 전담 응원 대상 선수 직접 지정(클릭할 때마다 다음 Ego 4+ 스타로 순환)
+            dedicationTargetButton = Btn(kit, "DedicationTargetButton", "전담 대상 변경 ▶", 12, 698, 1000, 750, new Color(0.38f, 0.22f, 0.5f), ButtonPt - 1);
+            dedicationTargetButton.onClick.AddListener(() => CycleDedicationTarget());
+            message = L(kit, "Message", "", 24, 758, 1000, 804, DetailPt, TextAnchor.MiddleLeft, Pink);
+            dedicationText = L(kit, "DedicationText", "", 24, 810, 1000, 944, DetailPt, TextAnchor.UpperLeft, Muted);
 
             for (int i = 0; i < PoolRows; i++)
             {
                 int index = i;
-                float y0 = 810 + i * 64;
-                poolButtons[i] = kit.Button(root, $"Pool{i}", "", 20, y0, 1228, y0 + 58, ButtonIdle, White, PoolPt / 0.9f, bold: false);
+                float y0 = 124 + i * 62;
+                poolButtons[i] = kit.Button(root, $"Pool{i}", "", 1012, y0, 1908, y0 + 56, ButtonIdle, White, PoolPt / 0.9f, bold: false);
                 var label = poolButtons[i].GetComponentInChildren<Text>(true);
                 label.alignment = TextAnchor.MiddleLeft;
                 TextTidy.Exact(label, PoolPt);
@@ -128,12 +135,12 @@ namespace KBOManager.Controllers
                 poolButtons[i].onClick.AddListener(() => SelectPool(index));
             }
 
-            dedicationText = L(kit, "DedicationText", "", 24, 1782, 1224, 1836, DetailPt, TextAnchor.MiddleLeft, Muted);
-            rotateButton = Btn(kit, "AutoRotateButton", "자동 로테이션: 꺼짐", 20, 1846, 610, 1950, ButtonIdle, ButtonPt);
-            backButton = Btn(kit, "BackButton", "닫기", 638, 1846, 1228, 1950, new Color(0.3f, 0.3f, 0.42f), ButtonPt + 1);
+            rotateButton = Btn(kit, "AutoRotateButton", "자동 로테이션: 켜짐", 12, 956, 500, 1060, ButtonIdle, ButtonPt);
+            backButton = Btn(kit, "BackButton", "닫기", 512, 956, 1000, 1060, new Color(0.3f, 0.3f, 0.42f), ButtonPt + 1);
             rotateButton.onClick.AddListener(ToggleAutoRotate);
             backButton.onClick.AddListener(Close);
             root.gameObject.SetActive(true);
+            }
         }
 
         private Text L(CompyaUiKit kit, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)
@@ -218,6 +225,21 @@ namespace KBOManager.Controllers
             return ok;
         }
 
+        /// <summary>
+        /// [TASK-GM-06] GM-05 D.3 [전담 대상 변경 ▶] - 선택한 에이스/리더 치어리더의 전담 응원 대상을 다음 Ego 4+ 스타로 바꾼다
+        /// (자동 배정 대신 단장이 직접 고른다). 새 대상(실패하면 null).
+        /// </summary>
+        public Player CycleDedicationTarget()
+        {
+            if (team == null || selected == null) return null;
+            var next = GMCheerleaderRoster.CycleDedication(team, selected, out string reason);
+            message.text = next != null
+                ? $"{selected.DisplayName} 전담 대상 → {next.Template.PlayerName}(Ego {next.EgoLevel}) · 보직 불만 해소 · 만족도 +{GMCheerleaderRoster.DedicationMoraleBonus}"
+                : reason;
+            Refresh();
+            return next;
+        }
+
         /// <summary>[최적 컨디션 5인 자동 편성].</summary>
         public void AutoArrange()
         {
@@ -274,6 +296,9 @@ namespace KBOManager.Controllers
                 }
                 CompyaUiKit.SetButtonText(toggleButton, idx >= 0 ? "엔트리 해제" : "엔트리 배치");
                 dedicateButton.interactable = GMCheerleaderRoster.IsAceOrLeader(team, s);
+                var dedicated = GMCheerleaderRoster.DedicatedPlayerOf(team, s);
+                dedicationTargetButton.interactable = dedicateButton.interactable;
+                CompyaUiKit.SetButtonText(dedicationTargetButton, dedicated != null ? $"전담 대상 변경 ▶ (현재 {dedicated.Template.PlayerName})" : "전담 대상 직접 지정 ▶ (Ego 4+ 스타 순환)");
             }
             else
             {
@@ -281,6 +306,7 @@ namespace KBOManager.Controllers
                 detailInfo.text = detailCheer.text = "";
                 for (int k = 0; k < 4; k++) { gaugeValues[k].text = "-"; gaugeFills[k].anchorMax = new Vector2(0f, 1f); }
                 dedicateButton.interactable = false;
+                dedicationTargetButton.interactable = false;
             }
 
             for (int i = 0; i < PoolRows; i++)

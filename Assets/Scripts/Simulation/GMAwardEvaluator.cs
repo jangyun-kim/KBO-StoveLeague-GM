@@ -984,8 +984,11 @@ namespace KBOManager.Simulation
                 if (bundle.Postseason.SeedCodes.Contains(user.TeamCode)) user.OwnerPostseasonPressure = false;
             }
             int oldYear = league.SeasonYear;
+            // [TASK-GM-06] 프런트 오피스 결산 - 10구단 시즌 이력 · 관중, 구단주 목표 · 신임도, 스토리 캠페인 4종 엔딩
+            GMFrontOffice.OnSeasonCompleted(league, sim.Standings().Select(r => r.TeamCode).ToList(), bundle.Postseason.ChampionCode);
             league.Phase = GMSeasonPhase.AwardsCeremony;
             if (!league.AdvancePhase()) return false;
+            GMFrontOffice.OnNewSeason(league); // [TASK-GM-06] 연간 FA · 트레이드 · 드래프트 카운터 초기화 · 목표 재생성 · 안건 재오픈
             var champion = bundle.Postseason.ChampionCode;
             league.AddNews(new GMNewsItem
             {

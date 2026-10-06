@@ -18,6 +18,37 @@ namespace KBOManager.UI
         public const float RefHeight = 1972f;
         private const float FontScale = 0.9f;
 
+        // [TASK-GM-06] 1920×1080 Landscape 좌표계 - 단장 모드 화면은 Wide() 스코프 안에서 1920×1080 px(좌상단 원점) 좌표를 그대로 넘긴다.
+        public const float WideWidth = 1920f;
+        public const float WideHeight = 1080f;
+        private static float activeWidth = RefWidth, activeHeight = RefHeight;
+
+        /// <summary>현재 배치 기준 폭/높이(기본 1248×1972 세로 레퍼런스, Wide() 스코프 안에서는 1920×1080).</summary>
+        public static float ActiveWidth => activeWidth;
+        public static float ActiveHeight => activeHeight;
+
+        /// <summary>[TASK-GM-06] using 블록 동안 Place/SetBox가 1920×1080 가로 좌표를 쓴다(중첩 가능 - 끝나면 이전 기준으로 복원).</summary>
+        public static System.IDisposable Wide() => new RefScope(WideWidth, WideHeight);
+
+        private sealed class RefScope : System.IDisposable
+        {
+            private readonly float prevW, prevH;
+            private bool disposed;
+
+            public RefScope(float w, float h)
+            {
+                prevW = activeWidth; prevH = activeHeight;
+                activeWidth = w; activeHeight = h;
+            }
+
+            public void Dispose()
+            {
+                if (disposed) return;
+                disposed = true;
+                activeWidth = prevW; activeHeight = prevH;
+            }
+        }
+
         public Font Bold;
         public Font Regular;
 
@@ -44,8 +75,8 @@ namespace KBOManager.UI
 
         public static void SetBox(RectTransform rect, float x0, float y0, float x1, float y1)
         {
-            rect.anchorMin = new Vector2(x0 / RefWidth, 1f - y1 / RefHeight);
-            rect.anchorMax = new Vector2(x1 / RefWidth, 1f - y0 / RefHeight);
+            rect.anchorMin = new Vector2(x0 / activeWidth, 1f - y1 / activeHeight);
+            rect.anchorMax = new Vector2(x1 / activeWidth, 1f - y0 / activeHeight);
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             rect.pivot = new Vector2(0.5f, 0.5f);

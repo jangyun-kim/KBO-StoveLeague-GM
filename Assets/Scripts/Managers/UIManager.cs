@@ -121,6 +121,8 @@ namespace KBOManager.Managers
 
             CurrentScreen = type;
             OnScreenChanged?.Invoke(type);
+            // [TASK-GM-06] 로비로 들어오면 OOTP 27 스타일 프런트 오피스 허브(1920×1080)를 기본 화면으로 띄운다(플레이 모드).
+            if (type == ScreenType.Lobby) KBOManager.Controllers.GMOotpFrontOfficeUIController.OnLobbyScreenShown();
         }
 
         /// <summary>type에 대응하는 화면 루트를 반환한다. 등록되어 있지 않으면 null.</summary>

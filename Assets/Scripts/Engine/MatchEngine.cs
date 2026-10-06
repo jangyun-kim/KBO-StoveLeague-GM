@@ -984,6 +984,19 @@ namespace KBOManager.Engine
                 chemRispStrikeout = batterChem.DoublePlayRiskMultiplier;
             }
 
+            // [TASK-GM-06] ABS(자동 투구 판정) - 단장 모드 경기(케미스트리 있음)에서만. 투수 보더라인 공략력 → 루킹 삼진 ↑ · 볼넷 ↓,
+            // 타자 고정 존 선구안 → 볼넷 ↑ · 삼진 ↓, 수비 포수 블로킹 · 도루저지 → 볼넷 · 안타 억제(프레이밍 대신 실점 억제).
+            float absStrikeout = 1f, absWalk = 1f, absHit = 1f;
+            if (batterChem != null)
+            {
+                float pAbs = (pitcher.ABSZoneSkill - 50) / 50f, bAbs = (batter.ABSZoneSkill - 50) / 50f;
+                var defenseChem = DefenseChemistry(pitcher);
+                float cAbs = defenseChem != null ? (defenseChem.AbsCatcherSkill - 50) / 50f : 0f;
+                absStrikeout = Mathf.Max(0.3f, 1f + AbsPitcherStrikeoutInfluence * pAbs - AbsBatterStrikeoutInfluence * bAbs);
+                absWalk = Mathf.Max(0.3f, 1f + AbsBatterWalkInfluence * bAbs - AbsPitcherWalkInfluence * pAbs - AbsCatcherWalkInfluence * cAbs);
+                absHit = Mathf.Max(0.5f, 1f - AbsCatcherHitInfluence * cAbs);
+            }
+
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
@@ -1009,6 +1022,9 @@ namespace KBOManager.Engine
                 if (isBatterPositive && closeLateMultiplier > 1f) weight *= closeLateMultiplier; // [TASK-KBO-180] 위기 응원
                 if (isBatterPositive && chemClutch != 1f) weight *= chemClutch;                 // [TASK-GM-02] 케미스트리 클러치
                 if (result == AtBatResult.Strikeout && chemRispStrikeout != 1f) weight *= chemRispStrikeout; // [TASK-GM-02] Hero Ball
+                if (result == AtBatResult.Strikeout) weight *= absStrikeout;                                    // [TASK-GM-06] ABS
+                else if (result == AtBatResult.Walk) weight *= absWalk;
+                else if (isBatterPositive) weight *= absHit;
 
                 weights[i] = weight;
                 total += weight;
@@ -1026,6 +1042,14 @@ namespace KBOManager.Engine
         }
 
         private float NormalizeDiff(float diff) => Mathf.Clamp(diff / StatDiffNormalizer, -1f, 1f);
+
+        // [TASK-GM-06] ABS 영향 계수(ABSZoneSkill 50 기준 ±1 정규화 단위당 가중치 변화율)
+        public const float AbsPitcherStrikeoutInfluence = 0.18f;
+        public const float AbsBatterStrikeoutInfluence = 0.08f;
+        public const float AbsBatterWalkInfluence = 0.22f;
+        public const float AbsPitcherWalkInfluence = 0.15f;
+        public const float AbsCatcherWalkInfluence = 0.05f;
+        public const float AbsCatcherHitInfluence = 0.03f;
 
         /// <summary>[TASK-GM-02] 케미스트리 실효 전력(전 스탯 가산) + ⑥ 방심 발동 시 -4.</summary>
         private int ChemistryStatBonus(Player player, TeamPowerModifiers modifiers)

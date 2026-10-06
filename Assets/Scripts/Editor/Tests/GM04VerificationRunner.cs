@@ -108,7 +108,7 @@ namespace KBOManager.EditorTests
             created.Add(canvasGo);
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080, 1920);
+            scaler.referenceResolution = new Vector2(1920, 1080); // [TASK-GM-06] Landscape
             return canvasGo;
         }
 
@@ -587,7 +587,7 @@ namespace KBOManager.EditorTests
             var bold = SetupTask191.SceneTexts().Where(x => x.fontStyle == FontStyle.Bold || x.fontStyle == FontStyle.BoldAndItalic).Select(x => x.name).ToList();
             Assert.IsEmpty(bold, "씬 전체 FontStyle.Bold 0건");
             var scaler = Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include).First(s => s.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize);
-            Assert.AreEqual(new Vector2(1080, 1920), scaler.referenceResolution);
+            Assert.AreEqual(new Vector2(1920, 1080), scaler.referenceResolution, "[TASK-GM-06] 1920×1080 Landscape");
         }
 
         private static int ActiveCells(GMAwardsCeremonyUIController view) =>

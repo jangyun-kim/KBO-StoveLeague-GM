@@ -57,6 +57,12 @@ namespace KBOManager.Controllers
         /// <summary>진단 화면을 맨 위로 띄우고 최신 로스터로 채운다.</summary>
         public void Open(ScreenType returnTo)
         {
+            // [TASK-GM-06] 플레이 중에는 텍스트 몇 줄짜리 진단 모달 대신 OOTP 27 프런트 오피스 [연봉·재계약 협상]을 연다.
+            if (GMOotpFrontOfficeUIController.OpenFromDiagnostic())
+            {
+                if (root != null) root.gameObject.SetActive(false);
+                return;
+            }
             if (root == null) Build();
             if (returnTo != ScreenType.PlayerManagementHub && returnTo != ScreenType.Enhance) returnScreen = returnTo;
             root.gameObject.SetActive(true);

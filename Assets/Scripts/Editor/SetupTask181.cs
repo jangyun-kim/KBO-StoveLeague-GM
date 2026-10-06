@@ -736,7 +736,8 @@ namespace KBOManager.EditorTools
         internal static Rect PixelBox(RectTransform rect)
         {
             float xMin = 0f, xMax = 1f, yMin = 0f, yMax = 1f; // 정규화(좌하단 원점)
-            for (var t = rect; t != null && t.GetComponent<Canvas>() == null; t = t.parent as RectTransform)
+            // [TASK-GM-06] 9:16 프레임(LegacyPortraitFrame) 루트는 그 자체가 1080×1920 전체 화면이므로 캔버스처럼 멈춘다.
+            for (var t = rect; t != null && t.GetComponent<Canvas>() == null && t.GetComponent<KBOManager.UI.LegacyPortraitFrame>() == null; t = t.parent as RectTransform)
             {
                 xMin = t.anchorMin.x + (t.anchorMax.x - t.anchorMin.x) * xMin;
                 xMax = t.anchorMin.x + (t.anchorMax.x - t.anchorMin.x) * xMax;

@@ -89,7 +89,7 @@ namespace KBOManager.EditorTests
             created.Add(canvasGo);
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080, 1920);
+            scaler.referenceResolution = new Vector2(1920, 1080); // [TASK-GM-06] Landscape
             var go = new GameObject("GM02_Dashboard", typeof(RectTransform));
             go.transform.SetParent(canvasGo.transform, false);
             var view = go.AddComponent<GMLiveLeagueDashboardUIController>();
@@ -373,7 +373,7 @@ namespace KBOManager.EditorTests
             var bold = SetupTask191.SceneTexts().Where(x => x.fontStyle == FontStyle.Bold || x.fontStyle == FontStyle.BoldAndItalic).Select(x => x.name).ToList();
             Assert.IsEmpty(bold, "씬 전체 FontStyle.Bold 0건");
             var scaler = Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include).First(s => s.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize);
-            Assert.AreEqual(new Vector2(1080, 1920), scaler.referenceResolution, "1080×1920 Portrait");
+            Assert.AreEqual(new Vector2(1920, 1080), scaler.referenceResolution, "[TASK-GM-06] 1920×1080 Landscape");
         }
 
         /// <summary>layer 직속 자식 중 활성 텍스트/버튼 영역 겹침 0 · 15pt 이상 · Normal.</summary>

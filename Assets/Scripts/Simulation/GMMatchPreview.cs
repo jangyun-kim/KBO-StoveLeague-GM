@@ -102,7 +102,7 @@ namespace KBOManager.Simulation
             var starters = LineupAssignment.AssignStarters(available, team.Lineup).Where(s => s.Player != null).Select(s => s.Player).ToList();
             var rotation = StartingRotation.RotationOf(available, team.Lineup);
             var bullpen = available.Where(x => x.IsPitcher && !rotation.Contains(x)).ToList();
-            var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.CheerLeadershipBuff);
+            var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.TeamworkBuff);
             p.Batting = Avg(starters, x => (x.Template.BatterStats.Contact + x.Template.BatterStats.Discipline) / 2.0);
             p.Power = Avg(starters, x => x.Template.BatterStats.Power);
             p.Rotation = Avg(rotation, x => x.GetEffectiveOverall());

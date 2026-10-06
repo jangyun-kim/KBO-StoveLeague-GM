@@ -105,7 +105,7 @@ namespace KBOManager.EditorTests
             created.Add(canvasGo);
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080, 1920);
+            scaler.referenceResolution = new Vector2(1920, 1080); // [TASK-GM-06] Landscape
             return canvasGo;
         }
 
@@ -137,7 +137,7 @@ namespace KBOManager.EditorTests
                     Assert.IsTrue(team.CheerleaderPool.All(c => c.Team == team.Team), label + " 구단 소속");
                     Assert.AreEqual(team.CheerleaderPool.Count, team.CheerleaderPool.Select(CheerSquad.PersonKey).Distinct().Count(), label + " 동일 인물 없음");
                     Assert.AreEqual(GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT, team.CheerEntry.Count(), label + " 기본 엔트리 5인");
-                    Assert.AreEqual(!team.IsUserTeam, team.CheerAutoRotate, label + " 자동 로테이션(AI 켬 · 유저 끔)");
+                    Assert.IsTrue(team.CheerAutoRotate, label + " 자동 로테이션 기본 켬([TASK-GM-06] D.2 - 내 구단 포함)");
                 }
             }
 
@@ -245,12 +245,13 @@ namespace KBOManager.EditorTests
             var league = NewLeague(team: "LG", seed: 3033);
             var sim = new GMLiveSeasonSimulator(league);
             var user = league.UserTeam;
+            user.CheerAutoRotate = false; // [TASK-GM-06] 기본은 켬(D.2) - 단장이 수동 로테이션으로 바꾼 경우를 검증한다
             var entry = user.CheerEntry.ToList();
             var bench = user.CheerleaderPool.Skip(user.CheerEntrySize).ToList();
             foreach (var c in bench) c.Fatigue = 50;
             sim.StartRun(GMRunMode.SingleGame);
             sim.RunUntilStop();
-            CollectionAssert.AreEqual(entry, user.CheerEntry.ToList(), "유저 구단 = 자동 로테이션 끔(엔트리 유지)");
+            CollectionAssert.AreEqual(entry, user.CheerEntry.ToList(), "유저가 자동 로테이션을 끄면 엔트리 유지");
             Assert.IsTrue(entry.All(c => GMCheerleaderStats.Stamina(c) == 100 - GMCheerleaderStats.DrainPerGame), "단상 출전 체력 -9");
             Assert.IsTrue(bench.All(c => GMCheerleaderStats.Stamina(c) == 50 + GMCheerleaderStats.RecoverPerGame), "벤치 휴식 체력 +14");
 
@@ -343,7 +344,7 @@ namespace KBOManager.EditorTests
             var chemLow = new GMChemistryModifiers { CheerErrorReduction = rLow };
             var chemHigh = new GMChemistryModifiers { CheerErrorReduction = rHigh };
             var chemNone = new GMChemistryModifiers();
-            Assert.AreEqual(GMChemistryModifiers.DefaultBaseErrorRate, chemNone.ErrorChance, 1e-6, "치어리더 없음 = 기본 0.7%");
+            Assert.AreEqual(GMChemistryModifiers.DefaultBaseErrorRate, chemNone.ErrorChance, 1e-6, "치어리더 없음 = 기본 실책률([TASK-GM-06] 2.2%)");
             Assert.Less(chemHigh.ErrorChance, chemLow.ErrorChance);
             Assert.Less(chemLow.ErrorChance, chemNone.ErrorChance);
             Assert.AreEqual(GMChemistryModifiers.DefaultBaseErrorRate * 0.65, chemHigh.ErrorChance, 1e-6, "35% 억제");
