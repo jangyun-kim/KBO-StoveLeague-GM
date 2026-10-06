@@ -31,7 +31,14 @@ namespace KBOManager.Services
         public readonly List<Cheerleader> CheerleaderPool = new List<Cheerleader>();
         public int CheerEntrySize = GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT;
         public IEnumerable<Cheerleader> CheerEntry => CheerleaderPool.Take(CheerEntrySize);
-        public int CheerLeadershipBuff => GMCheerleaderRules.LeadershipBuff(CheerEntry);
+        /// <summary>[TASK-GM-05] 엔트리 ① 단장 리더십(체력 효율 반영) → 팀워크 +1~+12.</summary>
+        public int CheerLeadershipBuff => GMCheerleaderRoster.LeadershipTeamworkBonus(CheerEntry);
+        /// <summary>[TASK-GM-05] 체력 30 미만 인원이 생기면 같은 인원수로 [최적 컨디션 자동 편성](AI 구단 기본 켬 · 유저 구단 기본 끔).</summary>
+        public bool CheerAutoRotate = true;
+        /// <summary>[TASK-GM-05] 전담 응원 매칭(최대 2쌍).</summary>
+        public readonly List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
+        /// <summary>[TASK-GM-05] 홈 흥행 누적 관중 수익(팬 지지율 환산 잔여분, 만 원).</summary>
+        public int CheerFanPoints;
 
         // 스토리 캠페인 「꼴찌 구단의 겨울」
         public int ConsecutiveLastPlaceSeasons;
@@ -234,6 +241,7 @@ namespace KBOManager.Services
                     top.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[top.Template.RealPlayerId], isTeamTopOverall: true);
                 }
                 if (!team.IsUserTeam) AppointCaptain(team); // AI 구단은 자동 주장 · 유저 구단은 단장이 임명한다
+                team.CheerAutoRotate = !team.IsUserTeam; // [TASK-GM-05] 유저 구단은 단장이 직접 로테이션
 
                 LoadCheerleaderPool(team, cheerCatalog, mode == GMStartMode.AllTimeDream ? 0 : state.SeasonYear, useVirtualNames);
                 state.Teams[code] = team;
@@ -417,6 +425,7 @@ namespace KBOManager.Services
                     team: t.Team,
                     activePeriod: t.ActivePeriod));
             }
+            GMCheerleaderRoster.FillPool(team, seasonYear > 0 ? seasonYear : GMFeatureFlags.DEFAULT_START_YEAR); // [TASK-GM-05] 15인 풀 보장
             team.CheerEntrySize = GMCheerleaderRules.ClampEntrySize(Math.Min(GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_DEFAULT, team.CheerleaderPool.Count));
         }
     }

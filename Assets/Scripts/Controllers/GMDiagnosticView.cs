@@ -143,7 +143,7 @@ namespace KBOManager.Controllers
             roster = roster ?? new List<Player>();
             foreach (var p in roster) if (p.Salary <= 0) p.InitializeGMAttributesFromStats(); // 구 세이브 카드 - 성적 기반으로 1회 산출
 
-            int buff = GMCheerleaderRules.LeadershipBuff(entry);
+            int buff = GMCheerleaderRoster.LeadershipTeamworkBonus(entry); // [TASK-GM-05] ① 단장 리더십 기반
             LastReport = TeamChemistryEngine.EvaluateRoster(roster, GMRosterLoader.DefaultPayrollCap, buff);
 
             payrollText.text = PayrollSummary(roster, GMRosterLoader.DefaultPayrollCap);

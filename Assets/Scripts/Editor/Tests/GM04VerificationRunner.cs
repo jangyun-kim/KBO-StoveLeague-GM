@@ -162,7 +162,8 @@ namespace KBOManager.EditorTests
                 Assert.IsTrue(seasonNews.Any(n => n.Kind == GMNewsKind.Monthly && n.Title == $"{m.MonthLabel} 월간 캡스플레이상: {m.CapsPlay.PlayerName}"), $"{m.MonthLabel} 캡스플레이상 소식");
                 userAwards += (m.Mvp.TeamCode == league.SelectedTeamCode ? 1 : 0) + (m.CapsPlay.TeamCode == league.SelectedTeamCode ? 1 : 0);
             }
-            Assert.AreEqual(Math.Min(100, GMTeamFan.DefaultSupport + userAwards * GMTeamFan.MonthlyAwardBonus), league.UserTeam.FanSupport, "내 구단 수상 = 팬 지지율 보너스");
+            // [TASK-GM-05] 홈 흥행(치어리더 홈 흥행력)도 팬 지지율을 올리므로 월간 수상 보너스 이상인지 확인한다.
+            Assert.GreaterOrEqual(league.UserTeam.FanSupport, Math.Min(100, GMTeamFan.DefaultSupport + userAwards * GMTeamFan.MonthlyAwardBonus), "내 구단 수상 = 팬 지지율 보너스");
 
             // 개인 수비: 내 구단 선수 개인 실책 합 = 내 구단 경기 박스스코어 실책(E) 합, 수비 기여 점수 산출
             string me = league.SelectedTeamCode;

@@ -176,7 +176,7 @@ namespace KBOManager.Managers
         //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
         // v14: 단장 모드(TASK-GM-02) - 선수 GM 속성(PlayerSaveData.Age ~ CareerAwardIds)과 리그 상태(GMLeague: 모드 · 연도 · 경기 진행 인덱스 ·
         //      10구단 로스터/치어리더 풀 · 순위 · 개인 누적 기록 · 최신 소식). GMLeague.HasData가 false면 단장 모드 미시작.
-        public int SaveVersion = 15; // [TASK-GM-04] v15 - GMLeague.Awards · AwardsHistory · 구단 팬 지지율 · 선수 수비 기록
+        public int SaveVersion = 16; // [TASK-GM-05] v16 - 치어리더 피로도 · 자동 로테이션 · 전담 응원 · 홈 흥행 누적(v15 = GM-04 시상)
         public string SavedAtUtc;
 
         // GameManager
@@ -524,6 +524,9 @@ namespace KBOManager.Managers
                     OwnerPostseasonPressure = team.OwnerPostseasonPressure,
                     TradeRequestPlayerId = team.TradeRequestPlayerId,
                     FanSupport = team.FanSupport,
+                    CheerAutoRotate = team.CheerAutoRotate,
+                    CheerDedications = team.CheerDedications.Select(d => new GMCheerDedication { CheerleaderId = d.CheerleaderId, PlayerId = d.PlayerId, GrantedConcession = d.GrantedConcession }).ToList(),
+                    CheerFanPoints = team.CheerFanPoints,
                 };
                 t.Lineup.CopyFrom(team.Lineup);
                 data.Teams.Add(t);
@@ -569,7 +572,10 @@ namespace KBOManager.Managers
                     OwnerPostseasonPressure = t.OwnerPostseasonPressure,
                     TradeRequestPlayerId = t.TradeRequestPlayerId,
                     FanSupport = GMTeamFan.Clamp(t.FanSupport),
+                    CheerAutoRotate = t.CheerAutoRotate,
+                    CheerFanPoints = t.CheerFanPoints,
                 };
+                team.CheerDedications.AddRange((t.CheerDedications ?? new List<GMCheerDedication>()).Where(d => d != null && !string.IsNullOrEmpty(d.PlayerId)));
                 team.Lineup.CopyFrom(t.Lineup);
                 foreach (var saved in t.Roster ?? new List<PlayerSaveData>())
                 {

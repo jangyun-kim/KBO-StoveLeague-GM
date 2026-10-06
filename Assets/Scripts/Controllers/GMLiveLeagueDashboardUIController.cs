@@ -51,6 +51,12 @@ namespace KBOManager.Controllers
         // [TASK-GM-04] 시상 리포트 · 포스트시즌 & 시상식 · 연도 전환
         private Button awardsReportButton, awardsButton, nextSeasonButton;
         private bool popupOpensAwards, pausedForAwards;
+        // [TASK-GM-05] 치어리더 엔트리 바로가기
+        private Button cheerEntryButton;
+        private bool pausedForCheer;
+
+        /// <summary>[TASK-GM-05] 치어리더 엔트리 화면(비우면 씬에서 찾는다 - 테스트가 주입한다).</summary>
+        public GMCheerleaderEntryUIController CheerView { get; set; }
 
         /// <summary>[TASK-GM-04] 시상식 화면(비우면 씬에서 찾는다 - 테스트가 주입한다).</summary>
         public GMAwardsCeremonyUIController AwardsView { get; set; }
@@ -192,12 +198,15 @@ namespace KBOManager.Controllers
             speed1 = Btn(kit, "Speed1x", "1x", 20, 172, 190, 238, ButtonIdle, ButtonPt);
             speed2 = Btn(kit, "Speed2x", "2x", 204, 172, 374, 238, ButtonIdle, ButtonPt);
             speed4 = Btn(kit, "Speed4x", "4x", 388, 172, 558, 238, ButtonIdle, ButtonPt);
-            pauseButton = Btn(kit, "PauseButton", "일시정지", 572, 172, 800, 238, ButtonIdle, ButtonPt);
+            pauseButton = Btn(kit, "PauseButton", "일시정지", 572, 172, 760, 238, ButtonIdle, ButtonPt);
+            // [TASK-GM-05] 치어리더 관리 바로가기
+            cheerEntryButton = Btn(kit, "CheerEntryButton", "치어리더 엔트리 (4~6인)", 772, 172, 1062, 238, new Color(0.62f, 0.22f, 0.48f), ButtonPt - 2);
+            cheerEntryButton.onClick.AddListener(OpenCheerEntry);
             speed1.onClick.AddListener(() => SetSpeed(1));
             speed2.onClick.AddListener(() => SetSpeed(2));
             speed4.onClick.AddListener(() => SetSpeed(4));
             pauseButton.onClick.AddListener(TogglePause);
-            statusText = L(kit, "StatusText", "대기 중", 816, 172, 1228, 238, HeadPt, TextAnchor.MiddleRight, Muted);
+            statusText = L(kit, "StatusText", "대기 중", 1072, 172, 1228, 238, HeadPt, TextAnchor.MiddleRight, Muted);
 
             // ---- 패널 1: 순위표
             CompyaUiKit.Box(root, "StandingsPanel", 12, 254, 1236, 874, PanelColor);
@@ -663,6 +672,22 @@ namespace KBOManager.Controllers
             else next = new GMLiveSeasonSimulator(league);
             Bind(next);
             return next;
+        }
+
+        /// <summary>[치어리더 엔트리 (4~6인)] - 진행을 잠시 멈추고 구단 응원단 관리 화면을 연다. 닫으면 대시보드로 돌아와 이어서 진행한다.</summary>
+        public void OpenCheerEntry()
+        {
+            var view = CheerView != null ? CheerView : FindAnyObjectByType<GMCheerleaderEntryUIController>(FindObjectsInactive.Include);
+            var team = simulator?.League?.UserTeam;
+            if (view == null || team == null) { if (statusText != null) statusText.text = "응원단 화면 없음"; return; }
+            if (!paused) { paused = true; pausedForCheer = true; }
+            view.Open(team, OnCheerClosed);
+        }
+
+        private void OnCheerClosed()
+        {
+            if (pausedForCheer) paused = pausedForCheer = false;
+            Refresh();
         }
 
         private void OnAwardsClosed()

@@ -29,6 +29,8 @@ namespace KBOManager.Simulation
         public readonly List<string> Badges = new List<string>();
         public readonly List<Cheerleader> CheerEntry = new List<Cheerleader>();
         public int Leadership, BattingBuff, MoundBuff;
+        /// <summary>[TASK-GM-05] 마운드 응원 실책 억제율(%) · 홈 흥행 예상 수익(만 원) · 체력 30 미만 인원.</summary>
+        public int ErrorReductionPercent, HomeGate, TiredCount;
 
         public int Metric(int index) => index switch { 0 => Batting, 1 => Power, 2 => Rotation, 3 => Bullpen, _ => DefenseTeamwork };
     }
@@ -114,9 +116,12 @@ namespace KBOManager.Simulation
             p.Leadership = team.CheerLeadershipBuff;
             if (p.CheerEntry.Count >= GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MIN)
             {
-                var fx = CheerSquad.BuildEffects(p.CheerEntry, team.Team, isHome, Math.Max(0, -record.Streak), 0);
+                var fx = GMCheerleaderRoster.BuildMatchEffects(p.CheerEntry, team.Team, isHome, Math.Max(0, -record.Streak)); // [TASK-GM-05] 체력 효율 반영
                 p.BattingBuff = fx.BatterContactDiscipline + fx.HomeAllStatsBonus;
                 p.MoundBuff = fx.PitcherControlStuff + fx.HomeAllStatsBonus;
+                p.ErrorReductionPercent = (int)Math.Round(GMCheerleaderRoster.ErrorReduction(p.CheerEntry) * 100f);
+                p.HomeGate = isHome ? GMCheerleaderRoster.HomeRevenue(p.CheerEntry) : 0;
+                p.TiredCount = p.CheerEntry.Count(GMCheerleaderStats.IsTired);
             }
             return p;
         }

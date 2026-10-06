@@ -622,9 +622,10 @@ namespace KBOManager.Engine
             // [TASK-GM-02] 케미스트리 ①④ 실책 배수 - 수비 팀 범타가 일정 확률로 실책 출루(단타 처리)가 된다.
             var defenseChem = DefenseChemistry(pitcherForThisAtBat);
             bool reachedOnError = false;
-            if (currentTactic == MatchTactic.None && defenseChem != null && defenseChem.ErrorRateMultiplier > 1f
+            // [TASK-GM-05] 기본 실책률(수비력 반영) × (1 - 치어리더 마운드 응원 억제) + 케미스트리 추가분. 단장 모드(케미스트리 있음)에서만 판정한다.
+            if (currentTactic == MatchTactic.None && defenseChem != null
                 && (result == AtBatResult.Groundout || result == AtBatResult.Flyout)
-                && random.NextDouble() < GMChemistryModifiers.BaseErrorChance * (defenseChem.ErrorRateMultiplier - 1f))
+                && defenseChem.ErrorChance > 0 && random.NextDouble() < defenseChem.ErrorChance)
             {
                 result = AtBatResult.Single;
                 reachedOnError = true;

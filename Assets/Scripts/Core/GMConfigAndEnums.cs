@@ -95,7 +95,7 @@ namespace KBOManager.Core
     /// </summary>
     public static class GMCheerleaderRules
     {
-        public const int MaxLeadershipBuff = 10;
+        public const int MaxLeadershipBuff = 12; // [TASK-GM-05] 단장 리더십 팀워크 +1~+12
 
         public static bool IsValidEntryCount(int count) =>
             count >= GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MIN && count <= GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MAX;
@@ -105,7 +105,8 @@ namespace KBOManager.Core
 
         public static int EntryCount(IEnumerable<Cheerleader> entry) => (entry ?? Enumerable.Empty<Cheerleader>()).Count(c => !CheerSquad.IsEmpty(c));
 
-        /// <summary>엔트리 인원의 등급 단계(LIVE 1 / ICON 2 / LEGEND · 시즌 한정 3, ★각성 도약 포함) 합계, 상한 +10. 4명 미만이면 0(엔트리 미충족).</summary>
+        /// <summary>엔트리 인원의 등급 단계(LIVE 1 / ICON 2 / LEGEND · 시즌 한정 3, ★각성 도약 포함) 합계, 상한 +12. 4명 미만이면 0(엔트리 미충족).
+        /// [TASK-GM-05] 구단 팀워크 가산은 4대 스탯 ① 단장 리더십 기반(GMCheerleaderRoster.LeadershipTeamworkBonus)으로 바뀌었고, 이 값은 티어 합 참고치다.</summary>
         public static int LeadershipBuff(IEnumerable<Cheerleader> entry)
         {
             var filled = (entry ?? Enumerable.Empty<Cheerleader>()).Where(c => !CheerSquad.IsEmpty(c)).ToList();

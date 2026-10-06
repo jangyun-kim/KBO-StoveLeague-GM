@@ -118,7 +118,7 @@ namespace KBOManager.Simulation
         public string IPLabel => OutsPitched % 3 == 0 ? $"{OutsPitched / 3}" : $"{OutsPitched / 3} {OutsPitched % 3}/3";
     }
 
-    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8, Award = 9, Postseason = 10 }
+    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8, Award = 9, Postseason = 10, Cheer = 11 }
 
     /// <summary>[TASK-GM-02] 최신 소식 피드 한 줄(날짜 + 제목 + 본문).</summary>
     [Serializable]
@@ -261,6 +261,18 @@ namespace KBOManager.Simulation
         public float UpsetVulnerabilityChance;
 
         public const float BaseErrorChance = 0.012f;
+
+        // [TASK-GM-05] 기본 실책률(GM-04 D.1) - 케미스트리 페널티가 없어도 범타의 0.7%(수비력 높을수록 감소)가 실책 출루, 치어리더 마운드 응원력이 최대 35% 억제.
+        public const float DefaultBaseErrorRate = 0.007f;
+        public float BaseErrorRate = DefaultBaseErrorRate;
+        public float CheerErrorReduction;
+
+        /// <summary>범타 1건이 실책 출루가 될 확률 = 기본 실책률 × (1 - 응원 억제율) + 케미스트리 추가분 1.2% × (배수 - 1).</summary>
+        public double ErrorChance => Math.Max(0.0, BaseErrorRate * (1.0 - Math.Max(0f, Math.Min(0.35f, CheerErrorReduction))) + BaseErrorChance * Math.Max(0f, ErrorRateMultiplier - 1f));
+
+        /// <summary>수비 주전 평균 수비력 → 기본 실책률(수비 65 = 0.7%, 수비력 1점당 1/80 증감, 0.6~1.4배).</summary>
+        public static float BaseErrorRateFor(double averageDefense) =>
+            DefaultBaseErrorRate * (float)Math.Max(0.6, Math.Min(1.4, 1.0 + (65.0 - averageDefense) / 80.0));
         public const int UpsetStatPenalty = 4;
         public const int UpsetOvrMargin = 3;
 
@@ -296,6 +308,10 @@ namespace KBOManager.Simulation
         public string TradeRequestPlayerId;
         public LineupAssignment Lineup = new LineupAssignment();
         public int FanSupport = GMTeamFan.DefaultSupport; // [TASK-GM-04]
+        // [TASK-GM-05] 치어리더 자동 로테이션 · 전담 응원 · 홈 흥행 누적
+        public bool CheerAutoRotate;
+        public List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
+        public int CheerFanPoints;
     }
 
     /// <summary>[TASK-GM-04] 구단 팬 지지율(0~100) - 내 구단 선수 월간 수상 시 보너스.</summary>

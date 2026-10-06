@@ -47,7 +47,7 @@ namespace KBOManager.Controllers
         private Button startButton, checkButton, backButton;
 
         // ---- PostGame
-        private Text postSubtitle, headline, recapBody, wpaTitle, footnote;
+        private Text postSubtitle, headline, recapBody, wpaTitle, footnote, cheerSummary;
         private readonly Text[,] lineScore = new Text[3, MaxInnings + 4]; // [행(헤더/원정/홈), 열(팀 · 1~12회 · R · H · E)]
         private readonly RawImage[] lineLogos = new RawImage[2];
         private readonly Text[] keyPlays = new Text[3];
@@ -296,8 +296,10 @@ namespace KBOManager.Controllers
                     grid[r, c] = L(postRoot, $"Grid{r}_{c}", "", x0, y0, x1, y1, GridPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, r == 0 ? Muted : White);
                 }
             }
-            footnote = L(postRoot, "Footnote", "", 20, 1732, 1228, 1962, SmallPt, TextAnchor.UpperLeft, Muted);
+            footnote = L(postRoot, "Footnote", "", 20, 1732, 1228, 1880, SmallPt, TextAnchor.UpperLeft, Muted);
             footnote.lineSpacing = 1.1f;
+            // [TASK-GM-05] 오늘 단상에 오른 4~6인 응원단 활약 요약
+            cheerSummary = L(postRoot, "CheerSummary", "", 20, 1888, 1228, 1962, SmallPt + 1, TextAnchor.MiddleLeft, new Color(1f, 0.62f, 0.82f));
         }
 
         // ================================================================== PreGame 바인딩
@@ -343,7 +345,8 @@ namespace KBOManager.Controllers
         {
             if (t.CheerEntry.Count == 0) return "엔트리 없음";
             var names = string.Join(" · ", t.CheerEntry.Select(c => c.DisplayName));
-            return $"{t.CheerEntry.Count}인: {names}\n리더십·팀워크 +{t.Leadership} / 타격 버프 +{t.BattingBuff} / 마운드 버프 +{t.MoundBuff}";
+            return $"{t.CheerEntry.Count}인: {names}\n리더십·팀워크 +{t.Leadership} / 타격 버프 +{t.BattingBuff} / 마운드 버프 +{t.MoundBuff}\n" +
+                   $"실책 -{t.ErrorReductionPercent}%{(t.IsHome ? $" · 홈 흥행 +{t.HomeGate:N0}만 원" : "")}{(t.TiredCount > 0 ? $" · 체력 저하 {t.TiredCount}명" : "")}";
         }
 
         private static void SetFill(RectTransform fill, int value, bool fromRight)
@@ -354,8 +357,23 @@ namespace KBOManager.Controllers
             fill.offsetMin = fill.offsetMax = Vector2.zero;
         }
 
-        private void OpenLineupCheck()
+        /// <summary>[TASK-GM-05] 치어리더 엔트리 화면(비우면 씬에서 찾는다 - 테스트가 주입한다).</summary>
+        public GMCheerleaderEntryUIController CheerView { get; set; }
+
+        /// <summary>
+        /// [라인업/치어리더 점검] - [TASK-GM-05] 치어리더 엔트리 화면(15인 풀 · 4~6인 엔트리)을 전력 비교 위에 띄우고, 닫으면 전력 비교로 돌아와
+        /// 바뀐 엔트리 · 버프를 다시 보여 준다. 화면이 없으면 기존 [계약·연봉·팀워크 진단]으로 간다.
+        /// </summary>
+        public void OpenLineupCheck()
         {
+            var cheer = CheerView != null ? CheerView : FindAnyObjectByType<GMCheerleaderEntryUIController>(FindObjectsInactive.Include);
+            var team = simulator?.League?.UserTeam;
+            if (cheer != null && team != null)
+            {
+                var sim = simulator;
+                cheer.Open(team, () => { if (sim != null && !sim.IsSeasonComplete) ShowPreGameView(sim); });
+                return;
+            }
             CloseAll();
             var dash = FindAnyObjectByType<GMLiveLeagueDashboardUIController>(FindObjectsInactive.Include);
             if (dash != null) dash.gameObject.SetActive(false);
@@ -369,6 +387,8 @@ namespace KBOManager.Controllers
             var b = box;
             string away = NameAliasTable.DisplayTeamName(b.AwayCode), home = NameAliasTable.DisplayTeamName(b.HomeCode);
             postSubtitle.text = $"{b.Stadium} · {b.DateLabel} · {away} vs {home} · Game #{b.GameIndex + 1:000}";
+            cheerSummary.text = string.IsNullOrEmpty(b.CheerSummary) ? "" :
+                $"오늘의 응원단({string.Join(" · ", b.CheerEntryNames ?? new List<string>())}) - {b.CheerSummary}";
             BindLineScore();
             headline.text = b.Recap?.Headline ?? "";
             recapBody.text = b.Recap?.Body ?? "";

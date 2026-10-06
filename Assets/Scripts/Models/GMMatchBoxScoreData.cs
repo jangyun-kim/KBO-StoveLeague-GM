@@ -95,6 +95,9 @@ namespace KBOManager.Models
         public List<WPAPoint> WpaPoints = new List<WPAPoint>();
         public List<WPAKeyPlay> KeyPlays = new List<WPAKeyPlay>();
         public GameRecapArticle Recap = new GameRecapArticle();
+        /// <summary>[TASK-GM-05] 오늘 단상에 오른 4~6인 응원단 이름 · 활약 요약(내 구단).</summary>
+        public List<string> CheerEntryNames = new List<string>();
+        public string CheerSummary = "";
 
         public int Innings => Math.Max(HomeInningRuns.Count, AwayInningRuns.Count);
         public bool IsTie => string.IsNullOrEmpty(WinnerCode);

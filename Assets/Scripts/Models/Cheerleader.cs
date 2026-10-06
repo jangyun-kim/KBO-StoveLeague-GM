@@ -125,6 +125,9 @@ namespace KBOManager.Models
         /// <summary>[TASK-KBO-187] ★ 각성 단계(★1~★5, 동일 인물 재료 +2★ / 동일 구단 재료 +1★). 구버전 세이브(0)는 ★1로 읽는다.</summary>
         public int StarLevel = 1;
 
+        /// <summary>[TASK-GM-05] 단상 피로도(0~100). 체력 = 100 - 피로도(GMCheerleaderStats.Stamina) - 0이 기본이라 구버전 세이브는 체력 100으로 읽힌다.</summary>
+        public int Fatigue;
+
         public Cheerleader() { }
 
         public Cheerleader(string instanceId, string name, CheerleaderGrade grade, int conditionBuff, float clutchMultiplier,

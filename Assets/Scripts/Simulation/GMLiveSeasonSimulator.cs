@@ -189,6 +189,7 @@ namespace KBOManager.Simulation
             foreach (var (home, away) in schedule[day]) PlayGame(day, league.Teams[home], league.Teams[away]);
 
             foreach (var team in league.Teams.Values) TeamChemistryEngine.ApplyMatchChemistryTick(team.AvailableRoster);
+            foreach (var team in league.Teams.Values) GMCheerleaderRoster.TickDay(team); // [TASK-GM-05] 단상 체력 소모 · 벤치 회복 · 자동 로테이션
             league.GamesPlayed++;
             UpdateWar();
             PeriodicNews(day);
@@ -428,6 +429,9 @@ namespace KBOManager.Simulation
                 list.Value[list.Value.Count - 1].ExitLead = list.Key == home.TeamCode ? homeRuns - awayRuns : awayRuns - homeRuns;
             if (wpa.Count > 1) wpa[wpa.Count - 1].HomeWinProbability = homeRuns > awayRuns ? 1f : homeRuns < awayRuns ? 0f : 0.5f;
 
+            // [TASK-GM-05] 홈 흥행력 → 관중 수익(예산) · 팬 지지율
+            int homeGate = GMCheerleaderRoster.ApplyHomeGate(home);
+
             // 구단 성적
             var hr = league.RecordOf(home.TeamCode);
             var ar = league.RecordOf(away.TeamCode);
@@ -607,6 +611,11 @@ namespace KBOManager.Simulation
                     Situation = SituationLabel(p), ResultLabel = ResultLabel(p), RBI = p.Error ? 0 : p.Runs, DeltaWPA = p.Delta,
                 }).ToList();
                 box.Recap = WriteRecap(day, box, plays);
+                // [TASK-GM-05] 오늘의 응원단 단상 활약
+                box.CheerEntryNames = me.CheerEntry.Select(c => c.DisplayName).ToList();
+                box.CheerSummary = GMCheerleaderRoster.MatchSummary(me, me == home, me == home ? homeGate : 0);
+                if (me == home && homeGate > 0)
+                    AddNews(day, GMNewsKind.Cheer, $"응원단 {box.CheerEntryNames.Count}인 단상 응원", box.CheerSummary, true, false);
                 league.AddBoxScore(box);
                 if (RecordAllBoxScores) AllUserBoxScores.Add(box);
             }
@@ -795,12 +804,19 @@ namespace KBOManager.Simulation
             var report = TeamChemistryEngine.EvaluateRoster(available, team.PayrollCap, team.CheerLeadershipBuff);
             var record = league.RecordOf(team.TeamCode);
             var entry = team.CheerEntry.ToList();
-            var cheer = entry.Count >= GMFeatureFlags.CHEERLEADER_MATCH_ENTRY_MIN
-                ? CheerSquad.BuildEffects(entry, team.Team, isHome, Math.Max(0, -record.Streak), 0)
-                : null;
+            var cheer = GMCheerleaderRoster.BuildMatchEffects(entry, team.Team, isHome, Math.Max(0, -record.Streak)); // [TASK-GM-05] 체력 30 미만 효율 50%
             int teamOvr = available.Count > 0 ? (int)Math.Round(available.Average(p => p.GetEffectiveOverall())) : 0;
-            return new TeamPowerModifiers(0, isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0, 1.0f, null, cheer, teamOvr,
-                GMChemistryModifiers.From(report));
+            var chem = GMChemistryModifiers.From(report);
+            if (chem != null)
+            {
+                // [TASK-GM-05] 기본 실책률(수비 주전 평균 수비력) · 마운드 응원 실책 억제 · 타격 응원 후반 클러치
+                var fielders = LineupAssignment.AssignStarters(available, team.Lineup)
+                    .Where(s => s.Player != null && s.Position != BatterPosition.DesignatedHitter).Select(s => s.Player).ToList();
+                chem.BaseErrorRate = GMChemistryModifiers.BaseErrorRateFor(fielders.Count > 0 ? fielders.Average(p => p.DefenseStat) : 65.0);
+                chem.CheerErrorReduction = GMCheerleaderRoster.ErrorReduction(entry);
+                chem.ClutchHitModifier += GMCheerleaderRoster.ClutchBonus(entry);
+            }
+            return new TeamPowerModifiers(0, isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0, 1.0f, null, cheer, teamOvr, chem);
         }
 
         // ================================================================== 부상
