@@ -135,6 +135,10 @@
 
 계속 유효한 문서: 선수 데이터 파이프라인(`docs/11_data_dictionary.md`, `docs/18_player_schema_policy.md`의 스키마·Z-score),
 매치 엔진(`docs/06_match_engine_formula.md`), 리그 페이즈(`LeaguePhase`), 28인 로스터·샐러리 캡.
+
+**KBO 스토브리그 규정 문서 세트(DCL-161):** 현실 규정 원문 요약과 게임 단순화 기준은 `docs/rules/`(출처 인덱스 · 공식 규정 · 단순화 정책 · 결정 로그 · 변경 이력),
+설계는 `docs/design/`, 개발 인계 · 사전 조사 보고서는 `docs/handoff/`를 따른다. 규정 수치는 2026 KBO 규약 · 리그규정 원문(`docs/KBO_books/`) 대조본이 기준이며,
+28인 로스터 · 137억 캡 등 기존 값과 다른 부분은 사전 조사 보고서 6절(충돌 C-01~C-11)과 11절 결정 전까지 기존 코드를 유지한다.
 새 결정은 `docs/13_decision_change_log.md`에 새 DCL로 추가하고, 이 파일도 함께 갱신한다.
 
 ## 12. 작업 방식
