@@ -18,7 +18,7 @@ namespace KBOManager.Controllers
     ///   - PostGame(기획서 2.2.2): KBO 전광판(1~9회, 연장 최대 12회 · R/H/E) · 자동 기사(헤드라인 + 4문단) · 승리 확률 그래프 + 결정적 플레이 TOP 3 ·
     ///     원정/홈 × 타자/투수 박스스코어 탭 + 주석(2루타 · 3루타 · 홈런 · 도루 · 병살타 · 실책 · 비자책)
     /// </summary>
-    public class GMMatchPrePostUIController : MonoBehaviour
+    public partial class GMMatchPrePostUIController : MonoBehaviour
     {
         public const string PreRootName = "PreGameRoot", PostRootName = "PostGameRoot";
         public const int TitlePt = 24, SubPt = 17, NamePt = 22, BodyPt = 18, SmallPt = 16, ButtonPt = 20, MetricPt = 17, GridPt = 16, HeadlinePt = 21;
@@ -86,6 +86,7 @@ namespace KBOManager.Controllers
         public bool ShowPreGameView(GMLiveSeasonSimulator sim)
         {
             simulator = sim;
+            postseasonGame = null; // [TASK-GM-07] 정규시즌 경기
             var p = GMMatchPreview.Build(sim);
             if (p == null) return false;
             ShowPreGameView(p);
@@ -99,7 +100,9 @@ namespace KBOManager.Controllers
             gameObject.SetActive(true);
             transform.SetAsLastSibling();
             postRoot.gameObject.SetActive(false);
+            if (liveRoot != null) liveRoot.gameObject.SetActive(false);
             preRoot.gameObject.SetActive(true);
+            stage = GMMatchStage.PreGame;
             BindPreview();
         }
 
@@ -111,27 +114,34 @@ namespace KBOManager.Controllers
             gameObject.SetActive(true);
             transform.SetAsLastSibling();
             preRoot.gameObject.SetActive(false);
+            if (liveRoot != null) liveRoot.gameObject.SetActive(false);
             postRoot.gameObject.SetActive(true);
+            stage = GMMatchStage.PostGame;
             string user = simulator?.League?.SelectedTeamCode;
             showHome = user != null ? user == box.HomeCode : false;
             showPitching = false;
             BindBoxScore();
         }
 
-        /// <summary>[경기 시작 (결과 보기)] - 하루(5경기)를 진행하고 내 구단 경기 박스스코어를 띄운다.</summary>
+        /// <summary>
+        /// [TASK-GM-07] 결과까지 한 번에 - ① → ② 실시간 이닝 경기(세션) → 남은 타석 자동 진행 → ③ 박스스코어. 화면 버튼은 [플레이 볼](PlayBall)로
+        /// ② 단계에서 멈추고, 이 함수는 고속 확인 · 테스트용 경로다(같은 세션 · 같은 기록 반영).
+        /// </summary>
         public bool StartMatch()
         {
-            if (simulator == null || simulator.IsSeasonComplete || simulator.PendingInterrupt != null) return false;
-            if (!simulator.StartRun(GMRunMode.SingleGame)) return false;
-            simulator.StepGameDay();
-            ShowPostGameBoxScoreView(simulator.League.LastUserMatchBoxScore);
-            return true;
+            if (simulator == null) return false;
+            if (postseasonGame == null && (simulator.IsSeasonComplete || simulator.PendingInterrupt != null)) return false;
+            if (!PlayBall()) return false;
+            return FinishLiveMatch();
         }
 
         public void CloseAll()
         {
+            autoPlay = false;
             if (preRoot != null) preRoot.gameObject.SetActive(false);
             if (postRoot != null) postRoot.gameObject.SetActive(false);
+            if (liveRoot != null) liveRoot.gameObject.SetActive(false);
+            stage = GMMatchStage.None;
             gameObject.SetActive(false);
             OnClosed?.Invoke();
         }
@@ -147,7 +157,7 @@ namespace KBOManager.Controllers
 
         public void Build()
         {
-            foreach (var n in new[] { PreRootName, PostRootName })
+            foreach (var n in new[] { PreRootName, PostRootName, LiveRootName })
             {
                 var old = transform.Find(n);
                 if (old == null) continue;
@@ -161,9 +171,11 @@ namespace KBOManager.Controllers
             {
                 BuildPre();
                 BuildPost();
+                BuildLive(); // [TASK-GM-07] ② 실시간 이닝 경기
             }
             preRoot.gameObject.SetActive(false);
             postRoot.gameObject.SetActive(false);
+            liveRoot.gameObject.SetActive(false);
         }
 
         private Text L(Transform parent, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)
@@ -224,10 +236,10 @@ namespace KBOManager.Controllers
             preAwayCheer = L(preRoot, "AwayCheer", "", 1292, 390, 1896, 660, SmallPt, TextAnchor.UpperLeft, White);
             preHomeCheer = L(preRoot, "HomeCheer", "", 1292, 666, 1896, 938, SmallPt, TextAnchor.UpperLeft, White);
 
-            startButton = Btn(preRoot, "StartButton", "경기 시작 (결과 보기)", 20, 956, 640, 1066, ButtonOn, ButtonPt + 2);
+            startButton = Btn(preRoot, "StartButton", "플레이 볼 (실시간 이닝 경기)", 20, 956, 640, 1066, ButtonOn, ButtonPt + 2);
             checkButton = Btn(preRoot, "CheckButton", "라인업/치어리더 점검", 652, 956, 1268, 1066, new Color(0.55f, 0.22f, 0.45f), ButtonPt + 2);
             backButton = Btn(preRoot, "BackButton", "대시보드로 돌아가기", 1280, 956, 1900, 1066, ButtonIdle, ButtonPt);
-            startButton.onClick.AddListener(() => StartMatch());
+            startButton.onClick.AddListener(() => PlayBall());
             checkButton.onClick.AddListener(OpenLineupCheck);
             backButton.onClick.AddListener(CloseAll);
         }
@@ -346,7 +358,8 @@ namespace KBOManager.Controllers
             preHomeBadges.text = string.Join(" · ", p.Home.Badges);
             preAwayCheer.text = CheerCard(p.Away);
             preHomeCheer.text = CheerCard(p.Home);
-            startButton.interactable = simulator != null && !simulator.IsSeasonComplete && simulator.PendingInterrupt == null;
+            startButton.interactable = simulator != null && (postseasonGame != null || (!simulator.IsSeasonComplete && simulator.PendingInterrupt == null));
+            checkButton.interactable = postseasonGame == null;
         }
 
         public static string TeamLine(GMTeamPreview t) => $"{t.RecordLabel} · {t.Rank}위 · 최근 {t.Recent5}";
@@ -400,7 +413,9 @@ namespace KBOManager.Controllers
         {
             var b = box;
             string away = NameAliasTable.DisplayTeamName(b.AwayCode), home = NameAliasTable.DisplayTeamName(b.HomeCode);
-            postSubtitle.text = $"{b.Stadium} · {b.DateLabel} · {away} vs {home} · Game #{b.GameIndex + 1:000}";
+            postSubtitle.text = string.IsNullOrEmpty(b.GameTitle)
+                ? $"{b.Stadium} · {b.DateLabel} · {away} vs {home} · Game #{b.GameIndex + 1:000}"
+                : $"KBO 포스트시즌 {b.GameTitle} · {b.Stadium} · {b.DateLabel} · {away} vs {home}"; // [TASK-GM-07]
             cheerSummary.text = string.IsNullOrEmpty(b.CheerSummary) ? "" :
                 $"오늘의 응원단({string.Join(" · ", b.CheerEntryNames ?? new List<string>())}) - {b.CheerSummary}";
             using (CompyaUiKit.Wide()) BindLineScore();

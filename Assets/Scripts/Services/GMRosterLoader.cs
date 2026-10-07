@@ -40,8 +40,10 @@ namespace KBOManager.Services
         public bool AutoRotateUserCheerleaders { get => CheerAutoRotate; set => CheerAutoRotate = value; }
         /// <summary>[TASK-GM-06] 스토리 안건 · 단장 결단으로 생긴 팀워크 가감(-20 ~ +20). 응원단 리더십과 함께 TeamChemistryEngine에 더해진다.</summary>
         public int AgendaTeamworkBonus;
-        /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정.</summary>
-        public int TeamworkBuff => CheerLeadershipBuff + AgendaTeamworkBonus;
+        /// <summary>[TASK-GM-07] 단장 모드 연도 시너지 - 같은 시즌 · 같은 구단 출신 동료 그룹 팀워크 가산(0~+8, GMYearSynergy).</summary>
+        public int YearSynergyBonus => GMYearSynergy.TeamworkBonus(AvailableRoster);
+        /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정 + [TASK-GM-07] 연도 시너지.</summary>
+        public int TeamworkBuff => CheerLeadershipBuff + AgendaTeamworkBonus + YearSynergyBonus;
         /// <summary>[TASK-GM-05] 전담 응원 매칭(최대 2쌍).</summary>
         public readonly List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
         /// <summary>[TASK-GM-05] 홈 흥행 누적 관중 수익(팬 지지율 환산 잔여분, 만 원).</summary>
@@ -91,6 +93,9 @@ namespace KBOManager.Services
         // [TASK-GM-06] 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건 · 엔딩) + 신인 드래프트 유망주 풀
         public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();
         public readonly List<Player> DraftPool = new List<Player>();
+        // [TASK-GM-07] 내 구단 정규시즌 경기 결과(시즌 일정 캘린더 · 세이브 v18)
+        public readonly List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();
+        public GMGameResultEntry ResultOn(int day) => UserResults.FirstOrDefault(r => r.Day == day);
 
         public GMTeamRecord RecordOf(string teamCode)
         {
@@ -152,6 +157,7 @@ namespace KBOManager.Services
             Records.Clear();
             Stats.Clear();
             RecentUserBoxScores.Clear();
+            UserResults.Clear(); // [TASK-GM-07]
             foreach (var p in Teams.Values.SelectMany(t => t.Roster).Concat(FreeAgents))
             {
                 p.Age = Math.Min(Player.MaxAge, p.Age + 1);
@@ -260,34 +266,35 @@ namespace KBOManager.Services
 
             BuildFreeAgentMarket(state, candidates, used, debutYear, awards);
             if (mode == GMStartMode.StoryCampaign) ApplyStoryCampaign(state.UserTeam);
-            BuildDraftPool(state, byPerson, used, debutYear); // [TASK-GM-06]
+            BuildDraftPool(state, byPerson, used, debutYear, mode == GMStartMode.AllTimeDream ? 0 : GMFeatureFlags.DEFAULT_START_YEAR); // [TASK-GM-06] · [TASK-GM-07] 현역 모드는 2026 카드만
             GMFrontOffice.Initialize(state);                 // [TASK-GM-06] 구단주 · 목표 · 시즌 이력 · 스토리 안건
             return state;
         }
 
         // ================================================================== 후보
 
-        private sealed class Candidate
+        public sealed class Candidate
         {
             public PlayerTemplate Template;
             public int Score;
             public int SeasonYear;
         }
 
-        /// <summary>현역(active) 선수 - 현 소속(CurrentTeam) 기준, 선수당 최신 시즌 템플릿 1장. 현역이 모자란 구단은 은퇴 선수가 뒤를 채운다.</summary>
-        private static Dictionary<string, List<Candidate>> CurrentCandidates(Dictionary<string, List<PlayerTemplate>> byPerson)
+        /// <summary>
+        /// 현역 선수 - [TASK-GM-07] 2026 시즌 카드(SeasonYear = 2026)가 있는 선수만, 그 2026 카드(같은 해 카드가 여럿이면 상위 등급)와 2026 소속 구단 기준으로 뽑는다.
+        /// 예전에는 선수별 "최신 시즌" 카드를 써서 2026 카드가 없는 은퇴 · 과거 선수(다른 연도 카드)가 모자란 자리를 채웠다 - 이제 2026 데이터만 쓴다.
+        /// </summary>
+        public static Dictionary<string, List<Candidate>> CurrentCandidates(Dictionary<string, List<PlayerTemplate>> byPerson, int year = GMFeatureFlags.DEFAULT_START_YEAR)
         {
             var result = NameAliasTable.CanonicalTeamCodes.ToDictionary(c => c, c => new List<Candidate>());
             foreach (var person in byPerson.Values)
             {
-                var latest = person.OrderByDescending(t => t.SeasonYear).ThenByDescending(t => (int)t.Grade).First();
-                var home = person.Select(t => t.CurrentTeam).FirstOrDefault(t => t != Team.None);
-                if (home == Team.None) home = latest.Team;
+                var card = person.Where(t => t.SeasonYear == year).OrderByDescending(t => (int)t.Grade).ThenByDescending(t => t.GetBaseOverall()).FirstOrDefault();
+                if (card == null) continue;
+                var home = card.Team != Team.None ? card.Team : card.CurrentTeam;
                 string code = NameAliasTable.ToCode(home);
                 if (code == null) continue;
-                bool active = person.Any(t => t.IsActive);
-                // 현역을 먼저 뽑도록 은퇴 선수 점수를 크게 낮춘다(모자랄 때만 채움용으로 쓰인다).
-                result[code].Add(new Candidate { Template = latest, Score = latest.GetBaseOverall() - (active ? 0 : 1000), SeasonYear = GMFeatureFlags.DEFAULT_START_YEAR });
+                result[code].Add(new Candidate { Template = card, Score = card.GetBaseOverall(), SeasonYear = year });
             }
             return result;
         }
@@ -385,12 +392,14 @@ namespace KBOManager.Services
         /// [TASK-GM-06] 신인 드래프트 유망주 풀(10명) - 아직 어느 구단 · FA에도 없는 선수 중 데뷔가 가장 최근인(경력이 짧은) 선수의 최신 시즌 카드.
         /// 19~22세 · 신인 계약(최저연봉 3,000만 원 · 5년) · 유망주 성향 · Ego 1로 재설정한다. 모자라면 남은 미배정 선수로 채운다.
         /// </summary>
-        public static void BuildDraftPool(GMLeagueState state, Dictionary<string, List<PlayerTemplate>> byPerson, HashSet<string> used, Dictionary<string, int> debutYear)
+        public static void BuildDraftPool(GMLeagueState state, Dictionary<string, List<PlayerTemplate>> byPerson, HashSet<string> used, Dictionary<string, int> debutYear, int onlyYear = 0)
         {
             state.DraftPool.Clear();
             var taken = new HashSet<string>(used);
             foreach (var fa in state.FreeAgents) if (fa.Template != null) taken.Add(fa.Template.RealPlayerId);
-            var picks = byPerson.Where(p => !taken.Contains(p.Key))
+            // [TASK-GM-07] 현역 모드 - 2026 카드가 있는 선수가 드래프트 풀(10명)을 채울 만큼 남아 있으면 그 선수들만 쓴다.
+            bool restrict = onlyYear > 0 && byPerson.Count(p => !taken.Contains(p.Key) && p.Value.Any(t => t.SeasonYear == onlyYear)) >= GMStoveLeagueMarket.DraftPoolSize;
+            var picks = byPerson.Where(p => !taken.Contains(p.Key) && (!restrict || p.Value.Any(t => t.SeasonYear == onlyYear)))
                 .Select(p => p.Value.OrderByDescending(t => t.SeasonYear).ThenByDescending(t => (int)t.Grade).First())
                 .OrderByDescending(t => debutYear.TryGetValue(t.RealPlayerId, out int d) ? d : 0)
                 .ThenByDescending(t => t.GetBaseOverall())

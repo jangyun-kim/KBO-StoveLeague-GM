@@ -45,6 +45,8 @@ namespace KBOManager.Simulation
         public string DateLabel;
         public string Stadium;
         public GMTeamPreview Away, Home;
+        /// <summary>[TASK-GM-07] 포스트시즌 경기 전력 비교인지.</summary>
+        public bool IsPostseason;
 
         public static GMMatchPreview Build(GMLiveSeasonSimulator sim)
         {
@@ -66,7 +68,26 @@ namespace KBOManager.Simulation
             return preview;
         }
 
-        private static GMTeamPreview TeamPreview(GMLeagueState league, GMTeamState team, bool isHome, int day, List<GMTeamRecord> standings)
+        /// <summary>[TASK-GM-07] 포스트시즌 내 구단 경기 전력 비교(시리즈 · 차전 · 예고 선발).</summary>
+        public static GMMatchPreview BuildPostseason(GMLiveSeasonSimulator sim, GMAwardEvaluator.GMPostseasonGame game)
+        {
+            if (sim == null || game == null) return null;
+            var league = sim.League;
+            var standings = sim.Standings();
+            var preview = new GMMatchPreview
+            {
+                GameIndex = game.GameIndex,
+                GameLabel = $"KBO 포스트시즌 · {game.Title}",
+                DateLabel = game.DateLabel,
+                Stadium = KBOManager.UI.CompyaUiKit.Stadium(NameAliasTable.ToTeam(game.HomeCode)),
+                IsPostseason = true,
+            };
+            preview.Home = TeamPreview(league, league.Teams[game.HomeCode], true, game.GameNumber - 1, standings, game.HomeStarter);
+            preview.Away = TeamPreview(league, league.Teams[game.AwayCode], false, game.GameNumber - 1, standings, game.AwayStarter);
+            return preview;
+        }
+
+        private static GMTeamPreview TeamPreview(GMLeagueState league, GMTeamState team, bool isHome, int day, List<GMTeamRecord> standings, Player starterOverride = null)
         {
             var record = league.RecordOf(team.TeamCode);
             var available = team.AvailableRoster;
@@ -81,7 +102,7 @@ namespace KBOManager.Simulation
                 Recent5 = record.RecentLabel(5),
             };
 
-            p.Starter = StartingRotation.PickFor(available, day, team.Lineup);
+            p.Starter = starterOverride ?? StartingRotation.PickFor(available, day, team.Lineup);
             if (p.Starter != null)
             {
                 league.Stats.TryGetValue(p.Starter.InstanceId, out var st);

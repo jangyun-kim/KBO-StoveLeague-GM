@@ -28,6 +28,7 @@ namespace KBOManager.Services
         public const int FABonusPercent = 25;        // FA 계약금 = 총액의 25%
         public const int ReleaseBuyoutPercent = 50;  // 방출 위약금 = 잔여 연봉의 50%
         public const int MaxFAYears = 4;
+        public const float HardTradeExtraMargin = 0.1f; // [TASK-GM-07] 거래 하드 모드 - AI 요구 가치 +10%
 
         // ================================================================== 공통
 
@@ -250,7 +251,7 @@ namespace KBOManager.Services
             r.Score = score;
             r.RivalBid = RivalBid(league, p);
             long bonus = (long)salary * years * FABonusPercent / 100;
-            if (score < r.RivalBid)
+            if (score < r.RivalBid && !GMFrontOffice.Manager(league).Commissioner) // [TASK-GM-07] 커미셔너 모드 - 경쟁 입찰 판정 건너뜀
             {
                 r.Message = $"{p.Template.PlayerName} 영입 실패 - 경쟁 구단 최고 입찰(지수 {r.RivalBid:0.00})이 우리 제안(지수 {score:0.00})보다 좋습니다. 요구 {GMDiagnosticFormat.Won(r.Demand)} × {pref}년";
                 return r;
@@ -320,9 +321,10 @@ namespace KBOManager.Services
                 e.ReceiveValue += TradeValue(p) * need;
             }
             e.GiveValue = theirIn.Sum(TradeValue);
-            e.Required = e.GiveValue * GMFrontOffice.TradeMargin(GMFrontOffice.Ensure(league).Difficulty);
+            var manager = GMFrontOffice.Manager(league);
+            e.Required = e.GiveValue * (GMFrontOffice.TradeMargin(GMFrontOffice.Ensure(league).Difficulty) + (manager.HardTrade ? HardTradeExtraMargin : 0f)); // [TASK-GM-07] 거래 하드 모드
             e.NeedsNote = notes.Count > 0 ? string.Join(" · ", notes.Distinct()) : $"{partner.DisplayName} 특별한 니즈 없음";
-            e.Acceptable = e.ReceiveValue >= e.Required;
+            e.Acceptable = e.ReceiveValue >= e.Required || manager.Commissioner; // [TASK-GM-07] 커미셔너 모드 - 가치 판정 건너뜀
             e.Reason = e.Acceptable ? $"{partner.DisplayName} 단장: \"좋습니다, 받아들이죠.\"" : $"{partner.DisplayName} 단장: \"가치가 부족합니다({e.Ratio * 100:0}%).\"";
             return e;
         }

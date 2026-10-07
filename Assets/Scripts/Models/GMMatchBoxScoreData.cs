@@ -80,6 +80,7 @@ namespace KBOManager.Models
     public class GMMatchBoxScoreData
     {
         public int GameIndex;
+        public string GameTitle = ""; // [TASK-GM-07] 포스트시즌 경기 제목("한국시리즈 3차전") - 정규시즌은 빈 문자열
         public int SeasonYear;
         public string DateLabel;
         public string Stadium;

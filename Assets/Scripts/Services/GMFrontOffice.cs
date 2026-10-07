@@ -57,12 +57,27 @@ namespace KBOManager.Services
         public static readonly int[] HouseRuleSteps = { 0, 3, 1 };
         public static string HouseRuleLabel(int max) => max <= 0 ? "제한 없음" : $"연 {max}회";
 
+        /// <summary>[TASK-GM-07] 해임당하지 않음 옵션의 구단주 신임도 하한.</summary>
+        public const int NoFiringTrustFloor = 25;
+
+        public static GMManagerProfile Manager(GMLeagueState league) => league == null ? new GMManagerProfile() : (Ensure(league).Manager ?? (Ensure(league).Manager = new GMManagerProfile()));
+
+        /// <summary>[TASK-GM-07] 감독 설정 적용 - 프로필 · 플레이 모드 옵션 5종 + 난이도(챌린지 모드는 연간 FA · 트레이드 1회로 고정).</summary>
+        public static void ApplyManagerSetup(GMLeagueState league, GMManagerProfile profile, GMDifficulty difficulty)
+        {
+            if (league == null || profile == null) return;
+            var fo = Ensure(league);
+            fo.Manager = profile;
+            ApplySettings(league, difficulty, profile.Challenge ? 1 : fo.HouseRuleMaxFA, profile.Challenge ? 1 : fo.HouseRuleMaxTrades);
+        }
+
         /// <summary>새 시즌 설정 - 난이도 · 하우스 룰을 적용한다(신임도는 난이도 시작값으로 다시 맞춘다).</summary>
         public static void ApplySettings(GMLeagueState league, GMDifficulty difficulty, int maxFA, int maxTrades)
         {
             if (league == null) return;
             var fo = Ensure(league);
             fo.Difficulty = difficulty;
+            if (fo.Manager != null && fo.Manager.Challenge) { maxFA = 1; maxTrades = 1; } // [TASK-GM-07] 챌린지 모드
             fo.HouseRuleMaxFA = Math.Max(0, maxFA);
             fo.HouseRuleMaxTrades = Math.Max(0, maxTrades);
             fo.OwnerTrust = StartingTrust(difficulty) + (league.Mode == GMStartMode.StoryCampaign ? -10 : 0);
@@ -774,7 +789,7 @@ namespace KBOManager.Services
                 else if (g.Priority >= GMGoalPriority.High) delta -= 4;
             }
             if (championCode == team.TeamCode) delta += 15;
-            fo.OwnerTrust = Math.Max(0, Math.Min(MaxTrust, fo.OwnerTrust + delta));
+            fo.OwnerTrust = Math.Max(fo.Manager != null && fo.Manager.NoFiring ? NoFiringTrustFloor : 0, Math.Min(MaxTrust, fo.OwnerTrust + delta)); // [TASK-GM-07] 해임당하지 않음
             if (league.Mode == GMStartMode.StoryCampaign)
             {
                 fo.Ending = EvaluateEnding(rank > 0 && rank <= 5, team.Budget, fo.OwnerTrust, rank > 0 && rank < prevRank, team.Roster.Average(p => p.Age));

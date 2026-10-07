@@ -20,7 +20,7 @@ namespace KBOManager.Simulation
     ///   - 부상: 경미(담/타박상 5~7일) · 중등(햄스트링/내복사근 21~30일) · 중상(인대/골절 60~120일), 경기 일수마다 1일 차감 → 0이면 복귀 소식
     ///   - [TASK-GM-04] 개인 수비(실책 · 처리 기회 · 호수비 · 포지션별 출전) 집계, 24경기마다 월간 시상(1.7), 72경기 직후 올스타전(1.6) - GMAwardEvaluator
     /// </summary>
-    public class GMLiveSeasonSimulator
+    public partial class GMLiveSeasonSimulator
     {
         public const int SeasonGames = 144;
         public const int HalfGames = 72;
@@ -180,14 +180,67 @@ namespace KBOManager.Simulation
         /// <summary>하루(5경기)를 진행한다. 진행했으면 true. 목표 경기 수에 도달하면 ActiveMode가 꺼진다.</summary>
         public bool StepGameDay()
         {
-            if (IsSeasonComplete || PendingInterrupt != null) return false;
+            if (IsSeasonComplete || PendingInterrupt != null || LiveSession != null) return false;
             int day = league.GamesPlayed;
+            BeginDay(day);
+            foreach (var (home, away) in schedule[day]) PlayGame(day, league.Teams[home], league.Teams[away]);
+            CompleteDay(day);
+            return true;
+        }
 
+        // ================================================================== [TASK-GM-07] 실시간 이닝 경기(LiveMatchInningView)
+
+        /// <summary>진행 중인 내 구단 실시간 경기(없으면 null). 이 경기가 끝나 FinishLiveDay()를 부르기 전까지 하루가 넘어가지 않는다.</summary>
+        public GameSession LiveSession { get; private set; }
+
+        /// <summary>
+        /// 오늘 경기를 실시간으로 시작한다 - 부상 · 체력을 하루 진행 전 상태로 맞추고, 내 구단 경기를 타석 단위 세션으로 연다.
+        /// 다른 4경기는 FinishLiveDay()에서 진행한다. 시즌이 끝났거나 인터럽트가 남아 있으면 null.
+        /// </summary>
+        public GameSession BeginLiveDay()
+        {
+            if (LiveSession != null) return LiveSession;
+            if (IsSeasonComplete || PendingInterrupt != null) return null;
+            if (!ActiveMode.HasValue && !StartRun(GMRunMode.SingleGame)) return null;
+            int day = league.GamesPlayed;
+            BeginDay(day);
+            var match = schedule[day].FirstOrDefault(m => m.home == league.SelectedTeamCode || m.away == league.SelectedTeamCode);
+            if (match.home == null) return null;
+            LiveSession = new GameSession(this, day, league.Teams[match.home], league.Teams[match.away], true, false);
+            return LiveSession;
+        }
+
+        /// <summary>실시간 경기를 (남은 타석까지) 끝내고 기록을 반영한 뒤 나머지 경기와 하루 마무리를 진행한다. 내 구단 박스스코어를 돌려준다.</summary>
+        public GMMatchBoxScoreData FinishLiveDay()
+        {
+            var session = LiveSession;
+            if (session == null) return null;
+            int day = league.GamesPlayed;
+            var box = session.Finish();
+            LiveSession = null;
+            foreach (var (home, away) in schedule[day])
+            {
+                if (home == session.Home.TeamCode && away == session.Away.TeamCode) continue;
+                PlayGame(day, league.Teams[home], league.Teams[away]);
+            }
+            CompleteDay(day);
+            return box;
+        }
+
+        /// <summary>[TASK-GM-07] 포스트시즌 단판 세션(시즌 누적 · 순위 미반영, 체력 · 컨디션 복원).</summary>
+        public GameSession CreateExhibitionSession(GMTeamState home, GMTeamState away, int seed, Player homeStarter, Player awayStarter, int gameIndex, string dateLabel, string title)
+        {
+            return new GameSession(this, SeasonGames - 1, home, away, false, true, seed, homeStarter, awayStarter, gameIndex, dateLabel) { GameTitle = title ?? "" };
+        }
+
+        private void BeginDay(int day)
+        {
             TickInjuries(day);
             foreach (var team in league.Teams.Values) RecoverStamina(team.Roster);
+        }
 
-            foreach (var (home, away) in schedule[day]) PlayGame(day, league.Teams[home], league.Teams[away]);
-
+        private void CompleteDay(int day)
+        {
             foreach (var team in league.Teams.Values) TeamChemistryEngine.ApplyMatchChemistryTick(team.AvailableRoster);
             foreach (var team in league.Teams.Values) GMCheerleaderRoster.TickDay(team); // [TASK-GM-05] 단상 체력 소모 · 벤치 회복 · 자동 로테이션
             league.GamesPlayed++;
@@ -209,7 +262,6 @@ namespace KBOManager.Simulation
             }
             if (ActiveMode.HasValue && league.GamesPlayed >= TargetGames) ActiveMode = null;
             OnDayCompleted?.Invoke();
-            return true;
         }
 
         private static void RecoverStamina(IEnumerable<Player> roster)
@@ -251,394 +303,13 @@ namespace KBOManager.Simulation
         public bool RecordAllBoxScores { get; set; }
         public readonly List<GMMatchBoxScoreData> AllUserBoxScores = new List<GMMatchBoxScoreData>();
 
+        /// <summary>[TASK-GM-07] 한 경기 = 타석 세션을 끝까지 진행 + 기록 반영(GMGameSession.cs).</summary>
         private void PlayGame(int day, GMTeamState home, GMTeamState away)
         {
-            var homeRoster = home.AvailableRoster;
-            var awayRoster = away.AvailableRoster;
-            var engine = new MatchEngine(homeRoster, awayRoster, ModifiersFor(home, true), ModifiersFor(away, false), skillDB, config, random.Next())
-            {
-                HomeDesignatedStarter = StartingRotation.PickFor(homeRoster, day, home.Lineup),
-                AwayDesignatedStarter = StartingRotation.PickFor(awayRoster, day, away.Lineup),
-                HomeAssignment = home.Lineup,
-                AwayAssignment = away.Lineup,
-            };
-            engine.BeginMatch(home.TeamCode, away.TeamCode);
-            var homeOrder = engine.HomeBattingOrder != null ? engine.HomeBattingOrder.ToList() : new List<Player>();
-            var awayOrder = engine.AwayBattingOrder != null ? engine.AwayBattingOrder.ToList() : new List<Player>();
-
-            // [TASK-GM-04] 수비 위치(0~7 = 포수~우익수, 8 = 지명타자) - 실책 · 처리 기회 · 호수비 귀속
-            var homeField = FieldersOf(homeRoster, home.Lineup);
-            var awayField = FieldersOf(awayRoster, away.Lineup);
-            var fielding = new Dictionary<Player, FieldLine>();
-
-            var bat = new Dictionary<Player, BatLine>();
-            var pit = new Dictionary<Player, PitchLine>();
-            var pitchOrder = new Dictionary<string, List<Player>> { { home.TeamCode, new List<Player>() }, { away.TeamCode, new List<Player>() } };
-            var stints = new Dictionary<string, List<Stint>> { { home.TeamCode, new List<Stint>() }, { away.TeamCode, new List<Stint>() } };
-            var inningRuns = new Dictionary<(int, bool), int>();
-            var plays = new List<PaRecord>();
-            var bases = new Player[4];
-            (int inning, bool top) half = (0, false);
-            int outsInHalf = 0;
-            bool errorThisHalf = false;
-            int homeE = 0, awayE = 0;
-            int homeAbsCalls = 0, awayAbsCalls = 0, homeBlocks = 0, awayBlocks = 0, homeLookingK = 0, awayLookingK = 0, homeAbsWalks = 0, awayAbsWalks = 0; // [TASK-GM-06]
-            int homeCatcherAbs = CatcherAbsSkill(homeRoster, home.Lineup), awayCatcherAbs = CatcherAbsSkill(awayRoster, away.Lineup);
-            Player winCandHome = null, winCandAway = null, loseCandHome = null, loseCandAway = null;
-            bool pendingWinHome = false, pendingWinAway = false;
-            var wpa = new List<WPAPoint> { new WPAPoint { PlateAppearance = -1, Inning = 1, IsTop = true, HomeWinProbability = 0.5f } };
-
-            BatLine B(Player p) { if (!bat.TryGetValue(p, out var l)) bat[p] = l = new BatLine(); return l; }
-            PitchLine P(Player p) { if (!pit.TryGetValue(p, out var l)) pit[p] = l = new PitchLine(); return l; }
-
-            int guard = 0;
-            while (!engine.IsGameOver && guard++ < 400)
-            {
-                var step = engine.PlayNextAtBat();
-                if (step.Batter == null || step.Pitcher == null || step.State == null) continue;
-
-                bool top = step.IsTopHalf;
-                var battingTeam = top ? away : home;
-                var fieldingTeam = top ? home : away;
-                if (half.inning != step.State.Inning || half.top != top)
-                {
-                    half = (step.State.Inning, top);
-                    Array.Clear(bases, 0, bases.Length);
-                    outsInHalf = 0;
-                    errorThisHalf = false;
-                    if (!inningRuns.ContainsKey(half)) inningRuns[half] = 0;
-                }
-
-                int battingAfter = top ? step.AwayScore : step.HomeScore;
-                int fieldingScore = top ? step.HomeScore : step.AwayScore;
-                int battingBefore = battingAfter - step.RunsScoredThisPlay;
-                int homeBefore = top ? fieldingScore : battingBefore, awayBefore = top ? battingBefore : fieldingScore;
-                float pBefore = HomeWinProbability(half.inning, top, outsInHalf, homeBefore, awayBefore, bases[1] != null, bases[2] != null, bases[3] != null);
-                var record = new PaRecord
-                {
-                    Pa = step.PlateAppearance, Inning = half.inning, Top = top, Outs = outsInHalf, Batter = step.Batter, TeamCode = battingTeam.TeamCode,
-                    Result = step.Result, Error = step.IsError, Runs = step.RunsScoredThisPlay, R1 = bases[1] != null, R2 = bases[2] != null, R3 = bases[3] != null,
-                };
-
-                // 투수 교체(등판 기록)
-                var teamStints = stints[fieldingTeam.TeamCode];
-                if (teamStints.Count == 0 || teamStints[teamStints.Count - 1].Pitcher != step.Pitcher)
-                {
-                    if (teamStints.Count > 0) teamStints[teamStints.Count - 1].ExitLead = fieldingScore - battingBefore;
-                    teamStints.Add(new Stint { Pitcher = step.Pitcher, EntryLead = fieldingScore - battingBefore });
-                    if (!pitchOrder[fieldingTeam.TeamCode].Contains(step.Pitcher)) pitchOrder[fieldingTeam.TeamCode].Add(step.Pitcher);
-                    if (top && pendingWinHome) { winCandHome = step.Pitcher; pendingWinHome = false; }
-                    if (!top && pendingWinAway) { winCandAway = step.Pitcher; pendingWinAway = false; }
-                }
-
-                // 타자 · 투수 기록(실책 출루는 타수만 - 안타 아님, 이후 이 이닝 실점은 비자책)
-                var bl = B(step.Batter);
-                var pl = P(step.Pitcher);
-                bl.PA++; pl.BF++;
-                if (step.IsError)
-                {
-                    bl.AB++;
-                    errorThisHalf = true;
-                    if (fieldingTeam == home) homeE++; else awayE++;
-                }
-                else
-                {
-                    switch (step.Result)
-                    {
-                        case AtBatResult.Walk: bl.BB++; pl.BB++; break;
-                        case AtBatResult.Strikeout: bl.AB++; bl.SO++; pl.SO++; break;
-                        case AtBatResult.Single: bl.AB++; bl.H++; pl.H++; break;
-                        case AtBatResult.Double: bl.AB++; bl.H++; bl.D2++; pl.H++; break;
-                        case AtBatResult.Triple: bl.AB++; bl.H++; bl.D3++; pl.H++; break;
-                        case AtBatResult.HomeRun: bl.AB++; bl.H++; bl.HR++; pl.H++; pl.HR++; break;
-                        default: bl.AB++; break;
-                    }
-                }
-                bl.RBI += step.IsError ? 0 : step.RunsScoredThisPlay;
-                pl.R += step.RunsScoredThisPlay;
-                if (!errorThisHalf) pl.ER += step.RunsScoredThisPlay;
-                pl.NP += step.Result == AtBatResult.Strikeout ? 3 + random.Next(0, 4)
-                       : step.Result == AtBatResult.Walk ? 4 + random.Next(0, 4)
-                       : 1 + random.Next(0, 5);
-                inningRuns[half] = inningRuns[half] + step.RunsScoredThisPlay;
-                RecordFielding(top ? homeField : awayField, step, fielding);
-                // [TASK-GM-06] ABS 기록(수비 난수열) - 보더라인 콜 · 루킹 삼진은 수비 투수진, 블로킹 세이브는 수비 포수, 볼넷은 공격 팀
-                {
-                    var abs = RollAbsEvents(step, bases[1] != null || bases[2] != null || bases[3] != null, top ? homeCatcherAbs : awayCatcherAbs);
-                    if (top) { homeAbsCalls += abs.calls; homeLookingK += abs.lookingK; homeBlocks += abs.block; if (step.Result == AtBatResult.Walk && !step.IsError) awayAbsWalks++; }
-                    else { awayAbsCalls += abs.calls; awayLookingK += abs.lookingK; awayBlocks += abs.block; if (step.Result == AtBatResult.Walk && !step.IsError) homeAbsWalks++; }
-                }
-                if (step.Result == AtBatResult.Groundout && step.RunnerMovements.Any(m => m.FromBase == 1 && m.ToBase == -1))
-                {
-                    bl.GIDP++;
-                    record.Gidp = true;
-                }
-
-                // 주자 이동 → 득점(R)
-                var before = (Player[])bases.Clone();
-                foreach (var m in step.RunnerMovements) if (m.FromBase >= 1 && m.FromBase <= 3) bases[m.FromBase] = null;
-                foreach (var m in step.RunnerMovements)
-                {
-                    var runner = m.FromBase == 0 ? step.Batter : (m.FromBase >= 1 && m.FromBase <= 3 ? before[m.FromBase] : null);
-                    if (runner == null) continue;
-                    if (m.ToBase == 4) B(runner).R++;
-                    else if (m.ToBase >= 1 && m.ToBase <= 3) bases[m.ToBase] = runner;
-                }
-
-                // 아웃 → 이닝
-                int outsNow = Math.Min(3, step.State.Outs);
-                if (outsNow > outsInHalf) { pl.Outs += outsNow - outsInHalf; outsInHalf = outsNow; }
-
-                // 도루(기록 전용 확률) - 1루 출루 후 2루가 비어 있으면 주력에 비례해 시도 · 성공
-                if ((step.Result == AtBatResult.Single || step.Result == AtBatResult.Walk) && !step.IsError && bases[2] == null && outsInHalf < 3)
-                {
-                    int speed = step.Batter.Template.BatterStats.Speed;
-                    double chance = Math.Max(0, Math.Min(0.14, (speed - 55) / 250.0));
-                    if (random.NextDouble() < chance) bl.SB++;
-                }
-
-                // 승리 확률(타석 후)
-                float pAfter;
-                if (step.GameEnded) pAfter = step.HomeScore > step.AwayScore ? 1f : step.HomeScore < step.AwayScore ? 0f : 0.5f;
-                else if (step.HalfInningEnded) pAfter = top ? HomeWinProbability(half.inning, false, 0, step.HomeScore, step.AwayScore)
-                                                            : HomeWinProbability(half.inning + 1, true, 0, step.HomeScore, step.AwayScore);
-                else pAfter = HomeWinProbability(half.inning, top, outsInHalf, step.HomeScore, step.AwayScore, bases[1] != null, bases[2] != null, bases[3] != null);
-                record.Delta = (pAfter - pBefore) * (top ? -1f : 1f);
-                plays.Add(record);
-                wpa.Add(new WPAPoint { PlateAppearance = step.PlateAppearance, Inning = half.inning, IsTop = top, HomeWinProbability = pAfter });
-
-                // 리드 변화 → 승/패 투수 후보
-                int leadBefore = battingBefore - fieldingScore, leadAfter = battingAfter - fieldingScore;
-                if (leadBefore <= 0 && leadAfter > 0)
-                {
-                    if (top)
-                    {
-                        loseCandHome = step.Pitcher;
-                        var own = stints[away.TeamCode];
-                        if (own.Count > 0) winCandAway = own[own.Count - 1].Pitcher; else { winCandAway = null; pendingWinAway = true; }
-                    }
-                    else
-                    {
-                        loseCandAway = step.Pitcher;
-                        var own = stints[home.TeamCode];
-                        if (own.Count > 0) winCandHome = own[own.Count - 1].Pitcher; else { winCandHome = null; pendingWinHome = true; }
-                    }
-                }
-                else if (leadBefore < 0 && leadAfter == 0)
-                {
-                    winCandHome = winCandAway = loseCandHome = loseCandAway = null;
-                    pendingWinHome = pendingWinAway = false;
-                }
-            }
-
-            var result = engine.Result;
-            int homeRuns = result.HomeTotalScore, awayRuns = result.AwayTotalScore;
-            foreach (var list in stints) if (list.Value.Count > 0)
-                list.Value[list.Value.Count - 1].ExitLead = list.Key == home.TeamCode ? homeRuns - awayRuns : awayRuns - homeRuns;
-            if (wpa.Count > 1) wpa[wpa.Count - 1].HomeWinProbability = homeRuns > awayRuns ? 1f : homeRuns < awayRuns ? 0f : 0.5f;
-
-            // [TASK-GM-05] 홈 흥행력 → 관중 수익(예산) · 팬 지지율
-            int homeGate = GMCheerleaderRoster.ApplyHomeGate(home);
-
-            // 구단 성적
-            var hr = league.RecordOf(home.TeamCode);
-            var ar = league.RecordOf(away.TeamCode);
-            hr.G++; ar.G++;
-            hr.AbsBorderlineCalls += homeAbsCalls; ar.AbsBorderlineCalls += awayAbsCalls; // [TASK-GM-06]
-            hr.AbsLookingStrikeouts += homeLookingK; ar.AbsLookingStrikeouts += awayLookingK;
-            hr.AbsBlockSaves += homeBlocks; ar.AbsBlockSaves += awayBlocks;
-            hr.AbsWalksDrawn += homeAbsWalks; ar.AbsWalksDrawn += awayAbsWalks;
-            hr.RunsScored += homeRuns; hr.RunsAllowed += awayRuns;
-            ar.RunsScored += awayRuns; ar.RunsAllowed += homeRuns;
-            string winnerCode = homeRuns > awayRuns ? home.TeamCode : awayRuns > homeRuns ? away.TeamCode : null;
-            if (winnerCode == null) { hr.D++; ar.D++; hr.Streak = 0; ar.Streak = 0; hr.PushRecent('D'); ar.PushRecent('D'); }
-            else
-            {
-                var w = winnerCode == home.TeamCode ? hr : ar;
-                var l = winnerCode == home.TeamCode ? ar : hr;
-                w.W++; l.L++;
-                w.Streak = w.Streak > 0 ? w.Streak + 1 : 1;
-                l.Streak = l.Streak < 0 ? l.Streak - 1 : -1;
-                w.PushRecent('W'); l.PushRecent('L');
-            }
-
-            // 투수 결정(승 · 패 · 세이브 · 홀드)
-            Player winP = null, loseP = null, saveP = null;
-            if (winnerCode != null)
-            {
-                bool homeWon = winnerCode == home.TeamCode;
-                var winStints = stints[winnerCode];
-                winP = homeWon ? winCandHome : winCandAway;
-                loseP = homeWon ? loseCandAway : loseCandHome;
-                if (winP == null && winStints.Count > 0) winP = winStints[0].Pitcher;
-                if (winStints.Count > 1 && winP == winStints[0].Pitcher && pit.TryGetValue(winP, out var starterLine) && starterLine.Outs < 15)
-                    winP = winStints[1].Pitcher; // 선발 5이닝 미만 - 첫 구원 투수에게 승리
-                if (loseP == null)
-                {
-                    var lost = stints[homeWon ? away.TeamCode : home.TeamCode];
-                    if (lost.Count > 0) loseP = lost[0].Pitcher;
-                }
-                var last = winStints.Count > 0 ? winStints[winStints.Count - 1] : null;
-                if (last != null && winStints.Count > 1 && last.Pitcher != winP && last.EntryLead > 0 && last.EntryLead <= 3) saveP = last.Pitcher;
-            }
-
-            var holds = new List<Player>();
-            foreach (var pair in stints)
-            {
-                var list = pair.Value;
-                for (int i = 1; i < list.Count - 1; i++) // 선발 · 마지막 투수 제외 중간 계투
-                {
-                    var s = list[i];
-                    if (s.Pitcher == winP || s.Pitcher == loseP || s.Pitcher == saveP) continue;
-                    if (s.EntryLead > 0 && s.EntryLead <= 3 && s.ExitLead > 0 && !holds.Contains(s.Pitcher)) holds.Add(s.Pitcher);
-                }
-            }
-
-            // 선수 누적 · 연속 기록 · 경기 이벤트
-            int homeTeamHrBefore = hr.TeamHomeRuns, awayTeamHrBefore = ar.TeamHomeRuns;
-            foreach (var pair in bat)
-            {
-                var player = pair.Key; var line = pair.Value;
-                string code = home.Roster.Contains(player) ? home.TeamCode : away.TeamCode;
-                var st = league.StatsOf(player, code);
-                st.G++; st.PA += line.PA; st.AB += line.AB; st.H += line.H; st.Doubles += line.D2; st.Triples += line.D3; st.HR += line.HR;
-                st.RBI += line.RBI; st.R += line.R; st.BB += line.BB; st.SO += line.SO; st.SB += line.SB;
-                st.CurrentHitStreak = line.H > 0 ? st.CurrentHitStreak + 1 : 0;
-                st.MaxHitStreak = Math.Max(st.MaxHitStreak, st.CurrentHitStreak);
-                st.CurrentHrStreak = line.HR > 0 ? st.CurrentHrStreak + 1 : 0;
-                league.RecordOf(code).TeamHomeRuns += line.HR;
-                weeklyHits.TryGetValue(player.InstanceId, out int wk);
-                weeklyHits[player.InstanceId] = wk + line.H;
-                CheckBatterEvents(day, player, code, line, st);
-            }
-            foreach (var pair in pit)
-            {
-                var player = pair.Key; var line = pair.Value;
-                string code = home.Roster.Contains(player) ? home.TeamCode : away.TeamCode;
-                var st = league.StatsOf(player, code);
-                st.PG++; st.OutsPitched += line.Outs; st.ER += line.ER; st.PSO += line.SO; st.PBB += line.BB; st.HA += line.H; st.HRA += line.HR;
-                var own = stints[code];
-                if (own.Count > 0 && own[0].Pitcher == player) st.GS++;
-                if (player == winP) st.W++;
-                if (player == loseP) st.L++;
-                if (player == saveP) st.SV++;
-                if (holds.Contains(player)) st.HLD++;
-                bool complete = own.Count == 1 && own[0].Pitcher == player;
-                int allowed = code == home.TeamCode ? awayRuns : homeRuns;
-                CheckPitcherEvents(day, player, code, line, complete, allowed);
-            }
-            // [TASK-GM-04] 개인 수비 누적(수비 출전 · 포지션별 출전 · 실책 · 처리 기회 · 호수비)
-            foreach (var (team, field) in new[] { (home, homeField), (away, awayField) })
-            {
-                foreach (var pair in field)
-                {
-                    var st = league.StatsOf(pair.Value, team.TeamCode);
-                    st.Positions[pair.Key]++;
-                    if (pair.Key != GMPlayerSeasonStats.DesignatedHitterSlot) st.DefG++;
-                }
-            }
-            foreach (var player in pit.Keys)
-            {
-                var st = league.StatsOf(player, home.Roster.Contains(player) ? home.TeamCode : away.TeamCode);
-                st.Positions[GMPlayerSeasonStats.PitcherSlot]++;
-                st.DefG++;
-            }
-            foreach (var pair in fielding)
-            {
-                var st = league.StatsOf(pair.Key, home.Roster.Contains(pair.Key) ? home.TeamCode : away.TeamCode);
-                st.Chances += pair.Value.Chances;
-                st.Errors += pair.Value.Errors;
-                st.FinePlays += pair.Value.Fine;
-            }
-
-            CheckTeamHomeRunMilestone(day, home.TeamCode, homeTeamHrBefore, hr.TeamHomeRuns);
-            CheckTeamHomeRunMilestone(day, away.TeamCode, awayTeamHrBefore, ar.TeamHomeRuns);
-
-            if (home.IsUserTeam || away.IsUserTeam)
-            {
-                var me = home.IsUserTeam ? home : away;
-                var opp = home.IsUserTeam ? away : home;
-                int my = me == home ? homeRuns : awayRuns, their = me == home ? awayRuns : homeRuns;
-                string outcome = my > their ? "승" : my < their ? "패" : "무";
-                LastUserGameLine = $"G{day + 1} {CompyaShort(me.Team)} {my} : {their} {CompyaShort(opp.Team)} ({outcome})";
-
-                var box = new GMMatchBoxScoreData
-                {
-                    GameIndex = day,
-                    SeasonYear = league.SeasonYear,
-                    DateLabel = DayLabel(day),
-                    Stadium = KBOManager.UI.CompyaUiKit.Stadium(home.Team),
-                    HomeCode = home.TeamCode,
-                    AwayCode = away.TeamCode,
-                    WinnerCode = winnerCode ?? "",
-                    HomeR = homeRuns, AwayR = awayRuns,
-                    HomeE = homeE, AwayE = awayE,
-                    WpaPoints = wpa,
-                    HomeAbsCalls = homeAbsCalls, AwayAbsCalls = awayAbsCalls, HomeBlockSaves = homeBlocks, AwayBlockSaves = awayBlocks,
-                    HomeLookingK = homeLookingK, AwayLookingK = awayLookingK,
-                    HomeAbsIndex = AbsIndexOf(homeOrder, pitchOrder[home.TeamCode]), AwayAbsIndex = AbsIndexOf(awayOrder, pitchOrder[away.TeamCode]),
-                };
-                int innings = inningRuns.Keys.Select(k => k.Item1).DefaultIfEmpty(9).Max();
-                innings = Math.Max(9, innings);
-                for (int i = 1; i <= innings; i++)
-                {
-                    box.AwayInningRuns.Add(inningRuns.TryGetValue((i, true), out int a) ? a : 0);
-                    box.HomeInningRuns.Add(inningRuns.TryGetValue((i, false), out int h) ? h : -1); // 말 공격 없음 = 'X'
-                }
-                foreach (var (team, order, isHome) in new[] { (home, homeOrder, true), (away, awayOrder, false) })
-                {
-                    var positions = LineupAssignment.AssignStarters(team == home ? homeRoster : awayRoster, team.Lineup)
-                        .Where(s => s.Player != null).ToDictionary(s => s.Player, s => s.Position);
-                    var batters = box.BattersOf(isHome);
-                    var lineup = order.Concat(bat.Keys.Where(p => team.Roster.Contains(p) && !order.Contains(p))).ToList();
-                    for (int i = 0; i < lineup.Count; i++)
-                    {
-                        var p = lineup[i];
-                        if (!bat.TryGetValue(p, out var l)) continue;
-                        var st = league.StatsOf(p, team.TeamCode);
-                        batters.Add(new BatterBoxScoreLine
-                        {
-                            PlayerId = p.InstanceId, Name = p.Template.PlayerName, Order = i + 1,
-                            Position = PositionShort(positions.TryGetValue(p, out var pos) ? pos : p.Template.BatterPosition),
-                            AB = l.AB, R = l.R, H = l.H, RBI = l.RBI, BB = l.BB, SO = l.SO, Doubles = l.D2, Triples = l.D3, HR = l.HR, SB = l.SB, GIDP = l.GIDP,
-                            SeasonAVG = st.AVG, SeasonHR = st.HR, SeasonRBI = st.RBI, SeasonDoubles = st.Doubles, SeasonTriples = st.Triples, SeasonSB = st.SB,
-                        });
-                    }
-                    var pitchers = box.PitchersOf(isHome);
-                    foreach (var p in pitchOrder[team.TeamCode])
-                    {
-                        var l = pit[p];
-                        var st = league.StatsOf(p, team.TeamCode);
-                        pitchers.Add(new PitcherBoxScoreLine
-                        {
-                            PlayerId = p.InstanceId, Name = p.Template.PlayerName,
-                            Decision = p == winP ? "W" : p == loseP ? "L" : p == saveP ? "S" : holds.Contains(p) ? "H" : "",
-                            Outs = l.Outs, H = l.H, R = l.R, ER = l.ER, BB = l.BB, SO = l.SO, HR = l.HR, NP = Math.Max(1, l.NP),
-                            SeasonERA = st.ERA, SeasonW = st.W, SeasonL = st.L, SeasonSV = st.SV, SeasonHLD = st.HLD,
-                        });
-                    }
-                }
-                box.HomeH = box.HomeBatters.Sum(b => b.H);
-                box.AwayH = box.AwayBatters.Sum(b => b.H);
-                box.KeyPlays = plays.OrderByDescending(p => Math.Abs(p.Delta)).Take(3).Select(p => new WPAKeyPlay
-                {
-                    PlateAppearance = p.Pa, Inning = p.Inning, IsTop = p.Top, TeamCode = p.TeamCode, BatterName = p.Batter.Template.PlayerName,
-                    Situation = SituationLabel(p), ResultLabel = ResultLabel(p), RBI = p.Error ? 0 : p.Runs, DeltaWPA = p.Delta,
-                }).ToList();
-                box.Recap = WriteRecap(day, box, plays);
-                // [TASK-GM-05] 오늘의 응원단 단상 활약
-                box.CheerEntryNames = me.CheerEntry.Select(c => c.DisplayName).ToList();
-                box.CheerSummary = GMCheerleaderRoster.MatchSummary(me, me == home, me == home ? homeGate : 0);
-                if (me == home && homeGate > 0)
-                    AddNews(day, GMNewsKind.Cheer, $"응원단 {box.CheerEntryNames.Count}인 단상 응원", box.CheerSummary, true, false);
-                league.AddBoxScore(box);
-                if (RecordAllBoxScores) AllUserBoxScores.Add(box);
-            }
-
-            RollInjury(day, home, bat, pit);
-            RollInjury(day, away, bat, pit);
+            var session = new GameSession(this, day, home, away, true, false);
+            session.PlayToEnd();
+            session.Finish();
         }
-
         // ================================================================== [TASK-GM-06] ABS(자동 투구 판정) 기록
 
         /// <summary>타석 1건의 ABS 기록 - 보더라인 스트라이크 콜(0~2) · 루킹 삼진(삼진 중 존 판정) · 포수 블로킹 세이브(주자 있을 때).
@@ -661,7 +332,8 @@ namespace KBOManager.Simulation
         /// <summary>주전 포수(라인업 포수 자리, 없으면 포수 포지션 최고 OVR)의 ABS 블로킹 가치. 없으면 50.</summary>
         public static int CatcherAbsSkill(List<Player> roster, LineupAssignment lineup)
         {
-            var catcher = LineupAssignment.AssignStarters(roster, lineup).FirstOrDefault(s => s.Player != null && s.Position == BatterPosition.Catcher).Player
+            // [TASK-GM-07] 포수 자리가 비면(부상 등) FirstOrDefault가 null - 예전에는 .Player에서 NullReferenceException
+            var catcher = LineupAssignment.AssignStarters(roster, lineup ?? new LineupAssignment()).FirstOrDefault(s => s != null && s.Player != null && s.Position == BatterPosition.Catcher)?.Player
                           ?? roster.Where(p => !p.IsPitcher && p.Template.BatterPosition == BatterPosition.Catcher).OrderByDescending(p => p.BaseOverall).FirstOrDefault();
             return catcher != null ? catcher.ABSZoneSkill : 50;
         }
@@ -778,7 +450,7 @@ namespace KBOManager.Simulation
             "더그아웃 분위기가 정말 좋습니다. 이 흐름을 계속 이어 가고 싶습니다.",
         };
 
-        private GameRecapArticle WriteRecap(int day, GMMatchBoxScoreData box, List<PaRecord> plays)
+        private GameRecapArticle WriteRecap(int day, GMMatchBoxScoreData box, List<PaRecord> plays, string postseasonTitle = null)
         {
             string Name(string code) => NameAliasTable.DisplayTeamName(code);
             string Short(string code) => CompyaShort(NameAliasTable.ToTeam(code));
@@ -788,7 +460,7 @@ namespace KBOManager.Simulation
             string loser = winner == box.HomeCode ? box.AwayCode : box.HomeCode;
             int wr = winner == box.HomeCode ? box.HomeR : box.AwayR, lr = winner == box.HomeCode ? box.AwayR : box.HomeR;
             var rec = league.RecordOf(winner);
-            string context = box.GameIndex == 0 ? "개막전에서" : winner == box.HomeCode ? "홈에서 열린 경기에서" : "원정 경기에서";
+            string context = !string.IsNullOrEmpty(postseasonTitle) ? $"{postseasonTitle}에서" : box.GameIndex == 0 ? "개막전에서" : winner == box.HomeCode ? "홈에서 열린 경기에서" : "원정 경기에서";
             string streak = !tie && rec.Streak >= 3 ? $" · {rec.Streak}연승" : "";
             article.Headline = tie
                 ? $"{Short(box.AwayCode)}-{Short(box.HomeCode)}, 연장 혈투 끝에 {box.AwayR}-{box.HomeR} 무승부"
@@ -832,7 +504,9 @@ namespace KBOManager.Simulation
             }
 
             string me = league.SelectedTeamCode;
-            if (day + 1 < SeasonGames)
+            if (!string.IsNullOrEmpty(postseasonTitle))
+                article.Paragraph4 = $"{Name(me)}의 가을야구는 계속된다. 시리즈 다음 경기는 플레이오프 트리에서 이어진다.";
+            else if (day + 1 < SeasonGames)
             {
                 var next = MatchesOn(day + 1).FirstOrDefault(m => m.home == me || m.away == me);
                 if (next.home != null)
@@ -966,7 +640,8 @@ namespace KBOManager.Simulation
         /// <summary>대기록 소식. 내 구단 기록이거나 리그 최상급(사이클 · 3홈런 · 완봉 · 20경기 연속 안타)이면 시뮬레이션을 멈추고 팝업.</summary>
         private void Record(int day, string title, string body, bool userTeam, bool leagueMajor)
         {
-            bool pause = userTeam || leagueMajor;
+            // [TASK-GM-07] 페넌트 레이스 모드(중요 결정만 직접) - 대기록은 소식으로만 남기고 시뮬레이션을 멈추지 않는다.
+            bool pause = (userTeam || leagueMajor) && !(league.FrontOffice?.Manager?.PennantMode ?? false);
             var news = AddNews(day, GMNewsKind.Record, title, body, userTeam, pause);
             if (pause) interrupts.Enqueue(new GMSimInterrupt { Kind = GMInterruptKind.Record, News = news });
         }

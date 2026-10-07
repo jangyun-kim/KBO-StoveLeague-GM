@@ -96,11 +96,32 @@ namespace KBOManager.Simulation
         public int ChosenOption = -1;
     }
 
+    /// <summary>
+    /// [TASK-GM-07] 감독 설정(OOTP 27 「감독 설정」) - 단장 프로필 + 플레이 모드 옵션 5종.
+    ///   커미셔너 모드: 트레이드 가치 · FA 경쟁 입찰 판정을 건너뛴다(편집 권한) / 해임당하지 않음: 구단주 신임도 하한 25 /
+    ///   거래 하드 모드: AI 단장 요구 가치 +10% / 페넌트 레이스 모드: 중요한 결정만 - 대기록 팝업 없이 진행 /
+    ///   챌린지 모드: 연간 FA · 트레이드 1회로 고정.
+    /// </summary>
+    [Serializable]
+    public class GMManagerProfile
+    {
+        public string Name = "단장";
+        public int Role;              // 0 단장 · 1 단장 및 감독
+        public bool Commissioner;
+        public bool NoFiring;
+        public bool HardTrade;
+        public bool PennantMode;
+        public bool Challenge;
+
+        public string RoleLabel => Role == 1 ? "단장 및 감독" : "단장";
+    }
+
     /// <summary>[TASK-GM-06] 프런트 오피스 상태(세이브 v17 GMLeagueSaveData.FrontOffice).</summary>
     [Serializable]
     public class GMFrontOfficeState
     {
         public GMOwnerProfile Owner = new GMOwnerProfile();
+        public GMManagerProfile Manager = new GMManagerProfile(); // [TASK-GM-07] 감독 설정(세이브 v18)
         public int OwnerTrust = 60;  // 구단주 신임도 0~100
         public List<GMOwnerGoal> Goals = new List<GMOwnerGoal>();
         public GMDifficulty Difficulty = GMDifficulty.Majors;

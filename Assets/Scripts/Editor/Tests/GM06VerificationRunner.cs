@@ -238,11 +238,13 @@ namespace KBOManager.EditorTests
             dash.Build();
             dash.gameObject.SetActive(false);
             hub.DashView = dash;
-            Assert.IsTrue(hub.Continue(), "[진행하기] = 개막전 진행");
-            Assert.AreEqual(GMSeasonPhase.RegularSeason, league.Phase, "스토브리그 → 정규시즌");
-            Assert.AreEqual(1, sim.GamesPlayed);
-            Assert.IsTrue(dash.gameObject.activeSelf, "실시간 대시보드로 이동");
-            StringAssert.Contains("G 1", T(hub.Root, "TeamDate"));
+            // [TASK-GM-07] 라우팅 변경 - [진행하기]는 한 경기를 바로 진행하지 않고 리그 플레이 메인 홈(프런트 오피스 6분할)으로 이동한다.
+            Assert.IsTrue(hub.Continue(), "[진행하기] = 메인 홈 이동");
+            Assert.AreEqual(GMOotpFrontOfficeUIController.PaneOwner, hub.CurrentPane, "메인 홈");
+            Assert.AreEqual(GMSeasonPhase.StoveLeague, league.Phase, "경기 전에는 스토브리그 유지");
+            Assert.AreEqual(0, sim.GamesPlayed, "바로 경기 진행 안 함");
+            Assert.IsFalse(dash.gameObject.activeSelf);
+            StringAssert.Contains("2026년 스토브리그", T(hub.Root, "TeamDate"));
         }
 
         // ================================================================== 2) 스토브리그 협상 4대 기능
@@ -597,12 +599,12 @@ namespace KBOManager.EditorTests
             Assert.IsTrue(Enumerable.Range(0, 10).Any(r => T(absPane, $"AbCell{r}_0").Contains("★")), "10구단 비교표 내 구단");
 
             // D.1 기본 실책률 2.2% - 시즌 실책 스케일
-            Assert.AreEqual(0.022f, GMChemistryModifiers.DefaultBaseErrorRate, 1e-6f, "D.1 기본 실책률 0.022");
+            Assert.AreEqual(0.048f, GMChemistryModifiers.DefaultBaseErrorRate, 1e-6f, "D.1 기본 실책률([TASK-GM-07] 0.022 → 0.048)");
             var full = SharedSeason().League;
             var perTeam = full.Teams.Keys.Select(c => full.Stats.Values.Where(s => s.TeamCode == c).Sum(s => s.Errors)).ToList();
             TestContext.WriteLine($"[GM06 D.1] 144경기 팀 실책 평균 {perTeam.Average():0.0} (최소 {perTeam.Min()} · 최대 {perTeam.Max()})");
             Debug.Log($"[GM06 D.1] 144경기 팀 실책 평균 {perTeam.Average():0.0} (최소 {perTeam.Min()} · 최대 {perTeam.Max()})");
-            Assert.That(perTeam.Average(), Is.InRange(40.0, 150.0), "팀당 시즌 실책(0.7% 시절 대비 약 3배)");
+            Assert.That(perTeam.Average(), Is.InRange(40.0, 150.0), "팀당 시즌 실책([TASK-GM-07] 4.8% - 정밀 범위 75~110은 GM07 검증)");
 
             // D.2 내 구단 자동 로테이션 기본 ON - 한 시즌 고속 진행에도 체력 고갈 엔트리 없음 · 수동 끄기 가능
             Assert.IsTrue(GMCheerleaderRoster.AutoRotateUserCheerleaders);

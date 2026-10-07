@@ -455,6 +455,8 @@ namespace KBOManager.Engine
         /// 작전이 실제 확률에 반영된다(PlayBallController.ReplayWithTactic).</summary>
         public Dictionary<int, MatchTactic> Tactics { get; } = new Dictionary<int, MatchTactic>();
         private int plateAppearanceCounter;
+        /// <summary>[TASK-GM-07] 다음 PlayNextAtBat()의 타석 번호 - 실시간 이닝 경기에서 Tactics[NextPlateAppearance]로 작전을 건다.</summary>
+        public int NextPlateAppearance => plateAppearanceCounter;
         private MatchTactic currentTactic = MatchTactic.None;
         private const double StealSuccessChance = 0.72; // KBO 리그 도루 성공률 근사(약 70%대)
         public MatchState CurrentState => currentAtBatState;

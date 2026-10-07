@@ -90,6 +90,16 @@ namespace KBOManager.Models
         public string RunnerUpCode = "";
         public string KoreanSeriesMvp = "";
         public List<string> FinalRankCodes = new List<string>();  // 최종 순위 1~10위
+        public int GamesSimulated;                                  // [TASK-GM-07] 지금까지 치른 포스트시즌 경기 수(무승부 재경기 포함 · 시드 재현)
+        public List<GMPostseasonTally> KsTally = new List<GMPostseasonTally>(); // [TASK-GM-07] 한국시리즈 MVP 활약 점수 누적
+    }
+
+    /// <summary>[TASK-GM-07] 한국시리즈 MVP 집계 한 줄(선수 InstanceId · 경기 활약 점수 합).</summary>
+    [Serializable]
+    public class GMPostseasonTally
+    {
+        public string PlayerId;
+        public double Score;
     }
 
     /// <summary>[TASK-GM-04] 시상 결과로 바뀐 단장 데이터(Ego · 연봉) 한 줄.</summary>

@@ -16,6 +16,8 @@
 - 엔진 Unity, 해상도 **1920×1080 Landscape**(TASK-GM-06, DCL-160 - 구 1080×1920 Portrait), 폰트 `Assets/Fonts/KBODiaGothic`.
   단장 모드 화면은 `CompyaUiKit.Wide()` 1920×1080 좌표로 배치하고, 기존 세로 화면은 `LegacyPortraitFrame` 9:16 프레임으로 보존한다.
 - **기본 허브:** OOTP 27 스타일 프런트 오피스(`GMOotpFrontOfficeUIController`) - 로비 진입 시 자동으로 열린다.
+  [진행하기]는 한 경기를 바로 돌리지 않는다(TASK-GM-07, DCL-162): 다른 화면 → 리그 플레이 메인 홈(6분할), 메인 홈 → ① 전력 분석 → ② 실시간 이닝 경기 → ③ 경기 결과.
+  정규시즌이 끝나면 포스트시즌 트리에서 1경기씩(내 구단 경기는 3단계 지휘) 진행한다.
 
 ## 2. 데이터 · 구단 · 시즌 연도 (기획서 1절)
 
@@ -95,6 +97,10 @@
 | `ENABLE_SET_DECK_200P = false` | 세트덱 보너스 | `SetDeck.cs`, `Player.CalculateOVR(isSetDeckBonusActive, …)`, `SetDeckOptionUIController`, `TeamSynergyUIController` |
 | `ENABLE_PLAYER_GACHA_SCOUT = false` | 선수 가챠 스카우트 | `ScoutManager`, `ScoutDropTables.cs`, `ScoutUIController`(선수 섹션) |
 
+- **예외(TASK-GM-07, DCL-162, 사용자 승인):** 카드 세트덱은 계속 끄고, 단장 모드 전용 **연도 시너지**(`GMYearSynergy`)만 새로 둔다 -
+  과거 같은 시즌 · 같은 구단 출신 3명 이상 그룹마다 팀워크 +1~+4(구단 합계 +8 상한, 현역 2026 데이터는 기준선이라 제외) → `GMTeamState.TeamworkBuff` → 실효 전력 계수.
+  선수 OVR(`BaseOverall`)은 건드리지 않는다.
+
 - 숨긴 탭 자리에는 **[계약·연봉·팀워크 진단]** 요약 배너를 띄운다.
 - 함께 정리 대상인 카드 RPG 잔재: 카드 등급 수집(라이브~왕조 8등급), 특별 영입·포지션 재조합·방출 재료화, 선수 스킬 변경권·레벨업 재화.
   정리 범위와 시점은 지시서를 따르고, 임의로 확장하지 않는다.
@@ -150,4 +156,6 @@
 - 의미 있는 작업 단위가 끝나면 conventional commits로 커밋한다(push는 요청할 때만).
 - 로드맵: TASK-GM-01(전환·3대 모드·케미스트리·계약 데이터) → TASK-GM-02(144경기 약 5분 실시간 시뮬레이션 대시보드) → TASK-GM-03(한 경기 전력 비교·박스스코어) →
   TASK-GM-04(7대 시상식·포스트시즌·연도 전환, DCL-158) → TASK-GM-05(치어리더 15인 구단 로스터 & 경기당 4~6인 엔트리·시각화 고도화, DCL-159) →
-  TASK-GM-06(1920×1080 가로 전환 · OOTP 27 프런트 오피스 · 스토브리그 협상[연봉·FA·트레이드·드래프트] · 스토리 캠페인 완결 · ABS, DCL-160) → …
+  TASK-GM-06(1920×1080 가로 전환 · OOTP 27 프런트 오피스 · 스토브리그 협상[연봉·FA·트레이드·드래프트] · 스토리 캠페인 완결 · ABS, DCL-160) →
+  TASK-GM-07(OOTP UI 6종 · 한 경기 3단계 플로우 · 포스트시즌 1경기 진행 · 2026 로스터 고정 · 연도 시너지 · 실책 0.048, DCL-162) →
+  TASK-GM-08(1:N 트레이드 역제안 · FA 보호 명단 10대 가중치) → …

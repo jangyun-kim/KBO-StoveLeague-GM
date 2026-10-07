@@ -22,11 +22,11 @@ namespace KBOManager.Controllers
     ///   - 선수단 · 라인업, 전략 · ABS 분석, 응원단, 시상 · 구단 역사 요약 + 각 전용 화면 바로가기
     /// 게임을 켜서 로비로 들어오면(UIManager.ShowScreen(Lobby)) 이 허브가 기본으로 열린다(OnLobbyScreenShown).
     /// </summary>
-    public class GMOotpFrontOfficeUIController : MonoBehaviour
+    public partial class GMOotpFrontOfficeUIController : MonoBehaviour
     {
         public const string RootName = "FrontOfficeRoot";
         public const int BannerTitlePt = 30, BannerPt = 19, SmallPt = 16, TabPt = 18, SubTabPt = 18, PanelTitlePt = 19, BodyPt = 16, TablePt = 16, CellPt = 15, ButtonPt = 18, BigPt = 36;
-        public const int MainTabCount = 8, SubTabMax = 6, GoalRows = 6, CostRows = 10, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 9, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
+        public const int MainTabCount = 8, SubTabMax = 6, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 9, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
 
         public static readonly Color Gold = new Color(0.961f, 0.722f, 0.18f); // #F5B82E
         private static readonly Color Bg = new Color(0.09f, 0.09f, 0.1f);
@@ -293,7 +293,10 @@ namespace KBOManager.Controllers
             {
                 root = CompyaUiKit.Fill(transform, RootName);
                 CompyaUiKit.Paint(root, Bg, true);
+                BuildContentArea();  // [TASK-GM-07] 퀵 사이드바 자리를 비운 화면 영역
                 BuildHeader();
+                BuildToolbar();      // [TASK-GM-07] 최상단 드롭다운 툴바
+                BuildSidebar();      // [TASK-GM-07] 우측 세로 퀵 아이콘 사이드바
                 BuildOwnerPane();
                 BuildSalariesPane();
                 BuildFAPane();
@@ -306,8 +309,11 @@ namespace KBOManager.Controllers
                 BuildAbsPane();
                 BuildCheerPane();
                 BuildHistoryPane();
+                BuildSchedulePane();     // [TASK-GM-07] 시즌 일정(달력)
+                BuildPostseasonPane();   // [TASK-GM-07] 포스트시즌 트리
                 BuildDiscussPopup();
                 BuildPercentilePopup();
+                BuildManagerSetup();     // [TASK-GM-07] 감독 설정
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -348,7 +354,7 @@ namespace KBOManager.Controllers
 
         private RectTransform PaneRoot(string name)
         {
-            var p = CompyaUiKit.Fill(root, name);
+            var p = CompyaUiKit.Fill(contentArea != null ? contentArea : root, name);
             panes[name] = p;
             return p;
         }
@@ -405,24 +411,25 @@ namespace KBOManager.Controllers
 
         private void BuildHeader()
         {
-            banner = CompyaUiKit.Box(root, "Banner", 0, 0, 1920, 132, new Color(0.15f, 0.2f, 0.35f));
-            teamLogo = CompyaUiKit.Logo(root, "TeamLogo", 20, 10, 140, 122);
-            teamName = L(root, "TeamName", "", 160, 8, 780, 58, BannerTitlePt, TextAnchor.MiddleLeft, White);
-            teamRecord = L(root, "TeamRecord", "", 160, 60, 780, 94, BannerPt, TextAnchor.MiddleLeft, White);
-            teamDate = L(root, "TeamDate", "", 160, 96, 780, 128, SmallPt, TextAnchor.MiddleLeft, Muted);
+            // [TASK-GM-07] 최상단 툴바(0~44) 아래로 배너를 46~134에 압축 - 4일 일정 티커 유지
+            banner = CompyaUiKit.Box(root, "Banner", 0, 46, 1920, 134, new Color(0.15f, 0.2f, 0.35f));
+            teamLogo = CompyaUiKit.Logo(root, "TeamLogo", 20, 50, 104, 130);
+            teamName = L(root, "TeamName", "", 120, 47, 780, 87, BannerTitlePt, TextAnchor.MiddleLeft, White);
+            teamRecord = L(root, "TeamRecord", "", 120, 88, 780, 111, BannerPt, TextAnchor.MiddleLeft, White);
+            teamDate = L(root, "TeamDate", "", 120, 112, 780, 133, SmallPt, TextAnchor.MiddleLeft, Muted);
             string[] ticker = { "어제", "오늘", "내일", "다음 시리즈" };
             for (int i = 0; i < 4; i++)
             {
-                float y0 = 8 + i * 30;
-                tickerLabels[i] = L(root, $"TickerLabel{i}", ticker[i], 800, y0, 930, y0 + 28, SmallPt, TextAnchor.MiddleLeft, Muted);
-                tickerValues[i] = L(root, $"TickerValue{i}", "", 936, y0, 1390, y0 + 28, SmallPt, TextAnchor.MiddleLeft, White);
+                float y0 = 48 + i * 21.5f;
+                tickerLabels[i] = L(root, $"TickerLabel{i}", ticker[i], 800, y0, 930, y0 + 21, SmallPt, TextAnchor.MiddleLeft, Muted);
+                tickerValues[i] = L(root, $"TickerValue{i}", "", 936, y0, 1390, y0 + 21, SmallPt, TextAnchor.MiddleLeft, White);
             }
-            L(root, "ContinueCheck", "✔", 1404, 18, 1470, 114, BigPt - 6, TextAnchor.MiddleCenter, ContinueGreen);
-            continueButton = Btn(root, "ContinueButton", "✔ 진행하기 (CONTINUE / PLAY) >", 1476, 18, 1760, 114, ContinueGreen, 21);
+            L(root, "ContinueCheck", "✔", 1404, 52, 1470, 130, BigPt - 6, TextAnchor.MiddleCenter, ContinueGreen);
+            continueButton = Btn(root, "ContinueButton", "✔ 진행하기 (CONTINUE / PLAY) >", 1476, 52, 1760, 130, ContinueGreen, 20);
             continueButton.onClick.AddListener(() => Continue());
-            settingsButton = Btn(root, "SettingsButton", "새 시즌/난이도 설정", 1772, 14, 1908, 64, ButtonIdle, 15);
-            settingsButton.onClick.AddListener(OpenSeasonSettings);
-            lobbyButton = Btn(root, "LobbyButton", "클래식 로비", 1772, 70, 1908, 118, ButtonIdle, SmallPt);
+            settingsButton = Btn(root, "SettingsButton", "감독 설정", 1772, 50, 1908, 88, ButtonIdle, 15);
+            settingsButton.onClick.AddListener(OpenManagerSetup);
+            lobbyButton = Btn(root, "LobbyButton", "클래식 로비", 1772, 94, 1908, 130, ButtonIdle, SmallPt);
             lobbyButton.onClick.AddListener(GoClassicLobby);
 
             CompyaUiKit.Box(root, "MainTabBar", 0, 136, 1920, 192, TabBarColor);
@@ -451,13 +458,13 @@ namespace KBOManager.Controllers
             return new[]
             {
                 new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory) },
-                new List<SubTab> { P("순위·리더·소식", PaneLive), A("대시보드 열기", OpenDashboard), A("한 경기 전력 비교", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
+                new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
                 new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem) },
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
                 new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries) },
                 new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA) },
                 new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", () => GoLegacy(ScreenType.CheerleaderShop)), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
-                new List<SubTab> { P("구단 역사", PaneHistory), A("시상식·포스트시즌 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
+                new List<SubTab> { P("구단 역사", PaneHistory), P("포스트시즌 트리", PanePostseason), A("시상식 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
             };
         }
 
@@ -496,6 +503,8 @@ namespace KBOManager.Controllers
             foreach (var pair in panes) pair.Value.gameObject.SetActive(pair.Key == currentPane);
             if (discussPopup != null) discussPopup.SetAsLastSibling();
             if (pctPopup != null) pctPopup.SetAsLastSibling();
+            foreach (var m in menuLists) if (m != null) m.SetAsLastSibling(); // [TASK-GM-07] 툴바 메뉴 · 감독 설정은 맨 위
+            if (managerPopup != null) managerPopup.SetAsLastSibling();
         }
 
         private void RefreshTabs()
@@ -564,15 +573,15 @@ namespace KBOManager.Controllers
             L(rec, "RecLegend", "초록 = 5할 이상 · 빨강 = 5할 미만 · 흰 선 = .500", 24, 996, 465, 1034, CellPt, TextAnchor.MiddleLeft, Muted);
 
             var cost = Panel(pane, "CostEfficientPanel", 489, 652, 954, 1040);
-            L(cost, "CostTitle", "가성비 선수 TOP 10 (COST EFFICIENT)", 501, 658, 942, 688, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
+            L(cost, "CostTitle", "가성비 선수 TOP 12 (COST EFFICIENT)", 501, 658, 942, 688, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
             float[] cc = { 501, 704, 760, 854, 946 };
             string[] ch = { "순위 · 선수", "WAR", "연봉", "1WAR당" };
-            for (int c = 0; c < 4; c++) L(cost, $"CostHead{c}", ch[c], cc[c], 694, cc[c + 1] - 4, 720, CellPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight, Muted);
-            for (int r = 0; r < CostRows; r++)
+            for (int c = 0; c < 4; c++) L(cost, $"CostHead{c}", ch[c], cc[c], 692, cc[c + 1] - 4, 716, CellPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight, Muted);
+            for (int r = 0; r < CostRows; r++) // [TASK-GM-07] TOP 12(OOTP COST EFFICIENT PLAYERS 12행)
             {
-                float y0 = 724 + r * 31;
+                float y0 = 718 + r * 26.5f;
                 for (int c = 0; c < 4; c++)
-                    costCells[r, c] = L(cost, $"Cost{r}_{c}", "", cc[c], y0, cc[c + 1] - 4, y0 + 29, CellPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight, White);
+                    costCells[r, c] = L(cost, $"Cost{r}_{c}", "", cc[c], y0, cc[c + 1] - 4, y0 + 26, CellPt, c == 0 ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight, White);
             }
 
             var bud = Panel(pane, "BudgetPanel", 966, 652, 1431, 1040);
@@ -1049,6 +1058,7 @@ namespace KBOManager.Controllers
             }
             RefreshTabs();
             RefreshHeader();
+            RefreshToolbar(); // [TASK-GM-07]
             if (League == null || UserTeam == null) { SetStatus("단장 모드 리그가 없습니다 - [새 시즌/난이도 설정]으로 시작하십시오."); return; }
             GMFrontOffice.RefreshGoals(League);
             using (CompyaUiKit.Wide())
@@ -1067,6 +1077,8 @@ namespace KBOManager.Controllers
                     case PaneAbs: RefreshAbs(); break;
                     case PaneCheer: RefreshCheer(); break;
                     case PaneHistory: RefreshHistory(); break;
+                    case PaneSchedule: RefreshSchedule(); break;      // [TASK-GM-07]
+                    case PanePostseason: RefreshPostseason(); break;  // [TASK-GM-07]
                 }
             }
         }
@@ -1096,7 +1108,9 @@ namespace KBOManager.Controllers
             tickerValues[1].text = MatchupLabel(simulator.GamesPlayed, true);
             tickerValues[2].text = MatchupLabel(simulator.GamesPlayed + 1, false);
             tickerValues[3].text = NextSeriesLabel();
-            CompyaUiKit.SetButtonText(continueButton, simulator.IsSeasonComplete ? "✔ 진행하기 (CONTINUE) >\n포스트시즌 & 시상식" : stove ? "✔ 진행하기 (PLAY) >\n개막전 시작" : "✔ 진행하기 (CONTINUE) >\n오늘 경기 진행");
+            // [TASK-GM-07] 메인 홈이 아니면 [진행하기] = 메인 홈 이동, 메인 홈이면 ① 전력 분석부터 3단계 플로우
+            string next = simulator.IsSeasonComplete ? "포스트시즌 트리" : !IsAtMainHome ? "메인 홈으로" : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
+            CompyaUiKit.SetButtonText(continueButton, $"✔ 진행하기 (CONTINUE) >\n{next}");
         }
 
         private static string GMModeLabel(GMStartMode m) => m == GMStartMode.AllTimeDream ? "올타임 드림" : m == GMStartMode.StoryCampaign ? "스토리 「꼴찌 구단의 겨울」" : "2026 현역";
@@ -1915,27 +1929,35 @@ namespace KBOManager.Controllers
         // ================================================================== 진행 · 다른 화면
 
         /// <summary>
-        /// [✔ 진행하기] - 스토브리그면 정규시즌을 열고 오늘 경기(하루 5경기)를 진행, 시즌 중이면 하루 진행, 정규시즌이 끝났으면 포스트시즌 &amp; 시상식을 연다.
-        /// 진행 후 실시간 대시보드를 띄운다(팝업 · 인터럽트는 대시보드가 처리). 진행했으면 true.
+        /// [✔ 진행하기] - [TASK-GM-07] 라우팅 변경: 한 경기를 바로 진행하지 않는다.
+        ///   - 메인 홈(프런트 오피스 6분할)이 아닌 화면에서 누르면 메인 홈으로 이동해 전체 상황을 먼저 보여 준다.
+        ///   - 메인 홈에서 누르면 오늘 경기 ① 전력 분석(PreGameView) → [플레이 볼] ② 실시간 이닝 경기 → ③ 경기 결과로 이어진다.
+        ///   - 정규시즌이 끝났으면 포스트시즌 트리(1경기씩 진행), 포스트시즌까지 끝났으면 시상식을 연다. 인터럽트가 남아 있으면 대시보드.
+        /// 화면을 옮겼으면 true.
         /// </summary>
         public bool Continue()
         {
+            CloseMenus();
             if (simulator == null) { SetStatus("단장 모드 리그가 없습니다."); return false; }
-            if (simulator.IsSeasonComplete) { OpenAwards(); return true; }
-            var league = League;
-            if (league.Phase == GMSeasonPhase.StoveLeague) league.Phase = GMSeasonPhase.RegularSeason;
-            if (simulator.PendingInterrupt != null) { OpenDashboard(); return false; }
-            if (!simulator.StartRun(GMRunMode.SingleGame)) return false;
-            simulator.StepGameDay();
-            simulator.Stop();
-            SetStatus(simulator.LastUserGameLine ?? "");
-            var dash = Dash;
-            if (dash != null)
+            if (simulator.IsSeasonComplete)
             {
-                dash.Open(simulator);
-                if (simulator.PendingInterrupt != null) dash.ShowInterrupt(simulator.PendingInterrupt);
+                var ps = GMAwardEvaluator.BeginPostseason(simulator);
+                if (ps != null && ps.Completed) { OpenAwards(); return true; }
+                OpenPostseasonTree();
+                SetStatus("정규시즌 종료 - 포스트시즌 트리에서 [다음 경기 진행]으로 1경기씩 치르십시오.");
+                return true;
             }
-            Refresh();
+            if (!IsAtMainHome)
+            {
+                GoMainHome();
+                SetStatus("리그 플레이 메인 홈 - 구단 상황 · 4일 일정을 확인하고 [진행하기]를 한 번 더 누르면 오늘 경기 전력 분석으로 이어집니다.");
+                return true;
+            }
+            if (simulator.PendingInterrupt != null) { OpenDashboard(); return false; }
+            var view = PrePostView != null ? PrePostView : FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);
+            if (view == null || !view.ShowPreGameView(simulator)) { SetStatus("전력 분석 화면을 열 수 없습니다."); return false; }
+            view.OnClosed -= Refresh; view.OnClosed += Refresh;
+            SetStatus("① 전력 분석 - 선발 · 전력 · 치어리더를 확인하고 [플레이 볼]을 누르십시오.");
             return true;
         }
 

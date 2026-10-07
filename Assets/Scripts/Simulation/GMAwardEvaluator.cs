@@ -515,66 +515,150 @@ namespace KBOManager.Simulation
 
         // ================================================================== 포스트시즌
 
+        /// <summary>[TASK-GM-07] 포스트시즌 다음 경기 한 건(브래킷 1경기 진행 · 내 구단 경기 3단계 플로우 공용).</summary>
+        public sealed class GMPostseasonGame
+        {
+            public int SeriesIndex;
+            public string Round;
+            public string HomeCode, AwayCode;
+            public int GameNumber;      // 시리즈 몇 차전(무승부 재경기는 같은 번호)
+            public int Seed;
+            public bool IsUserGame;
+            public Player HomeStarter, AwayStarter;
+            public int GameIndex;       // 박스스코어 경기 번호(정규시즌 144 다음부터)
+            public string DateLabel;
+            public string Title => $"{Round} {GameNumber}차전";
+        }
+
+        /// <summary>라운드 정의: (이름, 상위 시드 인덱스, 상위 필요 승수, 하위 필요 승수, 하위 팀 홈 경기 차수).</summary>
+        public static readonly (string round, int higherSeed, int higherNeeds, int lowerNeeds, int[] lowerHome)[] PostseasonRounds =
+        {
+            ("와일드카드 결정전", 3, 1, 2, new int[0]),
+            ("준플레이오프", 2, 3, 3, new[] { 3, 4 }),
+            ("플레이오프", 1, 3, 3, new[] { 3, 4 }),
+            ("한국시리즈", 0, 4, 4, new[] { 3, 4, 5 }),
+        };
+
+        private static int PostseasonSeedBase(Ctx c) => c.League.Seed * 7 + c.Year * 977;
+
         /// <summary>
-        /// 정규시즌 상위 5개 구단 포스트시즌: 와일드카드(4위 1승 어드밴티지 · 2선승) → 준플레이오프(3선승) → 플레이오프(3선승) → 한국시리즈(4선승).
-        /// 무승부는 재경기. 우승 · 준우승 · 한국시리즈 MVP · 최종 순위(1~10위)를 남기고 단계를 시상식으로 넘긴다.
+        /// [TASK-GM-07] 포스트시즌 시작(정규시즌 상위 5개 구단 시드 · 와일드카드 시리즈 개설). 이미 시작했거나 끝났으면 그 상태를 돌려준다.
+        /// 정규시즌이 끝나지 않았으면 null.
         /// </summary>
-        public static PostseasonSummaryData RunPostseason(GMLiveSeasonSimulator sim)
+        public static PostseasonSummaryData BeginPostseason(GMLiveSeasonSimulator sim)
         {
             var c = ContextOf(sim);
             var bundle = Bundle(c.League);
-            if (bundle.Postseason != null && bundle.Postseason.Completed) return bundle.Postseason;
+            if (bundle.Postseason != null && (bundle.Postseason.Completed || bundle.Postseason.Series.Count > 0)) return bundle.Postseason;
             if (!sim.IsSeasonComplete) return null;
             var ps = new PostseasonSummaryData();
-            var standings = sim.Standings();
-            ps.SeedCodes = standings.Take(5).Select(r => r.TeamCode).ToList();
-            int seedBase = c.League.Seed * 7 + c.Year * 977;
-            int gameNo = 0;
-
-            GMPostseasonSeries Play(string round, string higher, string lower, int higherNeeds, int lowerNeeds, int[] lowerHomeGames,
-                Dictionary<Player, double> mvpTally = null)
-            {
-                var series = new GMPostseasonSeries { Round = round, HigherCode = higher, LowerCode = lower, HigherNeeds = higherNeeds, LowerNeeds = lowerNeeds };
-                var hTeam = c.League.Teams[higher];
-                var lTeam = c.League.Teams[lower];
-                int g = 0, guard = 0;
-                while (series.HigherWins < higherNeeds && series.LowerWins < lowerNeeds && guard++ < 20)
-                {
-                    g++;
-                    bool lowerHome = lowerHomeGames.Contains(g);
-                    var homeT = lowerHome ? lTeam : hTeam;
-                    var awayT = lowerHome ? hTeam : lTeam;
-                    var homeRoster = homeT.AvailableRoster;
-                    var awayRoster = awayT.AvailableRoster;
-                    var r = PlayExhibition(sim, homeRoster, awayRoster, homeT.TeamCode, awayT.TeamCode, sim.ModifiersFor(homeT, true), sim.ModifiersFor(awayT, false),
-                        seedBase + (++gameNo) * 7919, true, homeT.Lineup, awayT.Lineup,
-                        StartingRotation.PickFor(homeRoster, g - 1, homeT.Lineup), StartingRotation.PickFor(awayRoster, g - 1, awayT.Lineup));
-                    string label = $"{g}차전 {ShortTeam(awayT.TeamCode)} {r.AwayRuns} : {r.HomeRuns} {ShortTeam(homeT.TeamCode)}";
-                    if (r.HomeRuns == r.AwayRuns) { series.Games.Add(label + " (무승부 · 재경기)"); g--; continue; }
-                    string winner = r.HomeRuns > r.AwayRuns ? homeT.TeamCode : awayT.TeamCode;
-                    if (winner == higher) series.HigherWins++; else series.LowerWins++;
-                    series.Games.Add(label);
-                    if (mvpTally != null) foreach (var p in r.Batting.Keys.Concat(r.Pitching.Keys).Distinct())
-                    {
-                        mvpTally.TryGetValue(p, out double v);
-                        mvpTally[p] = v + r.GameScore(p);
-                    }
-                }
-                series.WinnerCode = series.HigherWins >= higherNeeds ? higher : lower;
-                return series;
-            }
-
+            ps.SeedCodes = sim.Standings().Take(5).Select(r => r.TeamCode).ToList();
             if (ps.SeedCodes.Count < 5) return null;
-            var wc = Play("와일드카드 결정전", ps.SeedCodes[3], ps.SeedCodes[4], 1, 2, new int[0]);
-            var semi = Play("준플레이오프", ps.SeedCodes[2], wc.WinnerCode, 3, 3, new[] { 3, 4 });
-            var po = Play("플레이오프", ps.SeedCodes[1], semi.WinnerCode, 3, 3, new[] { 3, 4 });
-            var tally = new Dictionary<Player, double>();
-            var ks = Play("한국시리즈", ps.SeedCodes[0], po.WinnerCode, 4, 4, new[] { 3, 4, 5 }, tally);
-            ps.Series.AddRange(new[] { wc, semi, po, ks });
+            ps.Series.Add(NewSeries(ps, 0, ps.SeedCodes[PostseasonRounds[0].higherSeed + 1]));
+            bundle.Postseason = ps;
+            return ps;
+        }
+
+        private static GMPostseasonSeries NewSeries(PostseasonSummaryData ps, int index, string lowerCode)
+        {
+            var r = PostseasonRounds[index];
+            return new GMPostseasonSeries { Round = r.round, HigherCode = ps.SeedCodes[r.higherSeed], LowerCode = lowerCode, HigherNeeds = r.higherNeeds, LowerNeeds = r.lowerNeeds };
+        }
+
+        /// <summary>[TASK-GM-07] 다음에 치를 포스트시즌 경기(시리즈 · 차전 · 홈/원정 · 선발 · 시드). 포스트시즌이 끝났으면 null.</summary>
+        public static GMPostseasonGame NextPostseasonGame(GMLiveSeasonSimulator sim)
+        {
+            var ps = BeginPostseason(sim);
+            if (ps == null || ps.Completed || ps.Series.Count == 0) return null;
+            var c = ContextOf(sim);
+            int index = ps.Series.Count - 1;
+            var series = ps.Series[index];
+            if (!string.IsNullOrEmpty(series.WinnerCode)) return null;
+            int g = series.HigherWins + series.LowerWins + 1;
+            bool lowerHome = PostseasonRounds[index].lowerHome.Contains(g);
+            var homeT = c.League.Teams[lowerHome ? series.LowerCode : series.HigherCode];
+            var awayT = c.League.Teams[lowerHome ? series.HigherCode : series.LowerCode];
+            string me = c.League.SelectedTeamCode;
+            return new GMPostseasonGame
+            {
+                SeriesIndex = index, Round = series.Round, HomeCode = homeT.TeamCode, AwayCode = awayT.TeamCode, GameNumber = g,
+                Seed = PostseasonSeedBase(c) + (ps.GamesSimulated + 1) * 7919,
+                IsUserGame = homeT.TeamCode == me || awayT.TeamCode == me,
+                HomeStarter = StartingRotation.PickFor(homeT.AvailableRoster, g - 1, homeT.Lineup),
+                AwayStarter = StartingRotation.PickFor(awayT.AvailableRoster, g - 1, awayT.Lineup),
+                GameIndex = GMLiveSeasonSimulator.SeasonGames + ps.GamesSimulated,
+                DateLabel = $"10/{Math.Min(31, 6 + index * 6 + g):00}/{c.Year}",
+            };
+        }
+
+        /// <summary>[TASK-GM-07] 다음 포스트시즌 경기 1경기를 바로 시뮬레이션해 브래킷에 반영한다(타 구단 경기 · 자동 진행). 진행한 경기(없으면 null).</summary>
+        public static GMPostseasonGame PlayNextPostseasonGame(GMLiveSeasonSimulator sim)
+        {
+            var g = NextPostseasonGame(sim);
+            if (g == null) return null;
+            var league = sim.League;
+            var homeT = league.Teams[g.HomeCode];
+            var awayT = league.Teams[g.AwayCode];
+            var r = PlayExhibition(sim, homeT.AvailableRoster, awayT.AvailableRoster, homeT.TeamCode, awayT.TeamCode, sim.ModifiersFor(homeT, true), sim.ModifiersFor(awayT, false),
+                g.Seed, true, homeT.Lineup, awayT.Lineup, g.HomeStarter, g.AwayStarter);
+            RecordPostseasonGame(sim, g, r);
+            return g;
+        }
+
+        /// <summary>[TASK-GM-07] 내 구단 포스트시즌 경기를 타석 세션으로 연다(전력 분석 → 실시간 이닝 경기 → 경기 결과).</summary>
+        public static GMLiveSeasonSimulator.GameSession BeginPostseasonSession(GMLiveSeasonSimulator sim, GMPostseasonGame g)
+        {
+            if (sim == null || g == null) return null;
+            var league = sim.League;
+            return sim.CreateExhibitionSession(league.Teams[g.HomeCode], league.Teams[g.AwayCode], g.Seed, g.HomeStarter, g.AwayStarter, g.GameIndex, g.DateLabel, g.Title);
+        }
+
+        /// <summary>[TASK-GM-07] 세션으로 치른 포스트시즌 경기를 마무리하고 브래킷에 반영한다. 박스스코어를 돌려준다.</summary>
+        public static GMMatchBoxScoreData CompletePostseasonSession(GMLiveSeasonSimulator sim, GMPostseasonGame g, GMLiveSeasonSimulator.GameSession session)
+        {
+            if (sim == null || g == null || session == null) return null;
+            var box = session.Finish();
+            RecordPostseasonGame(sim, g, session.ToExhibitionResult());
+            return box;
+        }
+
+        /// <summary>경기 1건 반영 - 무승부는 재경기, 시리즈가 끝나면 다음 라운드를 열고, 한국시리즈가 끝나면 우승 · MVP · 최종 순위를 확정한다.</summary>
+        private static void RecordPostseasonGame(GMLiveSeasonSimulator sim, GMPostseasonGame g, ExhibitionResult r)
+        {
+            var c = ContextOf(sim);
+            var ps = Bundle(c.League).Postseason;
+            if (ps == null || ps.Completed || g.SeriesIndex != ps.Series.Count - 1) return;
+            var series = ps.Series[g.SeriesIndex];
+            ps.GamesSimulated++;
+            string label = $"{g.GameNumber}차전 {ShortTeam(g.AwayCode)} {r.AwayRuns} : {r.HomeRuns} {ShortTeam(g.HomeCode)}";
+            if (r.HomeRuns == r.AwayRuns) { series.Games.Add(label + " (무승부 · 재경기)"); return; }
+            string winner = r.HomeRuns > r.AwayRuns ? g.HomeCode : g.AwayCode;
+            if (winner == series.HigherCode) series.HigherWins++; else series.LowerWins++;
+            series.Games.Add(label);
+            if (g.SeriesIndex == PostseasonRounds.Length - 1)
+            {
+                foreach (var p in r.Batting.Keys.Concat(r.Pitching.Keys).Distinct())
+                {
+                    var tally = ps.KsTally.FirstOrDefault(t => t.PlayerId == p.InstanceId);
+                    if (tally == null) ps.KsTally.Add(tally = new GMPostseasonTally { PlayerId = p.InstanceId });
+                    tally.Score += r.GameScore(p);
+                }
+            }
+            if (series.HigherWins < series.HigherNeeds && series.LowerWins < series.LowerNeeds) return;
+            series.WinnerCode = series.HigherWins >= series.HigherNeeds ? series.HigherCode : series.LowerCode;
+            if (g.SeriesIndex < PostseasonRounds.Length - 1) ps.Series.Add(NewSeries(ps, g.SeriesIndex + 1, series.WinnerCode));
+            else FinalizePostseason(sim, c, ps);
+        }
+
+        private static void FinalizePostseason(GMLiveSeasonSimulator sim, Ctx c, PostseasonSummaryData ps)
+        {
+            var standings = sim.Standings();
+            var wc = ps.Series[0]; var semi = ps.Series[1]; var po = ps.Series[2]; var ks = ps.Series[3];
             ps.ChampionCode = ks.WinnerCode;
             ps.RunnerUpCode = ks.LoserCode;
             var champ = c.League.Teams[ps.ChampionCode];
-            var ksMvp = tally.Where(x => champ.Roster.Contains(x.Key)).OrderByDescending(x => x.Value).ThenBy(x => x.Key.InstanceId).Select(x => x.Key).FirstOrDefault();
+            var ksMvp = ps.KsTally.Select(t => (player: c.P(t.PlayerId), t.Score)).Where(x => x.player != null && champ.Roster.Contains(x.player))
+                .OrderByDescending(x => x.Score).ThenBy(x => x.player.InstanceId).Select(x => x.player).FirstOrDefault();
             ps.KoreanSeriesMvp = ksMvp?.Template?.PlayerName ?? "";
             if (ksMvp != null)
             {
@@ -590,7 +674,6 @@ namespace KBOManager.Simulation
             ps.FinalRankCodes = new List<string> { ks.WinnerCode, ks.LoserCode, po.LoserCode, semi.LoserCode, wc.LoserCode };
             ps.FinalRankCodes.AddRange(standings.Skip(5).Select(r => r.TeamCode));
             ps.Completed = true;
-            bundle.Postseason = ps;
             if (c.League.Phase < GMSeasonPhase.AwardsCeremony) c.League.Phase = GMSeasonPhase.AwardsCeremony;
 
             string me = c.League.SelectedTeamCode;
@@ -602,7 +685,19 @@ namespace KBOManager.Simulation
             sim.PostNews(gi, $"10/31/{c.Year}", GMNewsKind.Postseason, $"{c.Year} 한국시리즈 우승: {Team(ps.ChampionCode)}",
                 $"{Team(ps.ChampionCode)}이(가) {Team(ps.RunnerUpCode)}를 {(ks.WinnerCode == ks.HigherCode ? ks.HigherWins : ks.LowerWins)}승 {(ks.WinnerCode == ks.HigherCode ? ks.LowerWins : ks.HigherWins)}패로 꺾고 우승했습니다. 한국시리즈 MVP {ps.KoreanSeriesMvp}.",
                 ps.ChampionCode == me, true);
-            return ps;
+        }
+
+        /// <summary>
+        /// 정규시즌 상위 5개 구단 포스트시즌: 와일드카드(4위 1승 어드밴티지 · 2선승) → 준플레이오프(3선승) → 플레이오프(3선승) → 한국시리즈(4선승).
+        /// 무승부는 재경기. [TASK-GM-07] 남은 경기를 1경기씩(PlayNextPostseasonGame) 모두 진행한다 - 브래킷에서 일부 진행한 상태도 이어서 끝낸다.
+        /// </summary>
+        public static PostseasonSummaryData RunPostseason(GMLiveSeasonSimulator sim)
+        {
+            if (BeginPostseason(sim) == null) return null;
+            int guard = 0;
+            while (guard++ < 60 && PlayNextPostseasonGame(sim) != null) { }
+            var ps = Bundle(sim.League).Postseason;
+            return ps != null && ps.Completed ? ps : null;
         }
 
         // ================================================================== 1.2 타이틀 홀더

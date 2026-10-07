@@ -266,7 +266,9 @@ namespace KBOManager.Simulation
 
         // [TASK-GM-05] 기본 실책률(GM-04 D.1) - 케미스트리 페널티가 없어도 범타의 일정 비율(수비력 높을수록 감소)이 실책 출루, 치어리더 마운드 응원력이 최대 35% 억제.
         // [TASK-GM-06] GM-05 D.1 현실화 - 0.7% → 2.2%(KBO 팀당 시즌 실책 80~105개 스케일).
-        public const float DefaultBaseErrorRate = 0.022f;
+        // [TASK-GM-07] 지시서 값 6.2%는 GM-07 로스터(2026 고정)에서 팀당 144경기 119.6개로 실측돼(Logs/uGM07.log 1차) 목표 75~110개를 넘었다
+        //             → 실측 비례 보정 4.8%(예상 약 93개). 지시서 의도(팀당 75~110개)를 기준으로 맞췄다(DCL-162).
+        public const float DefaultBaseErrorRate = 0.048f;
         public float BaseErrorRate = DefaultBaseErrorRate;
         public float CheerErrorReduction;
 
@@ -319,6 +321,18 @@ namespace KBOManager.Simulation
         public int CheerFanPoints;
     }
 
+    /// <summary>[TASK-GM-07] 내 구단 정규시즌 경기 결과 한 줄(시즌 일정 캘린더 - 날짜 칸에 결과 스코어 표시).</summary>
+    [Serializable]
+    public class GMGameResultEntry
+    {
+        public int Day;
+        public string OpponentCode;
+        public bool Home;
+        public int My, Their;
+
+        public string Label => My > Their ? $"승 {My}-{Their}" : My < Their ? $"패 {My}-{Their}" : $"무 {My}-{Their}";
+    }
+
     /// <summary>[TASK-GM-04] 구단 팬 지지율(0~100) - 내 구단 선수 월간 수상 시 보너스.</summary>
     public static class GMTeamFan
     {
@@ -349,5 +363,6 @@ namespace KBOManager.Simulation
         public List<SeasonAwardCeremonyBundle> AwardsHistory = new List<SeasonAwardCeremonyBundle>();   // [TASK-GM-04] 역대 시즌 수상 기록
         public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();                               // [TASK-GM-06] 프런트 오피스
         public List<PlayerSaveData> DraftPool = new List<PlayerSaveData>();                             // [TASK-GM-06] 신인 드래프트 유망주
+        public List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();                     // [TASK-GM-07] 내 구단 경기 결과(시즌 일정)
     }
 }
