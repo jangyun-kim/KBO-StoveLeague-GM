@@ -370,6 +370,15 @@ namespace KBOManager.Controllers
         public bool AutoPostseason()
         {
             if (simulator == null || !simulator.IsSeasonComplete) return false;
+            // [TASK-GM-09] 포스트시즌 내 구단 경기는 100% 실시간 이닝 중계 - 다른 구단 경기만 자동 진행하고 내 구단 경기에서 멈춰 3단계로 연다.
+            if (GMMatchRouting.RequiresLiveView(true, false))
+            {
+                for (var next = GMAwardEvaluator.NextPostseasonGame(simulator); next != null; next = GMAwardEvaluator.NextPostseasonGame(simulator))
+                {
+                    if (next.IsUserGame) return PlayNextPostseason();
+                    GMAwardEvaluator.PlayNextPostseasonGame(simulator);
+                }
+            }
             var ps = GMAwardEvaluator.RunPostseason(simulator);
             SetStatus(ps != null ? $"{ps.Series.Last().Round} 종료 - {NameAliasTable.DisplayTeamName(ps.ChampionCode)} 우승 · MVP {ps.KoreanSeriesMvp}" : "포스트시즌을 진행할 수 없습니다.");
             Refresh();

@@ -31,6 +31,8 @@ namespace KBOManager.Simulation
     /// </summary>
     public static class TeamChemistryEngine
     {
+        public const float MinEffectivePower = 0.90f, MaxEffectivePower = 1.15f; // [TASK-GM-09] 실효 전력 계수 0.90 ~ 1.15
+
         public static TeamChemistryReport EvaluateRoster(
             IReadOnlyList<Player> activeRoster,
             int teamPayrollCap,
@@ -142,10 +144,10 @@ namespace KBOManager.Simulation
                 report.ClutchHitModifier += 0.08f;
             }
 
-            // 최종 실효 전력 계수 (0.80 ~ 1.15) 산출
-            // 공식: 기본 1.0 + (팀워크 - 70) * 0.005
+            // 최종 실효 전력 계수 산출 - 공식: 기본 1.0 + (팀워크 - 70) * 0.005
+            // [TASK-GM-09] 죽음의 스파이럴 방지 - 하한 0.80 → 0.90(연패 · 스토브리그 실패로 팀워크가 바닥이어도 -10%까지만)
             float rawMultiplier = 1.0f + ((report.TeamworkScore - 70) * 0.005f);
-            report.EffectivePowerMultiplier = Mathf.Clamp(rawMultiplier, 0.80f, 1.15f);
+            report.EffectivePowerMultiplier = Mathf.Clamp(rawMultiplier, MinEffectivePower, MaxEffectivePower);
 
             return report;
         }

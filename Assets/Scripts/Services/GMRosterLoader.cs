@@ -105,6 +105,10 @@ namespace KBOManager.Services
         public readonly List<string> FASignedThisYear = new List<string>();
         public readonly List<string> RookiesThisYear = new List<string>();
         public readonly List<string> UserProtectedIds = new List<string>();
+        // [TASK-GM-09] 글로벌 대회(WBC · 아시안게임 · 프리미어 12) 일정 · 결과
+        public readonly List<GMTournamentRecord> Tournaments = new List<GMTournamentRecord>();
+        /// <summary>[TASK-GM-09] 직전 정규시즌 개막 준비(AI FA 입찰 · WBC)의 AI 영입 기록.</summary>
+        public readonly List<GMFreeAgencyCycle.AiSigning> LastAiSignings = new List<GMFreeAgencyCycle.AiSigning>();
         // [TASK-GM-07] 내 구단 정규시즌 경기 결과(시즌 일정 캘린더 · 세이브 v18)
         public readonly List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();
         public GMGameResultEntry ResultOn(int day) => UserResults.FirstOrDefault(r => r.Day == day);
@@ -209,6 +213,16 @@ namespace KBOManager.Services
         public const int StoryBudgetPercent = 80;   // 스토리 캠페인 예산 20% 삭감
         public const int StoryVeteranAge = 35;
 
+        /// <summary>
+        /// [TASK-GM-09] 재현 가능한 InstanceId - 같은 키는 항상 같은 GUID(MD5). 로더 · 퓨처스 · FA 공시가 Guid.NewGuid 대신 쓴다.
+        /// 같은 모드 · 구단 · 시드로 시작하면 시즌 결과가 매번 같아진다(밸런스 검증 재현성).
+        /// </summary>
+        public static string StableId(string key)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+                return new Guid(md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key ?? ""))).ToString();
+        }
+
         private static readonly BatterPosition[] StarterPositions =
         {
             BatterPosition.Catcher, BatterPosition.FirstBase, BatterPosition.SecondBase, BatterPosition.ThirdBase, BatterPosition.ShortStop,
@@ -267,7 +281,7 @@ namespace KBOManager.Services
                 var picks = PickRoster(candidates.TryGetValue(code, out var list) ? list : new List<Candidate>(), candidates.Values.SelectMany(c => c), used);
                 foreach (var c in picks)
                 {
-                    var player = new Player(Guid.NewGuid().ToString(), c.Template);
+                    var player = new Player(StableId($"{mode}|{userCode}|{code}|{c.Template.TemplateId}"), c.Template);
                     player.CareerAwardIds = new List<string>(awards[c.Template.RealPlayerId]);
                     player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
                     team.Roster.Add(player);
@@ -403,7 +417,7 @@ namespace KBOManager.Services
                 .OrderByDescending(c => c.Score).Take(FreeAgentMarketSize);
             foreach (var c in pool)
             {
-                var player = new Player(Guid.NewGuid().ToString(), c.Template);
+                var player = new Player(StableId($"{state.Mode}|{state.SelectedTeamCode}|FA|{c.Template.TemplateId}"), c.Template);
                 player.CareerAwardIds = new List<string>(awards[c.Template.RealPlayerId]);
                 player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
                 player.ContractYears = 0; // FA = 계약 만료
@@ -430,7 +444,7 @@ namespace KBOManager.Services
             int i = 0;
             foreach (var t in picks)
             {
-                var p = new Player(Guid.NewGuid().ToString(), t);
+                var p = new Player(StableId($"{state.Mode}|{state.SelectedTeamCode}|{state.SeasonYear}|DRAFT|{t.TemplateId}"), t);
                 p.InitializeGMAttributesFromStats(state.SeasonYear, debutYear.TryGetValue(t.RealPlayerId, out int d) ? d : state.SeasonYear);
                 GMStoveLeagueMarket.MakeRookie(p, 19 + (i++ % 4));
                 state.DraftPool.Add(p);
@@ -483,7 +497,7 @@ namespace KBOManager.Services
             foreach (var t in people)
             {
                 team.CheerleaderPool.Add(new Cheerleader(
-                    instanceId: Guid.NewGuid().ToString(),
+                    instanceId: StableId($"{team.TeamCode}|CHEER|{t.CatalogId}|{t.Name}"),
                     name: t.Name, // [TASK-GM-02] 실명 보존 - 표시는 Cheerleader.DisplayName(NameAliasTable)
                     grade: t.Grade,
                     conditionBuff: t.ConditionBuff,

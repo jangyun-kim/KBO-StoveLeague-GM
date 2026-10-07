@@ -221,12 +221,11 @@ namespace KBOManager.Services
             }
         }
 
-        /// <summary>경쟁 구단 최고 입찰가(요구액 대비 비율) - 선수 · 연도 해시로 결정(0.88~1.08) + 난이도 가산.</summary>
-        public static float RivalBid(GMLeagueState league, Player p)
-        {
-            int h = GMFrontOffice.Hash($"{p.Template?.RealPlayerId ?? p.InstanceId}_{league.SeasonYear}_rival");
-            return 0.88f + (h % 21) / 100f + GMFrontOffice.RivalBidBonus(GMFrontOffice.Ensure(league).Difficulty);
-        }
+        /// <summary>
+        /// 경쟁 구단 최고 입찰가(요구액 대비 비율) + 난이도 가산. [TASK-GM-09] 해시 고정값(0.88~1.08) → 실제 AI 구단 입찰(GMFreeAgencyCycle.BestRivalBid):
+        /// 그 선수가 필요한 AI 구단이 적정 연봉 × (0.90~1.15) × 니즈 배수로 맞불 입찰, 관심 구단이 없으면 0.85.
+        /// </summary>
+        public static float RivalBid(GMLeagueState league, Player p) => GMFreeAgencyCycle.BestRivalBid(league, p, out _);
 
         /// <summary>
         /// [계약 제시(Offer Contract)] - 점수 = 제시액/요구액 + 기간 적합(선호 기간 ±) + 보직 보장(+0.08) + 우승 열망(내 구단 전력 · 승률) + 충성도(친정 구단 +0.05).
@@ -250,11 +249,11 @@ namespace KBOManager.Services
             score += (float)((pct - 0.5) * 0.3);                                                  // 우승 열망
             if (p.Template.CurrentTeam == team.Team || p.Template.Team == team.Team) score += 0.05f; // 충성도(친정)
             r.Score = score;
-            r.RivalBid = RivalBid(league, p);
+            r.RivalBid = GMFreeAgencyCycle.BestRivalBid(league, p, out var bidder);
             long bonus = (long)salary * years * FABonusPercent / 100;
             if (score < r.RivalBid && !GMFrontOffice.Manager(league).Commissioner) // [TASK-GM-07] 커미셔너 모드 - 경쟁 입찰 판정 건너뜀
             {
-                r.Message = $"{p.Template.PlayerName} 영입 실패 - 경쟁 구단 최고 입찰(지수 {r.RivalBid:0.00})이 우리 제안(지수 {score:0.00})보다 좋습니다. 요구 {GMDiagnosticFormat.Won(r.Demand)} × {pref}년";
+                r.Message = $"{p.Template.PlayerName} 영입 실패 - 경쟁 구단{(bidder != null ? $" {NameAliasTable.DisplayTeamName(bidder)}" : "")} 최고 입찰(지수 {r.RivalBid:0.00})이 우리 제안(지수 {score:0.00})보다 좋습니다. 요구 {GMDiagnosticFormat.Won(r.Demand)} × {pref}년";
                 return r;
             }
             if (team.Budget < bonus) { r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다."; return r; }
@@ -285,7 +284,7 @@ namespace KBOManager.Services
             if (p?.Template == null) return 0f;
             double v = Math.Pow(Math.Max(1, p.BaseOverall - 45), 1.6);
             double age = p.Age <= 25 ? 1.2 : p.Age <= 29 ? 1.0 : p.Age <= 32 ? 0.85 : 0.65;
-            v = v * age + Math.Max(0, p.Potential - p.BaseOverall) * 2.0 - p.Salary / 5000.0;
+            v = v * age + Math.Max(0, p.Potential - p.BaseOverall) * 2.0 - p.Salary / 5000.0 + p.FameBonus * 0.5; // [TASK-GM-09] 팬덤 가치
             return (float)Math.Max(1.0, v);
         }
 

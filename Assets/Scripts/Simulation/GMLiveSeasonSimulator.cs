@@ -135,6 +135,13 @@ namespace KBOManager.Simulation
                 _ => SeasonGames,
             };
             ActiveMode = mode;
+            if (league.Phase == GMSeasonPhase.StoveLeague && league.GamesPlayed == 0)
+            {
+                // [TASK-GM-09] 개막 준비 - AI 구단 FA 입찰(28명 보충 · 예산 한도) · 보상 정산 → 3월 WBC(해당 연도)
+                league.LastAiSignings.Clear();
+                league.LastAiSignings.AddRange(GMFreeAgencyCycle.PrepareOpeningDay(league));
+                GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.PreSeason, league.Seed);
+            }
             if (league.Phase == GMSeasonPhase.StoveLeague) league.Phase = GMSeasonPhase.RegularSeason;
             if (league.GamesPlayed == 0 && league.News.All(n => n.Kind != GMNewsKind.Season || n.GameIndex != 0))
                 AddNews(0, GMNewsKind.Season, $"{league.SeasonYear} KBO 리그 개막", $"{league.SeasonYear} 시즌 정규리그 144경기 대장정이 시작됩니다.", false, false);
@@ -244,6 +251,12 @@ namespace KBOManager.Simulation
             foreach (var team in league.Teams.Values) TeamChemistryEngine.ApplyMatchChemistryTick(team.AvailableRoster);
             foreach (var team in league.Teams.Values) GMCheerleaderRoster.TickDay(team); // [TASK-GM-05] 단상 체력 소모 · 벤치 회복 · 자동 로테이션
             league.GamesPlayed++;
+            // [TASK-GM-09] 9월 진입 - 아시안게임(해당 연도) 리그 중단 · 국가대표 차출
+            if (GMGlobalTournamentManager.EntersSeptember(league.SeasonYear, league.GamesPlayed))
+            {
+                var ag = GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.MidSeason, league.Seed);
+                if (ag != null) AddNews(day, GMNewsKind.Season, $"{ag.Name} 정규시즌 중단", $"국가대표 {ag.RosterIds.Count}명 차출로 리그가 잠시 멈춥니다. {ag.Summary}", ag.RosterIds.Any(id => league.UserTeam?.Roster.Any(p => p.InstanceId == id) == true), true);
+            }
             UpdateLeagueEnvironment();
             UpdateWar();
             PeriodicNews(day);

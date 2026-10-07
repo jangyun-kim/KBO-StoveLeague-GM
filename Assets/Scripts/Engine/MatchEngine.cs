@@ -501,6 +501,11 @@ namespace KBOManager.Engine
             AwayTeamOvr = awayModifiers.TeamOvr > 0 ? awayModifiers.TeamOvr : TeamOvrCalculator.Calculate(awayRoster).Total;
             homeClassBonus = OvrGapLaw.ClassAdvantageBonus(HomeTeamOvr, AwayTeamOvr);
             awayClassBonus = OvrGapLaw.ClassAdvantageBonus(AwayTeamOvr, HomeTeamOvr);
+            if (homeModifiers.Chemistry?.Batting != null) // [TASK-GM-09] 단장 모드 - 체급 우위 가산 축소(약팀 승률 1할대 붕괴 방지)
+            {
+                homeClassBonus = GMBattingBalance.ScaleClassBonus(homeClassBonus);
+                awayClassBonus = GMBattingBalance.ScaleClassBonus(awayClassBonus);
+            }
             // [TASK-GM-02] ⑥ 스타 군단의 방심 - 구단 OVR이 UpsetOvrMargin 이상 앞선 팀이 약팀을 만나면 경기 전 확률 판정.
             HomeUpsetTriggered = RollUpset(homeModifiers.Chemistry, HomeTeamOvr - AwayTeamOvr);
             AwayUpsetTriggered = RollUpset(awayModifiers.Chemistry, AwayTeamOvr - HomeTeamOvr);
@@ -638,7 +643,8 @@ namespace KBOManager.Engine
             {
                 var attack = isTopHalf ? awayState : homeState;
                 var defense = isTopHalf ? homeState : awayState;
-                float damping = OvrGapLaw.BlowoutDampingChance(attack.RunsScored - defense.RunsScored, attack.RunsScored, runsThisHalfInning);
+                bool gmMode = DefenseChemistry(pitcherForThisAtBat)?.Batting != null && GMBattingBalance.DisableBigInningDamping; // [TASK-GM-09] 빅이닝 감쇠 끔
+                float damping = OvrGapLaw.BlowoutDampingChance(attack.RunsScored - defense.RunsScored, attack.RunsScored, gmMode ? 0 : runsThisHalfInning);
                 if (damping > 0f && random.NextDouble() < damping) result = result == AtBatResult.Walk ? AtBatResult.Strikeout : AtBatResult.Flyout;
             }
 
@@ -960,10 +966,10 @@ namespace KBOManager.Engine
             // 장타(2루타 이상) 여부: 타자 파워 vs 투수 변화
             float powerDiff = batterStats.Power - pitcherStats.Movement;
 
-            float strikeoutSkill = gmBalance != null ? GMBattingBalance.Skill(strikeoutDiff, gmBalance.StrikeoutOffset) : NormalizeDiff(strikeoutDiff);
-            float walkSkill = gmBalance != null ? GMBattingBalance.Skill(walkDiff, gmBalance.WalkOffset) : NormalizeDiff(walkDiff);
-            float contactSkill = gmBalance != null ? GMBattingBalance.Skill(contactDiff, gmBalance.ContactOffset) : NormalizeDiff(contactDiff);
-            float powerSkill = gmBalance != null ? GMBattingBalance.Skill(powerDiff, gmBalance.PowerOffset) : NormalizeDiff(powerDiff);
+            float strikeoutSkill = gmBalance != null ? -GMBattingBalance.HitSkill(-strikeoutDiff, -gmBalance.StrikeoutOffset) : NormalizeDiff(strikeoutDiff); // [TASK-GM-09] 투수 우위(삼진 ↑) 한도
+            float walkSkill = gmBalance != null ? GMBattingBalance.HitSkill(walkDiff, gmBalance.WalkOffset) : NormalizeDiff(walkDiff);                         // [TASK-GM-09] 투수 우위(볼넷 ↓) 한도
+            float contactSkill = gmBalance != null ? GMBattingBalance.HitSkill(contactDiff, gmBalance.ContactOffset) : NormalizeDiff(contactDiff); // [TASK-GM-09] 투수 우위 하한
+            float powerSkill = gmBalance != null ? GMBattingBalance.HitSkill(powerDiff, gmBalance.PowerOffset) : NormalizeDiff(powerDiff);
             float skillInfluence = gmBalance != null ? GMBattingBalance.SkillInfluence : SkillInfluence;
 
             // TASK-KBO-039: 득점권(2루 또는 3루 주자)이면 공격 팀(타자)의 ClutchMultiplier를 타자
@@ -1555,9 +1561,10 @@ namespace KBOManager.Engine
                 return (scored, moves);
             }
 
+            bool gmRunning = currentBatterChemistry?.Batting != null; // [TASK-GM-09] 단장 모드 주자 추가 진루
             if (!isOut)
             {
-                return AdvanceRunners(result, state);
+                return gmRunning && (result == AtBatResult.Single || result == AtBatResult.Double) ? AdvanceRunnersGM(result, state) : AdvanceRunners(result, state);
             }
 
             if (result == AtBatResult.Flyout && state.RunnerOnThird && state.Outs < 2)
@@ -1582,7 +1589,57 @@ namespace KBOManager.Engine
             }
 
             state.Outs++;
+            if (gmRunning && state.Outs < 3 && (result == AtBatResult.Groundout || result == AtBatResult.Flyout))
+            {
+                // [TASK-GM-09] 진루타 · 태그업 - 땅볼: 3루 주자 득점 · 2루 주자 3루 / 뜬공: 2루 주자 3루
+                var moves = new List<RunnerMovement>();
+                int scored = 0;
+                if (result == AtBatResult.Groundout && state.RunnerOnThird && random.NextDouble() < GMBattingBalance.GroundoutScoresFromThird)
+                { state.RunnerOnThird = false; scored++; moves.Add(new RunnerMovement(3, 4)); }
+                double adv = result == AtBatResult.Groundout ? GMBattingBalance.GroundoutAdvance : GMBattingBalance.FlyoutTagFromSecond;
+                if (state.RunnerOnSecond && !state.RunnerOnThird && random.NextDouble() < adv)
+                { state.RunnerOnSecond = false; state.RunnerOnThird = true; moves.Add(new RunnerMovement(2, 3)); }
+                return (scored, moves);
+            }
             return (0, new List<RunnerMovement>());
+        }
+
+        /// <summary>[TASK-GM-09] 단장 모드 단타 · 2루타 주자 진루(확률적 추가 진루).</summary>
+        private (int runs, List<RunnerMovement> movements) AdvanceRunnersGM(AtBatResult result, MatchState state)
+        {
+            int runs = 0;
+            var moves = new List<RunnerMovement>();
+            bool r1 = state.RunnerOnFirst, r2 = state.RunnerOnSecond, r3 = state.RunnerOnThird;
+            bool n1 = false, n2 = false, n3 = false;
+            if (r3) { runs++; moves.Add(new RunnerMovement(3, 4)); }
+            if (result == AtBatResult.Single)
+            {
+                if (r2)
+                {
+                    if (random.NextDouble() < GMBattingBalance.SingleScoresFromSecond) { runs++; moves.Add(new RunnerMovement(2, 4)); }
+                    else { n3 = true; moves.Add(new RunnerMovement(2, 3)); }
+                }
+                if (r1)
+                {
+                    if (!n3 && random.NextDouble() < GMBattingBalance.SingleFirstToThird) { n3 = true; moves.Add(new RunnerMovement(1, 3)); }
+                    else { n2 = true; moves.Add(new RunnerMovement(1, 2)); }
+                }
+                n1 = true;
+                moves.Add(new RunnerMovement(0, 1));
+            }
+            else
+            {
+                if (r2) { runs++; moves.Add(new RunnerMovement(2, 4)); }
+                if (r1)
+                {
+                    if (random.NextDouble() < GMBattingBalance.DoubleScoresFromFirst) { runs++; moves.Add(new RunnerMovement(1, 4)); }
+                    else { n3 = true; moves.Add(new RunnerMovement(1, 3)); }
+                }
+                n2 = true;
+                moves.Add(new RunnerMovement(0, 2));
+            }
+            state.RunnerOnFirst = n1; state.RunnerOnSecond = n2; state.RunnerOnThird = n3;
+            return (runs, moves);
         }
 
         /// <summary>

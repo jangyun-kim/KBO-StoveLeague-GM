@@ -380,5 +380,6 @@ namespace KBOManager.Simulation
         public List<string> FASignedThisYear = new List<string>();
         public List<string> RookiesThisYear = new List<string>();
         public List<string> UserProtectedIds = new List<string>();
+        public List<GMTournamentRecord> Tournaments = new List<GMTournamentRecord>(); // [TASK-GM-09] v20 글로벌 대회
     }
 }

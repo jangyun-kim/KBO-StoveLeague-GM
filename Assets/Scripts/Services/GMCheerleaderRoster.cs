@@ -359,7 +359,7 @@ namespace KBOManager.Services
                 string name = NameAliasTable.GenerateVirtualCheerleaderName($"{team.TeamCode}_ROOKIE_{n}");
                 if (string.IsNullOrEmpty(name) || !names.Add(name)) continue;
                 team.CheerleaderPool.Add(new Cheerleader(
-                    instanceId: Guid.NewGuid().ToString(), name: name, grade: CheerleaderGrade.LIVE_NORMAL, conditionBuff: 1, clutchMultiplier: 1f,
+                    instanceId: GMRosterLoader.StableId($"{team.TeamCode}|CHEER_ROOKIE|{seasonYear}|{n}"), name: name, grade: CheerleaderGrade.LIVE_NORMAL, conditionBuff: 1, clutchMultiplier: 1f,
                     economicBonusRate: 1f, sentimentDefense: 0, catalogId: $"GM_{team.TeamCode}_ROOKIE_{n}", team: team.Team,
                     activePeriod: seasonYear > 0 ? $"{seasonYear}~" : null));
                 added++;

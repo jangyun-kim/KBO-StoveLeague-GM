@@ -173,7 +173,7 @@ namespace KBOManager.EditorTests
             Assert.IsTrue(groups.All(g => g.Year != GMYearSynergy.BaselineYear && g.Count >= GMYearSynergy.MinGroup));
             var synergyTeam = dream.Teams.Values.OrderByDescending(t => t.YearSynergyBonus).First();
             StringAssert.Contains("연도 시너지 +", GMYearSynergy.Summary(synergyTeam.AvailableRoster));
-            int strict = 0;
+            int strict = 0, raised = 0;
             foreach (var team in dream.Teams.Values)
             {
                 int bonus = team.YearSynergyBonus;
@@ -182,13 +182,16 @@ namespace KBOManager.EditorTests
                 var without = TeamChemistryEngine.EvaluateRoster(team.AvailableRoster, team.PayrollCap, team.TeamworkBuff - bonus);
                 Assert.GreaterOrEqual(with.TeamworkScore, without.TeamworkScore, team.TeamCode + " 팀워크 가산");
                 Assert.GreaterOrEqual(with.EffectivePowerMultiplier, without.EffectivePowerMultiplier, team.TeamCode + " 실효 전력 반영");
-                if (with.TeamworkScore > without.TeamworkScore && without.TeamworkScore >= 30 && without.EffectivePowerMultiplier < 1.15f)
+                if (with.TeamworkScore > without.TeamworkScore) raised++;
+                if (with.TeamworkScore > without.TeamworkScore && without.TeamworkScore >= 50 && without.EffectivePowerMultiplier < 1.15f)
                 {
                     Assert.Greater(with.EffectivePowerMultiplier, without.EffectivePowerMultiplier, team.TeamCode + " 시너지가 실효 전력을 올린다");
                     strict++;
                 }
             }
-            Assert.Greater(strict, 0, "연도 시너지로 실효 전력이 오른 드림 구단");
+            // [TASK-GM-09] 실효 전력 하한 0.90(= 팀워크 50) - 슈퍼스타 과밀 드림 구단은 팀워크 20~40대라 하한에 걸려 실효 전력은 그대로일 수 있다.
+            // 시너지는 팀워크 점수를 올리고(raised), 하한 위 구단이면 실효 전력도 올린다(strict - 위 루프에서 검증).
+            Assert.Greater(raised + strict, 0, "연도 시너지로 팀워크(하한 위면 실효 전력)가 오른 드림 구단");
             // 선수 OVR(BaseOverall)은 시너지와 무관
             var sample = me.Roster[0];
             Assert.AreEqual(sample.Template.GetBaseOverall(), sample.GetEffectiveOverall(), "OVR = 순수 시즌 성적");

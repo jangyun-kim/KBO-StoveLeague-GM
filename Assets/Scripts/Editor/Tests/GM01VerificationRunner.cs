@@ -265,7 +265,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(1.0f, fixedReport.ErrorRateMultiplier, 1e-4f);
             Assert.AreEqual(0f, fixedReport.ClutchHitModifier, 0.081f);
             Assert.Greater(fixedReport.EffectivePowerMultiplier, split.EffectivePowerMultiplier);
-            Assert.That(fixedReport.EffectivePowerMultiplier, Is.InRange(0.80f, 1.15f));
+            Assert.That(fixedReport.EffectivePowerMultiplier, Is.InRange(0.90f, 1.15f));
 
             // ② 타순 · 보직 자존심 충돌 - Ego 4+ 타자 6명(중심 4자리 초과 2명), 양보 인센티브 1명은 면제
             var conflict = new List<Player>();
@@ -310,7 +310,7 @@ namespace KBOManager.EditorTests
             Assert.Less(r6.TeamworkScore, 50);
             Assert.IsTrue(r6.Has(AllStarOverloadPenalty.UnderdogUpsetVulnerability));
             Assert.AreEqual(0.20f, r6.UpsetVulnerabilityChance, 1e-4f);
-            Assert.AreEqual(0.80f, r6.EffectivePowerMultiplier, 1e-4f, "실효 전력 하한");
+            Assert.AreEqual(TeamChemistryEngine.MinEffectivePower, r6.EffectivePowerMultiplier, 1e-4f, "실효 전력 하한([TASK-GM-09] 0.80 → 0.90)");
 
             // 자동 산출 규칙(지시서 2.3): 자존심 · 연봉 범위
             Assert.AreEqual(5, Player.ComputeEgoLevel(90, false));

@@ -70,7 +70,7 @@ namespace KBOManager.Services
                     int ovr = pick.GetBaseOverall();
                     int target = ProspectMinOvr + GMFrontOffice.Hash($"{pick.RealPlayerId}_prospect") % (ProspectMaxOvr - ProspectMinOvr + 1);
                     int shift = ovr > ProspectCeiling ? target - ovr : 0;
-                    var p = new Player(Guid.NewGuid().ToString(), shift != 0 ? ProspectTemplate(pick, shift) : pick) { ProspectStatShift = shift };
+                    var p = new Player(GMRosterLoader.StableId($"{state.Mode}|{state.SelectedTeamCode}|{state.SeasonYear}|FUT|{code}|{pick.TemplateId}"), shift != 0 ? ProspectTemplate(pick, shift) : pick) { ProspectStatShift = shift };
                     p.InitializeGMAttributesFromStats(state.SeasonYear, debutYear != null && debutYear.TryGetValue(pick.RealPlayerId, out int d) ? d : state.SeasonYear);
                     MakeFuturesProspect(p, FuturesMinAge + (ageSeed++ % (FuturesMaxAge - FuturesMinAge + 1)));
                     team.Futures.Add(p);

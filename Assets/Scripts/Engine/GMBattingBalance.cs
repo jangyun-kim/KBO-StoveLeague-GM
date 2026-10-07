@@ -20,7 +20,7 @@ namespace KBOManager.Engine
         public const float TargetLeagueAvg = 0.265f;
         public const float SkillInfluence = 0.6f;
         public const float StatDiffNormalizer = 50f;
-        public const float SkillCap = 0.3f;
+        public static float SkillCap = 0.42f; // [TASK-GM-09] 타자 우위 쪽 상한(투수 우위 쪽은 PitcherSkillFloor)
         public const float EnvironmentGain = 0.15f;
         public const float EnvironmentMin = 0.8f, EnvironmentMax = 1.2f;
         public const int EnvironmentMinAtBats = 1500;
@@ -40,10 +40,32 @@ namespace KBOManager.Engine
         /// <summary>리그 환경 정규화 배수 - 안타(단타 · 2루타 · 3루타 · 홈런) 가중치에 곱한다.</summary>
         public float EnvironmentHitFactor = 1f;
 
-        public static float BaseWeight(AtBatResult result, float fallback) => BaseWeights.TryGetValue(result, out var w) ? w : fallback;
+        // [TASK-GM-09] 투고타저 완화 · 약팀 붕괴 방지 노브(단장 모드 전용 - 하네스 실측으로 정한 값)
+        /// <summary>장타(2루타 · 3루타 · 홈런) 가중치 배수 - 기본 확률표 대비 +12%.</summary>
+        public static float ExtraBaseBoost = 1.12f;
+        /// <summary>투수 우위 방향 격차 하한(안타 · 장타 판정) - S급 투수도 피안타율이 .210 아래로 내려가지 않게 -0.3 → -0.18.</summary>
+        public static float PitcherSkillFloor = -0.12f;
+        /// <summary>체급 우위(ΔOVR ≥ 8) 세부 스탯 가산 배수 - 단장 모드는 40%만 적용(+10~+24 → +4~+10).</summary>
+        public static float ClassBonusScale = 0.2f;
+        /// <summary>대승 감쇠 - 단장 모드는 빅이닝(4득점) 감쇠를 끄고 8점 차 이상 · 두 자릿수 득점에서만 식힌다.</summary>
+        public static bool DisableBigInningDamping = true;
+        /// <summary>[TASK-GM-09] 주자 추가 진루(KBO 실측 근사) - 단타 2루 주자 득점 · 단타 1루→3루 · 2루타 1루 주자 득점 · 땅볼 진루 · 땅볼 3루 주자 득점 · 뜬공 2루 주자 태그업.</summary>
+        public static float SingleScoresFromSecond = 0.58f, SingleFirstToThird = 0.28f, DoubleScoresFromFirst = 0.42f;
+        public static float GroundoutAdvance = 0.45f, GroundoutScoresFromThird = 0.35f, FlyoutTagFromSecond = 0.25f;
+
+        public static float BaseWeight(AtBatResult result, float fallback)
+        {
+            float w = BaseWeights.TryGetValue(result, out var v) ? v : fallback;
+            return result == AtBatResult.Double || result == AtBatResult.Triple || result == AtBatResult.HomeRun ? w * ExtraBaseBoost : w;
+        }
 
         /// <summary>격차 → 스킬(-0.3 ~ +0.3). offset은 리그 평균 격차.</summary>
         public static float Skill(float diff, float offset) => Math.Max(-SkillCap, Math.Min(SkillCap, (diff - offset) / StatDiffNormalizer));
+
+        /// <summary>[TASK-GM-09] 안타 · 장타 판정 스킬 - 투수 우위 쪽은 PitcherSkillFloor까지만(에이스 피안타율 하한 보장).</summary>
+        public static float HitSkill(float diff, float offset) => Math.Max(PitcherSkillFloor, Skill(diff, offset));
+
+        public static int ScaleClassBonus(int bonus) => bonus <= 0 ? bonus : (int)Math.Round(bonus * ClassBonusScale);
 
         /// <summary>리그 로스터(주전 타자 · 투수)로 센터링 기준을 만든다. 타자는 구단별 OVR 상위 9명, 투수는 전원.</summary>
         public static GMBattingBalance FromRosters(IEnumerable<IEnumerable<Player>> teamRosters)

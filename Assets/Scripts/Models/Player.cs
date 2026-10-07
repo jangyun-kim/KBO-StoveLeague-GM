@@ -445,6 +445,9 @@ namespace KBOManager.Models
         /// <summary>[TASK-GM-08] 퓨처스 유망주 능력치 보정(0 = 원본 카드). 과거 수상 시즌 카드뿐인 선수를 유망주 체급으로 낮춘 값 - 세이브 복원 시 같은 보정 템플릿을 다시 만든다.</summary>
         public int ProspectStatShift;
 
+        /// <summary>[TASK-GM-09] 팬덤 가치 가산 - 국가대표 금메달 · 우승 등 글로벌 대회 성과로 오른다(세이브 보존). 시장 가치(트레이드 가치)에 반영된다.</summary>
+        public int FameBonus;
+
         /// <summary>[TASK-GM-06] 선수별 숨은 ABS 적응도(-12 ~ +12) - RealPlayerId 해시로 결정(같은 선수는 항상 같은 값). 스카우팅 전에는 화면에 공개하지 않는다.</summary>
         public int HiddenAbsAdaptation
         {
