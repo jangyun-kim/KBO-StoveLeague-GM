@@ -4,6 +4,7 @@ using System.Linq;
 using KBOManager.Core;
 using KBOManager.Managers;
 using KBOManager.Models;
+using KBOManager.Services;
 
 namespace KBOManager.Simulation
 {
@@ -150,6 +151,7 @@ namespace KBOManager.Simulation
     {
         AVG = 0, HR = 1, RBI = 2, SB = 3, OBP = 4, SLG = 5, BatterWAR = 6, HitStreak = 7,
         ERA = 8, Wins = 9, Strikeouts = 10, Saves = 11, Holds = 12, WHIP = 13, PitcherWAR = 14,
+        OPS = 15, // [TASK-GM-08] 출루+장타(포스트시즌 트리 KBO 리더 패널)
     }
 
     public static class GMLeaderCategories
@@ -159,12 +161,12 @@ namespace KBOManager.Simulation
         public static readonly GMLeaderCategory[] Pitcher =
             { GMLeaderCategory.ERA, GMLeaderCategory.Wins, GMLeaderCategory.Strikeouts, GMLeaderCategory.Saves, GMLeaderCategory.Holds, GMLeaderCategory.WHIP, GMLeaderCategory.PitcherWAR };
 
-        public static bool IsPitching(GMLeaderCategory c) => c >= GMLeaderCategory.ERA;
+        public static bool IsPitching(GMLeaderCategory c) => c >= GMLeaderCategory.ERA && c <= GMLeaderCategory.PitcherWAR;
         /// <summary>낮을수록 좋은 부문(ERA · WHIP).</summary>
         public static bool LowerIsBetter(GMLeaderCategory c) => c == GMLeaderCategory.ERA || c == GMLeaderCategory.WHIP;
         /// <summary>규정 타석 · 규정 이닝이 필요한 비율 부문.</summary>
         public static bool NeedsQualification(GMLeaderCategory c) =>
-            c == GMLeaderCategory.AVG || c == GMLeaderCategory.OBP || c == GMLeaderCategory.SLG || c == GMLeaderCategory.ERA || c == GMLeaderCategory.WHIP;
+            c == GMLeaderCategory.AVG || c == GMLeaderCategory.OBP || c == GMLeaderCategory.SLG || c == GMLeaderCategory.OPS || c == GMLeaderCategory.ERA || c == GMLeaderCategory.WHIP;
 
         public static string Label(GMLeaderCategory c)
         {
@@ -184,6 +186,7 @@ namespace KBOManager.Simulation
                 case GMLeaderCategory.Saves: return "세이브";
                 case GMLeaderCategory.Holds: return "홀드";
                 case GMLeaderCategory.WHIP: return "WHIP";
+                case GMLeaderCategory.OPS: return "출루+장타(OPS)";
                 default: return "투수 WAR";
             }
         }
@@ -206,6 +209,7 @@ namespace KBOManager.Simulation
                 case GMLeaderCategory.Saves: return s.SV;
                 case GMLeaderCategory.Holds: return s.HLD;
                 case GMLeaderCategory.WHIP: return s.WHIP;
+                case GMLeaderCategory.OPS: return s.OBP + s.SLG;
                 default: return s.PitcherWAR;
             }
         }
@@ -217,7 +221,8 @@ namespace KBOManager.Simulation
             {
                 case GMLeaderCategory.AVG:
                 case GMLeaderCategory.OBP:
-                case GMLeaderCategory.SLG: return v >= 1 ? v.ToString("0.000", inv) : v.ToString(".000", inv);
+                case GMLeaderCategory.SLG:
+                case GMLeaderCategory.OPS: return v >= 1 ? v.ToString("0.000", inv) : v.ToString(".000", inv);
                 case GMLeaderCategory.ERA:
                 case GMLeaderCategory.WHIP:
                 case GMLeaderCategory.BatterWAR:
@@ -282,6 +287,8 @@ namespace KBOManager.Simulation
         public int AbsCatcherSkill = 50;
         public const int UpsetStatPenalty = 4;
         public const int UpsetOvrMargin = 3;
+        /// <summary>[TASK-GM-08] 리그 타격 밸런스(센터링 기준 · 환경 정규화 배수) - 단장 모드 경기면 시뮬레이터가 넣는다. null이면 레거시 확률표.</summary>
+        public KBOManager.Engine.GMBattingBalance Batting;
 
         public static GMChemistryModifiers From(TeamChemistryReport report)
         {
@@ -319,6 +326,9 @@ namespace KBOManager.Simulation
         public bool CheerAutoRotate;
         public List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
         public int CheerFanPoints;
+        // [TASK-GM-08] v19 - 퓨처스 핵심 유망주 풀 · 익명 육성 슬롯(구버전 세이브는 빈 목록 → 로드 시 GMRosterTiers.BackfillFutures)
+        public List<PlayerSaveData> Futures = new List<PlayerSaveData>();
+        public int DevelopmentSlots = GMRosterTiers.DefaultDevelopmentSlots;
     }
 
     /// <summary>[TASK-GM-07] 내 구단 정규시즌 경기 결과 한 줄(시즌 일정 캘린더 - 날짜 칸에 결과 스코어 표시).</summary>
@@ -364,5 +374,11 @@ namespace KBOManager.Simulation
         public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();                               // [TASK-GM-06] 프런트 오피스
         public List<PlayerSaveData> DraftPool = new List<PlayerSaveData>();                             // [TASK-GM-06] 신인 드래프트 유망주
         public List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();                     // [TASK-GM-07] 내 구단 경기 결과(시즌 일정)
+        // [TASK-GM-08] v19 - FA 원 소속 · 등급, 보상 정산 대기, 자동 보호(올해 FA 계약 · 신인), 단장 수동 보호 명단
+        public List<GMFaOriginEntry> FAOrigins = new List<GMFaOriginEntry>();
+        public List<GMPendingCompensation> PendingCompensations = new List<GMPendingCompensation>();
+        public List<string> FASignedThisYear = new List<string>();
+        public List<string> RookiesThisYear = new List<string>();
+        public List<string> UserProtectedIds = new List<string>();
     }
 }

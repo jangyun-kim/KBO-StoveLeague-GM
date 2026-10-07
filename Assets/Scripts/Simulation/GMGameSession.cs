@@ -16,6 +16,15 @@ namespace KBOManager.Simulation
         ///   - 실시간 이닝 경기(LiveMatchInningView): Step / StepHalfInning + 전술 개입(강공 · 작전 · 투수교체 · 대타) → Finish
         ///   - 포스트시즌(recordSeason = false): 시즌 누적 · 순위 · 부상 · 흥행에 반영하지 않고, 체력 · 컨디션을 경기 전 상태로 되돌린다.
         /// </summary>
+        /// <summary>[TASK-GM-08] 타석 직전 상황(사운드 연출 판정용) - 득점권 주자 · 점수 · 이닝, 타석 후 이 하프이닝 누적 득점.</summary>
+        public sealed class StepContext
+        {
+            public bool RispBefore;
+            public int HomeBefore, AwayBefore;
+            public int Inning;
+            public int HalfRuns;
+        }
+
         public sealed class GameSession
         {
             private readonly GMLiveSeasonSimulator sim;
@@ -56,6 +65,8 @@ namespace KBOManager.Simulation
             /// <summary>실시간 문자 중계(오래된 순).</summary>
             public readonly List<string> PlayByPlay = new List<string>();
             public AtBatStepResult LastStep { get; private set; }
+            /// <summary>[TASK-GM-08] 타석 1회가 기록될 때마다(실시간 이닝 경기 사운드 연출).</summary>
+            public event Action<AtBatStepResult, StepContext> OnStepped;
             public int PlateAppearances => plays.Count;
             public bool IsOver => Engine.IsGameOver || guard >= 400;
             public bool IsFinished => finished;
@@ -129,10 +140,16 @@ namespace KBOManager.Simulation
                 while (!IsOver)
                 {
                     guard++;
+                    var ctx = OnStepped != null ? new StepContext { RispBefore = OnSecond || OnThird, HomeBefore = HomeScore, AwayBefore = AwayScore, Inning = Engine.CurrentInning } : null;
                     var step = Engine.PlayNextAtBat();
                     if (step.Batter == null || step.Pitcher == null || step.State == null) continue;
                     Record(step);
                     LastStep = step;
+                    if (ctx != null)
+                    {
+                        ctx.HalfRuns = Math.Max(0, InningRuns(ctx.Inning, step.IsTopHalf));
+                        OnStepped?.Invoke(step, ctx);
+                    }
                     return step;
                 }
                 return null;

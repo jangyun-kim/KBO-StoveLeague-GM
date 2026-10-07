@@ -26,7 +26,7 @@ namespace KBOManager.Controllers
     {
         public const string RootName = "FrontOfficeRoot";
         public const int BannerTitlePt = 30, BannerPt = 19, SmallPt = 16, TabPt = 18, SubTabPt = 18, PanelTitlePt = 19, BodyPt = 16, TablePt = 16, CellPt = 15, ButtonPt = 18, BigPt = 36;
-        public const int MainTabCount = 8, SubTabMax = 6, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 9, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
+        public const int MainTabCount = 8, SubTabMax = 6, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 7, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
 
         public static readonly Color Gold = new Color(0.961f, 0.722f, 0.18f); // #F5B82E
         private static readonly Color Bg = new Color(0.09f, 0.09f, 0.1f);
@@ -114,7 +114,7 @@ namespace KBOManager.Controllers
         // ---- FA
         private readonly Button[] faRows = new Button[FARows];
         private readonly Text[,] faCells = new Text[FARows, 8];
-        private Text faPlayer, faInfo, faSalaryLabel, faBudget, faMessage;
+        private Text faPlayer, faInfo, faSalaryLabel, faBudget, faMessage, faCompensation;
         private readonly Button[] faYears = new Button[GMStoveLeagueMarket.MaxFAYears];
         private Slider faSlider;
         private Button faScout, faRole, faOffer;
@@ -273,6 +273,7 @@ namespace KBOManager.Controllers
             extSelected = faSelected = drSelected = shopTarget = null;
             trMine.Clear(); trTheirs.Clear(); shopOffers.Clear();
             partnerIndex = salPageIndex = trMyPageIndex = roPageIndex = 0;
+            trCash = 0; counterOffer = null; prSelected = null; protectPage = 0; // [TASK-GM-08]
         }
 
         // ================================================================== 조립
@@ -310,10 +311,12 @@ namespace KBOManager.Controllers
                 BuildCheerPane();
                 BuildHistoryPane();
                 BuildSchedulePane();     // [TASK-GM-07] 시즌 일정(달력)
-                BuildPostseasonPane();   // [TASK-GM-07] 포스트시즌 트리
+                BuildPostseasonPane();   // [TASK-GM-07] 포스트시즌 트리 · [TASK-GM-08] KBO 리더 · 4열 브래킷 · 일일 리포트
+                BuildProtectPane();      // [TASK-GM-08] FA 보상 · 보호 명단
                 BuildDiscussPopup();
                 BuildPercentilePopup();
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
+                BuildCounterPopup();     // [TASK-GM-08] AI 단장 1:N 역제안
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -461,7 +464,7 @@ namespace KBOManager.Controllers
                 new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
                 new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem) },
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
-                new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries) },
+                new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08]
                 new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA) },
                 new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", () => GoLegacy(ScreenType.CheerleaderShop)), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
                 new List<SubTab> { P("구단 역사", PaneHistory), P("포스트시즌 트리", PanePostseason), A("시상식 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
@@ -503,6 +506,7 @@ namespace KBOManager.Controllers
             foreach (var pair in panes) pair.Value.gameObject.SetActive(pair.Key == currentPane);
             if (discussPopup != null) discussPopup.SetAsLastSibling();
             if (pctPopup != null) pctPopup.SetAsLastSibling();
+            if (counterPopup != null) counterPopup.SetAsLastSibling(); // [TASK-GM-08]
             foreach (var m in menuLists) if (m != null) m.SetAsLastSibling(); // [TASK-GM-07] 툴바 메뉴 · 감독 설정은 맨 위
             if (managerPopup != null) managerPopup.SetAsLastSibling();
         }
@@ -714,7 +718,8 @@ namespace KBOManager.Controllers
             faOffer = Btn(pane, "FAOffer", "계약 제시 (Offer Contract)", 1314, 630, 1896, 684, ButtonOn, ButtonPt + 1);
             faOffer.onClick.AddListener(() => OfferSelected());
             faBudget = L(pane, "FABudget", "", 1314, 692, 1896, 740, CellPt, TextAnchor.UpperLeft, Gold);
-            faMessage = L(pane, "FAMessage", "", 1314, 746, 1896, 1030, BodyPt, TextAnchor.UpperLeft, White);
+            faCompensation = L(pane, "FACompensation", "", 1314, 744, 1896, 800, CellPt, TextAnchor.UpperLeft, BlueLink); // [TASK-GM-08] FA 등급 · 보상
+            faMessage = L(pane, "FAMessage", "", 1314, 806, 1896, 1030, BodyPt, TextAnchor.UpperLeft, White);
             faMessage.lineSpacing = 1.15f;
         }
 
@@ -724,7 +729,7 @@ namespace KBOManager.Controllers
         {
             var pane = PaneRoot(PaneTrade);
             CompyaUiKit.Box(pane, "MyBg", 12, 248, 624, 1036, PanelColor);
-            L(pane, "TrMyTitle", "내 선수단 (클릭 = 내줄 선수 · 최대 2)", 20, 252, 380, 290, CellPt, TextAnchor.MiddleLeft, Gold);
+            L(pane, "TrMyTitle", "내 선수단 (클릭 = 내줄 선수 · 최대 3)", 20, 252, 380, 290, CellPt, TextAnchor.MiddleLeft, Gold);
             Btn(pane, "TrMyPrev", "◀", 384, 252, 444, 290, ButtonIdle, BodyPt).onClick.AddListener(() => { trMyPageIndex = Math.Max(0, trMyPageIndex - 1); RefreshTrade(); });
             trMyPage = L(pane, "TrMyPage", "", 448, 252, 556, 290, CellPt, TextAnchor.MiddleCenter, White);
             Btn(pane, "TrMyNext", "▶", 560, 252, 620, 290, ButtonIdle, BodyPt).onClick.AddListener(() => { trMyPageIndex++; RefreshTrade(); });
@@ -743,27 +748,29 @@ namespace KBOManager.Controllers
             }
 
             CompyaUiKit.Box(pane, "BlockBg", 1252, 248, 1908, 1036, PanelColor);
-            L(pane, "TrBlockTitle", "직접 트레이드 협상 (1:1 / 2:2)", 1264, 252, 1896, 286, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
+            L(pane, "TrBlockTitle", "직접 트레이드 협상 (1:N · 최대 3:3 · 연봉 보조)", 1264, 252, 1896, 286, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
             trMySlots = L(pane, "TrMySlots", "", 1264, 290, 1896, 346, CellPt, TextAnchor.UpperLeft, White);
             trTheirSlots = L(pane, "TrTheirSlots", "", 1264, 350, 1896, 406, CellPt, TextAnchor.UpperLeft, White);
             trValueLabel = L(pane, "TrValueLabel", "", 1264, 410, 1896, 440, CellPt, TextAnchor.MiddleLeft, Gold);
             trValueFill = Bar(pane, "TrValueBar", 1264, 444, 1896, 466, BarGreen);
             trNeeds = L(pane, "TrNeeds", "", 1264, 470, 1896, 502, CellPt, TextAnchor.MiddleLeft, Muted);
-            Btn(pane, "TrPropose", "트레이드 제안", 1264, 508, 1576, 552, ButtonOn, ButtonPt).onClick.AddListener(() => ProposeTrade());
-            Btn(pane, "TrClear", "선택 초기화", 1586, 508, 1896, 552, ButtonIdle, ButtonPt).onClick.AddListener(() => { trMine.Clear(); trTheirs.Clear(); RefreshTrade(); });
-            L(pane, "TrShopTitle", "Shop a Player (트레이드 매물 내놓기)", 1264, 560, 1896, 594, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
-            Btn(pane, "TrShopButton", "선택한 내 선수를 매물로 등록 → 9개 구단 제안 받기", 1264, 598, 1896, 640, new Color(0.45f, 0.36f, 0.12f), BodyPt).onClick.AddListener(() => ShopSelected());
+            BuildTradeCashRow(pane); // [TASK-GM-08] 연봉 보조
+            Btn(pane, "TrPropose", "트레이드 제안", 1264, 546, 1576, 590, ButtonOn, ButtonPt).onClick.AddListener(() => ProposeTrade());
+            Btn(pane, "TrClear", "선택 초기화", 1586, 546, 1896, 590, ButtonIdle, ButtonPt).onClick.AddListener(() => { trMine.Clear(); trTheirs.Clear(); trCash = 0; RefreshTrade(); });
+            Btn(pane, "TrCounter", "AI 단장 역제안 받기 (받을 선수 1명 기준 · 1:N 패키지)", 1264, 596, 1896, 636, new Color(0.3f, 0.32f, 0.5f), BodyPt).onClick.AddListener(() => RequestCounterOffer());
+            L(pane, "TrShopTitle", "Shop a Player (트레이드 매물 내놓기)", 1264, 642, 1896, 676, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
+            Btn(pane, "TrShopButton", "선택한 내 선수를 매물로 등록 → 9개 구단 제안 받기", 1264, 680, 1896, 718, new Color(0.45f, 0.36f, 0.12f), BodyPt).onClick.AddListener(() => ShopSelected());
             for (int k = 0; k < 5; k++)
             {
                 var sort = (GMOfferSort)k;
                 float x0 = 1264 + k * 127;
-                trShopSorts[k] = Btn(pane, $"TrShopSort_{k}", GMStoveLeagueMarket.SortLabel(sort), x0, 646, x0 + 121, 680, ButtonIdle, CellPt);
+                trShopSorts[k] = Btn(pane, $"TrShopSort_{k}", GMStoveLeagueMarket.SortLabel(sort), x0, 724, x0 + 121, 756, ButtonIdle, CellPt);
                 trShopSorts[k].onClick.AddListener(() => SortShop(sort));
             }
             for (int i = 0; i < ShopRows; i++)
             {
                 int index = i;
-                float y0 = 686 + i * 38;
+                float y0 = 762 + i * 38;
                 trOffers[i] = ListRow(pane, $"TrOffer{i}", 1264, y0, 1896, y0 + 35, CellPt);
                 trOffers[i].onClick.AddListener(() => AcceptShopOffer(index));
             }
@@ -1061,6 +1068,7 @@ namespace KBOManager.Controllers
             RefreshToolbar(); // [TASK-GM-07]
             if (League == null || UserTeam == null) { SetStatus("단장 모드 리그가 없습니다 - [새 시즌/난이도 설정]으로 시작하십시오."); return; }
             GMFrontOffice.RefreshGoals(League);
+            PlayFrontOfficeBgm(); // [TASK-GM-08] 구단 테마 BGM
             using (CompyaUiKit.Wide())
             {
                 switch (currentPane)
@@ -1079,6 +1087,7 @@ namespace KBOManager.Controllers
                     case PaneHistory: RefreshHistory(); break;
                     case PaneSchedule: RefreshSchedule(); break;      // [TASK-GM-07]
                     case PanePostseason: RefreshPostseason(); break;  // [TASK-GM-07]
+                    case PaneProtect: RefreshProtect(); break;        // [TASK-GM-08]
                 }
             }
         }
@@ -1482,11 +1491,13 @@ namespace KBOManager.Controllers
             {
                 faPlayer.text = "FA 선수를 선택하십시오";
                 faInfo.text = faSalaryLabel.text = "";
+                faCompensation.text = league.PendingCompensations.Count > 0 ? $"FA 보상 정산 대기 {league.PendingCompensations.Count}건 - [FA 보상·보호명단]에서 확인" : "";
                 return;
             }
             faPlayer.text = $"{GMFrontOffice.PositionLabel(p.Position)} {p.Template.PlayerName} · {p.Age}세 · OVR {GMStoveLeagueMarket.OvrLabel(p)}";
             faInfo.text = p.IsScouted ? GMStoveLeagueMarket.ScoutReport(p) : "스카우팅 전 - OVR은 추정 범위, 잠재력 · 숨은 성향 · ABS 적응도는 비공개입니다.";
             faInfo.text += $"\n요구: {GMStoveLeagueMarket.DemandLabel(p, fo.Difficulty, true)}";
+            faCompensation.text = GMFaCompensation.CompensationLabel(league, p, team.TeamCode); // [TASK-GM-08]
             RefreshFASalaryLabel();
         }
 
@@ -1547,7 +1558,7 @@ namespace KBOManager.Controllers
             trMyShown = mine.Skip(trMyPageIndex * TableRows).Take(TableRows).ToList();
             trMyPage.text = $"{trMyPageIndex + 1}/{pages}";
             trTheirShown = partner != null ? GMStoveLeagueMarket.SortRoster(partner.Roster, "OVR", true).Take(TableRows).ToList() : new List<Player>();
-            trPartnerName.text = partner != null ? $"{partner.DisplayName} (상위 14인 · 클릭 = 받을 선수)" : "-";
+            trPartnerName.text = partner != null ? $"{partner.DisplayName} (상위 14인 · 클릭 = 받을 선수 · 역제안)" : "-";
             for (int r = 0; r < TableRows; r++)
             {
                 var a = r < trMyShown.Count ? trMyShown[r] : null;
@@ -1565,9 +1576,10 @@ namespace KBOManager.Controllers
                     trTheirRows[r].targetGraphic.color = trTheirs.Contains(b) ? RowSelected : r % 2 == 0 ? RowIdle : RowAlt;
                 }
             }
-            trMySlots.text = $"내줄 선수({trMine.Count}/2): {(trMine.Count > 0 ? string.Join(" · ", trMine.Select(p => $"{p.Template.PlayerName}(가치 {GMStoveLeagueMarket.TradeValue(p):0})")) : "-")}";
-            trTheirSlots.text = $"받을 선수({trTheirs.Count}/2): {(trTheirs.Count > 0 ? string.Join(" · ", trTheirs.Select(p => $"{p.Template.PlayerName}(가치 {GMStoveLeagueMarket.TradeValue(p):0})")) : "-")}";
-            var e = GMStoveLeagueMarket.Evaluate(League, team, trMine, partner, trTheirs);
+            trMySlots.text = $"내줄 선수({trMine.Count}/{GMStoveLeagueMarket.MaxTradeSide}): {(trMine.Count > 0 ? string.Join(" · ", trMine.Select(p => $"{p.Template.PlayerName}(가치 {GMStoveLeagueMarket.TradeValue(p):0})")) : "-")}";
+            trTheirSlots.text = $"받을 선수({trTheirs.Count}/{GMStoveLeagueMarket.MaxTradeSide}): {(trTheirs.Count > 0 ? string.Join(" · ", trTheirs.Select(p => $"{p.Template.PlayerName}(가치 {GMStoveLeagueMarket.TradeValue(p):0})")) : "-")}";
+            var e = GMStoveLeagueMarket.Evaluate(League, team, trMine, partner, trTheirs, trCash); // [TASK-GM-08] 1:N · 연봉 보조
+            RefreshTradeCash();
             trValueLabel.text = e.Required > 0 ? $"트레이드 가치 바: {e.Ratio * 100:0}% (100% 이상 = 상대 단장 수락)" : $"트레이드 가치 바: {e.Reason}";
             SetFill(trValueFill, e.Required > 0 ? Mathf.Clamp01(e.Ratio / 1.5f) : 0f);
             if (trValueFill != null) trValueFill.GetComponent<Image>().color = e.Acceptable ? BarGreen : BarRed;
@@ -1592,7 +1604,7 @@ namespace KBOManager.Controllers
             if (row >= trMyShown.Count) return;
             var p = trMyShown[row];
             if (trMine.Contains(p)) trMine.Remove(p);
-            else if (trMine.Count < 2) trMine.Add(p);
+            else if (trMine.Count < GMStoveLeagueMarket.MaxTradeSide) trMine.Add(p);
             shopTarget = trMine.FirstOrDefault();
             Refresh();
         }
@@ -1602,26 +1614,28 @@ namespace KBOManager.Controllers
             if (row >= trTheirShown.Count) return;
             var p = trTheirShown[row];
             if (trTheirs.Contains(p)) trTheirs.Remove(p);
-            else if (trTheirs.Count < 2) trTheirs.Add(p);
+            else if (trTheirs.Count < GMStoveLeagueMarket.MaxTradeSide) trTheirs.Add(p);
+            // [TASK-GM-08] 내줄 선수 없이 상대 핵심 선수 1명을 고르면 AI 단장이 니즈 기반 1:N 역제안을 바로 띄운다
+            if (trMine.Count == 0 && trTheirs.Count == 1 && trTheirs[0] == p) { RequestCounterOffer(); return; }
             Refresh();
         }
 
         /// <summary>테스트 · 단축 - 트레이드 슬롯을 직접 채운다.</summary>
         public void SetTradeSlots(IEnumerable<Player> mine, string partnerCode, IEnumerable<Player> theirs)
         {
-            trMine.Clear(); trMine.AddRange((mine ?? Enumerable.Empty<Player>()).Take(2));
+            trMine.Clear(); trMine.AddRange((mine ?? Enumerable.Empty<Player>()).Take(GMStoveLeagueMarket.MaxTradeSide));
             shopTarget = trMine.FirstOrDefault();
             int i = PartnerTeams().FindIndex(t => t.TeamCode == partnerCode);
             if (i >= 0) partnerIndex = i;
-            trTheirs.Clear(); trTheirs.AddRange((theirs ?? Enumerable.Empty<Player>()).Take(2));
+            trTheirs.Clear(); trTheirs.AddRange((theirs ?? Enumerable.Empty<Player>()).Take(GMStoveLeagueMarket.MaxTradeSide));
             Refresh();
         }
 
         public GMNegotiationResult ProposeTrade()
         {
-            var r = GMStoveLeagueMarket.ExecuteTrade(League, UserTeam, trMine.ToList(), TradePartner, trTheirs.ToList());
+            var r = GMStoveLeagueMarket.ExecuteTrade(League, UserTeam, trMine.ToList(), TradePartner, trTheirs.ToList(), trCash);
             SetStatus(r.Message);
-            if (r.Success) { trMine.Clear(); trTheirs.Clear(); shopOffers.Clear(); shopTarget = null; }
+            if (r.Success) { trMine.Clear(); trTheirs.Clear(); shopOffers.Clear(); shopTarget = null; trCash = 0; }
             Refresh();
             return r;
         }
@@ -1954,10 +1968,11 @@ namespace KBOManager.Controllers
                 return true;
             }
             if (simulator.PendingInterrupt != null) { OpenDashboard(); return false; }
+            string settled = SettleCompensationsBeforeSeason(); // [TASK-GM-08] 개막 전 FA 보상 정산
             var view = PrePostView != null ? PrePostView : FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);
             if (view == null || !view.ShowPreGameView(simulator)) { SetStatus("전력 분석 화면을 열 수 없습니다."); return false; }
             view.OnClosed -= Refresh; view.OnClosed += Refresh;
-            SetStatus("① 전력 분석 - 선발 · 전력 · 치어리더를 확인하고 [플레이 볼]을 누르십시오.");
+            SetStatus((settled != null ? settled + " / " : "") + "① 전력 분석 - 선발 · 전력 · 치어리더를 확인하고 [플레이 볼]을 누르십시오.");
             return true;
         }
 

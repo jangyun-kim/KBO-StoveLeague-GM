@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KBOManager.Core;
 using KBOManager.Data;
 using KBOManager.Engine;
+using KBOManager.Managers;
 using KBOManager.Models;
+using KBOManager.Services;
 using KBOManager.Simulation;
 using KBOManager.UI;
 using UnityEngine;
@@ -46,6 +49,11 @@ namespace KBOManager.Controllers
         private float autoTimer;
         private int tacticCycle;
         private GMMatchStage stage;
+        private bool liveAudioMuted;
+        private GMLiveSeasonSimulator.GameSession audioSession;
+
+        /// <summary>[TASK-GM-08] 마지막 타석의 사운드 연출 큐(없으면 null).</summary>
+        public GMAudioCue? LastLiveCue { get; private set; }
 
         public RectTransform LiveRoot => liveRoot;
         public GMMatchStage Stage => stage;
@@ -94,6 +102,7 @@ namespace KBOManager.Controllers
             postRoot.gameObject.SetActive(false);
             liveRoot.gameObject.SetActive(true);
             stage = GMMatchStage.LiveInning;
+            StartLiveAudio();
             SetLiveMessage(session.UserTeam != null ? $"플레이 볼! {(session.UserBatting ? "공격" : "수비")}부터 시작합니다. 속도를 고르거나 전술로 개입하십시오." : "플레이 볼!");
             BindLive();
             return true;
@@ -121,7 +130,9 @@ namespace KBOManager.Controllers
         {
             if (session == null) return;
             autoPlay = false;
+            liveAudioMuted = true; // [TASK-GM-08] 경기 끝까지 즉시 진행 - 타석마다 응원가를 끊어 틀지 않는다
             session.PlayToEnd();
+            liveAudioMuted = false;
             BindLive();
         }
 
@@ -193,7 +204,10 @@ namespace KBOManager.Controllers
         {
             if (session == null || simulator == null) return false;
             autoPlay = false;
+            liveAudioMuted = true;
             session.PlayToEnd();
+            liveAudioMuted = false;
+            DetachLiveAudio(); // [TASK-GM-08] 응원 믹스 정리(승리 응원가는 결과 화면에서도 이어진다)
             GMMatchBoxScoreData result;
             if (postseasonGame != null)
             {
@@ -209,6 +223,44 @@ namespace KBOManager.Controllers
             if (result == null) { CloseAll(); return false; }
             ShowPostGameBoxScoreView(result);
             return true;
+        }
+
+        // ================================================================== [TASK-GM-08] 구단 사운드 연출
+
+        /// <summary>경기 시작 - 관중 앰비언스 · 치어리더 단상 믹스(엔트리 4~6인 + 리더십 버프) · 타석 이벤트 구독.</summary>
+        private void StartLiveAudio()
+        {
+            if (session == null) return;
+            DetachLiveAudio();
+            var audio = GMAudioManager.Ensure();
+            var user = session.UserTeam;
+            audio.PlayMatchAmbience(user?.TeamCode);
+            if (user != null) audio.SetCheerleaderMix(GMCheerleaderRules.EntryCount(user.CheerEntry), user.CheerLeadershipBuff > 0);
+            audioSession = session;
+            audioSession.OnStepped += OnLiveStep;
+            LastLiveCue = null;
+        }
+
+        private void DetachLiveAudio()
+        {
+            if (audioSession != null) audioSession.OnStepped -= OnLiveStep;
+            audioSession = null;
+            var audio = GMAudioManager.Instance;
+            if (audio != null) audio.SetCheerleaderMix(0, false);
+        }
+
+        /// <summary>타석 1회 → 내 구단 기준 큐 판정(GMLiveAudioDirector) → 구단 프로필 클립 재생(삼성 = 공식 응원가 · 아웃송, 그 밖 = 기본 앰비언스).</summary>
+        private void OnLiveStep(AtBatStepResult step, GMLiveSeasonSimulator.StepContext ctx)
+        {
+            if (liveAudioMuted || audioSession == null || step == null || ctx == null) return;
+            var user = audioSession.UserTeam;
+            if (user == null) return;
+            bool userAway = user == audioSession.Away;
+            bool userBatting = step.IsTopHalf == userAway;
+            int userBefore = userAway ? ctx.AwayBefore : ctx.HomeBefore, oppBefore = userAway ? ctx.HomeBefore : ctx.AwayBefore;
+            int userAfter = userAway ? step.AwayScore : step.HomeScore, oppAfter = userAway ? step.HomeScore : step.AwayScore;
+            LastLiveCue = GMLiveAudioDirector.CueFor(step, userBatting, ctx.RispBefore, ctx.HalfRuns, userBefore, oppBefore, step.GameEnded && userAfter > oppAfter);
+            if (LastLiveCue.HasValue) GMAudioManager.Ensure().PlayCue(LastLiveCue.Value, user.TeamCode, ctx.Inning);
         }
 
         private void SetLiveMessage(string text)

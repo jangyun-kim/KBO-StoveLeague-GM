@@ -105,6 +105,9 @@ namespace KBOManager.Managers
             gmLeague = state;
             gmSimulator = null;
             if (state != null) GameSettings.UseVirtualNames = state.UseVirtualNames;
+            // [TASK-GM-08] 구버전(v18 이하) 세이브 - 퓨처스 풀이 비어 있으면 선수 DB로 보충하고 FA 원 소속을 기록한다.
+            var db = PlayerDatabase.Instance != null ? PlayerDatabase.Instance : FindAnyObjectByType<PlayerDatabase>(FindObjectsInactive.Include);
+            if (state != null && db != null) KBOManager.Services.GMRosterTiers.BackfillFutures(state, db.AllTemplates);
         }
 
         /// <summary>[TASK-GM-02] 리그가 없으면 기본(2026 현역 · 선호 구단, 없으면 삼성)으로 시작한다 - [플레이 볼] 대시보드 진입용.</summary>

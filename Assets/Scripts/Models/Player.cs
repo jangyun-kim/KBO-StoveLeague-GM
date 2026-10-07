@@ -442,6 +442,9 @@ namespace KBOManager.Models
         /// <summary>[TASK-GM-06] ABS 적응 훈련 · 시나리오 보정(세이브 보존, 기본 0). ABSZoneSkill에 그대로 더한다.</summary>
         public int AbsTrainingBonus;
 
+        /// <summary>[TASK-GM-08] 퓨처스 유망주 능력치 보정(0 = 원본 카드). 과거 수상 시즌 카드뿐인 선수를 유망주 체급으로 낮춘 값 - 세이브 복원 시 같은 보정 템플릿을 다시 만든다.</summary>
+        public int ProspectStatShift;
+
         /// <summary>[TASK-GM-06] 선수별 숨은 ABS 적응도(-12 ~ +12) - RealPlayerId 해시로 결정(같은 선수는 항상 같은 값). 스카우팅 전에는 화면에 공개하지 않는다.</summary>
         public int HiddenAbsAdaptation
         {

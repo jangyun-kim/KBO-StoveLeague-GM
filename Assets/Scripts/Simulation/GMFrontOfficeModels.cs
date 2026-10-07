@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace KBOManager.Simulation
 {
@@ -173,7 +174,100 @@ namespace KBOManager.Simulation
         public bool Acceptable;
         public string Reason = "";
         public string NeedsNote = "";
+        public int CashSubsidy;      // [TASK-GM-08] 연봉 보조(만 원)
+        public float CashValue;      // [TASK-GM-08] 연봉 보조의 트레이드 가치 환산(받는 가치에 포함)
     }
 
     public enum GMOfferSort { Ovr = 0, Potential = 1, Salary = 2, Age = 3, Position = 4 }
+
+    // ================================================================== [TASK-GM-08] FA 등급 · 보상 · 보호 명단 · 1:N 역제안
+
+    /// <summary>[TASK-GM-08] KBO FA 등급(2026 규약) - A: 보호 20인 외 1명 + 연봉 200%(또는 300%) · B: 보호 25인 외 1명 + 100%(또는 200%) · C: 연봉 150%.</summary>
+    public enum GMFaGrade { A = 0, B = 1, C = 2 }
+
+    /// <summary>[TASK-GM-08] FA 시장 선수의 원 소속 구단 · 등급 · 전년도 연봉(세이브 v19).</summary>
+    [Serializable]
+    public class GMFaOriginEntry
+    {
+        public string PlayerId = "";   // Player.InstanceId
+        public string TeamCode = "";   // 원 소속 구단(보상을 받는 쪽)
+        public GMFaGrade Grade = GMFaGrade.C;
+        public int PrevSalary;         // 전년도 연봉(만 원)
+    }
+
+    /// <summary>[TASK-GM-08] 정산 대기 중인 FA 보상 1건(영입 구단 → 원 소속 구단).</summary>
+    [Serializable]
+    public class GMPendingCompensation
+    {
+        public string PlayerId = "";
+        public string PlayerName = "";
+        public string FromTeam = "";   // 원 소속(보상 수령)
+        public string ToTeam = "";     // 영입 구단(보호 명단 제출 · 보상 지급)
+        public GMFaGrade Grade = GMFaGrade.C;
+        public int PrevSalary;
+        public int Year;
+    }
+
+    /// <summary>[TASK-GM-08] 보호 명단 1명 - 10대 가중치 세부 점수(①~⑤ 0~100, ⑥ 노선 배수 반영 후 가중합, ⑦ 희소성 가산, ⑩ 단장 성향 편차).</summary>
+    public class GMProtectionEntry
+    {
+        public KBOManager.Models.Player Player;
+        public float Irreplaceability, Potential, Overall, RoleEthic, ContractEfficiency; // ①~⑤
+        public float Weighted;       // ①~⑤ × ⑥ 노선 가중치
+        public float Scarcity;       // ⑦ 희소성 가산
+        public float Personality;    // ⑩ 단장 성향 편차(±3~5)
+        public float Score;          // 최종 점수
+        public bool AutoProtected;   // ⑧ 자동 보호(당해 신인 · 외국인 · FA 계약 당사자) - 명단 인원에서 제외
+        public bool Protected;
+        public string Tags = "";     // 희소성 · 자동 보호 사유
+    }
+
+    /// <summary>[TASK-GM-08] 구단 보호 명단(20인 또는 25인) 산출 결과.</summary>
+    public class GMProtectionList
+    {
+        public string TeamCode = "";
+        public int Size;
+        public bool WinNow;                 // ⑥ 우승 도전(true) / 리빌딩(false)
+        public string PersonalityLabel = "";
+        public int PersonalitySwing;        // ⑩ 3~5
+        public float[] Weights = new float[5]; // ①~⑤ 실제 가중치(%)
+        public readonly List<GMProtectionEntry> Entries = new List<GMProtectionEntry>();
+        public readonly List<string> BalanceNotes = new List<string>(); // ⑨ 최소 전력 검수 교체 기록
+
+        public IEnumerable<GMProtectionEntry> Protected => Entries.Where(e => e.Protected && !e.AutoProtected);
+        public IEnumerable<GMProtectionEntry> AutoProtected => Entries.Where(e => e.AutoProtected);
+        public IEnumerable<GMProtectionEntry> Unprotected => Entries.Where(e => !e.Protected && !e.AutoProtected);
+        public bool IsProtected(KBOManager.Models.Player p) => Entries.Any(e => e.Player == p && (e.Protected || e.AutoProtected));
+    }
+
+    /// <summary>[TASK-GM-08] FA 보상 정산 결과.</summary>
+    public class GMCompensationResult
+    {
+        public bool Success;
+        public bool CashOnly;
+        public KBOManager.Models.Player CompensationPlayer;
+        public long Cash;
+        public string Message = "";
+    }
+
+    /// <summary>[TASK-GM-08] AI 구단 니즈 1건(취약 포지션 · 장타자 부재 · 샐러리캡 감축 등).</summary>
+    public class GMTeamNeed
+    {
+        public string Kind = "";      // SP · RP · C · CF · SS · 2B · POWER · PROSPECT · PAYROLL
+        public string Label = "";     // 화면 문구 - "선발투수 부족"
+        public float Severity;        // 0~1
+    }
+
+    /// <summary>[TASK-GM-08] AI 단장 1:N 역제안 - 상대 핵심 선수 1명 ↔ 내 선수 1~3명(+ 연봉 보조).</summary>
+    public class GMTradeCounterOffer
+    {
+        public string PartnerCode = "";
+        public KBOManager.Models.Player Target;
+        public readonly List<KBOManager.Models.Player> Requested = new List<KBOManager.Models.Player>();
+        public int CashSubsidy;       // 연봉 보조(만 원, 내 구단 예산 → 상대 구단)
+        public readonly List<GMTeamNeed> Needs = new List<GMTeamNeed>();
+        public string Pitch = "";     // 상대 단장 대사
+        public GMTradeEvaluation Evaluation;
+        public bool Valid => Target != null && Requested.Count > 0;
+    }
 }

@@ -209,6 +209,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(7, GMLeaderCategories.Pitcher.Length);
             // [TASK-GM-07] 실책률 상향(0.022 → 0.048)으로 출루 · 투구 수가 늘어 선발이 일찍 내려가면서 타율 1위가 .50을 살짝 넘는 시드가 생겼다(.508).
             // 이 범위는 시뮬레이션 폭주 감지용 상한이라 .55로 넓히고, 타율 1위 현실화(.35~.40대)는 밸런스 과제로 남긴다(DCL-162 남은 이슈).
+            // [TASK-GM-08] 단장 모드 타격 밸런스(GMBattingBalance)로 리그 .260~.270 · 타격왕 .340~.385가 됐다 - 정밀 검증은 GM08VerificationRunner T2.
             Assert.That(sim.Leaders(GMLeaderCategory.AVG)[0].Value, Is.InRange(0.25, 0.55), "타율 1위 폭주 감지 범위");
             Assert.Greater(sim.Leaders(GMLeaderCategory.HR)[0].Value, 15);
             Assert.Greater(sim.Leaders(GMLeaderCategory.Saves)[0].Value, 5);

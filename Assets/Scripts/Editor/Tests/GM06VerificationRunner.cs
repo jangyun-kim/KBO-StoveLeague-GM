@@ -394,9 +394,12 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMStoveLeagueMarket.DraftPoolSize, league.DraftPool.Count, "유망주 풀 10명");
             Assert.AreEqual(10, Enumerable.Range(0, 10).Count(i => drPane.Find($"DrRow{i}").gameObject.activeSelf));
             Assert.AreEqual(28, team.Roster.Count);
+            // [TASK-GM-08] 1군 29명(DCL-163) - 퓨처스 1명을 콜업해 가득 채운 뒤 지명 불가를 확인한다.
+            Assert.IsTrue(GMRosterTiers.CallUp(league, team, team.Futures[0], out var callUp), callUp);
+            Assert.AreEqual(GMStoveLeagueMarket.RosterMax, team.Roster.Count);
             hub.SelectDraftRow(0);
             var full = hub.DraftSelected_();
-            Assert.IsFalse(full.Success, "28인 가득 - 지명 불가");
+            Assert.IsFalse(full.Success, "1군 29인 가득 - 지명 불가");
             StringAssert.Contains("방출", full.Message);
             foreach (var p in team.Roster.OrderBy(p => p.BaseOverall).Where(p => !p.IsCaptain).Take(3).ToList()) Assert.IsTrue(GMStoveLeagueMarket.Release(league, team, p).Success);
             hub.SelectDraftRow(0);

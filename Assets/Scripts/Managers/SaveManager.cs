@@ -57,6 +57,7 @@ namespace KBOManager.Managers
         public int InjuryRemainingDays;
         public List<string> CareerAwardIds = new List<string>();
         public int AbsTrainingBonus; // [TASK-GM-06] v17 - ABS 적응 훈련 보정(없으면 0)
+        public int ProspectStatShift; // [TASK-GM-08] v19 - 퓨처스 유망주 능력치 보정(없으면 0 = 원본 카드)
     }
 
     /// <summary>
@@ -177,7 +178,7 @@ namespace KBOManager.Managers
         //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
         // v14: 단장 모드(TASK-GM-02) - 선수 GM 속성(PlayerSaveData.Age ~ CareerAwardIds)과 리그 상태(GMLeague: 모드 · 연도 · 경기 진행 인덱스 ·
         //      10구단 로스터/치어리더 풀 · 순위 · 개인 누적 기록 · 최신 소식). GMLeague.HasData가 false면 단장 모드 미시작.
-        public int SaveVersion = 18; // [TASK-GM-07] v18 - 내 구단 경기 결과(시즌 일정) · 감독 설정 · 포스트시즌 진행 상태 / [TASK-GM-06] v17 - 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건) · 드래프트 풀 · ABS 보정(v16 = GM-05)
+        public int SaveVersion = 19; // [TASK-GM-08] v19 - 퓨처스 핵심 유망주 풀 · 육성 슬롯 · FA 원 소속/등급 · 보상 정산 대기 · 자동/수동 보호 명단 / [TASK-GM-07] v18 - 내 구단 경기 결과(시즌 일정) · 감독 설정 · 포스트시즌 진행 상태 / [TASK-GM-06] v17 - 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건) · 드래프트 풀 · ABS 보정(v16 = GM-05)
         // [TASK-GM-05] v16 - 치어리더 피로도 · 자동 로테이션 · 전담 응원 · 홈 흥행 누적(v15 = GM-04 시상)
         public string SavedAtUtc;
 
@@ -496,6 +497,7 @@ namespace KBOManager.Managers
             InjuryRemainingDays = player.InjuryRemainingDays,
             CareerAwardIds = new List<string>(player.CareerAwardIds ?? new List<string>()),
             AbsTrainingBonus = player.AbsTrainingBonus,
+            ProspectStatShift = player.ProspectStatShift, // [TASK-GM-08]
         };
 
         // ----- [TASK-GM-02] 단장 모드 리그 -----
@@ -530,6 +532,8 @@ namespace KBOManager.Managers
                     CheerAutoRotate = team.CheerAutoRotate,
                     CheerDedications = team.CheerDedications.Select(d => new GMCheerDedication { CheerleaderId = d.CheerleaderId, PlayerId = d.PlayerId, GrantedConcession = d.GrantedConcession }).ToList(),
                     CheerFanPoints = team.CheerFanPoints,
+                    Futures = team.Futures.Select(ToSaveData).ToList(), // [TASK-GM-08]
+                    DevelopmentSlots = team.DevelopmentSlots,
                 };
                 t.Lineup.CopyFrom(team.Lineup);
                 data.Teams.Add(t);
@@ -544,6 +548,11 @@ namespace KBOManager.Managers
             data.FrontOffice = league.FrontOffice ?? new GMFrontOfficeState();          // [TASK-GM-06]
             data.DraftPool = league.DraftPool.Select(ToSaveData).ToList();
             data.UserResults = new List<GMGameResultEntry>(league.UserResults); // [TASK-GM-07]
+            data.FAOrigins = league.FAOrigins.Values.ToList();                  // [TASK-GM-08]
+            data.PendingCompensations = new List<GMPendingCompensation>(league.PendingCompensations);
+            data.FASignedThisYear = new List<string>(league.FASignedThisYear);
+            data.RookiesThisYear = new List<string>(league.RookiesThisYear);
+            data.UserProtectedIds = new List<string>(league.UserProtectedIds);
             return data;
         }
 
@@ -580,6 +589,7 @@ namespace KBOManager.Managers
                     FanSupport = GMTeamFan.Clamp(t.FanSupport),
                     CheerAutoRotate = t.CheerAutoRotate,
                     CheerFanPoints = t.CheerFanPoints,
+                    DevelopmentSlots = t.DevelopmentSlots > 0 ? t.DevelopmentSlots : GMRosterTiers.DefaultDevelopmentSlots, // [TASK-GM-08]
                 };
                 team.CheerDedications.AddRange((t.CheerDedications ?? new List<GMCheerDedication>()).Where(d => d != null && !string.IsNullOrEmpty(d.PlayerId)));
                 team.Lineup.CopyFrom(t.Lineup);
@@ -587,6 +597,11 @@ namespace KBOManager.Managers
                 {
                     var p = restore(saved);
                     if (p != null) team.Roster.Add(p);
+                }
+                foreach (var saved in t.Futures ?? new List<PlayerSaveData>()) // [TASK-GM-08]
+                {
+                    var p = restore(saved);
+                    if (p != null) team.Futures.Add(p);
                 }
                 team.CheerleaderPool.AddRange((t.CheerleaderPool ?? new List<Cheerleader>()).Where(c => !CheerSquad.IsEmpty(c)));
                 league.Teams[team.TeamCode] = team;
@@ -612,6 +627,12 @@ namespace KBOManager.Managers
                 if (p != null) league.DraftPool.Add(p);
             }
             league.UserResults.AddRange((data.UserResults ?? new List<GMGameResultEntry>()).Where(r => r != null && !string.IsNullOrEmpty(r.OpponentCode))); // [TASK-GM-07]
+            // [TASK-GM-08] FA 보상 · 보호 명단(구버전 세이브는 빈 목록)
+            foreach (var o in data.FAOrigins ?? new List<GMFaOriginEntry>()) if (o != null && !string.IsNullOrEmpty(o.PlayerId)) league.FAOrigins[o.PlayerId] = o;
+            league.PendingCompensations.AddRange((data.PendingCompensations ?? new List<GMPendingCompensation>()).Where(c => c != null && !string.IsNullOrEmpty(c.FromTeam)));
+            league.FASignedThisYear.AddRange(data.FASignedThisYear ?? new List<string>());
+            league.RookiesThisYear.AddRange(data.RookiesThisYear ?? new List<string>());
+            league.UserProtectedIds.AddRange(data.UserProtectedIds ?? new List<string>());
             return league;
         }
 
@@ -802,6 +823,7 @@ namespace KBOManager.Managers
             player.InjuryRemainingDays = Math.Max(0, saved.InjuryRemainingDays);
             player.CareerAwardIds = new List<string>(saved.CareerAwardIds ?? new List<string>());
             player.AbsTrainingBonus = saved.AbsTrainingBonus; // [TASK-GM-06]
+            player.ProspectStatShift = saved.ProspectStatShift; // [TASK-GM-08]
         }
 
         private Player RestorePlayer(PlayerSaveData saved)
@@ -816,6 +838,7 @@ namespace KBOManager.Managers
                 return null;
             }
 
+            if (saved.ProspectStatShift != 0) template = KBOManager.Services.GMRosterTiers.ProspectTemplate(template, saved.ProspectStatShift); // [TASK-GM-08] 퓨처스 유망주
             var player = new Player(saved.InstanceId, template)
             {
                 ReinforceLevel = saved.ReinforceLevel,

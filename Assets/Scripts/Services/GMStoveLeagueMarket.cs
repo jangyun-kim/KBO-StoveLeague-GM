@@ -18,7 +18,7 @@ namespace KBOManager.Services
     /// </summary>
     public static class GMStoveLeagueMarket
     {
-        public const int RosterMax = 28;
+        public const int RosterMax = GMRosterTiers.FirstTeamMax; // [TASK-GM-08] 1군 29명(출장 27명) - 구 28인
         public const int MinRosterAfterRelease = 20;
         public const int FAMarketShown = 15;
         public const int DraftPoolSize = 10;
@@ -131,6 +131,7 @@ namespace KBOManager.Services
             p.IsCaptain = false;
             p.HasRoleConcessionBonus = false;
             league.FreeAgents.Insert(0, p);
+            league.FAOrigins.Remove(p.InstanceId); // [TASK-GM-08] 방출 = 자유계약(보상 없음)
             r.TeamworkAfter = Teamwork(team);
             r.Success = true;
             r.Message = $"{p.Template.PlayerName} 방출 - 위약금 {GMDiagnosticFormat.Won(buyout)} · 로스터 {team.Roster.Count}/{RosterMax}인";
@@ -140,7 +141,7 @@ namespace KBOManager.Services
 
         private static void RemoveFromTeam(GMTeamState team, Player p)
         {
-            team.Roster.Remove(p);
+            if (!team.Roster.Remove(p)) { team.Futures.Remove(p); return; } // [TASK-GM-08] 퓨처스 선수(트레이드 · 보상)
             string id = p.InstanceId;
             team.Lineup.Starters.RemoveAll(x => x.InstanceId == id);
             team.Lineup.Roles.RemoveAll(x => x.InstanceId == id);
@@ -267,9 +268,11 @@ namespace KBOManager.Services
             p.HasRoleConcessionBonus = roleGuarantee;
             AddToTeam(team, p);
             fo.FASigningsThisYear++;
+            var pending = GMFaCompensation.OnFreeAgentSigned(league, team, p); // [TASK-GM-08] 원 소속 보상(정산 대기) · FA 계약 당사자 자동 보호
             r.TeamworkAfter = Teamwork(team);
             r.Success = true;
-            r.Message = $"{p.Template.PlayerName} FA 영입! {years}년 · 연봉 {GMDiagnosticFormat.Won(salary)}{(roleGuarantee ? " · 보직 보장" : "")} · 계약금 {GMDiagnosticFormat.Won(bonus)} · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}";
+            r.Message = $"{p.Template.PlayerName} FA 영입! {years}년 · 연봉 {GMDiagnosticFormat.Won(salary)}{(roleGuarantee ? " · 보직 보장" : "")} · 계약금 {GMDiagnosticFormat.Won(bonus)} · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}" +
+                        (pending != null ? $" · 원 소속 {KBOManager.Data.NameAliasTable.DisplayTeamName(pending.FromTeam)} {GMFaCompensation.GradeLabel(pending.Grade)} 보상 정산 대기" : "");
             News(league, GMNewsKind.Trade, $"FA {p.Template.PlayerName} 영입", r.Message);
             return r;
         }
@@ -302,52 +305,75 @@ namespace KBOManager.Services
             return 1f;
         }
 
-        /// <summary>1:1 / 2:2 직접 트레이드 평가 - 상대 단장 기준(받는 가치 × 니즈 ≥ 주는 가치 × 난이도 배수면 수락).</summary>
-        public static GMTradeEvaluation Evaluate(GMLeagueState league, GMTeamState mine, IList<Player> myOut, GMTeamState partner, IList<Player> theirIn)
+        /// <summary>[TASK-GM-08] 상대 단장 요구 가치 배수 = 난이도 배수 + 거래 하드 모드(+10%).</summary>
+        public static float RequiredMargin(GMLeagueState league) =>
+            GMFrontOffice.TradeMargin(GMFrontOffice.Ensure(league).Difficulty) + (GMFrontOffice.Manager(league).HardTrade ? HardTradeExtraMargin : 0f);
+
+        public const int MaxTradeSide = 3; // [TASK-GM-08] 1:N · 최대 3:3
+
+        /// <summary>
+        /// 직접 트레이드 평가 - 상대 단장 기준(받는 가치 × 니즈 + 연봉 보조 ≥ 주는 가치 × 난이도 배수면 수락).
+        /// [TASK-GM-08] 1:1 / 2:2 → 1:N(양쪽 1~3명, 인원 불일치 허용 - 1군 29명을 넘으면 퓨처스로 정리) · 퓨처스 선수 포함 · AI 니즈 적합도 · 연봉 보조(만 원).
+        /// </summary>
+        public static GMTradeEvaluation Evaluate(GMLeagueState league, GMTeamState mine, IList<Player> myOut, GMTeamState partner, IList<Player> theirIn, int cashSubsidy = 0)
         {
             var e = new GMTradeEvaluation();
             myOut = myOut ?? new List<Player>();
             theirIn = theirIn ?? new List<Player>();
             if (mine == null || partner == null || mine == partner) { e.Reason = "상대 구단을 고르십시오."; return e; }
             if (myOut.Count == 0 || theirIn.Count == 0) { e.Reason = "양쪽에 1명 이상 올리십시오."; return e; }
-            if (myOut.Count > 2 || theirIn.Count > 2) { e.Reason = "트레이드는 최대 2:2까지입니다."; return e; }
-            if (myOut.Count != theirIn.Count) { e.Reason = "1:1 또는 2:2로 인원을 맞추십시오(28인 로스터 유지)."; return e; }
-            if (!myOut.All(mine.Roster.Contains) || !theirIn.All(partner.Roster.Contains)) { e.Reason = "소속이 맞지 않는 선수가 있습니다."; return e; }
+            if (myOut.Count > MaxTradeSide || theirIn.Count > MaxTradeSide) { e.Reason = $"트레이드는 한쪽 최대 {MaxTradeSide}명(1:N)까지입니다."; return e; }
+            if (!myOut.All(mine.ReservePlayers.Contains) || !theirIn.All(partner.ReservePlayers.Contains)) { e.Reason = "소속이 맞지 않는 선수가 있습니다."; return e; }
+            if (mine.Roster.Count - myOut.Count(mine.Roster.Contains) + theirIn.Count < MinRosterAfterRelease) { e.Reason = $"트레이드 후 1군이 {MinRosterAfterRelease}명 미만이 됩니다."; return e; }
+            cashSubsidy = Math.Max(0, Math.Min(GMTradeAI.MaxCashSubsidy, cashSubsidy));
+            if (cashSubsidy > mine.Budget) { e.Reason = "연봉 보조를 낼 운영 자금이 부족합니다."; return e; }
             var notes = new List<string>();
+            var needs = GMTradeAI.AnalyzeNeeds(league, partner);
             foreach (var p in myOut)
             {
                 float need = NeedMultiplier(partner, p, out var note);
+                float fit = GMTradeAI.NeedFit(needs, p, out var fitNote);
+                if (fit > need) { need = fit; note = $"{partner.DisplayName} {fitNote} 니즈(+{(fit - 1f) * 100:0}%)"; }
                 if (!string.IsNullOrEmpty(note)) notes.Add(note);
                 e.ReceiveValue += TradeValue(p) * need;
             }
+            e.CashSubsidy = cashSubsidy;
+            e.CashValue = GMTradeAI.CashValue(cashSubsidy);
+            e.ReceiveValue += e.CashValue;
             e.GiveValue = theirIn.Sum(TradeValue);
             var manager = GMFrontOffice.Manager(league);
-            e.Required = e.GiveValue * (GMFrontOffice.TradeMargin(GMFrontOffice.Ensure(league).Difficulty) + (manager.HardTrade ? HardTradeExtraMargin : 0f)); // [TASK-GM-07] 거래 하드 모드
-            e.NeedsNote = notes.Count > 0 ? string.Join(" · ", notes.Distinct()) : $"{partner.DisplayName} 특별한 니즈 없음";
+            e.Required = e.GiveValue * RequiredMargin(league); // [TASK-GM-07] 거래 하드 모드
+            e.NeedsNote = notes.Count > 0 ? string.Join(" · ", notes.Distinct()) : $"{partner.DisplayName} 니즈: {GMTradeAI.NeedsLabel(needs)}";
             e.Acceptable = e.ReceiveValue >= e.Required || manager.Commissioner; // [TASK-GM-07] 커미셔너 모드 - 가치 판정 건너뜀
             e.Reason = e.Acceptable ? $"{partner.DisplayName} 단장: \"좋습니다, 받아들이죠.\"" : $"{partner.DisplayName} 단장: \"가치가 부족합니다({e.Ratio * 100:0}%).\"";
             return e;
         }
 
         /// <summary>트레이드 실행(평가 통과 시) - 로스터 교환 · 주장/라인업 핀 · 전담 응원 정리 · 하우스 룰 카운트 · 소식.</summary>
-        public static GMNegotiationResult ExecuteTrade(GMLeagueState league, GMTeamState mine, IList<Player> myOut, GMTeamState partner, IList<Player> theirIn)
+        public static GMNegotiationResult ExecuteTrade(GMLeagueState league, GMTeamState mine, IList<Player> myOut, GMTeamState partner, IList<Player> theirIn, int cashSubsidy = 0)
         {
             var r = new GMNegotiationResult();
             if (!GMFrontOffice.CanTrade(league, out var rule)) { r.Message = rule; return r; }
-            var e = Evaluate(league, mine, myOut, partner, theirIn);
+            var e = Evaluate(league, mine, myOut, partner, theirIn, cashSubsidy);
             if (!e.Acceptable) { r.Message = e.Reason; return r; }
             r.TeamworkBefore = Teamwork(mine);
             var outs = myOut.ToList();
             var ins = theirIn.ToList();
             foreach (var p in outs) { RemoveFromTeam(mine, p); AddToTeam(partner, p); }
             foreach (var p in ins) { RemoveFromTeam(partner, p); AddToTeam(mine, p); }
+            // [TASK-GM-08] 연봉 보조 이전 · 1군 29명 초과분 퓨처스 정리
+            mine.Budget -= e.CashSubsidy;
+            partner.Budget += e.CashSubsidy;
+            var moved = GMRosterTiers.EnforceLimits(league, mine).Concat(GMRosterTiers.EnforceLimits(league, partner)).ToList();
             if (outs.Any(p => p.Template.RealPlayerId == mine.TradeRequestPlayerId)) mine.TradeRequestPlayerId = null;
             GMFrontOffice.Ensure(league).TradesThisYear++;
             r.TeamworkAfter = Teamwork(mine);
             r.Success = true;
             string give = string.Join(" · ", outs.Select(p => p.Template.PlayerName));
             string get = string.Join(" · ", ins.Select(p => p.Template.PlayerName));
-            r.Message = $"트레이드 성사({outs.Count}:{ins.Count}) - {give} ↔ {partner.DisplayName} {get} · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}";
+            r.Message = $"트레이드 성사({outs.Count}:{ins.Count}) - {give} ↔ {partner.DisplayName} {get}" +
+                        (e.CashSubsidy > 0 ? $" · 연봉 보조 {GMDiagnosticFormat.Won(e.CashSubsidy)}" : "") +
+                        (moved.Count > 0 ? $" · 로스터 정리 {string.Join(", ", moved)}" : "") + $" · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}";
             News(league, GMNewsKind.Trade, $"{mine.DisplayName} ↔ {partner.DisplayName} 트레이드", r.Message);
             return r;
         }
@@ -426,6 +452,7 @@ namespace KBOManager.Services
             p.IsScouted = true;
             AddToTeam(team, p);
             fo.DraftPicksThisYear++;
+            if (!league.RookiesThisYear.Contains(p.InstanceId)) league.RookiesThisYear.Add(p.InstanceId); // [TASK-GM-08] 당해 신인 = 보상 자동 보호
             r.TeamworkAfter = Teamwork(team);
             r.Success = true;
             r.Message = $"{league.SeasonYear} 신인 드래프트 {fo.DraftPicksThisYear}순위 지명: {p.Template.PlayerName}({GMFrontOffice.PositionLabel(p.Position)} · {p.Age}세 · 잠재력 {p.Potential}) · 계약금 {GMDiagnosticFormat.Won(bonus)}";

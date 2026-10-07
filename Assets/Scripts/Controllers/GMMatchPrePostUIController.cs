@@ -138,6 +138,7 @@ namespace KBOManager.Controllers
         public void CloseAll()
         {
             autoPlay = false;
+            DetachLiveAudio(); // [TASK-GM-08] 응원 믹스 · 타석 이벤트 구독 해제
             if (preRoot != null) preRoot.gameObject.SetActive(false);
             if (postRoot != null) postRoot.gameObject.SetActive(false);
             if (liveRoot != null) liveRoot.gameObject.SetActive(false);

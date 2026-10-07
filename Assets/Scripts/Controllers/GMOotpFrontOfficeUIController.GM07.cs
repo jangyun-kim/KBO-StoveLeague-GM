@@ -20,7 +20,7 @@ namespace KBOManager.Controllers
     ///   ② 팀 배너(4일 일정 티커) + 우측 세로 퀵 아이콘 사이드바(홈 · 일정 · 순위 · 선수 · 재정 · 시장 · 응원 · PS · 설정)
     ///   ③ 감독 설정(좌 KBO 10구단 로고 리스트 · 우 프로필 · 플레이 모드 옵션 5종 · 4단계 난이도 드롭다운)
     ///   ④ 시즌 일정(좌 원정/홈 대각선 분할 매치업 카드 · 우 1~12월 달력 그리드 - 홈 구단색 · 원정 회색, 경기 시간 · 결과 스코어)
-    ///   ⑤ 포스트시즌 트리(와일드카드 → 준PO → PO → 한국시리즈 4열 브래킷 · 시리즈 승수 · [다음 경기 진행] 1경기씩)
+    ///   ⑤ 포스트시즌 트리(와일드카드 → 준PO → PO → 한국시리즈 4열 브래킷 · 시리즈 승수 · [다음 경기 진행] 1경기씩) - [TASK-GM-08] 조립 · 갱신은 GM08 partial로 이동
     ///   ⑥ [진행하기] 라우팅: 다른 화면에서 누르면 리그 플레이 메인 홈(프런트 오피스 6분할)으로, 메인 홈에서 누르면 ① 전력 분석부터 3단계 플로우.
     /// </summary>
     public partial class GMOotpFrontOfficeUIController
@@ -332,42 +332,6 @@ namespace KBOManager.Controllers
 
         // ================================================================== 포스트시즌 트리(215614)
 
-        public static readonly string[] BracketHeads = { "와일드카드 결정전", "준플레이오프", "플레이오프", "한국시리즈" };
-
-        private static float BracketX0(int col) => 12 + col * 456;
-        private static float BracketRowY0(int col, int row) => 330 + col * 150 + row * 80;
-
-        private void BuildPostseasonPane()
-        {
-            var pane = PaneRoot(PanePostseason);
-            for (int col = 0; col < 4; col++)
-            {
-                float x0 = BracketX0(col), x1 = x0 + 440;
-                CompyaUiKit.Box(pane, $"HeadBg{col}", x0, 252, x1, 292, PanelColor);
-                L(pane, $"BracketHead{col}", BracketHeads[col], x0, 252, x1, 292, BodyPt, TextAnchor.MiddleCenter, Muted);
-                for (int row = 0; row < 2; row++)
-                {
-                    float y0 = BracketRowY0(col, row), y1 = y0 + 70;
-                    var slot = CompyaUiKit.Fill(pane, $"Bracket{col}_{row}");
-                    psRows[col, row] = CompyaUiKit.Box(slot, "Bg", x0, y0, x1, y1, new Color(0.17f, 0.17f, 0.19f));
-                    psLogos[col, row] = CompyaUiKit.Logo(slot, "Logo", x0 + 8, y0 + 8, x0 + 62, y1 - 8);
-                    psNames[col, row] = L(slot, "Name", "", x0 + 72, y0, x0 + 360, y1, PanelTitlePt + 1, TextAnchor.MiddleLeft, White);
-                    psWins[col, row] = L(slot, "Wins", "", x0 + 364, y0, x1 - 12, y1, PanelTitlePt + 5, TextAnchor.MiddleRight, White);
-                }
-                if (col > 0) CompyaUiKit.Box(pane, $"Connector{col}", BracketX0(col - 1) + 440, BracketRowY0(col - 1, 0) + 75, BracketX0(col), BracketRowY0(col - 1, 0) + 79, new Color(1f, 1f, 1f, 0.3f));
-                float gy0 = BracketRowY0(col, 1) + 80;
-                psGames[col] = L(pane, $"SeriesGames{col}", "", x0, gy0, x1, col == 3 ? 1036 : gy0 + 120, CellPt, TextAnchor.UpperLeft, Muted);
-                psGames[col].lineSpacing = 1.05f;
-                psGames[col].verticalOverflow = VerticalWrapMode.Truncate;
-            }
-            psChampion = L(pane, "Champion", "", BracketX0(3), 330, BracketX0(3) + 440, 470, PanelTitlePt + 3, TextAnchor.MiddleCenter, Gold);
-            psNext = L(pane, "NextGame", "", 12, 880, 904, 944, BodyPt, TextAnchor.MiddleLeft, White);
-            psNextButton = Btn(pane, "NextGameButton", "다음 경기 진행 ▶", 12, 952, 440, 1036, ContinueGreen, ButtonPt + 2);
-            psAutoButton = Btn(pane, "AutoPostseasonButton", "남은 포스트시즌 자동 진행", 468, 952, 904, 1036, ButtonIdle, ButtonPt);
-            psNextButton.onClick.AddListener(() => PlayNextPostseason());
-            psAutoButton.onClick.AddListener(() => AutoPostseason());
-        }
-
         public void OpenPostseasonTree()
         {
             if (subTabs == null) Build();
@@ -410,55 +374,6 @@ namespace KBOManager.Controllers
             SetStatus(ps != null ? $"{ps.Series.Last().Round} 종료 - {NameAliasTable.DisplayTeamName(ps.ChampionCode)} 우승 · MVP {ps.KoreanSeriesMvp}" : "포스트시즌을 진행할 수 없습니다.");
             Refresh();
             return ps != null;
-        }
-
-        private void RefreshPostseason()
-        {
-            var league = League;
-            string me = league.SelectedTeamCode;
-            var ps = simulator.IsSeasonComplete ? GMAwardEvaluator.BeginPostseason(simulator) : null;
-            var standings = simulator.Standings();
-            var seeds = ps != null ? ps.SeedCodes : standings.Take(5).Select(r => r.TeamCode).ToList();
-            for (int col = 0; col < 4; col++)
-            {
-                var series = ps != null && col < ps.Series.Count ? ps.Series[col] : null;
-                string higher = series?.HigherCode ?? (seeds.Count > GMAwardEvaluator.PostseasonRounds[col].higherSeed ? seeds[GMAwardEvaluator.PostseasonRounds[col].higherSeed] : null);
-                string lower = series?.LowerCode ?? (col == 0 && seeds.Count > 4 ? seeds[4] : null);
-                for (int row = 0; row < 2; row++)
-                {
-                    string code = row == 0 ? higher : lower;
-                    int wins = series == null ? 0 : row == 0 ? series.HigherWins : series.LowerWins;
-                    bool winner = series != null && !string.IsNullOrEmpty(series.WinnerCode) && series.WinnerCode == code;
-                    bool loser = series != null && !string.IsNullOrEmpty(series.WinnerCode) && series.WinnerCode != code;
-                    int seed = code != null ? seeds.IndexOf(code) + 1 : 0;
-                    psNames[col, row].text = code == null ? "미정" : $"{seed}. {CompyaUiKit.ShortName(NameAliasTable.ToTeam(code))}{(code == me ? " (내 구단)" : "")}";
-                    psNames[col, row].color = winner ? Gold : loser ? Muted : White;
-                    psWins[col, row].text = code == null ? "" : wins.ToString();
-                    psWins[col, row].color = winner ? Gold : White;
-                    CompyaUiKit.SetLogo(psLogos[col, row], code != null ? NameAliasTable.ToTeam(code) : Team.None, code != null ? (loser ? 0.45f : 1f) : 0f);
-                    psRows[col, row].color = code == me ? CompyaUiKit.Darken(CompyaUiKit.TeamColor(NameAliasTable.ToTeam(code)), 0.6f) : new Color(0.17f, 0.17f, 0.19f);
-                }
-                string need = col == 0 ? "4위 1승 어드밴티지 · 2선승" : col == 3 ? "4선승" : "3선승";
-                psGames[col].text = series == null ? need : $"{need}\n{string.Join("\n", series.Games.Skip(Math.Max(0, series.Games.Count - (col == 3 ? 3 : 4))))}";
-            }
-            if (ps != null && ps.Completed)
-            {
-                psChampion.text = $"{league.SeasonYear} 한국시리즈 우승\n{NameAliasTable.DisplayTeamName(ps.ChampionCode)}\nMVP {ps.KoreanSeriesMvp}";
-                psNext.text = "포스트시즌 종료 - [시상식 열기]로 KBO 시상식 · 골든글러브를 진행하십시오.";
-                CompyaUiKit.SetButtonText(psNextButton, "시상식 열기 ▶");
-                psAutoButton.interactable = false;
-            }
-            else
-            {
-                psChampion.text = "";
-                var next = ps != null ? GMAwardEvaluator.NextPostseasonGame(simulator) : null;
-                psNext.text = !simulator.IsSeasonComplete ? $"정규시즌 진행 중 - 현재 순위 기준 예상 대진(G {simulator.GamesPlayed}/{GMLiveSeasonSimulator.SeasonGames})"
-                    : next == null ? "포스트시즌 준비 중"
-                    : $"다음: {next.Title} {CompyaUiKit.ShortName(NameAliasTable.ToTeam(next.AwayCode))} @ {CompyaUiKit.ShortName(NameAliasTable.ToTeam(next.HomeCode))}{(next.IsUserGame ? " - 내 구단 경기(3단계 지휘)" : "")}";
-                CompyaUiKit.SetButtonText(psNextButton, next != null && next.IsUserGame ? "내 구단 경기 지휘 ▶" : "다음 경기 진행 ▶");
-                psAutoButton.interactable = simulator.IsSeasonComplete;
-            }
-            psNextButton.interactable = simulator.IsSeasonComplete;
         }
 
         // ================================================================== 감독 설정(215504)
@@ -513,6 +428,7 @@ namespace KBOManager.Controllers
             L(managerPopup, "DifficultyLabel", "게임 난이도", 810, 798, 990, 834, BodyPt, TextAnchor.MiddleLeft, White);
             mgDifficulty = Btn(managerPopup, "DifficultyDrop", "", 1000, 798, 1400, 834, new Color(0.25f, 0.25f, 0.28f), SmallPt);
             mgDifficultyDesc = L(managerPopup, "DifficultyDesc", "", 810, 840, 1700, 900, CellPt, TextAnchor.UpperLeft, Muted);
+            BuildSoundSettings(managerPopup); // [TASK-GM-08] BGM · 효과음 볼륨
 
             mgStart = Btn(managerPopup, "StartGameButton", "✔ 게임 시작", 1200, 930, 1440, 990, ContinueGreen, ButtonPt + 1);
             mgApply = Btn(managerPopup, "ApplyButton", "현재 리그에 적용", 950, 930, 1190, 990, new Color(0.25f, 0.4f, 0.7f), ButtonPt);
@@ -584,6 +500,7 @@ namespace KBOManager.Controllers
             managerPopup.gameObject.SetActive(true);
             managerPopup.SetAsLastSibling();
             RefreshManagerSetup();
+            RefreshSoundSettings(); // [TASK-GM-08]
         }
 
         public void CloseManagerSetup()

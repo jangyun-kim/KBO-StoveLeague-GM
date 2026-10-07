@@ -127,7 +127,8 @@ namespace KBOManager.EditorTools
             SetupTaskGM05.ApplyAll(); // [TASK-GM-05] 구단 치어리더 15인 풀 · 4~6인 엔트리 화면
             SetupTaskGM06.ApplyAll(); // [TASK-GM-06] 1920×1080 Landscape 전환 · OOTP 27 프런트 오피스 허브 · 기존 세로 화면 9:16 프레임
             SetupTaskGM07.ApplyAll(); // [TASK-GM-07] OOTP 레이아웃 6종(툴바 · 사이드바 · 감독 설정 · 일정 · 포스트시즌 트리) · 실시간 이닝 경기 화면 점검
-            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~07 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTaskGM08.ApplyAll(); // [TASK-GM-08] 삼성 오디오 임포트 · GMAudioManager 배치 · FA 보상·보호명단 · AI 역제안 · 포스트시즌 KBO 리더 점검
+            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~08 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

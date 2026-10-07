@@ -244,6 +244,7 @@ namespace KBOManager.Simulation
             foreach (var team in league.Teams.Values) TeamChemistryEngine.ApplyMatchChemistryTick(team.AvailableRoster);
             foreach (var team in league.Teams.Values) GMCheerleaderRoster.TickDay(team); // [TASK-GM-05] 단상 체력 소모 · 벤치 회복 · 자동 로테이션
             league.GamesPlayed++;
+            UpdateLeagueEnvironment();
             UpdateWar();
             PeriodicNews(day);
             // [TASK-GM-04] 월말(24경기 단위) 월간 시상 → 전반기 종료 직후 7월 올스타전
@@ -539,6 +540,7 @@ namespace KBOManager.Simulation
                 chem.CheerErrorReduction = GMCheerleaderRoster.ErrorReduction(entry);
                 chem.ClutchHitModifier += GMCheerleaderRoster.ClutchBonus(entry);
                 chem.AbsCatcherSkill = CatcherAbsSkill(available, team.Lineup); // [TASK-GM-06] ABS 포수 블로킹 · 도루저지
+                chem.Batting = league.EnsureBattingBalance();                     // [TASK-GM-08] 타격 밸런스 · 리그 환경 정규화
             }
             return new TeamPowerModifiers(0, isHome ? TeamPowerModifiers.HomeAdvantageConditionBuff : 0, 1.0f, null, cheer, teamOvr, chem);
         }
@@ -752,6 +754,22 @@ namespace KBOManager.Simulation
                 double fip = (13.0 * s.HRA + 3.0 * s.PBB - 2.0 * s.PSO) / s.IP + constant;
                 s.PitcherWAR = (float)(((lgEra + 1.0 - fip) * s.IP / 9.0) / 10.0);
             }
+        }
+
+        /// <summary>[TASK-GM-08] OOTP식 리그 환경 정규화 - 리그 누적 타율을 목표(.265)로 당기는 안타 가중치 배수를 갱신한다.</summary>
+        private void UpdateLeagueEnvironment()
+        {
+            int h = 0, ab = 0;
+            foreach (var s in league.Stats.Values) { h += s.H; ab += s.AB; }
+            league.EnsureBattingBalance().UpdateEnvironment(h, ab);
+        }
+
+        /// <summary>[TASK-GM-08] 리그 평균 타율 · 출루율 · 장타율 · 삼진율(타석 기준).</summary>
+        public (double avg, double obp, double slg, double kRate) LeagueBattingLine()
+        {
+            int pa = 0, ab = 0, h = 0, bb = 0, tb = 0, so = 0;
+            foreach (var s in league.Stats.Values) { pa += s.PA; ab += s.AB; h += s.H; bb += s.BB; tb += s.TotalBases; so += s.SO; }
+            return (ab == 0 ? 0 : (double)h / ab, pa == 0 ? 0 : (double)(h + bb) / pa, ab == 0 ? 0 : (double)tb / ab, pa == 0 ? 0 : (double)so / pa);
         }
 
         private static double Woba(GMPlayerSeasonStats s) => 0.69 * s.BB + 0.89 * s.Singles + 1.27 * s.Doubles + 1.62 * s.Triples + 2.10 * s.HR;

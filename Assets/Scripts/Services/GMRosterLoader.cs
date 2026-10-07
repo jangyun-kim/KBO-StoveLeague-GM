@@ -19,6 +19,12 @@ namespace KBOManager.Services
         public bool IsUserTeam;
 
         public readonly List<Player> Roster = new List<Player>();
+        /// <summary>[TASK-GM-08] 퓨처스 핵심 유망주 풀(10~15명, 실제 선수) - 경기에는 나서지 않고 콜업 · 보호 명단 대상이다.</summary>
+        public readonly List<Player> Futures = new List<Player>();
+        /// <summary>[TASK-GM-08] 익명 육성 슬롯 인원(개별 선수 데이터 없음).</summary>
+        public int DevelopmentSlots = GMRosterTiers.DefaultDevelopmentSlots;
+        /// <summary>[TASK-GM-08] 보류선수 전체(1군 + 퓨처스) - FA 보상 보호 명단 대상.</summary>
+        public IEnumerable<Player> ReservePlayers => Roster.Concat(Futures);
         public IEnumerable<Player> Batters => Roster.Where(p => !p.IsPitcher);
         public IEnumerable<Player> Pitchers => Roster.Where(p => p.IsPitcher);
 
@@ -93,6 +99,12 @@ namespace KBOManager.Services
         // [TASK-GM-06] 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건 · 엔딩) + 신인 드래프트 유망주 풀
         public GMFrontOfficeState FrontOffice = new GMFrontOfficeState();
         public readonly List<Player> DraftPool = new List<Player>();
+        // [TASK-GM-08] FA 원 소속 · 등급(InstanceId → 항목) · 정산 대기 보상 · 자동 보호 대상(올해 FA 계약 · 신인) · 단장 수동 보호 명단
+        public readonly Dictionary<string, GMFaOriginEntry> FAOrigins = new Dictionary<string, GMFaOriginEntry>();
+        public readonly List<GMPendingCompensation> PendingCompensations = new List<GMPendingCompensation>();
+        public readonly List<string> FASignedThisYear = new List<string>();
+        public readonly List<string> RookiesThisYear = new List<string>();
+        public readonly List<string> UserProtectedIds = new List<string>();
         // [TASK-GM-07] 내 구단 정규시즌 경기 결과(시즌 일정 캘린더 · 세이브 v18)
         public readonly List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();
         public GMGameResultEntry ResultOn(int day) => UserResults.FirstOrDefault(r => r.Day == day);
@@ -133,6 +145,12 @@ namespace KBOManager.Services
             if (RecentUserBoxScores.Count > MaxRecentBoxScores) RecentUserBoxScores.RemoveRange(MaxRecentBoxScores, RecentUserBoxScores.Count - MaxRecentBoxScores);
         }
 
+        // [TASK-GM-08] 리그 타격 밸런스(세이브 제외 - 시즌 첫 경기에 1군 로스터로 다시 만든다, 환경 배수는 경기일마다 재수렴)
+        public KBOManager.Engine.GMBattingBalance BattingBalance;
+
+        public KBOManager.Engine.GMBattingBalance EnsureBattingBalance() =>
+            BattingBalance ?? (BattingBalance = KBOManager.Engine.GMBattingBalance.FromRosters(Teams.Values.Select(t => (IEnumerable<Player>)t.Roster)));
+
         public Player FindPlayer(string instanceId) => AllPlayers.FirstOrDefault(p => p.InstanceId == instanceId);
         public string TeamCodeOf(Player player) => Teams.Values.FirstOrDefault(t => t.Roster.Contains(player))?.TeamCode;
 
@@ -158,7 +176,10 @@ namespace KBOManager.Services
             Stats.Clear();
             RecentUserBoxScores.Clear();
             UserResults.Clear(); // [TASK-GM-07]
-            foreach (var p in Teams.Values.SelectMany(t => t.Roster).Concat(FreeAgents))
+            BattingBalance = null; // [TASK-GM-08] 새 시즌 - 로스터 기준 재계산
+            FASignedThisYear.Clear(); // [TASK-GM-08] 자동 보호(올해 FA 계약 · 신인)는 1년 한정
+            RookiesThisYear.Clear();
+            foreach (var p in Teams.Values.SelectMany(t => t.ReservePlayers).Concat(FreeAgents))
             {
                 p.Age = Math.Min(Player.MaxAge, p.Age + 1);
                 p.ContractYears = Math.Max(0, p.ContractYears - 1);
@@ -267,6 +288,8 @@ namespace KBOManager.Services
             BuildFreeAgentMarket(state, candidates, used, debutYear, awards);
             if (mode == GMStartMode.StoryCampaign) ApplyStoryCampaign(state.UserTeam);
             BuildDraftPool(state, byPerson, used, debutYear, mode == GMStartMode.AllTimeDream ? 0 : GMFeatureFlags.DEFAULT_START_YEAR); // [TASK-GM-06] · [TASK-GM-07] 현역 모드는 2026 카드만
+            GMRosterTiers.BuildFuturesPools(state, byPerson, used, debutYear);                  // [TASK-GM-08] 퓨처스 핵심 유망주 풀(구단당 12명)
+            GMFaCompensation.RegisterMarketOrigins(state);                                     // [TASK-GM-08] FA 원 소속 · 등급
             GMFrontOffice.Initialize(state);                 // [TASK-GM-06] 구단주 · 목표 · 시즌 이력 · 스토리 안건
             return state;
         }

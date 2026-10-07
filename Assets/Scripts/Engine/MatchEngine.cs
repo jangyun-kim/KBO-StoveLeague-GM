@@ -627,7 +627,7 @@ namespace KBOManager.Engine
             // [TASK-GM-05] 기본 실책률(수비력 반영) × (1 - 치어리더 마운드 응원 억제) + 케미스트리 추가분. 단장 모드(케미스트리 있음)에서만 판정한다.
             if (currentTactic == MatchTactic.None && defenseChem != null
                 && (result == AtBatResult.Groundout || result == AtBatResult.Flyout)
-                && defenseChem.ErrorChance > 0 && random.NextDouble() < defenseChem.ErrorChance)
+                && defenseChem.ErrorChance > 0 && random.NextDouble() < defenseChem.ErrorChance * (defenseChem.Batting != null ? GMBattingBalance.ErrorScale : 1.0)) // [TASK-GM-08] 범타 비중 보정
             {
                 result = AtBatResult.Single;
                 reachedOnError = true;
@@ -948,19 +948,23 @@ namespace KBOManager.Engine
             var batterStats = ResolveEffectiveBatterStats(batter, pitcher, state);
             var pitcherStats = ResolveEffectivePitcherStats(pitcher, batter, state);
 
+            // [TASK-GM-08] 단장 모드(케미스트리 있음) 타격 밸런스 - 리그 평균 격차 센터링 · 격차 상한 ±0.3 · KBO 실측형 확률표 · 리그 환경 정규화
+            var gmBalance = GetModifiersFor(batter).Chemistry?.Batting;
+
             // 삼진: 투수 구위/구속 평균 vs 타자 정확/선구 평균 (동일 가중치)
-            float strikeoutSkill = NormalizeDiff(
-                (pitcherStats.Stuff + pitcherStats.Velocity) / 2f
-                - (batterStats.Contact + batterStats.Discipline) / 2f);
-
+            float strikeoutDiff = (pitcherStats.Stuff + pitcherStats.Velocity) / 2f - (batterStats.Contact + batterStats.Discipline) / 2f;
             // 볼넷: 타자 선구 vs 투수 제구
-            float walkSkill = NormalizeDiff(batterStats.Discipline - pitcherStats.Control);
-
+            float walkDiff = batterStats.Discipline - pitcherStats.Control;
             // 안타 여부(맞은 공이 범타로 죽느냐/안타가 되느냐): 타자 정확 vs 투수 구위
-            float contactSkill = NormalizeDiff(batterStats.Contact - pitcherStats.Stuff);
-
+            float contactDiff = batterStats.Contact - pitcherStats.Stuff;
             // 장타(2루타 이상) 여부: 타자 파워 vs 투수 변화
-            float powerSkill = NormalizeDiff(batterStats.Power - pitcherStats.Movement);
+            float powerDiff = batterStats.Power - pitcherStats.Movement;
+
+            float strikeoutSkill = gmBalance != null ? GMBattingBalance.Skill(strikeoutDiff, gmBalance.StrikeoutOffset) : NormalizeDiff(strikeoutDiff);
+            float walkSkill = gmBalance != null ? GMBattingBalance.Skill(walkDiff, gmBalance.WalkOffset) : NormalizeDiff(walkDiff);
+            float contactSkill = gmBalance != null ? GMBattingBalance.Skill(contactDiff, gmBalance.ContactOffset) : NormalizeDiff(contactDiff);
+            float powerSkill = gmBalance != null ? GMBattingBalance.Skill(powerDiff, gmBalance.PowerOffset) : NormalizeDiff(powerDiff);
+            float skillInfluence = gmBalance != null ? GMBattingBalance.SkillInfluence : SkillInfluence;
 
             // TASK-KBO-039: 득점권(2루 또는 3루 주자)이면 공격 팀(타자)의 ClutchMultiplier를 타자
             // 긍정 이벤트(OutcomeTable.isBatterPositive)의 가중치에만 곱한다. 수비 팀(투수)의 위기 탈출
@@ -1004,7 +1008,8 @@ namespace KBOManager.Engine
             for (int i = 0; i < OutcomeTable.Length; i++)
             {
                 var (result, defaultBaseWeight, driver, direction, isBatterPositive) = OutcomeTable[i];
-                float baseWeight = config != null ? config.GetBaseWeight(result, defaultBaseWeight) : defaultBaseWeight;
+                float baseWeight = gmBalance != null ? GMBattingBalance.BaseWeight(result, defaultBaseWeight)
+                    : config != null ? config.GetBaseWeight(result, defaultBaseWeight) : defaultBaseWeight;
                 float skill = driver switch
                 {
                     OutcomeDriver.Strikeout => strikeoutSkill,
@@ -1014,8 +1019,9 @@ namespace KBOManager.Engine
                     _ => 0f
                 };
 
-                float multiplier = Mathf.Max(1f + direction * skill * SkillInfluence, 0.05f); // 확률 붕괴 방지 하한
+                float multiplier = Mathf.Max(1f + direction * skill * skillInfluence, 0.05f); // 확률 붕괴 방지 하한
                 float weight = baseWeight * multiplier;
+                if (gmBalance != null && isBatterPositive && result != AtBatResult.Walk) weight *= gmBalance.EnvironmentHitFactor; // [TASK-GM-08] 리그 환경 정규화
 
                 if (isScoringPosition && isBatterPositive && batterClutchMultiplier > 1f)
                 {
@@ -1295,7 +1301,13 @@ namespace KBOManager.Engine
             var stats = BasePitcherStats(pitcher); // Base + Growth([TASK-GM-02] 성장 비활성화 시 Base만)
             if (pitcher.ConditionStatBonus != 0) stats = AddTeamBuff(stats, pitcher.ConditionStatBonus); // [TASK-KBO-184] 컨디션 = 경기 안 가변 요소
 
-            if (pitcher.IsLowStamina)
+            if (GetModifiersFor(batter).Chemistry?.Batting != null)
+            {
+                // [TASK-GM-08] 단장 모드 피로 누적 - 체력 60% 미만부터 선형으로 최대 -15%(30% 미만 계단식 페널티 대체)
+                float fatigue = GMBattingBalance.FatigueMultiplier(StaminaRatio(pitcher));
+                if (fatigue < 1f) stats = Scale(stats, fatigue);
+            }
+            else if (pitcher.IsLowStamina)
             {
                 stats = Scale(stats, 1f - Player.LowStaminaOvrPenaltyPercent); // 체력 30% 미만: -15%
             }
