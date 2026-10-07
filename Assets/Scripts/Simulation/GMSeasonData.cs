@@ -290,11 +290,15 @@ namespace KBOManager.Simulation
         /// <summary>[TASK-GM-08] 리그 타격 밸런스(센터링 기준 · 환경 정규화 배수) - 단장 모드 경기면 시뮬레이터가 넣는다. null이면 레거시 확률표.</summary>
         public KBOManager.Engine.GMBattingBalance Batting;
 
+        /// <summary>[TASK-GM-10] 실효 전력 계수 원값(0.90 ~ 1.15) - Log5 경기의 최종 오즈 배수.</summary>
+        public float EffectivePower = 1f;
+
         public static GMChemistryModifiers From(TeamChemistryReport report)
         {
             if (report == null) return null;
             return new GMChemistryModifiers
             {
+                EffectivePower = report.EffectivePowerMultiplier,
                 PowerBonus = (int)Math.Round((report.EffectivePowerMultiplier - 1f) * 20f, MidpointRounding.AwayFromZero),
                 ClutchHitModifier = report.ClutchHitModifier,
                 ErrorRateMultiplier = report.ErrorRateMultiplier,
@@ -381,5 +385,6 @@ namespace KBOManager.Simulation
         public List<string> RookiesThisYear = new List<string>();
         public List<string> UserProtectedIds = new List<string>();
         public List<GMTournamentRecord> Tournaments = new List<GMTournamentRecord>(); // [TASK-GM-09] v20 글로벌 대회
+        public List<string> PriorityNegotiationIds = new List<string>();               // [TASK-GM-10] v21 원 소속 우선 협상
     }
 }

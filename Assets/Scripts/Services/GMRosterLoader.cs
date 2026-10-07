@@ -109,6 +109,9 @@ namespace KBOManager.Services
         public readonly List<GMTournamentRecord> Tournaments = new List<GMTournamentRecord>();
         /// <summary>[TASK-GM-09] 직전 정규시즌 개막 준비(AI FA 입찰 · WBC)의 AI 영입 기록.</summary>
         public readonly List<GMFreeAgencyCycle.AiSigning> LastAiSignings = new List<GMFreeAgencyCycle.AiSigning>();
+        // [TASK-GM-10] 원 소속 우선 협상 명단(내 구단 계약 만료자 InstanceId · 세이브 v21) · 직전 보류명단 제외 기록
+        public readonly List<string> PriorityNegotiationIds = new List<string>();
+        public readonly List<GMReserveList.Release> LastReserveReleases = new List<GMReserveList.Release>();
         // [TASK-GM-07] 내 구단 정규시즌 경기 결과(시즌 일정 캘린더 · 세이브 v18)
         public readonly List<GMGameResultEntry> UserResults = new List<GMGameResultEntry>();
         public GMGameResultEntry ResultOn(int day) => UserResults.FirstOrDefault(r => r.Day == day);

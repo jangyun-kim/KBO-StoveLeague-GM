@@ -503,8 +503,9 @@ namespace KBOManager.Engine
             awayClassBonus = OvrGapLaw.ClassAdvantageBonus(AwayTeamOvr, HomeTeamOvr);
             if (homeModifiers.Chemistry?.Batting != null) // [TASK-GM-09] 단장 모드 - 체급 우위 가산 축소(약팀 승률 1할대 붕괴 방지)
             {
-                homeClassBonus = GMBattingBalance.ScaleClassBonus(homeClassBonus);
-                awayClassBonus = GMBattingBalance.ScaleClassBonus(awayClassBonus);
+                bool legend = homeModifiers.Chemistry.Batting.Legend; // [TASK-GM-10] 레전드 리그(올타임 드림)는 체급 가산 없음 - 구단 간 격차가 이미 크다
+                homeClassBonus = legend ? 0 : GMBattingBalance.ScaleClassBonus(homeClassBonus);
+                awayClassBonus = legend ? 0 : GMBattingBalance.ScaleClassBonus(awayClassBonus);
             }
             // [TASK-GM-02] ⑥ 스타 군단의 방심 - 구단 OVR이 UpsetOvrMargin 이상 앞선 팀이 약팀을 만나면 경기 전 확률 판정.
             HomeUpsetTriggered = RollUpset(homeModifiers.Chemistry, HomeTeamOvr - AwayTeamOvr);
@@ -1009,6 +1010,13 @@ namespace KBOManager.Engine
                 absHit = Mathf.Max(0.5f, 1f - AbsCatcherHitInfluence * cAbs);
             }
 
+            // [TASK-GM-10] 단장 모드 = Sabermetrics Log5 판정(원 기록 기반). 레거시 카드 모드는 아래 능력치 확률표 그대로.
+            if (gmBalance != null)
+            {
+                double posMul = (isScoringPosition && batterClutchMultiplier > 1f ? batterClutchMultiplier : 1f) * (closeLateMultiplier > 1f ? closeLateMultiplier : 1f) * chemClutch;
+                return SimulateLog5(batter, pitcher, batterStats, pitcherStats, gmBalance, posMul, chemRispStrikeout, absStrikeout, absWalk, absHit);
+            }
+
             var weights = new float[OutcomeTable.Length];
             float total = 0f;
             for (int i = 0; i < OutcomeTable.Length; i++)
@@ -1066,10 +1074,76 @@ namespace KBOManager.Engine
         public const float AbsCatcherHitInfluence = 0.03f;
 
         /// <summary>[TASK-GM-02] 케미스트리 실효 전력(전 스탯 가산) + ⑥ 방심 발동 시 -4.</summary>
+        /// <summary>
+        /// [TASK-GM-10] Log5 타석 판정 - ① 볼넷 → ② 타수 중 안타(AVG · OAVG · LgAVG) → ③ 홈런/장타 분배 → ④ 범타 중 삼진 · 땅볼/뜬공.
+        /// 선수 비율 = 원 기록(Player.Performance)을 경기 중 유효 스탯 변화만큼 로짓 이동, 단장 역학은 오즈 배수(실효 전력 비 · 클러치 · ABS · 리그 환경)로 곱한다.
+        /// </summary>
+        private AtBatResult SimulateLog5(Player batter, Player pitcher, BatterStats eff, PitcherStats peff, GMBattingBalance balance,
+            double posMul, float rispStrikeout, float absStrikeout, float absWalk, float absHit)
+        {
+            var bp = batter.Performance;
+            var pp = pitcher.Performance;
+            var b0 = BaseBatterStats(batter);
+            var p0 = BasePitcherStats(pitcher);
+            // 시대 보정 - 이 리그 평균 능력치와 2026 기준값의 차이만큼 되돌린다(올타임 드림처럼 리그 전체가 강하면 양쪽 모두 리그 평균 기준으로)
+            double eCon = balance.MeanContact > 0 ? GMLog5.MeanContact - balance.MeanContact : 0, eEye = balance.MeanEye > 0 ? GMLog5.MeanEye - balance.MeanEye : 0;
+            double ePow = balance.MeanPower > 0 ? GMLog5.MeanPower - balance.MeanPower : 0;
+            double eStf = balance.MeanStuff > 0 ? GMLog5.MeanStuff - balance.MeanStuff : 0, eVel = balance.MeanVelocity > 0 ? GMLog5.MeanVelocity - balance.MeanVelocity : 0;
+            double eMov = balance.MeanMovement > 0 ? GMLog5.MeanMovement - balance.MeanMovement : 0, eCtl = balance.MeanControl > 0 ? GMLog5.MeanControl - balance.MeanControl : 0;
+            double bs = balance.BatterSpread, ps = balance.PitcherSpread;
+            double bAvg = GMLog5.Relative(bp.Avg, GMLog5.LgAvg, GMLog5.SlopeAvg * (eff.Contact - b0.Contact + eCon), bs, GMLog5.MinAvg, GMLog5.MaxAvg);
+            double bBB = GMLog5.Relative(bp.BBRate, GMLog5.LgBB, GMLog5.SlopeBB * (eff.Discipline - b0.Discipline + eEye), bs);
+            double bK = GMLog5.Relative(bp.KRate, GMLog5.LgK, -GMLog5.SlopeK * (((eff.Contact + eff.Discipline) - (b0.Contact + b0.Discipline)) / 2.0 + (eCon + eEye) / 2.0), bs);
+            double bHR = GMLog5.Relative(bp.HRPerHit, GMLog5.LgHRPerHit, GMLog5.SlopeHR * (eff.Power - b0.Power + ePow), bs);
+            double pAvg = GMLog5.Relative(pp.OAvg, GMLog5.LgAvg, -GMLog5.PitchSlopeAvg * (((peff.Stuff + peff.Movement) - (p0.Stuff + p0.Movement)) / 2.0 + (eStf + eMov) / 2.0), ps, GMLog5.MinOAvg, GMLog5.MaxOAvg);
+            double pBB = GMLog5.Relative(pp.PBBRate, GMLog5.LgBB, -GMLog5.PitchSlopeBB * (peff.Control - p0.Control + eCtl), ps);
+            double pK = GMLog5.Relative(pp.PKRate, GMLog5.LgK, GMLog5.PitchSlopeK * (((peff.Stuff + peff.Velocity) - (p0.Stuff + p0.Velocity)) / 2.0 + (eStf + eVel) / 2.0), ps);
+            double pHR = GMLog5.Relative(pp.PHRPerHit, GMLog5.LgHRPerHit, -GMLog5.PitchSlopeHR * (peff.Movement - p0.Movement + eMov), ps);
+
+            // 단장 역학 - 실효 전력 계수 비(하한 0.90 · 방심 발동 -0.08)
+            double ratio = GMLog5.Q(Math.Pow(TeamPower(batter) / TeamPower(pitcher), GMLog5.PowerRatioExponent));
+
+            double walk = GMLog5.Q(GMLog5.ApplyOdds(GMLog5.Log5(bBB, pBB, GMLog5.LgBB), absWalk * posMul * Math.Sqrt(ratio)));
+            if (random.NextDouble() < walk) return AtBatResult.Walk;
+
+            double hit = GMLog5.Q(GMLog5.ApplyOdds(GMLog5.Log5(bAvg, pAvg, GMLog5.LgAvg), balance.EnvironmentHitFactor * absHit * posMul * ratio));
+            if (random.NextDouble() < hit)
+            {
+                double hr = GMLog5.Q(GMLog5.ApplyOdds(GMLog5.Log5(bHR, pHR, GMLog5.LgHRPerHit), ratio));
+                double roll = random.NextDouble();
+                if (roll < hr) return AtBatResult.HomeRun;
+                double rest = (roll - hr) / Math.Max(1e-6, 1 - hr);
+                double dbl = GMLog5.Q(GMLog5.LgDoubleShare * Math.Exp(0.02 * (eff.Power - GMLog5.MeanPower)));
+                double tpl = GMLog5.Q(GMLog5.LgTripleShare * Math.Exp(0.03 * (eff.Speed - GMLog5.MeanSpeed)));
+                double norm = 1.0 - GMLog5.LgDoubleShare - GMLog5.LgTripleShare + dbl + tpl;
+                if (rest < tpl / norm) return AtBatResult.Triple;
+                if (rest < (tpl + dbl) / norm) return AtBatResult.Double;
+                return AtBatResult.Single;
+            }
+
+            double kOut = GMLog5.Log5(GMLog5.KPerOut(bK, bBB, bAvg), GMLog5.KPerOut(pK, pBB, pAvg), GMLog5.KPerOut(GMLog5.LgK, GMLog5.LgBB, GMLog5.LgAvg));
+            kOut = GMLog5.Q(GMLog5.ApplyOdds(kOut, absStrikeout * rispStrikeout / ratio));
+            if (random.NextDouble() < kOut) return AtBatResult.Strikeout;
+            double fly = Math.Max(0.35, Math.Min(0.62, GMLog5.LgFlyShare + 0.004 * (eff.Power - GMLog5.MeanPower)));
+            return random.NextDouble() < fly ? AtBatResult.Flyout : AtBatResult.Groundout;
+        }
+
+        /// <summary>[TASK-GM-10] 팀 실효 전력 계수(0.90 ~ 1.15) - 방심(⑥) 발동 시 -0.08. 케미스트리 없으면 1.</summary>
+        private double TeamPower(Player player)
+        {
+            var mods = GetModifiersFor(player);
+            var chem = mods.Chemistry;
+            if (chem == null) return 1.0;
+            bool isHome = player != null && homeRoster.Contains(player);
+            bool upset = isHome ? HomeUpsetTriggered : AwayUpsetTriggered;
+            return Math.Max(0.5, chem.EffectivePower - (upset ? 0.08 : 0.0));
+        }
+
         private int ChemistryStatBonus(Player player, TeamPowerModifiers modifiers)
         {
             var chem = modifiers.Chemistry;
             if (chem == null) return 0;
+            if (chem.Batting != null) return 0; // [TASK-GM-10] Log5 - 실효 전력은 스탯 가산이 아니라 최종 오즈 배수(TeamPower)로 반영
             bool isHome = player != null && homeRoster.Contains(player);
             bool upset = isHome ? HomeUpsetTriggered : AwayUpsetTriggered;
             return chem.PowerBonus - (upset ? GMChemistryModifiers.UpsetStatPenalty : 0);

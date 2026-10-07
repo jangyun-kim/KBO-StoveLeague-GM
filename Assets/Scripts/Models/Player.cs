@@ -448,6 +448,10 @@ namespace KBOManager.Models
         /// <summary>[TASK-GM-09] 팬덤 가치 가산 - 국가대표 금메달 · 우승 등 글로벌 대회 성과로 오른다(세이브 보존). 시장 가치(트레이드 가치)에 반영된다.</summary>
         public int FameBonus;
 
+        [NonSerialized] private KBOManager.Engine.PerformanceData performance;
+        /// <summary>[TASK-GM-10] 기준 시즌 원 기록(Raw Stats) - 실제 기록 CSV가 있으면 그것, 없으면 세부 능력치 추정(Log5 엔진 입력).</summary>
+        public KBOManager.Engine.PerformanceData Performance => performance ?? (performance = KBOManager.Engine.GMLog5.For(this));
+
         /// <summary>[TASK-GM-06] 선수별 숨은 ABS 적응도(-12 ~ +12) - RealPlayerId 해시로 결정(같은 선수는 항상 같은 값). 스카우팅 전에는 화면에 공개하지 않는다.</summary>
         public int HiddenAbsAdaptation
         {

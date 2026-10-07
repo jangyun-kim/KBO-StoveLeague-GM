@@ -129,7 +129,8 @@ namespace KBOManager.EditorTools
             SetupTaskGM07.ApplyAll(); // [TASK-GM-07] OOTP 레이아웃 6종(툴바 · 사이드바 · 감독 설정 · 일정 · 포스트시즌 트리) · 실시간 이닝 경기 화면 점검
             SetupTaskGM08.ApplyAll(); // [TASK-GM-08] 삼성 오디오 임포트 · GMAudioManager 배치 · FA 보상·보호명단 · AI 역제안 · 포스트시즌 KBO 리더 점검
             SetupTaskGM09.ApplyAll(); // [TASK-GM-09] 투타 밸런스 · FA 순환 · 글로벌 대회 일정 점검(씬 변경 없음)
-            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~09 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
+            SetupTaskGM10.ApplyAll(); // [TASK-GM-10] 모바일 RaycastTarget 정리(레거시 화면 포함) · Log5 엔진 점검 - 다른 Setup이 만든 그래픽까지 덮도록 마지막
+            Debug.Log("[SetupMasterBinding] TASK-168~193 + TASK-GM-01~10 최신 UI 적용 완료 - 씬을 저장(Ctrl+S)하십시오.");
         }
 
         /// <summary>[TASK-KBO-176] 배치 실행용(`Unity.exe -batchmode -projectPath . -executeMethod

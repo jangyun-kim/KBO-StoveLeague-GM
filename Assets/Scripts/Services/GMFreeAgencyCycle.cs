@@ -27,11 +27,11 @@ namespace KBOManager.Services
         /// 시즌 종료 FA 공시 - 공시한 선수 목록. ContractYears는 "이번 시즌 포함 잔여 연수"라 연도 전환(-1) 직후 0년인 선수 = 지난 시즌으로 계약이 끝난 선수다.
         /// seasonYear = 끝난 시즌(소식 날짜용, 0이면 현재 연도).
         /// </summary>
-        public static List<Player> DeclareExpiredContracts(GMLeagueState league, int seasonYear = 0)
+        public static List<Player> DeclareExpiredContracts(GMLeagueState league, int seasonYear = 0, bool skipUserTeam = false)
         {
             var declared = new List<Player>();
             if (league == null) return declared;
-            foreach (var team in league.Teams.Values)
+            foreach (var team in league.Teams.Values.Where(t => !(skipUserTeam && t.IsUserTeam))) // [TASK-GM-10] 내 구단은 우선 협상 뒤 공시
                 foreach (var p in team.ReservePlayers.Where(p => p.ContractYears <= 0).ToList())
                     if (GMFaCompensation.DeclareFreeAgent(league, team, p) != null) declared.Add(p);
             if (declared.Count > 0)
@@ -174,6 +174,7 @@ namespace KBOManager.Services
         /// </summary>
         public static List<AiSigning> PrepareOpeningDay(GMLeagueState league)
         {
+            GMReserveList.ClosePriorityNegotiation(league); // [TASK-GM-10] 우선 협상 마감 - 남은 만료자 FA 공시(AI가 입찰할 수 있게 먼저)
             var log = RunAiFreeAgency(league);
             foreach (var pending in league.PendingCompensations.ToList()) GMFaCompensation.Settle(league, pending);
             var user = league.UserTeam;

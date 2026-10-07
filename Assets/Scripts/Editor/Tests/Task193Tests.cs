@@ -396,7 +396,7 @@ namespace KBOManager.EditorTests
             data.StoveLeague.TradeRound = 3;
             data.HallOfFame.Add(new HallOfFameEntrySaveData { SeasonNumber = 2, TierName = "퓨처스", KoreanSeriesWon = true, Mvp = "구자욱", Titles = new List<string> { "타격왕 구자욱 .352 ★" } });
             var back = JsonUtility.FromJson<GameSaveData>(JsonUtility.ToJson(data));
-            Assert.AreEqual(20, back.SaveVersion); // [TASK-GM-09] v20 - 글로벌 대회 / [TASK-GM-08] v19 - 퓨처스 풀 · FA 보상 / [TASK-GM-07] v18 - 경기 결과 · 감독 설정 · 포스트시즌 진행 / [TASK-GM-06] v17 - 프런트 오피스 · 드래프트 · ABS(v16 = GM-05 치어리더 피로도, v15 = GM-04 시상, v14 = GM-02 단장 모드)
+            Assert.AreEqual(21, back.SaveVersion); // [TASK-GM-10] v21 - 우선 협상 / [TASK-GM-09] v20 - 글로벌 대회 / [TASK-GM-08] v19 - 퓨처스 풀 · FA 보상 / [TASK-GM-07] v18 - 경기 결과 · 감독 설정 · 포스트시즌 진행 / [TASK-GM-06] v17 - 프런트 오피스 · 드래프트 · ABS(v16 = GM-05 치어리더 피로도, v15 = GM-04 시상, v14 = GM-02 단장 모드)
             Assert.AreEqual(2026, back.StoveLeague.SeasonKey);
             CollectionAssert.AreEqual(new[] { "FA_1" }, back.StoveLeague.SignedFaIds);
             Assert.IsTrue(back.StoveLeague.DraftUsed);

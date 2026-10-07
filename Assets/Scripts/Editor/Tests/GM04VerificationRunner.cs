@@ -456,7 +456,8 @@ namespace KBOManager.EditorTests
             Assert.IsTrue(last.IsComplete);
             Assert.AreEqual(2027, league.Awards.SeasonYear);
             Assert.IsFalse(league.Awards.HasAny);
-            CollectionAssert.Contains(league.FindPlayer(mvpId).CareerAwardIds, "MVP_2026", "수상 이력 보존");
+            var mvpPlayer = league.FindPlayer(mvpId) ?? league.FreeAgents.FirstOrDefault(p => p.InstanceId == mvpId); // [TASK-GM-09/10] 계약 만료 · 보류 제외로 FA 시장에 있을 수 있다
+            CollectionAssert.Contains(mvpPlayer.CareerAwardIds, "MVP_2026", "수상 이력 보존");
 
             // 나이 +1 · 계약 -1 · 수상자 Ego +1 · 연봉 15~30% 인상, 그 외 Ego · 연봉 유지
             var raised = last.Dynamics.ToDictionary(d => d.PlayerId);
@@ -467,7 +468,8 @@ namespace KBOManager.EditorTests
                 var p = pair.Key;
                 var (age, years, ego, salary) = pair.Value;
                 Assert.AreEqual(Math.Min(Player.MaxAge, age + 1), p.Age, "나이 +1");
-                Assert.AreEqual(Math.Max(0, years - 1), p.ContractYears, "계약 -1");
+                bool released = league.LastReserveReleases.Any(r => r.Player == p); // [TASK-GM-10] 보류명단 제외 = 자유계약(계약 0)
+                Assert.AreEqual(released ? 0 : Math.Max(0, years - 1), p.ContractYears, "계약 -1");
                 if (raised.TryGetValue(p.InstanceId, out var d))
                 {
                     Assert.AreEqual(Math.Min(5, ego + 1), p.EgoLevel, d.PlayerName + " Ego +1");

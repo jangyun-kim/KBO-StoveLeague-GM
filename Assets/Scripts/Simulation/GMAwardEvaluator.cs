@@ -1085,7 +1085,10 @@ namespace KBOManager.Simulation
             GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.PostSeason, league.Seed);
             league.Phase = GMSeasonPhase.AwardsCeremony;
             if (!league.AdvancePhase()) return false;
-            GMFreeAgencyCycle.DeclareExpiredContracts(league, oldYear); // 잔여 계약 -1 직후 0년 = 이번 시즌으로 계약이 끝난 선수 전원 FA 공시
+            // [TASK-GM-10] 내 구단 만료자 = 원 소속 우선 협상 명단 → AI 구단 만료자 FA 공시 → 11/25 보류명단(AI 방출)
+            GMReserveList.OpenPriorityNegotiation(league);
+            GMFreeAgencyCycle.DeclareExpiredContracts(league, oldYear, skipUserTeam: true); // 잔여 계약 -1 직후 0년 = 이번 시즌으로 계약이 끝난 선수 FA 공시
+            GMReserveList.SubmitAiReserveLists(league);
             GMFrontOffice.OnNewSeason(league); // [TASK-GM-06] 연간 FA · 트레이드 · 드래프트 카운터 초기화 · 목표 재생성 · 안건 재오픈
             var champion = bundle.Postseason.ChampionCode;
             league.AddNews(new GMNewsItem

@@ -177,6 +177,7 @@ namespace KBOManager.Controllers
             preRoot.gameObject.SetActive(false);
             postRoot.gameObject.SetActive(false);
             liveRoot.gameObject.SetActive(false);
+            GMRaycastSanitizer.Sanitize(transform); // [TASK-GM-10] 모바일 터치 - 장식 그래픽 RaycastTarget 정리
         }
 
         private Text L(Transform parent, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)

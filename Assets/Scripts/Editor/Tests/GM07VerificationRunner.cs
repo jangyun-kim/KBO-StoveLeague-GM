@@ -177,7 +177,7 @@ namespace KBOManager.EditorTests
             foreach (var team in dream.Teams.Values)
             {
                 int bonus = team.YearSynergyBonus;
-                Assert.That(bonus, Is.InRange(0, GMYearSynergy.MaxTeamBonus));
+                Assert.That(bonus, Is.InRange(0, GMYearSynergy.IsLegendRoster(team.AvailableRoster) ? 99 : GMYearSynergy.MaxTeamBonus)); // [TASK-GM-10] 레전드 로스터는 상한 해제
                 var with = TeamChemistryEngine.EvaluateRoster(team.AvailableRoster, team.PayrollCap, team.TeamworkBuff);
                 var without = TeamChemistryEngine.EvaluateRoster(team.AvailableRoster, team.PayrollCap, team.TeamworkBuff - bonus);
                 Assert.GreaterOrEqual(with.TeamworkScore, without.TeamworkScore, team.TeamCode + " 팀워크 가산");

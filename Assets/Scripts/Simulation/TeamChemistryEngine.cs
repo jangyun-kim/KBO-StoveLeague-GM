@@ -12,7 +12,8 @@ namespace KBOManager.Simulation
         public int TeamworkScore;                       // 0 ~ 100 (기본 75)
         public TeamMoraleState MoraleState;             // 침체 / 보통 / 고무
         public AllStarOverloadPenalty ActivePenalties;  // 발동 중인 슈퍼스타 과밀 부작용 비트플래그
-        public float EffectivePowerMultiplier;          // 실효 전력 계수 (0.80f ~ 1.15f)
+        public float EffectivePowerMultiplier;          // 실효 전력 계수 ([TASK-GM-09] 0.90f ~ 1.15f)
+        public bool LegendMode;                         // [TASK-GM-10] 레전드 우대(과거 시즌 선수 50% 이상)
         public float ClutchHitModifier;                 // 7회 이후 접전 클러치 타율 보정 (-0.15f ~ +0.10f)
         public float ErrorRateMultiplier;               // 수비 실책 확률 배수 (0.8f ~ 2.0f)
         public float DoublePlayRiskMultiplier;          // 득점권 병살타/삼진 배수 (0.85f ~ 1.50f)
@@ -32,6 +33,11 @@ namespace KBOManager.Simulation
     public static class TeamChemistryEngine
     {
         public const float MinEffectivePower = 0.90f, MaxEffectivePower = 1.15f; // [TASK-GM-09] 실효 전력 계수 0.90 ~ 1.15
+        public const float LegendEgoPenaltyScale = 0.5f; // [TASK-GM-10] 레전드 우대 - Ego 충돌 페널티 50%
+        // [TASK-GM-10] 레전드 항목별 상한 - 드림 구단은 Ego 5 스타가 20명 이상이라 50% 완화만으로는 ② 보직 충돌이 -70까지 남는다(실측)
+        public const int LegendFactionCap = 10, LegendRoleConflictCap = 12;
+
+        private static int LegendCap(bool legend, int penalty, int cap) => legend ? Math.Min(penalty, cap) : penalty;
 
         public static TeamChemistryReport EvaluateRoster(
             IReadOnlyList<Player> activeRoster,
@@ -55,6 +61,10 @@ namespace KBOManager.Simulation
             if (activeRoster == null || activeRoster.Count == 0)
                 return report;
 
+            // [TASK-GM-10] 레전드 우대 - 과거 시즌 선수가 절반 이상(올타임 드림 구단)이면 Ego 충돌 페널티(①②③) 차감폭 50%
+            bool legend = GMYearSynergy.IsLegendRoster(activeRoster);
+            report.LegendMode = legend;
+            float egoScale = legend ? LegendEgoPenaltyScale : 1f;
             int alphaDogCount = activeRoster.Count(p => p.EgoLevel >= 5 || p.RoleArchetype == LockerRoomRole.AlphaDog);
             int ambitiousCount = activeRoster.Count(p => p.RoleArchetype == LockerRoomRole.Ambitious);
             int leaderCount = activeRoster.Count(p => p.RoleArchetype == LockerRoomRole.DugoutLeader || p.IsCaptain);
@@ -65,7 +75,7 @@ namespace KBOManager.Simulation
             if (alphaDogCount >= 3 && leaderCount == 0)
             {
                 report.ActivePenalties |= AllStarOverloadPenalty.AlphaDogFactionSplit;
-                report.TeamworkScore -= (alphaDogCount - 2) * 12;
+                report.TeamworkScore -= LegendCap(legend, (int)Math.Round((alphaDogCount - 2) * 12 * egoScale), LegendFactionCap);
                 report.MoraleState = TeamMoraleState.Slump;
                 report.ClutchHitModifier -= 0.15f;
                 report.ErrorRateMultiplier *= 2.0f;
@@ -84,7 +94,7 @@ namespace KBOManager.Simulation
             if (dissatisfiedStars > 0)
             {
                 report.ActivePenalties |= AllStarOverloadPenalty.LineupRoleConflict;
-                report.TeamworkScore -= dissatisfiedStars * 7;
+                report.TeamworkScore -= LegendCap(legend, (int)Math.Round(dissatisfiedStars * 7 * egoScale), LegendRoleConflictCap);
                 report.DiagnosticMessages.Add(
                     $"[보직 자존심 충돌] 하위 타선·후순위 선발로 밀려난 스타 {dissatisfiedStars}명이 불만 태업(개인 만족도 급락·컨디션 저하) 상태입니다. 보직 양보 인센티브나 응원단 전담 버프가 필요합니다.");
             }
@@ -94,7 +104,7 @@ namespace KBOManager.Simulation
             {
                 report.ActivePenalties |= AllStarOverloadPenalty.HeroBallDoublePlay;
                 report.DoublePlayRiskMultiplier = 1.35f;
-                report.TeamworkScore -= 10;
+                report.TeamworkScore -= (int)Math.Round(10 * egoScale);
                 report.DiagnosticMessages.Add(
                     "[팀배팅 거부(Hero Ball)] 개인 타이틀에 집착하는 야망가 성향 타자가 과밀되어 득점권 병살타·삼진 확률이 +35% 증가했습니다. 헌신형 살림꾼을 배치하거나 전술 기조를 '규율 우선'으로 변경하세요.");
             }

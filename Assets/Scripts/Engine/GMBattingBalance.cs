@@ -37,6 +37,14 @@ namespace KBOManager.Engine
 
         // 리그 평균 매치업 격차(센터링 기준) - 삼진: (구위+구속)/2 - (정확+선구)/2, 볼넷: 선구 - 제구, 안타: 정확 - 구위, 장타: 파워 - 변화
         public float StrikeoutOffset, WalkOffset, ContactOffset, PowerOffset;
+        /// <summary>[TASK-GM-10] 리그 평균 능력치(Log5 시대 보정 - 원 기록 추정을 이 리그 기준으로 다시 맞춘다). 0이면 2026 기준값.</summary>
+        public float MeanContact, MeanEye, MeanPower, MeanStuff, MeanVelocity, MeanMovement, MeanControl;
+        /// <summary>[TASK-GM-10] 리그 능력치 분산 / 2026 기준 분산(1 이상) - 올타임 드림처럼 격차가 큰 리그는 Log5 편차를 그만큼 줄인다.</summary>
+        public float BatterSpread = 1f, PitcherSpread = 1f;
+        public const float BaseBatterSD = 8.3f, BasePitcherSD = 5.5f;
+        public static float SpreadPower = 1f;
+        /// <summary>[TASK-GM-10] 레전드 리그(구단 절반 이상이 과거 시즌 선수 위주 - 올타임 드림) - 체급 우위 가산을 끈다.</summary>
+        public bool Legend;
         /// <summary>리그 환경 정규화 배수 - 안타(단타 · 2루타 · 3루타 · 홈런) 가중치에 곱한다.</summary>
         public float EnvironmentHitFactor = 1f;
 
@@ -83,6 +91,13 @@ namespace KBOManager.Engine
             double con = batters.Average(p => p.Template.BatterStats.Contact), eye = batters.Average(p => p.Template.BatterStats.Discipline), pow = batters.Average(p => p.Template.BatterStats.Power);
             double stf = pitchers.Average(p => p.Template.PitcherStats.Stuff), vel = pitchers.Average(p => p.Template.PitcherStats.Velocity);
             double mov = pitchers.Average(p => p.Template.PitcherStats.Movement), ctl = pitchers.Average(p => p.Template.PitcherStats.Control);
+            double sdB = Math.Sqrt(batters.Average(p => Math.Pow(p.Template.BatterStats.Contact - con, 2)));
+            double sdP = Math.Sqrt(pitchers.Average(p => Math.Pow((p.Template.PitcherStats.Stuff + p.Template.PitcherStats.Movement) / 2.0 - (stf + mov) / 2, 2)));
+            b.BatterSpread = (float)Math.Max(1.0, Math.Pow(sdB / BaseBatterSD, SpreadPower));
+            b.PitcherSpread = (float)Math.Max(1.0, Math.Pow(sdP / BasePitcherSD, SpreadPower));
+            b.Legend = teamRosters != null && teamRosters.Count(r => KBOManager.Simulation.GMYearSynergy.IsLegendRoster(r)) * 2 >= teamRosters.Count();
+            b.MeanContact = (float)con; b.MeanEye = (float)eye; b.MeanPower = (float)pow;
+            b.MeanStuff = (float)stf; b.MeanVelocity = (float)vel; b.MeanMovement = (float)mov; b.MeanControl = (float)ctl;
             b.StrikeoutOffset = (float)((stf + vel) / 2 - (con + eye) / 2);
             b.WalkOffset = (float)(eye - ctl);
             b.ContactOffset = (float)(con - stf);
@@ -95,7 +110,7 @@ namespace KBOManager.Engine
         {
             if (leagueAtBats < EnvironmentMinAtBats || leagueHits <= 0) return;
             double avg = (double)leagueHits / leagueAtBats;
-            EnvironmentHitFactor = (float)Math.Max(EnvironmentMin, Math.Min(EnvironmentMax, EnvironmentHitFactor * Math.Pow(TargetLeagueAvg / avg, EnvironmentGain)));
+            EnvironmentHitFactor = (float)Math.Round(Math.Max(EnvironmentMin, Math.Min(EnvironmentMax, EnvironmentHitFactor * Math.Pow(TargetLeagueAvg / avg, EnvironmentGain))), 6); // [TASK-GM-10] 양자화 - 런타임 간 재현성
         }
 
         /// <summary>투수 피로 배수(1.0 ~ 0.85) - 체력 비율 60% 미만부터 선형 감소.</summary>

@@ -43,15 +43,27 @@ namespace KBOManager.Simulation
                 .OrderByDescending(g => g.Bonus).ThenByDescending(g => g.Count).ThenBy(g => g.Year)
                 .ToList();
 
-        /// <summary>구단 연도 시너지 팀워크 가산(0 ~ +8).</summary>
-        public static int TeamworkBonus(IEnumerable<Player> roster) => Math.Min(MaxTeamBonus, Groups(roster).Sum(g => g.Bonus));
+        /// <summary>[TASK-GM-10] 레전드 로스터 - 과거 시즌(기준선 2026 이전) 카드 선수가 절반 이상(올타임 드림 구단 · 레전드 수집).</summary>
+        public static bool IsLegendRoster(IEnumerable<Player> roster)
+        {
+            var list = (roster ?? Enumerable.Empty<Player>()).Where(p => p?.Template != null).ToList();
+            return list.Count > 0 && list.Count(p => p.Template.SeasonYear > 0 && p.Template.SeasonYear < BaselineYear) * 2 >= list.Count;
+        }
+
+        /// <summary>구단 연도 시너지 팀워크 가산(0 ~ +8). [TASK-GM-10] 레전드 로스터는 상한 해제 - 전성기 왕조 동료가 모이면 그대로 쌓인다.</summary>
+        public static int TeamworkBonus(IEnumerable<Player> roster)
+        {
+            var list = (roster ?? Enumerable.Empty<Player>()).ToList();
+            int sum = Groups(list).Sum(g => g.Bonus);
+            return IsLegendRoster(list) ? sum : Math.Min(MaxTeamBonus, sum);
+        }
 
         /// <summary>화면 요약 - "연도 시너지 +5 (2002 삼성 9명 +3 · 2009 KIA 5명 +2)".</summary>
         public static string Summary(IEnumerable<Player> roster)
         {
             var groups = Groups(roster);
             if (groups.Count == 0) return "연도 시너지 없음 (과거 같은 시즌 · 같은 구단 출신 3명부터)";
-            return $"연도 시너지 +{Math.Min(MaxTeamBonus, groups.Sum(g => g.Bonus))} ({string.Join(" · ", groups.Take(3).Select(g => g.Label))})";
+            return $"연도 시너지 +{TeamworkBonus(roster)} ({string.Join(" · ", groups.Take(3).Select(g => g.Label))})";
         }
     }
 }

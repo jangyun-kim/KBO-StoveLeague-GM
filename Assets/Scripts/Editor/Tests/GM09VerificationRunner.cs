@@ -60,14 +60,14 @@ namespace KBOManager.EditorTests
             if (templates != null) NameAliasTable.ApplyDisplayNames(templates.Where(t => t != null), false);
         }
 
-        private static GMLeagueState NewLeague(GMStartMode mode = GMStartMode.RealCurrent2026, string team = "KIA", int seed = 101)
+        private static GMLeagueState NewLeague(GMStartMode mode = GMStartMode.RealCurrent2026, string team = "SAM", int seed = 606) // [TASK-GM-10] Log5 엔진 기준 재선정(하네스 실측)
         {
             var league = GMRosterLoader.LoadModeRoster(mode, team, false, templates, cheer);
             league.Seed = seed;
             return league;
         }
 
-        /// <summary>2026 정규시즌 144경기(공유) - KIA 101.</summary>
+        /// <summary>2026 정규시즌 144경기(공유) - SAM 606.</summary>
         private static GMLiveSeasonSimulator SharedSeason()
         {
             if (season != null) return season;
@@ -159,7 +159,9 @@ namespace KBOManager.EditorTests
         {
             var l = Rolled();
             Assert.AreEqual(2027, l.SeasonYear);
-            var expiring = beforeRollover.Where(x => x.Value.contract <= 1).ToList(); // 이번 시즌 포함 잔여 1년 이하 = 시즌 후 만료
+            var expiring = beforeRollover.Where(x => x.Value.contract <= 1 && x.Value.team != l.SelectedTeamCode).ToList(); // 이번 시즌 포함 잔여 1년 이하 = 시즌 후 만료([TASK-GM-10] 내 구단은 우선 협상)
+            var mine = beforeRollover.Where(x => x.Value.contract <= 1 && x.Value.team == l.SelectedTeamCode).Select(x => x.Key).ToList();
+            CollectionAssert.IsSubsetOf(mine.Where(id => l.UserTeam.ReservePlayers.Any(p => p.InstanceId == id)).ToList(), l.PriorityNegotiationIds, "[TASK-GM-10] 내 구단 만료자 = 원 소속 우선 협상 명단");
             Assert.Greater(expiring.Count, 10, "만료자 다수");
             foreach (var (id, (team, _)) in expiring.Select(x => (x.Key, x.Value)))
             {
@@ -170,7 +172,7 @@ namespace KBOManager.EditorTests
                 Assert.AreEqual(team, origin.TeamCode, "원 소속 = 직전 구단");
                 Assert.AreEqual(0, p.ContractYears);
             }
-            Assert.IsTrue(l.Teams.Values.All(t => t.ReservePlayers.All(p => p.ContractYears > 0)), "로스터에 계약 0년 선수가 남지 않는다");
+            Assert.IsTrue(l.Teams.Values.Where(t => !t.IsUserTeam).All(t => t.ReservePlayers.All(p => p.ContractYears > 0)), "AI 구단 로스터에 계약 0년 선수가 남지 않는다");
             var grades = l.FreeAgents.Select(p => GMFaCompensation.OriginOf(l, p)).Where(o => o != null).GroupBy(o => o.Grade).ToDictionary(g => g.Key, g => g.Count());
             TestContext.WriteLine("[GM09 FA 공시] " + string.Join(" · ", grades.Select(g => $"{GMFaCompensation.GradeLabel(g.Key)} {g.Value}명")) + $" · 시장 {l.FreeAgents.Count}명");
             Assert.IsTrue(grades.ContainsKey(GMFaGrade.A) || grades.ContainsKey(GMFaGrade.B), "A/B등급 FA가 시장에 나온다");
@@ -304,7 +306,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(wbc.Result, back.Tournaments.Single(t => t.Kind == GMTournamentKind.WBC).Result);
             var star = squad.First();
             Assert.AreEqual(star.FameBonus, back.Teams.SelectMany(t => t.Roster).Single(p => p.InstanceId == star.InstanceId).FameBonus, "팬덤 가치 저장");
-            Assert.AreEqual(20, new GameSaveData().SaveVersion);
+            Assert.AreEqual(21, new GameSaveData().SaveVersion);
             // 재현성 - 같은 모드 · 구단 · 시드면 같은 InstanceId
             var again = NewLeague(team: "SAM", seed: 909);
             CollectionAssert.AreEqual(NewLeague(team: "SAM", seed: 909).UserTeam.Roster.Select(p => p.InstanceId).ToList(), again.UserTeam.Roster.Select(p => p.InstanceId).ToList(), "안정 InstanceId");

@@ -322,6 +322,7 @@ namespace KBOManager.Controllers
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
             ApplyPaneVisibility();
             RefreshTabs();
+            GMRaycastSanitizer.Sanitize(root); // [TASK-GM-10] 모바일 터치 - 장식 그래픽 RaycastTarget 정리
         }
 
         private Text L(Transform parent, string name, string text, float x0, float y0, float x1, float y1, int pt, TextAnchor anchor, Color color)
@@ -664,8 +665,9 @@ namespace KBOManager.Controllers
             extRelease = Btn(pane, "ExtRelease", "방출(Release)", 1610, 646, 1896, 698, new Color(0.55f, 0.18f, 0.16f), ButtonPt);
             extRelease.onClick.AddListener(() => ReleaseSelected());
             extTeamwork = L(pane, "ExtTeamwork", "", 1314, 708, 1896, 742, BodyPt + 1, TextAnchor.MiddleLeft, Gold);
-            extMessage = L(pane, "ExtMessage", "", 1314, 748, 1896, 1030, BodyPt, TextAnchor.UpperLeft, White);
+            extMessage = L(pane, "ExtMessage", "", 1314, 748, 1896, 950, BodyPt, TextAnchor.UpperLeft, White);
             extMessage.lineSpacing = 1.15f;
+            BuildPriorityRow(pane); // [TASK-GM-10] 원 소속 우선 협상
         }
 
         // ------------------------------------------------------------------ FA
@@ -1074,7 +1076,7 @@ namespace KBOManager.Controllers
                 switch (currentPane)
                 {
                     case PaneOwner: RefreshOwner(); break;
-                    case PaneSalaries: RefreshSalaries(); break;
+                    case PaneSalaries: RefreshSalaries(); RefreshPriorityRow(); break;
                     case PaneFA: RefreshFA(); break;
                     case PaneTrade: RefreshTrade(); break;
                     case PaneDraft: RefreshDraft(); break;

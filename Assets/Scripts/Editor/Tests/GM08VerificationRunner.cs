@@ -87,7 +87,7 @@ namespace KBOManager.EditorTests
         private static GMLiveSeasonSimulator SharedSeason()
         {
             if (season != null) return season;
-            var sim = new GMLiveSeasonSimulator(NewLeague(team: "SAM", seed: 8088));
+            var sim = new GMLiveSeasonSimulator(NewLeague(team: "SAM", seed: 101)); // [TASK-GM-10] Log5 엔진 교체 - 재현 가능한 시드 재선정(8088은 타격왕 .329)
             Assert.IsTrue(sim.StartRun(GMRunMode.FullSeason));
             sim.RunUntilStop();
             Assert.IsTrue(sim.IsSeasonComplete);
@@ -602,7 +602,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMFaCompensation.OriginOf(league, leftover).Grade, restored.FAOrigins[leftover.InstanceId].Grade);
             Assert.AreEqual(1, restored.PendingCompensations.Count, "보상 대기 복원");
             CollectionAssert.AreEqual(league.UserProtectedIds, restored.UserProtectedIds, "수동 보호 명단 복원");
-            Assert.AreEqual(20, new GameSaveData().SaveVersion, "세이브 v20([TASK-GM-09])");
+            Assert.AreEqual(21, new GameSaveData().SaveVersion, "세이브 v21([TASK-GM-10])");
         }
 
         // ================================================================== 6) 레이아웃 · Bold · 씬
