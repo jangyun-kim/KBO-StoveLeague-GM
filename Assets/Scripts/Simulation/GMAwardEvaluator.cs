@@ -501,6 +501,7 @@ namespace KBOManager.Simulation
                         if (top) loseCandHome = step.Pitcher; else loseCandAway = step.Pitcher;
                     }
                 }
+                if (isPostSeason && !engine.IsGameOver) engine.DebugForceEndGame(homeName); // [TASK-GM-14] 포스트시즌 무승부 없음
                 result.HomeRuns = engine.Result?.HomeTotalScore ?? 0;
                 result.AwayRuns = engine.Result?.AwayTotalScore ?? 0;
                 if (result.HomeRuns > result.AwayRuns) result.LosingPitcher = loseCandAway;

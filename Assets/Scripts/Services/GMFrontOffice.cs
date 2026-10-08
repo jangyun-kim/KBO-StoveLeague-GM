@@ -816,6 +816,7 @@ namespace KBOManager.Services
             if (league.UserTeam != null) league.UserTeam.AgendaTeamworkBonus /= 2;
             OpenAgendas(league);
             RefreshGoals(league);
+            GMStoveTurns.Begin(league); // [TASK-GM-14] 새 스토브리그 - 8 Turn 진행 통제 시작(Turn 1 시즌 결산)
             GMDynamicEventEngine.Generate(league); // [TASK-GM-13] 새 스토브리그 - 1티어 동적 사건(연봉 갈등 · 라커룸 파벌)
         }
 

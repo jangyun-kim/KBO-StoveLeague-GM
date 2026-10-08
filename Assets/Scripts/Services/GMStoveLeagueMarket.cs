@@ -90,13 +90,15 @@ namespace KBOManager.Services
             }
             if (team.Budget < bonus) { r.TeamworkAfter = r.TeamworkBefore; r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다."; return r; }
             team.Budget -= bonus;
+            int oldSalary = p.Salary;
             p.Salary = salary;
             p.ContractYears = years;
             p.PersonalMorale = Math.Min(100, p.PersonalMorale + (roleConcession ? 12 : 8));
             if (roleConcession) p.HasRoleConcessionBonus = true;
             r.Success = true;
             r.TeamworkAfter = Teamwork(team);
-            r.Message = $"{p.Template.PlayerName} {years}년 · 연봉 {GMDiagnosticFormat.Won(salary)} 재계약{(roleConcession ? " + 보직 양보 인센티브" : "")} · 계약금 {GMDiagnosticFormat.Won(bonus)} · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}";
+            var chain = team.IsUserTeam ? GMSalaryChain.Apply(league, team, p, oldSalary, salary, null) : new List<string>(); // [TASK-GM-14] 동료 연봉 연쇄
+            r.Message = $"{p.Template.PlayerName} {years}년 · 연봉 {GMDiagnosticFormat.Won(salary)} 재계약{(roleConcession ? " + 보직 양보 인센티브" : "")} · 계약금 {GMDiagnosticFormat.Won(bonus)} · 팀워크 {r.TeamworkBefore} → {r.TeamworkAfter}" + GMSalaryChain.Summary(chain);
             News(league, GMNewsKind.Trade, $"{p.Template.PlayerName} 재계약 합의", r.Message);
             return r;
         }

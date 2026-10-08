@@ -279,6 +279,7 @@ namespace KBOManager.Controllers
         public GMNegotiationResult AcceptCounterOffer()
         {
             if (counterOffer == null || !counterOffer.Valid) return new GMNegotiationResult { Message = "역제안이 없습니다." };
+            if (TurnBlocked(PaneTrade, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var incoming = counterOffer.Target;
             var r = GMTradeAI.AcceptCounterOffer(League, UserTeam, counterOffer);
             SetStatus(r.Message);
@@ -563,6 +564,13 @@ namespace KBOManager.Controllers
             var team = UserTeam;
             if (team == null) return;
             GMAudioManager.Ensure().PlayEvent(ev, team.TeamCode);
+        }
+
+        /// <summary>[TASK-GM-14] 연봉 협상 결과 효과음 - 타결 = 차임 · 결렬/거절 = 저음(BGM은 바꾸지 않는다). 둘 다 아니면(자금 부족 등) 소리 없음.</summary>
+        private void PlayNegotiationSfx(bool success, bool broken)
+        {
+            if (!success && !broken) return;
+            GMAudioManager.Ensure().PlaySfx(success ? TeamAudioProfile.SynthDeal : TeamAudioProfile.SynthFail);
         }
 
         /// <summary>[TASK-GM-12] 계약 성사 등급 - S급(OVR 80 이상 · 연봉 10억 이상) 또는 프랜차이즈(주장 · 충성도 80 이상) = 엘도라도, 그 밖 = 환희.</summary>

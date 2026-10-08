@@ -44,7 +44,16 @@ namespace KBOManager.Simulation
         private readonly Dictionary<string, int> weeklyHits = new Dictionary<string, int>();
 
         public GMLeagueState League => league;
-        public GMRunMode? ActiveMode { get; private set; }
+        private GMRunMode? activeMode;
+        /// <summary>진행 방식. [TASK-GM-14] 전반기 · 후반기 · 한 시즌 고속 진행 중에는 GMAudioManager.SimulationMode를 켜 이벤트 BGM 하이재킹을 막는다.</summary>
+        public GMRunMode? ActiveMode
+        {
+            get => activeMode;
+            private set { activeMode = value; KBOManager.Managers.GMAudioManager.SimulationMode = IsFastRun(value); }
+        }
+
+        /// <summary>[TASK-GM-14] 고속 시뮬레이션(전반기 · 후반기 · 한 시즌) 여부 - 한 경기는 아니다.</summary>
+        public static bool IsFastRun(GMRunMode? mode) => mode.HasValue && mode.Value != GMRunMode.SingleGame;
         public int TargetGames { get; private set; }
         public int GamesPlayed => league.GamesPlayed;
         public bool IsSeasonComplete => league.GamesPlayed >= SeasonGames;
@@ -73,8 +82,50 @@ namespace KBOManager.Simulation
 
         // ================================================================== 일정
 
-        /// <summary>원형(circle) 대진 9라운드 × 16회 = 144일, 하루 5경기. 홀수 사이클은 홈/원정을 뒤집는다.</summary>
+        /// <summary>
+        /// [TASK-GM-14] KBO 3연전 일정 - 원형 대진 9라운드를 시리즈 단위로 묶는다(하루 5경기 · 144일 · 상대별 16경기 = 홈 8 · 원정 8).
+        ///   사이클 0~3 = 3연전(라운드마다 3일, 홀수 사이클은 홈/원정 반전) · 사이클 4~5 = 2연전(같은 규칙) → 상대별 3+3+3+3+2+2 = 16.
+        ///   배치: 개막 주말 2연전(토~일) → 3연전 36개(화~목 · 금~일, 108일) → 2연전 17개(화~수 · 목~금 · 토~일, 시즌 막판). 월요일 휴식.
+        ///   같은 상대와 시리즈가 연달아 붙지 않도록 3연전은 라운드 1부터 돈다.
+        /// </summary>
         public static List<(string home, string away)>[] BuildSchedule(IReadOnlyList<string> codes)
+        {
+            var rounds = CircleRounds(codes);
+            int n = rounds.Count; // 9
+            var blocks = new List<(int len, int cycle, int round)> { (2, 4, 0) };
+            for (int c = 0; c < 4; c++) for (int k = 0; k < n; k++) blocks.Add((3, c, (k + 1) % n));
+            for (int k = 1; k < n; k++) blocks.Add((2, 4, k));
+            for (int k = 0; k < n; k++) blocks.Add((2, 5, k));
+            var result = new List<(string, string)>[SeasonGames];
+            int d = 0;
+            foreach (var (len, cycle, round) in blocks)
+            {
+                var day = rounds[round].Select(m => cycle % 2 == 0 ? m : (m.Item2, m.Item1)).ToList();
+                for (int g = 0; g < len && d < SeasonGames; g++) result[d++] = day;
+            }
+            return result;
+        }
+
+        private static readonly (int length, int game)[] seriesTable = BuildSeriesTable();
+
+        private static (int, int)[] BuildSeriesTable()
+        {
+            var t = new (int, int)[SeasonGames];
+            int d = 0;
+            void Add(int len) { for (int g = 1; g <= len && d < SeasonGames; g++) t[d++] = (len, g); }
+            Add(2);
+            for (int i = 0; i < 36; i++) Add(3);
+            while (d < SeasonGames) Add(2);
+            return t;
+        }
+
+        /// <summary>[TASK-GM-14] 그날 경기의 시리즈 정보 - (2연전/3연전, 몇 차전).</summary>
+        public static (int length, int game) SeriesOf(int dayIndex) => seriesTable[Math.Max(0, Math.Min(SeasonGames - 1, dayIndex))];
+
+        public static string SeriesLabel(int dayIndex) { var s = SeriesOf(dayIndex); return $"{s.length}연전 {s.game}차전"; }
+
+        /// <summary>원형(circle) 대진 9라운드(하루 5경기) - 짝수 라운드는 정방향, 홀수 라운드는 홈/원정 반전.</summary>
+        private static List<List<(string, string)>> CircleRounds(IReadOnlyList<string> codes)
         {
             int n = codes.Count;
             var rounds = new List<List<(string, string)>>();
@@ -93,13 +144,7 @@ namespace KBOManager.Simulation
                 rotating.Insert(0, rotating[rotating.Count - 1]);
                 rotating.RemoveAt(rotating.Count - 1);
             }
-            var result = new List<(string, string)>[SeasonGames];
-            for (int d = 0; d < SeasonGames; d++)
-            {
-                int cycle = d / rounds.Count;
-                result[d] = rounds[d % rounds.Count].Select(m => cycle % 2 == 0 ? m : (m.Item2, m.Item1)).ToList();
-            }
-            return result;
+            return rounds;
         }
 
         public SkillDB SkillDB => skillDB;
@@ -109,11 +154,13 @@ namespace KBOManager.Simulation
 
         public IReadOnlyList<(string home, string away)> MatchesOn(int dayIndex) => schedule[Math.Max(0, Math.Min(SeasonGames - 1, dayIndex))];
 
-        /// <summary>경기 일자(월요일 휴식 반영: 6경기마다 하루 휴식). 연도를 생략하면 2026시즌.</summary>
-        public static DateTime DateOf(int dayIndex) => OpeningDay.AddDays(dayIndex + dayIndex / 6);
+        /// <summary>경기 일자 - [TASK-GM-14] 토요일 개막(3/28) 2연전 후 화~일 6경기 · 월요일 휴식. 연도를 생략하면 2026시즌.</summary>
+        public static DateTime DateOf(int dayIndex) => OpeningDay.AddDays(DayOffset(dayIndex));
         public static string DateLabel(int dayIndex) => DateOf(dayIndex).ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         /// <summary>[TASK-GM-04] 시즌 연도별 개막일(3월 28일) 기준 경기 일자 - 2027시즌부터 날짜 연도가 따라 바뀐다.</summary>
-        public static DateTime DateOf(int dayIndex, int year) => new DateTime(year, OpeningDay.Month, OpeningDay.Day).AddDays(dayIndex + dayIndex / 6);
+        public static DateTime DateOf(int dayIndex, int year) => new DateTime(year, OpeningDay.Month, OpeningDay.Day).AddDays(DayOffset(dayIndex));
+        /// <summary>[TASK-GM-14] 개막일부터 지난 날 수 - 개막 주말(토 · 일) 다음부터 매주 월요일을 건너뛴다.</summary>
+        public static int DayOffset(int dayIndex) => dayIndex + (dayIndex + 4) / 6;
         public static string DateLabel(int dayIndex, int year) => DateOf(dayIndex, year).ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         public string DayLabel(int dayIndex) => DateLabel(dayIndex, league.SeasonYear);
 
@@ -232,6 +279,18 @@ namespace KBOManager.Simulation
             }
             CompleteDay(day);
             return box;
+        }
+
+        /// <summary>
+        /// [TASK-GM-14] 정규시즌 반영 가드 - 오늘(GamesPlayed) 경기이고, 두 팀 모두 오늘 아직 기록이 없으며(G ≤ 경기일), 144경기를 넘지 않을 때만 순위 · 기록에 넣는다.
+        /// 포스트시즌 · 글로벌 대회 · 지난 날짜로 남은 세션 · 같은 날 중복 진행은 모두 걸러진다.
+        /// </summary>
+        internal bool CanRecordSeasonGame(int day, GMTeamState home, GMTeamState away)
+        {
+            if (home == null || away == null || day < 0 || day >= SeasonGames || day != league.GamesPlayed || league.Phase == GMSeasonPhase.PostSeason) return false;
+            var hr = league.RecordOf(home.TeamCode);
+            var ar = league.RecordOf(away.TeamCode);
+            return hr.G <= day && ar.G <= day && hr.G < SeasonGames && ar.G < SeasonGames;
         }
 
         /// <summary>[TASK-GM-07] 포스트시즌 단판 세션(시즌 누적 · 순위 미반영, 체력 · 컨디션 복원).</summary>

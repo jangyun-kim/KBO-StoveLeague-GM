@@ -332,12 +332,13 @@ namespace KBOManager.Services
             p.Loyalty = p.Loyalty + loyalty;
             team.LockerRoomTrust = Math.Min(100, team.LockerRoomTrust + 1);
             if (GMPromiseSystem.Activate(league, promise)) r.Promise = promise; // [TASK-GM-13] 계약 체결 = 약속 활성
+            r.ChainEffects = GMSalaryChain.Apply(league, team, p, s.CurrentSalary, salary, outcome); // [TASK-GM-14] 동료 연봉 연쇄
             r.Success = true;
             r.Outcome = outcome;
             r.Salary = salary;
             r.Years = f.Years;
             r.Message = $"{name} 협상 타결 {cardText} - {OutcomeLabel(outcome)}: {f.Years}년 · 연봉 {GMDiagnosticFormat.Won(salary)}(이전 {GMDiagnosticFormat.Short(s.CurrentSalary)}) · 계약금 {GMDiagnosticFormat.Short(bonus)} · " +
-                        $"만족도 {(morale >= 0 ? "+" : "")}{morale} · 충성도 {(loyalty >= 0 ? "+" : "")}{loyalty}";
+                        $"만족도 {(morale >= 0 ? "+" : "")}{morale} · 충성도 {(loyalty >= 0 ? "+" : "")}{loyalty}" + GMSalaryChain.Summary(r.ChainEffects);
             league.AddNews(new GMNewsItem
             {
                 GameIndex = league.GamesPlayed, DateLabel = $"{league.SeasonYear} 스토브리그", Kind = GMNewsKind.Trade, IsUserTeam = true,

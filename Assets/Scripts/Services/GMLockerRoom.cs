@@ -441,6 +441,63 @@ namespace KBOManager.Services
         }
     }
 
+    /// <summary>
+    /// [TASK-GM-14] 동료 연봉 연쇄 반응(기획서 6절 8항 · 2단계) - 연봉 협상 · 재계약 타결 결과가 라커룸으로 번진다.
+    ///   ① 대폭 인상(+20% 이상이면서 +5,000만 원 이상): 유대 동료(배터리 · 키스톤 · 멘토, 최대 2명) 충성도 +2 /
+    ///      유대가 없는 같은 유형(타자/투수) 동급 동료(OVR -3 이내 · 새 연봉보다 적게 받는 선수, 최대 3명) = 상대적 박탈감 충성도 -3(자존심 4+ -5) · 만족도 -3.
+    ///   ② 삭감 타결: 유대 동료 최대 2명 충성도 -2(동료 홀대 반감). 동결 · 소폭 인상은 연쇄 없음.
+    /// 반환 = 연쇄 효과 문구(없으면 빈 목록). 효과가 있으면 소식 1건.
+    /// </summary>
+    public static class GMSalaryChain
+    {
+        public const double BigRaiseRatio = 0.20;
+        public const int BigRaiseMin = 5000, MaxBonded = 2, MaxPeers = 3, PeerOvrGap = 3;
+        public const int BondJoy = 2, PeerEnvy = 3, EgoPeerEnvy = 5, CutResentment = 2;
+
+        public static bool IsBigRaise(int oldSalary, int newSalary) => newSalary - oldSalary >= Math.Max(BigRaiseMin, oldSalary * BigRaiseRatio);
+
+        public static List<string> Apply(GMLeagueState league, GMTeamState team, Player p, int oldSalary, int newSalary, GMNegotiationOutcome? outcome)
+        {
+            var effects = new List<string>();
+            if (league == null || team == null || p?.Template == null) return effects;
+            var bonded = GMPlayerBonds.For(team, p).Select(b => b.partner).Where(x => x?.Template != null).Distinct().Take(MaxBonded).ToList();
+            if (IsBigRaise(oldSalary, newSalary))
+            {
+                foreach (var b in bonded)
+                {
+                    b.Loyalty += BondJoy;
+                    effects.Add($"유대 동료 {b.Template.PlayerName} 충성도 +{BondJoy}");
+                }
+                var peers = team.Roster.Where(q => q != p && q.Template != null && !bonded.Contains(q) && q.IsPitcher == p.IsPitcher && q.Salary < newSalary && q.BaseOverall >= p.BaseOverall - PeerOvrGap)
+                    .OrderByDescending(q => q.BaseOverall).ThenBy(q => q.InstanceId).Take(MaxPeers).ToList();
+                foreach (var q in peers)
+                {
+                    int d = q.EgoLevel >= 4 ? EgoPeerEnvy : PeerEnvy;
+                    q.Loyalty -= d;
+                    q.PersonalMorale = Math.Max(0, q.PersonalMorale - 3);
+                    effects.Add($"{q.Template.PlayerName} 충성도 -{d}(상대적 박탈감)");
+                }
+            }
+            else if (outcome == GMNegotiationOutcome.Cut)
+            {
+                foreach (var b in bonded)
+                {
+                    b.Loyalty -= CutResentment;
+                    effects.Add($"유대 동료 {b.Template.PlayerName} 충성도 -{CutResentment}(동료 삭감 반감)");
+                }
+            }
+            if (effects.Count > 0)
+                league.AddNews(new GMNewsItem
+                {
+                    GameIndex = league.GamesPlayed, DateLabel = $"{league.SeasonYear} 스토브리그", Kind = GMNewsKind.Trade, IsUserTeam = team.IsUserTeam,
+                    Title = $"[라커룸] {p.Template.PlayerName} 연봉 {GMDiagnosticFormat.Short(newSalary)} - 동료들 반응", Body = string.Join(" · ", effects),
+                });
+            return effects;
+        }
+
+        public static string Summary(List<string> effects) => effects == null || effects.Count == 0 ? "" : " / 라커룸 연쇄: " + string.Join(" · ", effects);
+    }
+
     /// <summary>[TASK-GM-13] 선수단 회의실 요약 - 평균 충성도 · 충성도 등급 · 선수별 불만 사항.</summary>
     public static class GMLockerRoom
     {

@@ -17,7 +17,7 @@ namespace KBOManager.Controllers
     /// [TASK-GM-02] 리그 플레이 실시간 144경기 대시보드(기획서 2절 · 2.1). [TASK-GM-06] 1920×1080 Landscape 재배치(좌 순위표 · 우 TOP 3 · 하단 소식),
     /// 새 시즌 설정에 4단계 난이도 · 하우스 룰. 로비 [플레이 볼] · 프런트 오피스 허브가 연다.
     ///   - 배경: 선택 구단 대표색(TeamThemePalette) + 중앙 구단 마크(Pulse Scale · Shimmer Alpha · 미세 플로팅)
-    ///   - 헤더: 2026 KBO 시즌 · G 000 / 144 · [한 경기] [전반기 진행 → 후반기 진행] [한 시즌] · 1x/2x/4x · 일시정지
+    ///   - 헤더: KBO 시즌 N([TASK-GM-14]) · G 000 / 144 · [한 경기] [전반기 진행 → 후반기 진행] [한 시즌] · 1x/2x/4x · 일시정지
     ///   - 패널 1 순위표(순위 · 구단 · G · W · D · L · PCT · GB, 내 구단 강조, 5위 아래 포스트시즌 커트라인)
     ///   - 패널 2 개인 성적 TOP 3(타자 8 · 투수 7 탭, 2열 카드)
     ///   - 패널 3 최신 소식(날짜 · 제목, 누르면 본문 팝업)
@@ -175,7 +175,7 @@ namespace KBOManager.Controllers
 
             // ---- 헤더
             headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1920, 150, TeamThemePalette.Primary(Team.Samsung));
-            seasonTitle = L(kit, "SeasonTitle", "2026 KBO 시즌", 20, 10, 330, 70, TitlePt, TextAnchor.MiddleLeft, White);
+            seasonTitle = L(kit, "SeasonTitle", GMLeagueState.SeasonTitle(1), 20, 10, 330, 70, TitlePt, TextAnchor.MiddleLeft, White);
             awardsReportButton = Btn(kit, "AwardsReportButton", "시상 리포트", 340, 10, 560, 70, ButtonIdle, ButtonPt - 2);
             awardsReportButton.onClick.AddListener(() => OpenAwards(null));
             gameCounter = L(kit, "GameCounter", "G 000 / 144", 570, 10, 860, 70, CounterPt, TextAnchor.MiddleRight, Gold);
@@ -428,6 +428,7 @@ namespace KBOManager.Controllers
             if (league == null) return null;
             GMFrontOffice.ApplySettings(league, pendingDifficulty, pendingMaxFA, pendingMaxTrades); // [TASK-GM-06]
             sim = sim ?? new GMLiveSeasonSimulator(league);
+            GMStoveTurns.Begin(league); // [TASK-GM-14] 새 시즌 = 스토브리그 Turn 1부터
             seasonModal.gameObject.SetActive(false);
             Bind(sim);
             return sim;
@@ -547,7 +548,7 @@ namespace KBOManager.Controllers
             if (root == null) return;
             var league = simulator?.League;
             int played = simulator?.GamesPlayed ?? 0;
-            seasonTitle.text = $"{league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR} KBO 시즌";
+            seasonTitle.text = GMLeagueState.SeasonTitle(league?.SeasonNumber ?? 1); // [TASK-GM-14] 「2026 KBO 시즌」 → 「KBO 시즌 1」
             gameCounter.text = $"G {played:000} / {GMLiveSeasonSimulator.SeasonGames}";
             CompyaUiKit.SetButtonText(modeHalf, simulator != null ? simulator.HalfButtonLabel : "전반기 진행");
             bool done = simulator == null || simulator.IsSeasonComplete;

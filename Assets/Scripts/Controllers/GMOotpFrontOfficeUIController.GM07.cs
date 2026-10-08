@@ -593,6 +593,7 @@ namespace KBOManager.Controllers
             if (league == null) { SetStatus("새 리그를 만들 수 없습니다(선수 데이터 없음)."); return null; }
             GMFrontOffice.ApplyManagerSetup(league, ProfileCopy(), mgDiff);
             sim = sim ?? new GMLiveSeasonSimulator(league);
+            GMStoveTurns.Begin(league); // [TASK-GM-14] 새 게임 = 스토브리그 Turn 1부터
             CloseManagerSetup();
             simulator = sim;
             ResetSelections();

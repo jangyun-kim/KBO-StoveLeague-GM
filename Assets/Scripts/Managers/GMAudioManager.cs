@@ -36,6 +36,13 @@ namespace KBOManager.Managers
         private static GMAudioManager instance;
         public static GMAudioManager Instance => instance != null ? instance : instance = FindAnyObjectByType<GMAudioManager>(FindObjectsInactive.Include);
 
+        /// <summary>
+        /// [TASK-GM-14] 리그 고속 시뮬레이션(전반기 · 후반기 · 한 시즌 진행) 중 - 부상 · 대기록 등 이벤트가 BGM을 하이재킹하지 못한다(메인 BGM 유지).
+        /// GMLiveSeasonSimulator.ActiveMode가 켜고 끈다. 무시한 이벤트 수는 IgnoredEventCount.
+        /// </summary>
+        public static bool SimulationMode { get; set; }
+        public static int IgnoredEventCount { get; private set; }
+
         /// <summary>[GM-12] 실제 소리 출력 허용 여부 - CLI Batchmode(자동 테스트)에서는 항상 false.</summary>
         public static bool SoundOutputEnabled => !Application.isBatchMode;
 
@@ -348,6 +355,7 @@ namespace KBOManager.Managers
         /// </summary>
         public string PlayEvent(GMAudioEvent ev, string teamCode = null)
         {
+            if (SimulationMode) { IgnoredEventCount++; return null; } // [TASK-GM-14] 고속 시뮬레이션 중 하이재킹 금지
             var profile = teamCode != null ? TeamAudioProfile.For(teamCode) : currentProfile ?? TeamAudioProfile.For(CurrentBgmTeam);
             if (currentProfile == null) currentProfile = profile;
             if (CurrentPlaylist == null) { CurrentScreen = GMAudioScreen.Hub; CurrentPlaylist = profile.PlaylistFor(GMAudioScreen.Hub); CurrentGroupId = CurrentPlaylist.GroupId; CurrentBgmTeam = profile.TeamCode; }
@@ -408,6 +416,17 @@ namespace KBOManager.Managers
             if (cue == GMAudioCue.HighlightSong || cue == GMAudioCue.ComebackSong || cue == GMAudioCue.WinSong || cue == GMAudioCue.BigInningSong) PlayOneShot(GMAudioCue.CrowdCheer, TeamAudioProfile.SynthCheer);
             return key;
         }
+
+        /// <summary>[TASK-GM-14] 짧은 효과음 1회(BGM은 그대로) - 연봉 협상 타결 = synth:deal · 결렬 = synth:fail.</summary>
+        public string PlaySfx(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            PlayOneShot(GMAudioCue.UiSfx, key);
+            LastSfxKey = key;
+            return key;
+        }
+
+        public string LastSfxKey { get; private set; }
 
         private void PlayOneShot(GMAudioCue cue, string key)
         {
@@ -489,6 +508,8 @@ namespace KBOManager.Managers
                 case TeamAudioProfile.SynthCheer: return Build(key, 1.6f, 11, (t, n, d) => n * Envelope(t / d, 0.25f) * 0.9f);
                 case TeamAudioProfile.SynthClap: return Build(key, 0.9f, 23, (t, n, d) => n * Clap(t) * 0.8f);
                 case TeamAudioProfile.SynthChant: return Build(key, 2.0f, 31, (t, n, d) => n * (0.35f + 0.65f * Beat(t, 0.5f)) * 0.55f);
+                case TeamAudioProfile.SynthDeal: return Build(key, 0.7f, 51, (t, n, d) => (Tone(t, 784f) * (t < 0.18f ? 1f : 0f) + Tone(t, 1046.5f) * (t >= 0.18f ? 1f : 0f)) * Mathf.Exp(-t * 4f) * 0.45f);
+                case TeamAudioProfile.SynthFail: return Build(key, 0.6f, 53, (t, n, d) => (Tone(t, 196f - 60f * t / d) * 0.7f + n * 0.1f) * Mathf.Exp(-t * 5f) * 0.55f);
                 case TeamAudioProfile.SynthTension: return Build(key, 8.0f, 41, (t, n, d) => (Tone(t, 55f) * 0.5f + Tone(t, 58.3f) * 0.4f + n * 0.08f) * (0.35f + 0.65f * Beat(t, 0.85f)) * 0.6f);
                 case TeamAudioProfile.SynthDefeat: return Build(key, 6.0f, 43, (t, n, d) => (Tone(t, 110f - 40f * t / d) * 0.6f + Tone(t, 82.4f - 30f * t / d) * 0.4f) * Mathf.Exp(-t * 0.35f) * 0.6f);
                 default: return Build(TeamAudioProfile.SynthCrowd, 4.0f, 7, (t, n, d) => n * (0.55f + 0.15f * Mathf.Sin(t * Mathf.PI * 0.5f)) * 0.5f);

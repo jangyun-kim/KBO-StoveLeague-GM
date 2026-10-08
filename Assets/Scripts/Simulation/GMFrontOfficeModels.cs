@@ -147,6 +147,9 @@ namespace KBOManager.Simulation
         public List<GMPromise> Promises = new List<GMPromise>();
         public List<GMDynamicEvent> DynamicEvents = new List<GMDynamicEvent>();
         public int PromiseSeq, EventSeq;
+        // [TASK-GM-14] 스토브리그 8 Turn 진행 통제(세이브 v24) - 현재 Turn(1~8, 9 = 완료) · 시작 연도(0 = 통제 안 함) · 이번 Turn 대표 방 확인 여부
+        public int StoveTurn, StoveTurnYear;
+        public bool StoveTurnVisited;
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

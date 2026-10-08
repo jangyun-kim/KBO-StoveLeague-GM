@@ -32,6 +32,7 @@ namespace KBOManager.EditorTests
         [SetUp]
         public void EnsureDatabase()
         {
+            GMAudioManager.SimulationMode = false; // [TASK-GM-14] 다른 테스트가 남긴 고속 진행 플래그 초기화
             var audio = GMAudioManager.Ensure();
             audio.StopAll();
             audio.ClearHistory();

@@ -395,6 +395,7 @@ namespace KBOManager.Simulation
             {
                 if (finished) return box;
                 PlayToEnd();
+                if (IsPostSeason && !Engine.IsGameOver) Engine.DebugForceEndGame(Home.TeamCode); // [TASK-GM-14] 타석 상한에 걸려도 포스트시즌은 무승부 없음(홈 끝내기)
                 finished = true;
                 var result = Engine.Result;
                 int homeRuns = result.HomeTotalScore, awayRuns = result.AwayTotalScore;
@@ -436,7 +437,10 @@ namespace KBOManager.Simulation
                 LosingPitcher = loseP;
 
                 int homeGate = 0;
-                if (recordSeason) homeGate = ApplySeason(homeRuns, awayRuns, winnerCode, winP, loseP, saveP, holds);
+                // [TASK-GM-14] 정규시즌 반영 가드 - 진행 중인 경기일 · 팀당 하루 1경기 · 144경기 상한(포스트시즌 · 대회 · 중복 세션은 순위표에 들어가지 않는다)
+                bool record = recordSeason && sim.CanRecordSeasonGame(day, Home, Away);
+                SeasonRecorded = record;
+                if (record) homeGate = ApplySeason(homeRuns, awayRuns, winnerCode, winP, loseP, saveP, holds);
 
                 if (Home.IsUserTeam || Away.IsUserTeam)
                 {
@@ -445,17 +449,17 @@ namespace KBOManager.Simulation
                     int my = me == Home ? homeRuns : awayRuns, their = me == Home ? awayRuns : homeRuns;
                     string outcome = my > their ? "승" : my < their ? "패" : "무";
                     sim.LastUserGameLine = $"{(IsPostSeason ? GameTitle : $"G{day + 1}")} {CompyaShort(me.Team)} {my} : {their} {CompyaShort(opp.Team)} ({outcome})";
-                    if (recordSeason)
+                    if (record)
                     {
                         league.UserResults.RemoveAll(x => x.Day == day);
                         league.UserResults.Add(new GMGameResultEntry { Day = day, OpponentCode = opp.TeamCode, Home = me == Home, My = my, Their = their });
                     }
                     box = BuildBox(homeRuns, awayRuns, winnerCode, winP, loseP, saveP, holds, me, homeGate);
                     league.AddBoxScore(box);
-                    if (sim.RecordAllBoxScores && recordSeason) sim.AllUserBoxScores.Add(box);
+                    if (sim.RecordAllBoxScores && record) sim.AllUserBoxScores.Add(box);
                 }
 
-                if (recordSeason)
+                if (record)
                 {
                     sim.RollInjury(day, Home, bat, pit);
                     sim.RollInjury(day, Away, bat, pit);
@@ -466,6 +470,9 @@ namespace KBOManager.Simulation
                 }
                 return box;
             }
+
+            /// <summary>[TASK-GM-14] 이 경기가 정규시즌 순위 · 기록에 반영됐는지(가드 통과 여부).</summary>
+            public bool SeasonRecorded { get; private set; }
 
             /// <summary>마지막 경기의 패전 투수(포스트시즌 단판 결과용).</summary>
             public Player LosingPitcher { get; private set; }

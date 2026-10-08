@@ -442,7 +442,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(2027, league.SeasonYear, "2026 → 2027");
             Assert.AreEqual(0, league.GamesPlayed, "0 / 144");
             Assert.AreEqual("G 000 / 144", T(root, "GameCounter"));
-            Assert.AreEqual("2027 KBO 시즌", T(root, "SeasonTitle"));
+            Assert.AreEqual("KBO 시즌 2", T(root, "SeasonTitle")); // [TASK-GM-14] 연도 표기 → 단장 재임 시즌 번호
             Assert.IsTrue(root.Find("ModeFull").gameObject.activeSelf, "새 시즌 진행 버튼");
             Assert.AreEqual(GMSeasonPhase.StoveLeague, league.Phase);
             Assert.IsEmpty(league.Stats, "시즌 기록 리셋");

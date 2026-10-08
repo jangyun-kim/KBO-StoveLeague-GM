@@ -85,6 +85,10 @@ namespace KBOManager.Services
 
         public GMTeamState UserTeam => SelectedTeamCode != null && Teams.TryGetValue(SelectedTeamCode, out var t) ? t : null;
 
+        /// <summary>[TASK-GM-14] 단장 재임 시즌 번호(1부터) - 헤더 표기 「KBO 시즌 N」. 모든 모드가 2026에서 시작한다.</summary>
+        public int SeasonNumber => Math.Max(1, SeasonYear - GMFeatureFlags.DEFAULT_START_YEAR + 1);
+        public static string SeasonTitle(int seasonNumber) => $"KBO 시즌 {Math.Max(1, seasonNumber)}";
+
         // [TASK-GM-02] 정규시즌 진행 상태 - 경기 진행 인덱스(0~144) · 구단 성적 · 선수 누적 기록 · 최신 소식.
         public int GamesPlayed;
         public int Seed = 20260328;

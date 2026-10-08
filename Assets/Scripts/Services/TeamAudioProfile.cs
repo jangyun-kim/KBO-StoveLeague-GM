@@ -22,6 +22,7 @@ namespace KBOManager.Services
         LateCloseSong = 11,  // [TASK-GM-12] 공격 - 7~9회 2점 차 이내 접전(경기당 1회) - 삼성 = Jump up Lions
         OutCheer = 12,       // [TASK-GM-12] 아웃 효과음(짧은 박수) - 득점 환호는 CrowdCheer
         EventBgm = 13,       // [TASK-GM-12] 이벤트 전용곡(BGM 채널 하이재킹) 기록용
+        UiSfx = 14,          // [TASK-GM-14] 화면 효과음(연봉 협상 타결 · 결렬)
     }
 
     /// <summary>[TASK-GM-12] BGM 화면 그룹 - 화면마다 로테이션 풀이 다르고, 같은 GroupId 화면끼리는 곡을 끊지 않는다.</summary>
@@ -71,6 +72,8 @@ namespace KBOManager.Services
         public const string SynthCrowd = "synth:crowd", SynthCheer = "synth:cheer", SynthClap = "synth:clap", SynthChant = "synth:chant";
         /// <summary>[TASK-GM-12] 공통 긴장 · 패배 BGM - 전용 음원이 들어오기 전까지 합성 저음 패드를 쓴다(전 구단 공통).</summary>
         public const string SynthTension = "synth:tension", SynthDefeat = "synth:defeat";
+        /// <summary>[TASK-GM-14] 연봉 협상 결과 짧은 효과음 - 타결(2음 차임) · 결렬(하강 저음).</summary>
+        public const string SynthDeal = "synth:deal", SynthFail = "synth:fail";
 
         // [TASK-GM-12] 삼성 곡 키(Resources/Audio 기준)
         public const string SamMyLions = "SAM/sam_cheer_my_lions", SamJijunghae = "SAM/sam_cheer_jijunghae", SamHwanhui = "SAM/sam_bgm_home2_hwanhui",

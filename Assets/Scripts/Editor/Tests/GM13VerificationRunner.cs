@@ -32,6 +32,7 @@ namespace KBOManager.EditorTests
         [SetUp]
         public void EnsureDatabase()
         {
+            GMAudioManager.SimulationMode = false; // [TASK-GM-14] 다른 테스트가 남긴 고속 진행 플래그 초기화
             var audio = GMAudioManager.Ensure();
             audio.StopAll();
             audio.ClearHistory();
@@ -129,7 +130,7 @@ namespace KBOManager.EditorTests
             var back = JsonUtility.FromJson<GMFrontOfficeState>(JsonUtility.ToJson(GMFrontOffice.Ensure(league)));
             Assert.AreEqual(4, back.Promises.Count);
             Assert.AreEqual(GMPromiseState.Broken, back.Promises.First(p => p.Id == promise.Id).State);
-            Assert.AreEqual(23, new GameSaveData().SaveVersion, "세이브 v23");
+            Assert.AreEqual(24, new GameSaveData().SaveVersion, "세이브 v24([TASK-GM-14])");
 
             // 계약 협상실 [주전 · 보직 보장] 카드 → 타결 = ACTIVE / 결렬 = 폐기
             bool checkedRoom = false;

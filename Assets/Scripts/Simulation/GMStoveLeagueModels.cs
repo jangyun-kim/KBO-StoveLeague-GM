@@ -201,5 +201,6 @@ namespace KBOManager.Simulation
         public int Salary, Years;
         public string Message = "";
         public GMPromise Promise;            // [TASK-GM-13] 이 계약으로 활성화된 약속(없으면 null)
+        public List<string> ChainEffects = new List<string>(); // [TASK-GM-14] 동료 연봉 연쇄 반응
     }
 }

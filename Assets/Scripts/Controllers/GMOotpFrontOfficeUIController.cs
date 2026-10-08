@@ -317,6 +317,7 @@ namespace KBOManager.Controllers
                 BuildSeasonSummaryPane();  // [TASK-GM-11] 시즌 결산실
                 BuildNegotiationPane();    // [TASK-GM-11] 계약 협상실(3지선다)
                 BuildLockerRoomPane();     // [TASK-GM-13] 선수단 회의실
+                BuildTurnLockOverlay();    // [TASK-GM-14] 8 Turn 잠금 화면
                 BuildDiscussPopup();
                 BuildPercentilePopup();
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
@@ -511,6 +512,7 @@ namespace KBOManager.Controllers
         private void ApplyPaneVisibility()
         {
             foreach (var pair in panes) pair.Value.gameObject.SetActive(pair.Key == currentPane);
+            UpdateTurnLock(); // [TASK-GM-14] 해금 전 방 = 잠금 화면(팝업 · 메뉴보다 아래)
             if (discussPopup != null) discussPopup.SetAsLastSibling();
             if (pctPopup != null) pctPopup.SetAsLastSibling();
             if (counterPopup != null) counterPopup.SetAsLastSibling(); // [TASK-GM-08]
@@ -1079,6 +1081,9 @@ namespace KBOManager.Controllers
             RefreshHeader();
             RefreshToolbar(); // [TASK-GM-07]
             if (League == null || UserTeam == null) { SetStatus("단장 모드 리그가 없습니다 - [새 시즌/난이도 설정]으로 시작하십시오."); return; }
+            MarkTurnVisit(); // [TASK-GM-14]
+            UpdateTurnLock();
+            RefreshHeader();
             GMFrontOffice.RefreshGoals(League);
             PlayFrontOfficeBgm(); // [TASK-GM-08] 구단 테마 BGM
             using (CompyaUiKit.Wide())
@@ -1126,14 +1131,16 @@ namespace KBOManager.Controllers
             teamRecord.text = rec.G > 0 ? $"{rec.W}승 {rec.D}무 {rec.L}패 · 승률 {GMTeamRecord.PctLabel(rec.Pct)} · 게임차 {gb} · {rank}위"
                                         : $"0승 0무 0패 · 승률 .000 · 게임차 - · 지난 시즌 {GMFrontOffice.LastRank(league, team.TeamCode)}위";
             bool stove = simulator.GamesPlayed == 0;
-            teamDate.text = stove ? $"{league.SeasonYear}년 스토브리그 · {GMModeLabel(league.Mode)} · 난이도 {GMFrontOffice.DifficultyLabel(GMFrontOffice.Ensure(league).Difficulty)}"
+            teamDate.text = stove ? $"{league.SeasonYear}년 스토브리그 · {(GMStoveTurns.IsActive(league) ? GMStoveTurns.Label(GMStoveTurns.Current(league)) : GMModeLabel(league.Mode))} · 난이도 {GMFrontOffice.DifficultyLabel(GMFrontOffice.Ensure(league).Difficulty)}"
                                   : simulator.IsSeasonComplete ? $"{league.SeasonYear} 정규시즌 종료 · 포스트시즌 & 시상식" : $"{simulator.DayLabel(simulator.GamesPlayed)} · {league.SeasonYear} 정규시즌 G {simulator.GamesPlayed}/{GMLiveSeasonSimulator.SeasonGames}";
             tickerValues[0].text = string.IsNullOrEmpty(simulator.LastUserGameLine) ? (stove ? "스토브리그 - 경기 없음" : "-") : simulator.LastUserGameLine;
             tickerValues[1].text = MatchupLabel(simulator.GamesPlayed, true);
             tickerValues[2].text = MatchupLabel(simulator.GamesPlayed + 1, false);
             tickerValues[3].text = NextSeriesLabel();
             // [TASK-GM-07] 메인 홈이 아니면 [진행하기] = 메인 홈 이동, 메인 홈이면 ① 전력 분석부터 3단계 플로우
-            string next = simulator.IsSeasonComplete ? (SeasonReviewPending ? "시즌 결산실" : "포스트시즌 트리") : !IsAtMainHome ? "메인 홈으로" : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
+            string next = simulator.IsSeasonComplete ? (SeasonReviewPending ? "시즌 결산실" : "포스트시즌 트리") : !IsAtMainHome ? "메인 홈으로"
+                : GMStoveTurns.IsGating(league) ? (GMFrontOffice.Ensure(league).StoveTurnVisited ? $"Turn {GMStoveTurns.Current(league)} 완료 → 다음 Turn" : $"Turn {GMStoveTurns.Current(league)} {GMStoveTurns.Name(GMStoveTurns.Current(league))} 열기") // [TASK-GM-14]
+                : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
             CompyaUiKit.SetButtonText(continueButton, $"✔ 진행하기 (CONTINUE) >\n{next}");
         }
 
@@ -1397,12 +1404,13 @@ namespace KBOManager.Controllers
         public GMNegotiationResult SubmitExtension()
         {
             if (extSelected == null) return null;
+            if (TurnBlocked(PaneSalaries, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var player = extSelected;
             var r = GMStoveLeagueMarket.Extend(League, UserTeam, extSelected, extYearsValue, ExtensionOfferSalary, extConcessionOn);
             extMessage.text = r.Message;
             SetStatus(r.Message);
             Refresh();
-            if (r.Success) PlayAudioEvent(ContractEventFor(player, true)); // [TASK-GM-12] 재계약 성공 = 환희 · 프랜차이즈 잔류 = 엘도라도
+            PlayNegotiationSfx(r.Success, !r.Success); // [TASK-GM-14] 재계약 · 연봉 협상 = BGM 유지 + 짧은 효과음
             return r;
         }
 
@@ -1538,6 +1546,7 @@ namespace KBOManager.Controllers
         public GMNegotiationResult OfferSelected()
         {
             if (faSelected == null) return null;
+            if (TurnBlocked(PaneFA, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var player = faSelected;
             var r = GMStoveLeagueMarket.OfferContract(League, UserTeam, faSelected, faYearsValue, FAOfferSalary, faRoleOn);
             faMessage.text = r.Message;
@@ -1652,6 +1661,7 @@ namespace KBOManager.Controllers
 
         public GMNegotiationResult ProposeTrade()
         {
+            if (TurnBlocked(PaneTrade, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var incoming = trTheirs.OrderByDescending(p => p.BaseOverall).FirstOrDefault();
             var r = GMStoveLeagueMarket.ExecuteTrade(League, UserTeam, trMine.ToList(), TradePartner, trTheirs.ToList(), trCash);
             SetStatus(r.Message);
@@ -1681,6 +1691,7 @@ namespace KBOManager.Controllers
         public GMNegotiationResult AcceptShopOffer(int index)
         {
             if (index >= shopOffers.Count || shopTarget == null) return null;
+            if (TurnBlocked(PaneTrade, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var incoming = shopOffers[index].Player;
             var r = GMStoveLeagueMarket.AcceptOffer(League, UserTeam, shopTarget, shopOffers[index]);
             SetStatus(r.Message);
@@ -1740,6 +1751,7 @@ namespace KBOManager.Controllers
         public GMNegotiationResult DraftSelected_()
         {
             if (drSelected == null) return null;
+            if (TurnBlocked(PaneDraft, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var r = GMStoveLeagueMarket.Draft(League, UserTeam, drSelected);
             SetStatus(r.Message);
             if (r.Success) drSelected = null;
@@ -1977,6 +1989,7 @@ namespace KBOManager.Controllers
         {
             CloseMenus();
             if (simulator == null) { SetStatus("단장 모드 리그가 없습니다."); return false; }
+            if (!CloseOverlaysForContinue()) return false; // [TASK-GM-14] 경기 화면 · 대시보드 · 팝업을 닫고 메인 홈 기준으로 진행
             if (simulator.IsSeasonComplete)
             {
                 if (SeasonReviewPending) // [TASK-GM-11] 정규시즌 종료 직후 첫 화면 = 시즌 결산실
@@ -1995,9 +2008,12 @@ namespace KBOManager.Controllers
             if (!IsAtMainHome)
             {
                 GoMainHome();
-                SetStatus("리그 플레이 메인 홈 - 구단 상황 · 4일 일정을 확인하고 [진행하기]를 한 번 더 누르면 오늘 경기 전력 분석으로 이어집니다.");
+                SetStatus(GMStoveTurns.IsGating(League)
+                    ? $"프런트 오피스 메인 홈 - {GMStoveTurns.Label(GMStoveTurns.Current(League))}. [진행하기]를 한 번 더 누르면 이번 Turn 방 또는 다음 Turn으로 이어집니다."
+                    : "리그 플레이 메인 홈 - 구단 상황 · 4일 일정을 확인하고 [진행하기]를 한 번 더 누르면 오늘 경기 전력 분석으로 이어집니다.");
                 return true;
             }
+            if (GMStoveTurns.IsGating(League)) return ContinueStoveTurn(); // [TASK-GM-14] 스토브리그 8 Turn
             if (simulator.PendingInterrupt != null) { OpenDashboard(); return false; }
             string settled = SettleCompensationsBeforeSeason(); // [TASK-GM-08] 개막 전 FA 보상 정산
             var view = PrePostView != null ? PrePostView : FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);

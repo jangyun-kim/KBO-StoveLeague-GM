@@ -265,6 +265,8 @@ namespace KBOManager.Engine
     {
         private const int RegulationInnings = 9;
         private const int MaxInnings = 12; // KBO 정규시즌 연장 상한. 도달 시 무승부로 종료
+        /// <summary>[TASK-GM-14] 포스트시즌 끝장 승부 - 연장 상한 없음(무승부 · 재경기 루프 차단). 안전 상한 99회에 닿으면 홈 끝내기로 판정한다.</summary>
+        public const int PostSeasonSafetyInnings = 99;
 
         // 병살타/희생플라이 판정용 임시 확률. GDD 미명시 - 밸런스 확정 전까지의 추정값.
         private const double DoublePlayChance = 0.4; // 1루 주자 있고 2아웃 미만인 땅볼일 때 병살 발생 확률
@@ -753,7 +755,7 @@ namespace KBOManager.Engine
             {
                 // 방금 말(홈 공격)이 끝났다.
                 bool decided = currentInning >= RegulationInnings && Result.HomeTotalScore != Result.AwayTotalScore;
-                bool reachedCap = currentInning >= MaxInnings;
+                bool reachedCap = isPostSeasonMatch ? currentInning >= PostSeasonSafetyInnings : currentInning >= MaxInnings; // [TASK-GM-14] 포스트시즌 = 무제한 연장
                 if (decided || reachedCap)
                 {
                     FinishGame();
@@ -771,6 +773,8 @@ namespace KBOManager.Engine
             if (IsGameOver) return; // 중복 호출 방지
 
             IsGameOver = true;
+            // [TASK-GM-14] 포스트시즌은 무승부가 없다 - 안전 상한까지 동점이면 홈 끝내기 1점
+            if (isPostSeasonMatch && Result.HomeTotalScore == Result.AwayTotalScore) Result.HomeTotalScore = Result.AwayTotalScore + 1;
             Result.IsExtraInnings = Result.AwayInningScores.Count > RegulationInnings;
             Result.WinnerTeamName = Result.HomeTotalScore == Result.AwayTotalScore
                 ? null

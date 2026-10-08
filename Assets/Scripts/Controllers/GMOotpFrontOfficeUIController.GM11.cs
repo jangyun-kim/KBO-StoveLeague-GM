@@ -278,6 +278,7 @@ namespace KBOManager.Controllers
         public GMNegotiationRoomResult ChooseNegotiationCard(int index)
         {
             if (League == null || UserTeam == null || negSelected == null) { SetStatus("협상할 선수를 먼저 고르십시오."); return null; }
+            if (TurnBlocked(PaneNegotiation, out var lockMsg)) return new GMNegotiationRoomResult { Message = lockMsg }; // [TASK-GM-14]
             var session = negSession ?? GMNegotiationRoom.Open(League, UserTeam, negSelected, negYears);
             if (session.OnCooldown || session.BlockReason != "") { SetStatus(session.BlockReason); return null; }
             var player = session.Player;
@@ -287,9 +288,8 @@ namespace KBOManager.Controllers
             negMessage.text = result.Message;
             negMessage.color = result.Success ? ToneNeutral : result.Broken ? ToneRisk : White;
             SetStatus(result.Message);
-            // [TASK-GM-12] 결렬 · 삭감 = 공통 긴장 BGM / 성사 = 환희(프랜차이즈 잔류 = 엘도라도)
-            if (result.Broken || result.Outcome == GMNegotiationOutcome.Cut) PlayAudioEvent(GMAudioEvent.Tension);
-            else if (result.Success) PlayAudioEvent(ContractEventFor(player, true));
+            // [TASK-GM-14] 연봉 협상은 BGM을 바꾸지 않는다(스토브리그 기본 BGM 유지) - 타결 · 결렬 짧은 효과음 1회
+            PlayNegotiationSfx(result.Success, result.Broken);
             return result;
         }
 
