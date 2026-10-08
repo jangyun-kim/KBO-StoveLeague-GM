@@ -43,6 +43,10 @@ namespace KBOManager.Controllers
 
         private RectTransform root;
         private Image background, headerBar;
+        // [TASK-GM-15] 스토브리그 8 Turn 진행 중 고속 진행 버튼 잠금
+        public const string StoveLockName = "StoveLockBar";
+        private RectTransform stoveLock;
+        private Text stoveLockText;
         private RawImage emblem;
         private RectTransform emblemHolder;
         private Text seasonTitle, gameCounter, statusText, lastGameText;
@@ -198,6 +202,11 @@ namespace KBOManager.Controllers
             nextSeasonButton.onClick.AddListener(() => AdvanceSeason());
             awardsButton.gameObject.SetActive(false);
             nextSeasonButton.gameObject.SetActive(false);
+            // [TASK-GM-15] 스토브리그 8 Turn이 끝나기 전에는 [한 경기] · [전반기/후반기] · [한 시즌]을 잠금 막으로 덮는다(우회 개막 차단)
+            stoveLock = CompyaUiKit.Fill(root, StoveLockName);
+            CompyaUiKit.Box(stoveLock, "LockShade", 16, 76, 1188, 146, new Color(0.05f, 0.06f, 0.08f, 0.9f)).raycastTarget = true;
+            stoveLockText = L(kit, "LockText", "", 30, 80, 1176, 142, ButtonPt, TextAnchor.MiddleCenter, Gold, stoveLock);
+            stoveLock.gameObject.SetActive(false);
 
             speed1 = Btn(kit, "Speed1x", "1x", 1196, 80, 1296, 142, ButtonIdle, ButtonPt);
             speed2 = Btn(kit, "Speed2x", "2x", 1306, 80, 1406, 142, ButtonIdle, ButtonPt);
@@ -453,6 +462,7 @@ namespace KBOManager.Controllers
         /// <summary>[한 경기] - 전력 비교 화면이 있으면 먼저 띄운다(경기 시작은 그 화면에서). 없으면 바로 1경기 진행.</summary>
         public void OpenPreGameOrRun()
         {
+            if (StoveBlocked()) return; // [TASK-GM-15]
             var view = PrePost;
             if (view != null && simulator != null && simulator.PendingInterrupt == null && view.ShowPreGameView(simulator)) return;
             Run(GMRunMode.SingleGame);
@@ -523,10 +533,23 @@ namespace KBOManager.Controllers
         public void Run(GMRunMode mode)
         {
             if (simulator == null) return;
+            if (StoveBlocked()) return; // [TASK-GM-15] 스토브리그 8 Turn 진행 중 = 개막 차단
             if (!simulator.StartRun(mode)) { if (statusText != null) statusText.text = "시즌 종료"; return; }
             paused = false;
             tickTimer = TickSeconds; // 첫 틱은 바로
             Refresh();
+        }
+
+        /// <summary>[TASK-GM-15] 스토브리그 8 Turn 진행 중(개막 전) - 고속 진행 · 한 경기 버튼 잠금.</summary>
+        public bool IsStoveLocked => GMStoveTurns.IsGating(simulator?.League);
+        public bool AnyRunButtonInteractable => modeSingle != null && (modeSingle.interactable || modeHalf.interactable || modeFull.interactable);
+
+        private bool StoveBlocked()
+        {
+            if (!IsStoveLocked) return false;
+            if (statusText != null) statusText.text = "스토브리그 진행 중 · 개막 전";
+            Refresh();
+            return true;
         }
 
         public void SetSpeed(int value)
@@ -552,7 +575,10 @@ namespace KBOManager.Controllers
             gameCounter.text = $"G {played:000} / {GMLiveSeasonSimulator.SeasonGames}";
             CompyaUiKit.SetButtonText(modeHalf, simulator != null ? simulator.HalfButtonLabel : "전반기 진행");
             bool done = simulator == null || simulator.IsSeasonComplete;
-            modeSingle.interactable = modeHalf.interactable = modeFull.interactable = !done;
+            bool stoveLocked = IsStoveLocked; // [TASK-GM-15]
+            modeSingle.interactable = modeHalf.interactable = modeFull.interactable = !done && !stoveLocked;
+            stoveLock.gameObject.SetActive(stoveLocked);
+            if (stoveLocked) stoveLockText.text = $"잠김 - 스토브리그 {GMStoveTurns.Label(GMStoveTurns.Current(league))} 진행 중 · 8 Turn을 마쳐야 개막합니다";
             bool seasonOver = simulator != null && simulator.IsSeasonComplete; // [TASK-GM-04]
             modeSingle.gameObject.SetActive(!seasonOver);
             modeHalf.gameObject.SetActive(!seasonOver);
@@ -565,7 +591,7 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetButtonText(pauseButton, paused ? "계속" : "일시정지");
             Highlight(speed1, speed == 1); Highlight(speed2, speed == 2); Highlight(speed4, speed == 4);
             Highlight(tabBatter, !showPitchers); Highlight(tabPitcher, showPitchers);
-            statusText.text = done ? (league?.Awards != null && league.Awards.IsComplete ? "시상식 종료" : "정규시즌 종료") : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
+            statusText.text = stoveLocked ? "스토브리그 진행 중 · 개막 전" : done ? (league?.Awards != null && league.Awards.IsComplete ? "시상식 종료" : "정규시즌 종료") : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
                 paused ? "일시정지" : simulator.IsRunning ? $"진행 중 · {speed}x" : "대기 중";
             lastGameText.text = simulator?.LastUserGameLine ?? "";
             lastBoxButton.interactable = simulator?.League?.LastUserMatchBoxScore != null;

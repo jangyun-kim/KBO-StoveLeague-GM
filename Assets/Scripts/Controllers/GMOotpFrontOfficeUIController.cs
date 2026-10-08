@@ -26,7 +26,7 @@ namespace KBOManager.Controllers
     {
         public const string RootName = "FrontOfficeRoot";
         public const int BannerTitlePt = 30, BannerPt = 19, SmallPt = 16, TabPt = 18, SubTabPt = 18, PanelTitlePt = 19, BodyPt = 16, TablePt = 16, CellPt = 15, ButtonPt = 18, BigPt = 36;
-        public const int MainTabCount = 8, SubTabMax = 8, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 7, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
+        public const int MainTabCount = 8, SubTabMax = 9, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 7, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
 
         public static readonly Color Gold = new Color(0.961f, 0.722f, 0.18f); // #F5B82E
         private static readonly Color Bg = new Color(0.09f, 0.09f, 0.1f);
@@ -317,6 +317,9 @@ namespace KBOManager.Controllers
                 BuildSeasonSummaryPane();  // [TASK-GM-11] 시즌 결산실
                 BuildNegotiationPane();    // [TASK-GM-11] 계약 협상실(3지선다)
                 BuildLockerRoomPane();     // [TASK-GM-13] 선수단 회의실
+                BuildFuturesMeetingPane(); // [TASK-GM-15] 육성 회의실
+                BuildSecondDraftPane();    // [TASK-GM-15] 2차 드래프트실
+                BuildPressPane();          // [TASK-GM-15] 언론 브리핑실
                 BuildTurnLockOverlay();    // [TASK-GM-14] 8 Turn 잠금 화면
                 BuildDiscussPopup();
                 BuildPercentilePopup();
@@ -468,12 +471,12 @@ namespace KBOManager.Controllers
             return new[]
             {
                 new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory),
-                    P("시즌 결산실", PaneSeasonSummary), P("계약 협상실", PaneNegotiation) }, // [TASK-GM-11] 스토브리그 Turn 1 결산 · Turn 4 계약 협상
+                    P("시즌 결산실", PaneSeasonSummary), P("계약 협상실", PaneNegotiation), P("언론 브리핑실", PanePress) }, // [TASK-GM-11] 스토브리그 Turn 1 결산 · Turn 4 계약 협상 · [TASK-GM-15] 언론 브리핑
                 new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
-                new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem), P("선수단 회의실", PaneLockerRoom) }, // [TASK-GM-13]
+                new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem), P("선수단 회의실", PaneLockerRoom), P("육성 회의실", PaneFuturesMeeting) }, // [TASK-GM-13] · [TASK-GM-15] Turn 6
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
                 new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08]
-                new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA) },
+                new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA), P("2차 드래프트", PaneSecondDraft) }, // [TASK-GM-15] Turn 3
                 new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", () => GoLegacy(ScreenType.CheerleaderShop)), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
                 new List<SubTab> { P("구단 역사", PaneHistory), P("포스트시즌 트리", PanePostseason), A("시상식 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
             };
@@ -1108,6 +1111,9 @@ namespace KBOManager.Controllers
                     case PaneSeasonSummary: RefreshSeasonSummary(); break; // [TASK-GM-11]
                     case PaneNegotiation: RefreshNegotiation(); break;     // [TASK-GM-11]
                     case PaneLockerRoom: RefreshLockerRoom(); break;       // [TASK-GM-13]
+                    case PaneFuturesMeeting: RefreshFuturesMeeting(); break; // [TASK-GM-15]
+                    case PaneSecondDraft: RefreshSecondDraft(); break;       // [TASK-GM-15]
+                    case PanePress: RefreshPress(); break;                   // [TASK-GM-15]
                 }
             }
         }
@@ -2043,6 +2049,7 @@ namespace KBOManager.Controllers
 
         public void OpenPreGame()
         {
+            if (GMStoveTurns.IsGating(League)) { SetStatus($"잠김 - 스토브리그 {GMStoveTurns.Label(GMStoveTurns.Current(League))} 진행 중 · 8 Turn을 마친 뒤 [진행하기]로 개막전을 여십시오."); return; } // [TASK-GM-15]
             var view = PrePostView != null ? PrePostView : FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);
             if (view == null || simulator == null || !view.ShowPreGameView(simulator)) SetStatus("전력 비교를 열 수 없습니다(시즌 종료 또는 화면 없음).");
             else { view.OnClosed -= Refresh; view.OnClosed += Refresh; }

@@ -63,7 +63,7 @@ namespace KBOManager.Controllers
 
         private void LayoutSubTab(int k, int count)
         {
-            float pitch = count > 6 ? SubTabPitch : 312;
+            float pitch = count > 8 ? 211 : count > 6 ? SubTabPitch : 312; // [TASK-GM-15] 9칸 = 211px
             float x0 = 12 + k * pitch, x1 = x0 + pitch - (count > 6 ? 8 : 12);
             var rect = (RectTransform)subTabButtons[k].transform;
             rect.anchorMin = new Vector2(x0 / CompyaUiKit.WideWidth, rect.anchorMin.y);

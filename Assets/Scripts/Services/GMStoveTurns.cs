@@ -7,6 +7,7 @@ namespace KBOManager.Services
 {
     /// <summary>
     /// [TASK-GM-14] 스토브리그 8 Turn 진행 통제(기획서 2절 표) - 단계별 해금 · 진행 차단(Phase Gating).
+    ///   [TASK-GM-15] Turn 3을 넘기면 2차 드래프트를 마감한다(AI 지명 · GMSecondaryDraft.Conclude). Turn 6 대표 방 = 육성 회의실.
     ///   Turn 1 시즌 결산 → 2 선수단 정리 → 3 2차 드래프트(격년 · 홀수 해, 그 밖 해는 자동 통과) → 4 계약 협상 → 5 시장 협상 → 6 육성 회의 → 7 드래프트 → 8 최종 구성 → 개막 준비 완료.
     ///   - 시작: 새 게임(감독 설정 · 새 시즌 모달)과 연도 전환(GMFrontOffice.OnNewSeason). 세이브 v24(StoveTurn · StoveTurnYear · StoveTurnVisited).
     ///     시작하지 않은 리그(구버전 세이브 · 직접 만든 테스트 리그)는 통제하지 않는다(기존 자유 진행).
@@ -18,7 +19,7 @@ namespace KBOManager.Services
         public const int TurnCount = 8, Completed = TurnCount + 1;
 
         public static readonly string[] Names = { "시즌 결산", "선수단 정리", "2차 드래프트", "계약 협상", "시장 협상", "육성 회의", "드래프트", "최종 구성" };
-        public static readonly string[] Rooms = { "시즌 결산실 · 구단주 보고실", "선수단 회의실 · 보류명단(보호 명단)", "2차 드래프트(보호 명단)", "계약 협상실 · 연봉/재계약", "시장 정보실(FA · 트레이드)", "육성 회의실(선수단 · 퓨처스)", "신인 드래프트", "구단주 보고실(최종 로스터 · 목표)" };
+        public static readonly string[] Rooms = { "시즌 결산실 · 구단주 보고실", "선수단 회의실 · 보류명단(보호 명단)", "2차 드래프트실(보호 25인 · 지명)", "계약 협상실 · 연봉/재계약", "시장 정보실(FA · 트레이드)", "육성 회의실(퓨처스 · 콜업 · 멘토링)", "신인 드래프트", "구단주 보고실(최종 로스터 · 목표)" };
 
         public static string Name(int turn) => turn >= 1 && turn <= TurnCount ? Names[turn - 1] : turn > TurnCount ? "개막 준비 완료" : "-";
         public static string Label(int turn) => turn >= 1 && turn <= TurnCount ? $"Turn {turn}/{TurnCount} {Names[turn - 1]}" : turn > TurnCount ? "스토브리그 완료 · 개막 준비" : "";
@@ -82,6 +83,9 @@ namespace KBOManager.Services
             if (reason != "") { message = reason; return false; }
             var fo = GMFrontOffice.Ensure(league);
             int from = fo.StoveTurn;
+            string concluded = "";
+            if (from == 3 && GMSecondaryDraft.IsDraftYear(league.SeasonYear) && !GMSecondaryDraft.IsHeld(league)) // [TASK-GM-15] Turn 3 마감 = AI 지명 진행 · 시행 처리
+                concluded = $" · 2차 드래프트 마감(AI 지명 {GMSecondaryDraft.Conclude(league).Count}건)";
             fo.StoveTurn++;
             string skipped = "";
             if (fo.StoveTurn == 3 && !SecondDraftYear(league.SeasonYear))
@@ -92,7 +96,7 @@ namespace KBOManager.Services
             fo.StoveTurnVisited = false;
             message = fo.StoveTurn > TurnCount
                 ? $"Turn {from} {Names[from - 1]} 완료 - 스토브리그 8 Turn 종료, 개막 준비 완료."
-                : $"Turn {from} {Names[from - 1]} 완료 → {Label(fo.StoveTurn)}{skipped} · 활성: {Rooms[fo.StoveTurn - 1]}";
+                : $"Turn {from} {Names[from - 1]} 완료{concluded} → {Label(fo.StoveTurn)}{skipped} · 활성: {Rooms[fo.StoveTurn - 1]}";
             league.AddNews(new GMNewsItem
             {
                 GameIndex = 0, DateLabel = $"{league.SeasonYear} 스토브리그", Kind = GMNewsKind.Season, IsUserTeam = true,

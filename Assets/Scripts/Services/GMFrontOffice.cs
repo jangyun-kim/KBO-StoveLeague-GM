@@ -792,6 +792,7 @@ namespace KBOManager.Services
             }
             if (championCode == team.TeamCode) delta += 15;
             fo.OwnerTrust = Math.Max(fo.Manager != null && fo.Manager.NoFiring ? NoFiringTrustFloor : 0, Math.Min(MaxTrust, fo.OwnerTrust + delta)); // [TASK-GM-07] 해임당하지 않음
+            GMPressBriefing.EvaluateSeason(league, regularSeasonRanks); // [TASK-GM-15] 기록된 발언(순위 공언) 판정 - 실패 = 구단주 신임도 대폭 하락
             if (league.Mode == GMStartMode.StoryCampaign)
             {
                 fo.Ending = EvaluateEnding(rank > 0 && rank <= 5, team.Budget, fo.OwnerTrust, rank > 0 && rank < prevRank, team.Roster.Average(p => p.Age));

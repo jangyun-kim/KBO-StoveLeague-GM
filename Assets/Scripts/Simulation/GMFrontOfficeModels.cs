@@ -150,6 +150,12 @@ namespace KBOManager.Simulation
         // [TASK-GM-14] 스토브리그 8 Turn 진행 통제(세이브 v24) - 현재 Turn(1~8, 9 = 완료) · 시작 연도(0 = 통제 안 함) · 이번 Turn 대표 방 확인 여부
         public int StoveTurn, StoveTurnYear;
         public bool StoveTurnVisited;
+        // [TASK-GM-15] 스토브리그 3단계(세이브 v25) - 육성 계획(훈련 방향 · 멘토) · 2차 드래프트(내 보호 명단 · 시행 연도 · 지명 기록) · 언론 브리핑(기록된 발언)
+        public List<GMFuturesPlan> FuturesPlans = new List<GMFuturesPlan>();
+        public List<string> SecondDraftProtectedIds = new List<string>();
+        public int SecondDraftProtectYear, SecondDraftHeldYear;
+        public List<GMSecondDraftPick> SecondDraftPicks = new List<GMSecondDraftPick>();
+        public List<GMPressStatement> PressStatements = new List<GMPressStatement>();
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

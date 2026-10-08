@@ -89,6 +89,7 @@ namespace KBOManager.Controllers
         public bool PlayBall()
         {
             if (simulator == null) return false;
+            if (postseasonGame == null && KBOManager.Services.GMStoveTurns.IsGating(simulator.League)) return false; // [TASK-GM-15] 스토브리그 8 Turn 진행 중 = 정규시즌 개막 차단
             if (session == null || session.IsFinished)
             {
                 session = postseasonGame != null

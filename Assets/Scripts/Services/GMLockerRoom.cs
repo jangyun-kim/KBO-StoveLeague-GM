@@ -133,6 +133,7 @@ namespace KBOManager.Services
         {
             promise.State = GMPromiseState.Broken;
             promise.ResultNote = detail ?? "";
+            promise.BrokenYear = league.SeasonYear; // [TASK-GM-15] 기간제 회복 기준 연도
             if (player != null)
             {
                 player.Loyalty = player.Loyalty - BrokenLoyaltyPenalty;
@@ -146,6 +147,45 @@ namespace KBOManager.Services
                 Title = $"[라커룸] {promise.PlayerName}, 단장 약속 불이행에 불만", Body = msg,
             });
             return new GMPromiseVerdict { Promise = promise, Broken = true, Message = msg };
+        }
+
+        /// <summary>
+        /// [TASK-GM-15] 약속 위반 페널티 기간제 회복 - 연도 전환(AdvanceToNextSeasonYear)마다 과거 위반 1건당 선수단 신뢰도 +5 · 해당 선수 충성도 +10을
+        /// 원래 페널티(신뢰도 10 · 충성도 25)를 넘지 않게 돌려준다(신뢰도 2년 · 충성도 3년에 걸쳐 회복). 같은 해 막 판정된 위반(BrokenYear ≥ oldYear)은 다음 해부터.
+        /// 반환 = 회복 내역(소식 본문).
+        /// </summary>
+        public const int TrustRecoveryPerYear = 5, LoyaltyRecoveryPerYear = 10;
+
+        public static List<string> RecoverPenalties(GMLeagueState league, int oldYear)
+        {
+            var lines = new List<string>();
+            if (league == null) return lines;
+            foreach (var promise in All(league).Where(p => p.State == GMPromiseState.Broken && p.BrokenYear < oldYear).ToList())
+            {
+                league.Teams.TryGetValue(promise.TeamCode, out var team);
+                int trust = Math.Min(TrustRecoveryPerYear, BrokenTrustPenalty - promise.TrustRecovered);
+                int loyalty = Math.Min(LoyaltyRecoveryPerYear, BrokenLoyaltyPenalty - promise.LoyaltyRecovered);
+                if (trust <= 0 && loyalty <= 0) continue;
+                if (trust > 0 && team != null)
+                {
+                    team.LockerRoomTrust = Math.Min(100, team.LockerRoomTrust + trust);
+                    promise.TrustRecovered += trust;
+                }
+                else trust = 0;
+                var player = team?.ReservePlayers.FirstOrDefault(x => x.InstanceId == promise.PlayerId);
+                if (loyalty > 0) promise.LoyaltyRecovered += loyalty; // 팀을 떠난 선수도 회복 기간은 소진한다
+                if (loyalty > 0 && player != null) player.Loyalty = player.Loyalty + loyalty;
+                else loyalty = 0;
+                if (trust == 0 && loyalty == 0) continue;
+                lines.Add($"{promise.PlayerName}: 신뢰도 +{trust} · 충성도 +{loyalty} (누적 회복 신뢰도 {promise.TrustRecovered}/{BrokenTrustPenalty} · 충성도 {promise.LoyaltyRecovered}/{BrokenLoyaltyPenalty})");
+            }
+            if (lines.Count > 0)
+                league.AddNews(new GMNewsItem
+                {
+                    GameIndex = 0, DateLabel = $"01/02/{league.SeasonYear}", Kind = GMNewsKind.Trade, IsUserTeam = true,
+                    Title = "[라커룸] 지난 약속 불이행의 앙금이 조금씩 옅어지고 있다", Body = string.Join(" / ", lines),
+                });
+            return lines;
         }
 
         public static GMPromiseVerdict Fulfill(GMLeagueState league, GMTeamState team, GMPromise promise, Player player, string detail)

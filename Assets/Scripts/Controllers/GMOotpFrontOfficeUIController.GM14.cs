@@ -30,6 +30,8 @@ namespace KBOManager.Controllers
             {
                 case PaneSeasonSummary: return 1;
                 case PaneLockerRoom: case PaneProtect: return 2;
+                case PaneSecondDraft: return 3;     // [TASK-GM-15]
+                case PaneFuturesMeeting: return 6;  // [TASK-GM-15]
                 case PaneNegotiation: case PaneSalaries: return 4;
                 case PaneFA: case PaneTrade: return 5;
                 case PaneDraft: return 7;
@@ -44,10 +46,10 @@ namespace KBOManager.Controllers
             {
                 case 1: return PaneSeasonSummary;
                 case 2: return PaneLockerRoom;
-                case 3: return PaneProtect;
+                case 3: return PaneSecondDraft;     // [TASK-GM-15] 2차 드래프트실
                 case 4: return PaneNegotiation;
                 case 5: return PaneFA;
-                case 6: return PaneRoster;
+                case 6: return PaneFuturesMeeting;  // [TASK-GM-15] 육성 회의실
                 case 7: return PaneDraft;
                 default: return PaneOwner;
             }
@@ -134,10 +136,10 @@ namespace KBOManager.Controllers
             {
                 case 1: OpenSeasonSummary(); break;
                 case 2: OpenLockerRoom(); break;
-                case 3: SelectMainTab(4); SelectSubTab(subTabs[4].FindIndex(s => s.Pane == PaneProtect)); break;
+                case 3: OpenSecondDraft(); break;     // [TASK-GM-15]
                 case 4: OpenNegotiationRoom(); break;
                 case 5: SelectMainTab(4); SelectSubTab(subTabs[4].FindIndex(s => s.Pane == PaneFA)); break;
-                case 6: SelectMainTab(2); break;
+                case 6: OpenFuturesMeeting(); break;  // [TASK-GM-15]
                 case 7: SelectMainTab(5); SelectSubTab(subTabs[5].FindIndex(s => s.Pane == PaneDraft)); break;
                 default: GoMainHome(); break;
             }

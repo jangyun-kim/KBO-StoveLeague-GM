@@ -511,6 +511,8 @@ namespace KBOManager.Models
         [NonSerialized] private KBOManager.Engine.PerformanceData performance;
         /// <summary>[TASK-GM-10] 기준 시즌 원 기록(Raw Stats) - 실제 기록 CSV가 있으면 그것, 없으면 세부 능력치 추정(Log5 엔진 입력).</summary>
         public KBOManager.Engine.PerformanceData Performance => performance ?? (performance = KBOManager.Engine.GMLog5.For(this));
+        /// <summary>[TASK-GM-15] 능력치(템플릿) 교체 후 원 기록 추정치를 다시 계산하게 한다.</summary>
+        public void ResetPerformance() => performance = null;
 
         /// <summary>[TASK-GM-06] 선수별 숨은 ABS 적응도(-12 ~ +12) - RealPlayerId 해시로 결정(같은 선수는 항상 같은 값). 스카우팅 전에는 화면에 공개하지 않는다.</summary>
         public int HiddenAbsAdaptation

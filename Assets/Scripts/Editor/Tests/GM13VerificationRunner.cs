@@ -130,7 +130,7 @@ namespace KBOManager.EditorTests
             var back = JsonUtility.FromJson<GMFrontOfficeState>(JsonUtility.ToJson(GMFrontOffice.Ensure(league)));
             Assert.AreEqual(4, back.Promises.Count);
             Assert.AreEqual(GMPromiseState.Broken, back.Promises.First(p => p.Id == promise.Id).State);
-            Assert.AreEqual(24, new GameSaveData().SaveVersion, "세이브 v24([TASK-GM-14])");
+            Assert.AreEqual(25, new GameSaveData().SaveVersion, "세이브 v25([TASK-GM-15])");
 
             // 계약 협상실 [주전 · 보직 보장] 카드 → 타결 = ACTIVE / 결렬 = 폐기
             bool checkedRoom = false;

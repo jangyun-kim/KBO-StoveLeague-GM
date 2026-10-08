@@ -20,6 +20,8 @@ namespace KBOManager.Simulation
         public int DueYear;                  // 이 시즌 정규시즌 종료 시 이행 여부를 판정
         public string Source = "";           // 계약 협상실 · 라커룸 사건
         public string ResultNote = "";
+        // [TASK-GM-15] 위반 페널티 기간제 회복(세이브 v25) - 위반 판정 연도 · 지금까지 회복한 신뢰도 · 충성도
+        public int BrokenYear, TrustRecovered, LoyaltyRecovered;
     }
 
     /// <summary>[TASK-GM-13] 동적 사건 1건(세이브 v23 GMFrontOfficeState.DynamicEvents) - 팝업 데이터 + 선택 결과.</summary>
@@ -202,5 +204,65 @@ namespace KBOManager.Simulation
         public string Message = "";
         public GMPromise Promise;            // [TASK-GM-13] 이 계약으로 활성화된 약속(없으면 null)
         public List<string> ChainEffects = new List<string>(); // [TASK-GM-14] 동료 연봉 연쇄 반응
+    }
+    // ================================================================== [TASK-GM-15] 스토브리그 3단계 - 육성 회의실 · 2차 드래프트 · 언론 브리핑실
+
+    /// <summary>[TASK-GM-15] 퓨처스 훈련 방향 - 타자(균형 · 컨택 · 파워 · 수비/주루) · 투수(균형 · 제구 · 구위 · 체력).</summary>
+    public enum GMTrainingFocus { Balanced = 0, Contact = 1, Power = 2, DefenseSpeed = 3, Control = 4, Stuff = 5, Stamina = 6 }
+
+    /// <summary>[TASK-GM-15] 유망주 육성 계획 1건(세이브 v25 GMFrontOfficeState.FuturesPlans) - 훈련 방향 · 베테랑 멘토(1:1).</summary>
+    [Serializable]
+    public class GMFuturesPlan
+    {
+        public string PlayerId = "";
+        public GMTrainingFocus Focus = GMTrainingFocus.Balanced;
+        public string MentorId = "";
+        public int LastGrowth;       // 직전 연도 전환 성장치(OVR)
+        public int LastGrowthYear;
+    }
+
+    /// <summary>[TASK-GM-15] 2차 드래프트 지명 1건(세이브 v25).</summary>
+    [Serializable]
+    public class GMSecondDraftPick
+    {
+        public int Year, Round;
+        public string PickerCode = "", FromCode = "", PlayerId = "", PlayerName = "";
+        public long Fee;
+        public int Ovr;
+    }
+
+    public enum GMPressTopic { StoveVision = 0, MidSeason = 1 }
+    public enum GMPressChoice { Rebuild = 0, WinNow = 1, NoComment = 2 }
+
+    /// <summary>[TASK-GM-15] 기록된 발언 1건(세이브 v25) - 시즌 종료 시 목표 순위로 구단주 신임도를 판정한다.</summary>
+    [Serializable]
+    public class GMPressStatement
+    {
+        public int Year;
+        public GMPressTopic Topic;
+        public GMPressChoice Choice;
+        public string Quote = "";
+        public int FanDelta;
+        public int TargetRank;        // 0 = 순위 약속 없음
+        public int TrustOnSuccess, TrustOnFail;
+        public bool Evaluated, Kept;
+        public int TrustApplied;
+        public string ResultNote = "";
+    }
+
+    /// <summary>[TASK-GM-15] 브리핑 선택지 미리보기 · 실행 결과.</summary>
+    public class GMPressOption
+    {
+        public GMPressChoice Choice;
+        public string Label = "", Quote = "", Effect = "";
+        public int FanDelta, YoungLoyalty, VeteranLoyalty, TargetRank, TrustOnSuccess, TrustOnFail;
+    }
+
+    public class GMPressResult
+    {
+        public bool Applied;
+        public string Message = "";
+        public GMPressStatement Statement;
+        public int FanBefore, FanAfter;
     }
 }

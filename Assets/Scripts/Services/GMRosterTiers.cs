@@ -90,9 +90,10 @@ namespace KBOManager.Services
         /// </summary>
         public static PlayerTemplate ProspectTemplate(PlayerTemplate src, int shift)
         {
+            src = OriginalOf(src); // [TASK-GM-15] 보정 템플릿을 다시 보정하지 않는다(항상 원본 기준 절대 보정치)
             if (src == null || shift == 0) return src;
             string key = $"{src.TemplateId}|{src.RealPlayerId}|{shift}";
-            if (prospectCache.TryGetValue(key, out var cached) && !ReferenceEquals(cached, null) && cached) return cached;
+            if (prospectCache.TryGetValue(key, out var cached) && !ReferenceEquals(cached, null) && cached) { prospectOrigin[cached] = src; return cached; }
             var t = TemplateFactory();
             t.TemplateId = src.TemplateId;
             t.RealPlayerId = src.RealPlayerId;
@@ -113,7 +114,23 @@ namespace KBOManager.Services
             var pi = src.PitcherStats;
             t.PitcherStats = new PitcherStats(Math.Max(1, pi.Stuff + shift), Math.Max(1, pi.Velocity + shift), Math.Max(1, pi.Movement + shift), Math.Max(1, pi.Control + shift), Math.Max(1, pi.Stamina + shift));
             prospectCache[key] = t;
+            prospectOrigin[t] = src;
             return t;
+        }
+
+        private static readonly Dictionary<PlayerTemplate, PlayerTemplate> prospectOrigin = new Dictionary<PlayerTemplate, PlayerTemplate>();
+
+        /// <summary>[TASK-GM-15] 유망주 보정 템플릿의 원본 카드(보정 템플릿이 아니면 그대로).</summary>
+        public static PlayerTemplate OriginalOf(PlayerTemplate t) => t != null && prospectOrigin.TryGetValue(t, out var src) && src != null ? src : t;
+
+        /// <summary>[TASK-GM-15] 육성 성장 - 유망주 보정치를 newShift(원본 대비 절대값)로 바꾸고 템플릿을 교체한다(세이브는 TemplateId + 보정치로 복원).</summary>
+        public static void ApplyProspectShift(Player p, int newShift)
+        {
+            if (p?.Template == null || newShift == p.ProspectStatShift) return;
+            var src = OriginalOf(p.Template);
+            p.Template = newShift == 0 ? src : ProspectTemplate(src, newShift);
+            p.ProspectStatShift = newShift;
+            p.ResetPerformance();
         }
 
         /// <summary>구버전 세이브 보충 - 모든 구단 퓨처스가 비어 있을 때만 선수 DB로 풀을 만들고 FA 원 소속을 기록한다. 보충했으면 true.</summary>
@@ -173,7 +190,8 @@ namespace KBOManager.Services
             return true;
         }
 
-        private static void Detach(GMTeamState team, Player p)
+        /// <summary>1군에서 떼어 내고 라인업 핀 · 보직 · 전담 응원을 정리한다([TASK-GM-15] 2차 드래프트 이적에서도 쓴다).</summary>
+        public static void Detach(GMTeamState team, Player p)
         {
             team.Roster.Remove(p);
             string id = p.InstanceId;

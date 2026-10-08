@@ -553,7 +553,7 @@ namespace KBOManager.Controllers
             switch (pane)
             {
                 case PaneFA: case PaneTrade: case PaneSalaries: case PaneProtect: case PaneNegotiation: return GMAudioScreen.Market;
-                case PaneRoster: case PaneChem: case PaneDraft: case PaneLockerRoom: return GMAudioScreen.Squad;
+                case PaneRoster: case PaneChem: case PaneDraft: case PaneLockerRoom: case PaneFuturesMeeting: case PaneSecondDraft: return GMAudioScreen.Squad; // [TASK-GM-15]
                 default: return GMAudioScreen.Hub;
             }
         }
