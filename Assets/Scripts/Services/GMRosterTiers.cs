@@ -106,7 +106,7 @@ namespace KBOManager.Services
             t.IsPitcher = src.IsPitcher;
             t.BatterPosition = src.BatterPosition;
             t.PitcherRole = src.PitcherRole;
-            t.Grade = Grade.LIVE_NORMAL;
+            t.Grade = shift < 0 && src.GetBaseOverall() + shift <= ProspectCeiling ? Grade.LIVE_NORMAL : src.Grade; // [TASK-GM-16] 에이징 커브(소폭 하락) 베테랑은 원 등급 유지
             t.PresetSkillTier = src.PresetSkillTier;
             t.PresetSkillName = src.PresetSkillName;
             var b = src.BatterStats;
@@ -131,6 +131,29 @@ namespace KBOManager.Services
             p.Template = newShift == 0 ? src : ProspectTemplate(src, newShift);
             p.ProspectStatShift = newShift;
             p.ResetPerformance();
+        }
+
+        /// <summary>
+        /// [TASK-GM-16] OVR을 delta만큼 옮긴다(성장 +, 에이징 -). 전 세부 스탯 보정치를 delta부터 ±2까지 시험해 실제 OVR 변화가 delta에 가장 가까운 값을 고른다
+        /// (투수는 보직 가중 반올림으로 1 차이가 날 수 있다 - 성장은 delta를 넘지 않게, 하락은 0이 되지 않게). 실제 OVR 변화를 돌려준다.
+        /// </summary>
+        public static int ApplyOvrDelta(Player p, int delta)
+        {
+            if (p?.Template == null || delta == 0) return 0;
+            int before = p.BaseOverall, s0 = p.ProspectStatShift;
+            int bestShift = s0 + delta, bestDiff = int.MaxValue;
+            foreach (int k in new[] { delta, delta + Math.Sign(delta), delta - Math.Sign(delta), delta + 2 * Math.Sign(delta) })
+            {
+                if (k == 0 || Math.Sign(k) != Math.Sign(delta)) continue;
+                ApplyProspectShift(p, s0 + k);
+                int moved = p.BaseOverall - before;
+                bool ok = delta > 0 ? moved <= delta && moved > 0 : moved < 0;
+                int diff = Math.Abs(moved - delta) + (ok ? 0 : 100);
+                if (diff < bestDiff) { bestDiff = diff; bestShift = s0 + k; }
+                if (diff == 0) break;
+            }
+            ApplyProspectShift(p, bestShift);
+            return p.BaseOverall - before;
         }
 
         /// <summary>구버전 세이브 보충 - 모든 구단 퓨처스가 비어 있을 때만 선수 DB로 풀을 만들고 FA 원 소속을 기록한다. 보충했으면 true.</summary>

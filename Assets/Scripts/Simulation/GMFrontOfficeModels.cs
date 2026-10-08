@@ -113,8 +113,11 @@ namespace KBOManager.Simulation
         public bool HardTrade;
         public bool PennantMode;
         public bool Challenge;
+        /// <summary>[TASK-GM-16] 단장 성별(false = 남성) - 조력자(운영팀장)는 반대 성별로 배정된다(세이브 v26).</summary>
+        public bool Female;
 
         public string RoleLabel => Role == 1 ? "단장 및 감독" : "단장";
+        public string GenderLabel => Female ? "여성" : "남성";
     }
 
     /// <summary>[TASK-GM-06] 프런트 오피스 상태(세이브 v17 GMLeagueSaveData.FrontOffice).</summary>
@@ -156,6 +159,11 @@ namespace KBOManager.Simulation
         public int SecondDraftProtectYear, SecondDraftHeldYear;
         public List<GMSecondDraftPick> SecondDraftPicks = new List<GMSecondDraftPick>();
         public List<GMPressStatement> PressStatements = new List<GMPressStatement>();
+        // [TASK-GM-16] 조력자(운영팀장) 턴 가이드(세이브 v26) - 위임 · 무시 누적 횟수 · 마지막 개입 기록 · 초기 로스터(스타터 덱) 추첨 시드
+        public int AssistantDelegations, AssistantIgnores;
+        public string AssistantLastNote = "";
+        public List<string> AssistantIgnored = new List<string>(); // "연도|이슈 키" - 무시한 경고는 그해 다시 묻지 않는다
+        public int StarterDeckSeed;
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

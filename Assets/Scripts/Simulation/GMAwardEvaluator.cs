@@ -1083,6 +1083,7 @@ namespace KBOManager.Simulation
             // [TASK-GM-06] 프런트 오피스 결산 - 10구단 시즌 이력 · 관중, 구단주 목표 · 신임도, 스토리 캠페인 4종 엔딩
             GMFrontOffice.OnSeasonCompleted(league, sim.Standings().Select(r => r.TeamCode).ToList(), bundle.Postseason.ChampionCode);
             GMFuturesMeeting.ApplySeasonGrowth(league, oldYear); // [TASK-GM-15] 육성 회의실 - 훈련 방향 · 멘토링 반영 퓨처스 연간 성장(나이 +1 전)
+            GMAgingCurve.Apply(league, oldYear);                 // [TASK-GM-16] 에이징 커브 - 30~33세 동결/-1 · 34세 이상 -1~-3(레전드 · 유대 완화)
             // [TASK-GM-09] 11월 프리미어 12(해당 연도) → 연도 전환 → 계약 만료자 FA 공시
             GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.PostSeason, league.Seed);
             league.Phase = GMSeasonPhase.AwardsCeremony;

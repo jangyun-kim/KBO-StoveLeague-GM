@@ -25,6 +25,9 @@ namespace KBOManager.Core
         public const int CHEERLEADER_MATCH_ENTRY_MAX = 6;
         public const int CHEERLEADER_MATCH_ENTRY_DEFAULT = 5;
 
+        // [TASK-GM-16] 새 게임 초기 로스터 = 구단 계보 역대 전 연도 선수 풀 확률 추첨(스타터 덱 · 리세마라). 올타임 드림 모드는 기존 드림 로스터 유지.
+        public const bool ENABLE_STARTER_DECK_ROSTER = true;
+
         // 기본 시작 연도 (2026년 부임 기준)
         public const int DEFAULT_START_YEAR = 2026;
 
@@ -34,6 +37,7 @@ namespace KBOManager.Core
         public static bool IsSetDeckEnabled => ENABLE_SET_DECK_200P;
         public static bool IsPlayerGachaEnabled => ENABLE_PLAYER_GACHA_SCOUT;
         public static bool IsCheerleaderCoreEnabled => ENABLE_CHEERLEADER_CORE_SYSTEM;
+        public static bool IsStarterDeckEnabled => ENABLE_STARTER_DECK_ROSTER;
     }
 
     /// <summary>

@@ -30,7 +30,11 @@ namespace KBOManager.Controllers
         public static readonly Color ToneRisk = new Color(1f, 0.62f, 0.2f);       // 주황 - 위험
         public static Color ToneColor(GMReportTone t) => t == GMReportTone.Strong ? ToneStrong : t == GMReportTone.Weak ? ToneWeak : t == GMReportTone.Risk ? ToneRisk : ToneNeutral;
 
-        private const string ToneLegend = "빨강 강점 · 초록 보통 · 파랑 약점 · 주황 위험/추가 확인";
+        /// <summary>[TASK-GM-16] 색 이름을 글자로 쓰지 않는다 - 색 견본(■)만 해당 색으로 칠한다.</summary>
+        private static readonly string ToneLegend =
+            $"<color=#{ColorUtility.ToHtmlStringRGB(ToneStrong)}>■</color> 강점   <color=#{ColorUtility.ToHtmlStringRGB(ToneNeutral)}>■</color> 보통   " +
+            $"<color=#{ColorUtility.ToHtmlStringRGB(ToneWeak)}>■</color> 약점   <color=#{ColorUtility.ToHtmlStringRGB(ToneRisk)}>■</color> 위험 · 추가 확인";
+        private readonly RectTransform[] negMetricFills = new RectTransform[6];
 
         // ---- 시즌 결산실
         private Text ssSource, ssRecord, ssConfidence, ssPageLabel;
@@ -219,16 +223,19 @@ namespace KBOManager.Controllers
             Btn(list, "NegNext", "다음 ▶", 428, 996, 548, 1030, ButtonIdle, BodyPt).onClick.AddListener(() => { negPage++; RefreshNegotiation(); });
 
             var rep = Panel(pane, "NegReportPanel", 572, 248, 1130, 1036);
-            negName = L(rep, "NegName", "", 584, 254, 1118, 290, BannerPt - 1, TextAnchor.MiddleLeft, White);
+            negName = L(rep, "NegName", "", 584, 254, 940, 290, BannerPt - 1, TextAnchor.MiddleLeft, White);
+            Btn(rep, "NegScoutCard", "스카우팅 리포트 ▶", 946, 254, 1118, 290, ButtonOn, SmallPt).onClick.AddListener(() => { if (negSelected != null) OpenPercentiles(negSelected); }); // [TASK-GM-16]
             negInfo = L(rep, "NegInfo", "", 584, 294, 1118, 350, CellPt, TextAnchor.UpperLeft, Muted);
             negMoney = L(rep, "NegMoney", "", 584, 354, 1118, 384, BodyPt, TextAnchor.MiddleLeft, White);
             negConfidence = L(rep, "NegConfidence", "", 584, 388, 1118, 416, CellPt, TextAnchor.MiddleLeft, Muted);
             for (int i = 0; i < 6; i++)
             {
                 float y0 = 422 + i * 36;
-                negMetricLabels[i] = L(rep, $"NegMetricLabel{i}", "", 584, y0, 760, y0 + 32, CellPt, TextAnchor.MiddleLeft, Muted);
-                negMetricValues[i] = L(rep, $"NegMetricValue{i}", "", 764, y0, 870, y0 + 32, BodyPt, TextAnchor.MiddleCenter, White);
-                negMetricVerdicts[i] = L(rep, $"NegMetricVerdict{i}", "", 874, y0, 1118, y0 + 32, CellPt, TextAnchor.MiddleLeft, White);
+                // [TASK-GM-16] 스카우팅 리포트 막대 - 지표 이름 · 막대(길이 = 수준, 색 = 강점/보통/약점/위험) · 수치 · 판정(색 이름 없이)
+                negMetricLabels[i] = L(rep, $"NegMetricLabel{i}", "", 584, y0, 712, y0 + 32, CellPt, TextAnchor.MiddleLeft, Muted);
+                negMetricFills[i] = Bar(rep, $"NegMetricBar{i}", 716, y0 + 9, 880, y0 + 23, ToneNeutral);
+                negMetricValues[i] = L(rep, $"NegMetricValue{i}", "", 884, y0, 966, y0 + 32, BodyPt, TextAnchor.MiddleCenter, White);
+                negMetricVerdicts[i] = L(rep, $"NegMetricVerdict{i}", "", 970, y0, 1118, y0 + 32, CellPt, TextAnchor.MiddleLeft, White);
             }
             negBonds = L(rep, "NegBonds", "", 584, 644, 1118, 700, CellPt, TextAnchor.UpperLeft, Muted);
             L(rep, "NegYearsLabel", "계약 기간", 584, 706, 700, 742, BodyPt, TextAnchor.MiddleLeft, Muted);
@@ -325,7 +332,7 @@ namespace KBOManager.Controllers
                 negName.text = "협상 대상 없음";
                 negInfo.text = "잔여 계약 1년 이하 선수가 없습니다(시즌 종료 · 연도 전환 후 만료자가 생깁니다).";
                 negMoney.text = negConfidence.text = negBonds.text = negBaseline.text = negPool.text = "";
-                for (int i = 0; i < 6; i++) negMetricLabels[i].text = negMetricValues[i].text = negMetricVerdicts[i].text = "";
+                for (int i = 0; i < 6; i++) { negMetricLabels[i].text = negMetricValues[i].text = negMetricVerdicts[i].text = ""; SetFill(negMetricFills[i], 0f); }
                 for (int i = 0; i < 3; i++) { negCards[i].gameObject.SetActive(false); negPitch[i].text = negReaction[i].text = negProgress[i].text = negDist[i].text = negFinance[i].text = ""; }
                 negBasic.interactable = false;
                 return;
@@ -346,8 +353,11 @@ namespace KBOManager.Controllers
                 negMetricLabels[i].text = metrics[i].Label;
                 negMetricValues[i].text = metrics[i].ValueText;
                 negMetricValues[i].color = ToneColor(metrics[i].Tone);
-                negMetricVerdicts[i].text = $"{GMSeasonReview.ToneColorName(metrics[i].Tone)} · {metrics[i].Verdict}";
+                negMetricVerdicts[i].text = metrics[i].Verdict; // [TASK-GM-16] 색 이름(빨강 · 파랑 …)을 글자로 쓰지 않는다
                 negMetricVerdicts[i].color = ToneColor(metrics[i].Tone);
+                SetFill(negMetricFills[i], GMScoutingReport.MetricFill(i, metrics[i]));
+                var fillImg = negMetricFills[i].GetComponent<Image>();
+                if (fillImg != null) fillImg.color = ToneColor(metrics[i].Tone);
             }
             negBonds.text = s.Bonds.Count > 0 ? "유대: " + string.Join(" / ", s.Bonds.Take(3)) : "유대: 규칙 기반 연결 고리 없음(배터리 · 키스톤 · 멘토)";
             for (int k = 0; k < 5; k++) negYearButtons[k].targetGraphic.color = k + 1 == s.Years ? ButtonOn : ButtonIdle;

@@ -19,7 +19,7 @@ namespace KBOManager.Services
         public const int TurnCount = 8, Completed = TurnCount + 1;
 
         public static readonly string[] Names = { "시즌 결산", "선수단 정리", "2차 드래프트", "계약 협상", "시장 협상", "육성 회의", "드래프트", "최종 구성" };
-        public static readonly string[] Rooms = { "시즌 결산실 · 구단주 보고실", "선수단 회의실 · 보류명단(보호 명단)", "2차 드래프트실(보호 25인 · 지명)", "계약 협상실 · 연봉/재계약", "시장 정보실(FA · 트레이드)", "육성 회의실(퓨처스 · 콜업 · 멘토링)", "신인 드래프트", "구단주 보고실(최종 로스터 · 목표)" };
+        public static readonly string[] Rooms = { "시즌 결산실 · 구단주 보고실", "선수단 회의실 · 보류명단(보호 명단)", "2차 드래프트실(보호 25인 · 지명)", "계약 협상실(재계약 · 연봉)", "시장 정보실(FA · 트레이드)", "육성 회의실(퓨처스 · 콜업 · 멘토링)", "신인 드래프트", "구단주 보고실(최종 로스터 · 목표)" };
 
         public static string Name(int turn) => turn >= 1 && turn <= TurnCount ? Names[turn - 1] : turn > TurnCount ? "개막 준비 완료" : "-";
         public static string Label(int turn) => turn >= 1 && turn <= TurnCount ? $"Turn {turn}/{TurnCount} {Names[turn - 1]}" : turn > TurnCount ? "스토브리그 완료 · 개막 준비" : "";

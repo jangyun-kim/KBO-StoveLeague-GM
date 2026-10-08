@@ -326,6 +326,7 @@ namespace KBOManager.Controllers
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
                 BuildCounterPopup();     // [TASK-GM-08] AI 단장 1:N 역제안
                 BuildLockerEventPopup(); // [TASK-GM-13] 라커룸 사건
+                BuildAssistantPopup();   // [TASK-GM-16] 조력자(운영팀장) 대화 모달
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -440,7 +441,7 @@ namespace KBOManager.Controllers
             L(root, "ContinueCheck", "✔", 1404, 52, 1470, 130, BigPt - 6, TextAnchor.MiddleCenter, ContinueGreen);
             continueButton = Btn(root, "ContinueButton", "✔ 진행하기 (CONTINUE / PLAY) >", 1476, 52, 1760, 130, ContinueGreen, 20);
             continueButton.onClick.AddListener(() => Continue());
-            settingsButton = Btn(root, "SettingsButton", "감독 설정", 1772, 50, 1908, 88, ButtonIdle, 15);
+            settingsButton = Btn(root, "SettingsButton", "단장 설정", 1772, 50, 1908, 88, ButtonIdle, 15);
             settingsButton.onClick.AddListener(OpenManagerSetup);
             lobbyButton = Btn(root, "LobbyButton", "클래식 로비", 1772, 94, 1908, 130, ButtonIdle, SmallPt);
             lobbyButton.onClick.AddListener(GoClassicLobby);
@@ -470,14 +471,14 @@ namespace KBOManager.Controllers
             SubTab A(string label, Action action) => new SubTab { Label = label, Action = action };
             return new[]
             {
-                new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory),
+                new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉 현황·주장·방출", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory),
                     P("시즌 결산실", PaneSeasonSummary), P("계약 협상실", PaneNegotiation), P("언론 브리핑실", PanePress) }, // [TASK-GM-11] 스토브리그 Turn 1 결산 · Turn 4 계약 협상 · [TASK-GM-15] 언론 브리핑
                 new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
                 new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem), P("선수단 회의실", PaneLockerRoom), P("육성 회의실", PaneFuturesMeeting) }, // [TASK-GM-13] · [TASK-GM-15] Turn 6
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
-                new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08]
+                new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08] · [TASK-GM-16] 외부 영입 전용(내부 계약 = 프런트 오피스 계약 협상실)
                 new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA), P("2차 드래프트", PaneSecondDraft) }, // [TASK-GM-15] Turn 3
-                new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", () => GoLegacy(ScreenType.CheerleaderShop)), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
+                new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", GoCheerRecruit), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
                 new List<SubTab> { P("구단 역사", PaneHistory), P("포스트시즌 트리", PanePostseason), A("시상식 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
             };
         }
@@ -520,6 +521,7 @@ namespace KBOManager.Controllers
             if (pctPopup != null) pctPopup.SetAsLastSibling();
             if (counterPopup != null) counterPopup.SetAsLastSibling(); // [TASK-GM-08]
             if (lrEventPopup != null) lrEventPopup.SetAsLastSibling(); // [TASK-GM-13]
+            if (assistantPopup != null) assistantPopup.SetAsLastSibling(); // [TASK-GM-16]
             foreach (var m in menuLists) if (m != null) m.SetAsLastSibling(); // [TASK-GM-07] 툴바 메뉴 · 감독 설정은 맨 위
             if (managerPopup != null) managerPopup.SetAsLastSibling();
         }
@@ -588,7 +590,7 @@ namespace KBOManager.Controllers
                 recVals[i] = L(rec, $"RecVal{i}", "", sx, 876, sx + 43, 898, CellPt, TextAnchor.MiddleCenter, White);
                 recYears[i] = L(rec, $"RecYear{i}", "", sx, 964, sx + 43, 990, CellPt, TextAnchor.MiddleCenter, Muted);
             }
-            L(rec, "RecLegend", "초록 = 5할 이상 · 빨강 = 5할 미만 · 흰 선 = .500", 24, 996, 465, 1034, CellPt, TextAnchor.MiddleLeft, Muted);
+            L(rec, "RecLegend", $"<color=#{ColorUtility.ToHtmlStringRGB(BarGreen)}>■</color> 5할 이상 · <color=#{ColorUtility.ToHtmlStringRGB(BarRed)}>■</color> 5할 미만 · 흰 선 = .500", 24, 996, 465, 1034, CellPt, TextAnchor.MiddleLeft, Muted);
 
             var cost = Panel(pane, "CostEfficientPanel", 489, 652, 954, 1040);
             L(cost, "CostTitle", "가성비 선수 TOP 12 (COST EFFICIENT)", 501, 658, 942, 688, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
@@ -830,24 +832,6 @@ namespace KBOManager.Controllers
             drNote.lineSpacing = 1.12f;
         }
 
-        private void BuildPercentilePopup()
-        {
-            pctPopup = CompyaUiKit.Fill(root, "PercentilePopup");
-            CompyaUiKit.Paint(pctPopup, new Color(0f, 0f, 0f, 0.72f), true);
-            CompyaUiKit.Box(pctPopup, "PctBox", 520, 180, 1400, 920, new Color(0.13f, 0.13f, 0.16f, 0.98f));
-            pctTitle = L(pctPopup, "PctTitle", "", 560, 200, 1360, 240, PanelTitlePt + 3, TextAnchor.MiddleLeft, Gold);
-            pctInfo = L(pctPopup, "PctInfo", "", 560, 244, 1360, 300, BodyPt, TextAnchor.UpperLeft, Muted);
-            for (int k = 0; k < PctRows; k++)
-            {
-                float y0 = 310 + k * 62;
-                pctLabels[k] = L(pctPopup, $"PctLabel{k}", "", 560, y0, 780, y0 + 52, BodyPt + 1, TextAnchor.MiddleLeft, White);
-                pctFills[k] = Bar(pctPopup, $"PctBar{k}", 790, y0 + 14, 1240, y0 + 38, Gold);
-                pctValues[k] = L(pctPopup, $"PctValue{k}", "", 1250, y0, 1360, y0 + 52, BodyPt + 1, TextAnchor.MiddleRight, White);
-            }
-            Btn(pctPopup, "PctClose", "닫기", 560, 820, 1360, 890, ButtonIdle, ButtonPt).onClick.AddListener(() => pctPopup.gameObject.SetActive(false));
-            pctPopup.gameObject.SetActive(false);
-        }
-
         // ------------------------------------------------------------------ 스토리 안건
 
         private void BuildStoryPane()
@@ -975,22 +959,6 @@ namespace KBOManager.Controllers
             for (int i = 0; i < abTop.Length; i++) abTop[i] = L(pane, $"AbTop{i}", "", 1324, 296 + i * 44, 1900, 336 + i * 44, BodyPt, TextAnchor.MiddleLeft, White);
             abLast = L(pane, "AbLast", "", 1324, 700, 1900, 1030, BodyPt, TextAnchor.UpperLeft, Gold);
             abLast.lineSpacing = 1.15f;
-        }
-
-        private void BuildCheerPane()
-        {
-            var pane = PaneRoot(PaneCheer);
-            CompyaUiKit.Box(pane, "CheerBg", 12, 248, 1908, 1036, PanelColor);
-            L(pane, "CeTitle", "응원단 (구단 15인 / 경기 엔트리 4~6인)", 24, 252, 1896, 290, PanelTitlePt, TextAnchor.MiddleLeft, new Color(1f, 0.6f, 0.82f));
-            ceEntry = L(pane, "CeEntry", "", 24, 296, 940, 610, BodyPt, TextAnchor.UpperLeft, White);
-            ceEntry.lineSpacing = 1.15f;
-            ceEffects = L(pane, "CeEffects", "", 952, 296, 1896, 610, BodyPt, TextAnchor.UpperLeft, Gold);
-            ceEffects.lineSpacing = 1.15f;
-            Btn(pane, "CeOpenEntry", "15인 풀 · 엔트리 · 전담 응원 관리 열기", 24, 620, 632, 690, new Color(0.62f, 0.22f, 0.48f), ButtonPt).onClick.AddListener(OpenCheerEntry);
-            Btn(pane, "CeOpenShop", "치어리더 영입 (상점)", 644, 620, 1264, 690, ButtonIdle, ButtonPt).onClick.AddListener(() => GoLegacy(ScreenType.CheerleaderShop));
-            Btn(pane, "CeOpenInventory", "보유 치어리더 · 성장", 1276, 620, 1896, 690, ButtonIdle, ButtonPt).onClick.AddListener(() => GoLegacy(ScreenType.CheerleaderInventory));
-            cePool = L(pane, "CePool", "", 24, 700, 1896, 1030, CellPt, TextAnchor.UpperLeft, Muted);
-            cePool.lineSpacing = 1.1f;
         }
 
         private static readonly float[] HiCols = { 16, 140, 420, 540, 640, 820, 1100 };
@@ -1143,10 +1111,10 @@ namespace KBOManager.Controllers
             tickerValues[1].text = MatchupLabel(simulator.GamesPlayed, true);
             tickerValues[2].text = MatchupLabel(simulator.GamesPlayed + 1, false);
             tickerValues[3].text = NextSeriesLabel();
-            // [TASK-GM-07] 메인 홈이 아니면 [진행하기] = 메인 홈 이동, 메인 홈이면 ① 전력 분석부터 3단계 플로우
+            // [TASK-GM-07] 메인 홈이 아니면 [진행하기] = 메인 홈 이동 · [TASK-GM-16] 메인 홈이면 실시간 시즌 대시보드
             string next = simulator.IsSeasonComplete ? (SeasonReviewPending ? "시즌 결산실" : "포스트시즌 트리") : !IsAtMainHome ? "메인 홈으로"
                 : GMStoveTurns.IsGating(league) ? (GMFrontOffice.Ensure(league).StoveTurnVisited ? $"Turn {GMStoveTurns.Current(league)} 완료 → 다음 Turn" : $"Turn {GMStoveTurns.Current(league)} {GMStoveTurns.Name(GMStoveTurns.Current(league))} 열기") // [TASK-GM-14]
-                : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
+                : "실시간 시즌 대시보드"; // [TASK-GM-16]
             CompyaUiKit.SetButtonText(continueButton, $"✔ 진행하기 (CONTINUE) >\n{next}");
         }
 
@@ -1389,7 +1357,7 @@ namespace KBOManager.Controllers
             extSubmit.interactable = extCaptain.interactable = extRelease.interactable = has;
             if (!has)
             {
-                extPlayer.text = "선수를 선택하십시오 (계약 만료 = 잔여 1년 이하 빨강)";
+                extPlayer.text = "선수를 선택하십시오 (계약 만료 임박 = 잔여 1년 이하 경고색)";
                 extInfo.text = "";
                 extSalaryLabel.text = "";
                 return;
@@ -1766,24 +1734,6 @@ namespace KBOManager.Controllers
             return r;
         }
 
-        /// <summary>선수 백분위 팝업(선수단 · 라인업 행 클릭).</summary>
-        public void OpenPercentiles(Player p)
-        {
-            if (p == null || League == null) return;
-            var rows = GMStoveLeagueMarket.Percentiles(League, p);
-            pctTitle.text = $"백분위 랭킹 (Percentile Rankings) - {p.Template.PlayerName}";
-            pctInfo.text = $"{GMFrontOffice.PositionLabel(p.Position)} · {p.Age}세 · OVR {p.BaseOverall}/{p.Potential} · ABS {p.ABSZoneSkill}({p.AbsRoleLabel}) · KBO 전체 {(p.IsPitcher ? "투수" : "타자")} 대비";
-            for (int k = 0; k < PctRows; k++)
-            {
-                bool used = k < rows.Count;
-                pctLabels[k].text = used ? rows[k].Label : "";
-                pctValues[k].text = used ? $"{rows[k].Percentile}%" : "";
-                SetFill(pctFills[k], used ? rows[k].Percentile / 100f : 0f);
-            }
-            pctPopup.gameObject.SetActive(true);
-            pctPopup.SetAsLastSibling();
-        }
-
         // ---- 스토리 안건
 
         private void RefreshStory()
@@ -1938,21 +1888,6 @@ namespace KBOManager.Controllers
 
         public static int TeamAbsIndex(GMTeamState t) => t.Roster.Count == 0 ? 50 : (int)Math.Round(t.Roster.Average(p => p.ABSZoneSkill));
 
-        private void RefreshCheer()
-        {
-            var team = UserTeam;
-            var entry = GMCheerleaderRoster.Entry(team);
-            ceEntry.text = $"{GMCheerleaderRules.Summary(entry.Count, team.CheerleaderPool.Count)}\n" +
-                           string.Join("\n", entry.Select((c, i) => $"{i + 1}.{CheerSquad.RoleName((CheerRole)i)} {c.DisplayName} · CHEER {GMCheerleaderStats.Cheer(c)} · 체력 {GMCheerleaderStats.Stamina(c)}{(GMCheerleaderStats.IsTired(c) ? "(효율 50%)" : "")}"));
-            ceEffects.text = $"단장 리더십 → 팀워크 +{GMCheerleaderRoster.LeadershipTeamworkBonus(entry)}\n마운드 응원 → 실책 -{GMCheerleaderRoster.ErrorReduction(entry) * 100f:0}%\n" +
-                             $"타격 응원 → 후반 클러치 +{GMCheerleaderRoster.ClutchBonus(entry) * 100f:0.0}%\n홈 흥행 → +{GMCheerleaderRoster.HomeRevenue(entry):N0}만 원/홈경기 · 팬 지지율 {team.FanSupport}\n" +
-                             $"자동 로테이션: {(team.CheerAutoRotate ? "켬(체력 30 미만 자동 교체)" : "끔(수동)")}\n{GMCheerleaderRoster.DedicationLabel(team)}";
-            var pool = team.CheerleaderPool.Select((c, i) => $"{c.DisplayName}({c.Grade.Display()} · 체력 {GMCheerleaderStats.Stamina(c)})").ToList();
-            var lines = new List<string> { $"구단 응원단 풀 {pool.Count}/{GMFeatureFlags.CHEERLEADER_TEAM_ROSTER_MAX}명" };
-            for (int i = 0; i < pool.Count; i += 3) lines.Add(string.Join("   ", pool.Skip(i).Take(3)));
-            cePool.text = string.Join("\n", lines);
-        }
-
         private void RefreshHistory()
         {
             var league = League;
@@ -2016,16 +1951,17 @@ namespace KBOManager.Controllers
                 GoMainHome();
                 SetStatus(GMStoveTurns.IsGating(League)
                     ? $"프런트 오피스 메인 홈 - {GMStoveTurns.Label(GMStoveTurns.Current(League))}. [진행하기]를 한 번 더 누르면 이번 Turn 방 또는 다음 Turn으로 이어집니다."
-                    : "리그 플레이 메인 홈 - 구단 상황 · 4일 일정을 확인하고 [진행하기]를 한 번 더 누르면 오늘 경기 전력 분석으로 이어집니다.");
+                    : "리그 플레이 메인 홈 - 구단 상황 · 4일 일정을 확인하고 [진행하기]를 한 번 더 누르면 실시간 시즌 대시보드로 이어집니다.");
                 return true;
             }
             if (GMStoveTurns.IsGating(League)) return ContinueStoveTurn(); // [TASK-GM-14] 스토브리그 8 Turn
             if (simulator.PendingInterrupt != null) { OpenDashboard(); return false; }
             string settled = SettleCompensationsBeforeSeason(); // [TASK-GM-08] 개막 전 FA 보상 정산
-            var view = PrePostView != null ? PrePostView : FindAnyObjectByType<GMMatchPrePostUIController>(FindObjectsInactive.Include);
-            if (view == null || !view.ShowPreGameView(simulator)) { SetStatus("전력 분석 화면을 열 수 없습니다."); return false; }
-            view.OnClosed -= Refresh; view.OnClosed += Refresh;
-            SetStatus((settled != null ? settled + " / " : "") + "① 전력 분석 - 선발 · 전력 · 치어리더를 확인하고 [플레이 볼]을 누르십시오.");
+            // [TASK-GM-16] 메인 홈 [진행하기] = 실시간 시즌 대시보드(한 경기 · 전반기 · 한 시즌은 대시보드에서 고른다 - 한 경기는 ① 전력 분석 3단계 플로우)
+            var dash = Dash;
+            if (dash == null) { SetStatus("실시간 시즌 대시보드 화면이 없습니다."); return false; }
+            dash.Open(simulator);
+            SetStatus((settled != null ? settled + " / " : "") + "실시간 시즌 대시보드 - [한 경기] · [전반기 진행] · [한 시즌]으로 정규시즌을 진행하십시오.");
             return true;
         }
 

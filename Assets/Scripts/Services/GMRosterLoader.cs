@@ -248,12 +248,17 @@ namespace KBOManager.Services
                 Debug.LogError("[GMRosterLoader] PlayerDatabase가 없어 로스터를 만들 수 없습니다.");
                 return null;
             }
-            return LoadModeRoster(mode, selectedTeamCode, useVirtualNames, db.AllTemplates, AllCheerleaderTemplates());
+            // [TASK-GM-16] 실제 새 게임 = 스타터 덱(매번 다른 시드 - 리세마라). 테스트 · 툴 오버로드는 시드를 넘길 때만 쓴다.
+            int? starterSeed = StarterDeckApplies(mode) ? GMStarterDeck.NewSeed() : (int?)null;
+            return LoadModeRoster(mode, selectedTeamCode, useVirtualNames, db.AllTemplates, AllCheerleaderTemplates(), starterSeed);
         }
+
+        /// <summary>[TASK-GM-16] 스타터 덱 적용 모드 - 현역 · 스토리(올타임 드림은 계보별 최고 시즌 드림 로스터 유지).</summary>
+        public static bool StarterDeckApplies(GMStartMode mode) => GMFeatureFlags.IsStarterDeckEnabled && mode != GMStartMode.AllTimeDream;
 
         /// <summary>테스트/툴용 - 템플릿과 치어리더 카탈로그를 직접 넘긴다.</summary>
         public static GMLeagueState LoadModeRoster(GMStartMode mode, string selectedTeamCode, bool useVirtualNames,
-            IReadOnlyList<PlayerTemplate> templates, IReadOnlyList<Cheerleader> cheerCatalog)
+            IReadOnlyList<PlayerTemplate> templates, IReadOnlyList<Cheerleader> cheerCatalog, int? starterDeckSeed = null)
         {
             string userCode = NameAliasTable.ResolveCanonicalTeamCode(selectedTeamCode) ?? NameAliasTable.SAM;
             NameAliasTable.ApplyDisplayNames(templates, useVirtualNames);
@@ -275,6 +280,10 @@ namespace KBOManager.Services
             // 모드별 후보: 구단 코드 → (대표 템플릿, 평가 점수, 기준 시즌 연도)
             var candidates = mode == GMStartMode.AllTimeDream ? DreamCandidates(byPerson) : CurrentCandidates(byPerson);
             var used = new HashSet<string>();
+            // [TASK-GM-16] 스타터 덱 - 10구단 28인을 계보 역대 전 연도 카드에서 등급 확률(4/10/25/45/16%)로 추첨
+            bool starter = starterDeckSeed.HasValue && starterDeckSeed.Value != 0 && mode != GMStartMode.AllTimeDream;
+            var starterPicks = starter ? GMStarterDeck.DrawAll(all, starterDeckSeed.Value, used) : null;
+            if (!starter) GMStarterDeck.LastDraws.Clear();
 
             foreach (var code in NameAliasTable.CanonicalTeamCodes)
             {
@@ -288,10 +297,11 @@ namespace KBOManager.Services
                 };
                 team.Budget = (long)team.PayrollCap * BudgetToCapPercent / 100;
 
-                var picks = PickRoster(candidates.TryGetValue(code, out var list) ? list : new List<Candidate>(), candidates.Values.SelectMany(c => c), used);
+                var picks = starter ? starterPicks[code]
+                    : PickRoster(candidates.TryGetValue(code, out var list) ? list : new List<Candidate>(), candidates.Values.SelectMany(c => c), used);
                 foreach (var c in picks)
                 {
-                    var player = new Player(StableId($"{mode}|{userCode}|{code}|{c.Template.TemplateId}"), c.Template);
+                    var player = new Player(StableId(starter ? $"{mode}|{userCode}|{code}|{c.Template.TemplateId}|DECK{starterDeckSeed.Value}" : $"{mode}|{userCode}|{code}|{c.Template.TemplateId}"), c.Template);
                     player.CareerAwardIds = new List<string>(awards[c.Template.RealPlayerId]);
                     player.InitializeGMAttributesFromStats(c.SeasonYear, debutYear[c.Template.RealPlayerId]);
                     team.Roster.Add(player);
@@ -315,6 +325,18 @@ namespace KBOManager.Services
             GMRosterTiers.BuildFuturesPools(state, byPerson, used, debutYear);                  // [TASK-GM-08] 퓨처스 핵심 유망주 풀(구단당 12명)
             GMFaCompensation.RegisterMarketOrigins(state);                                     // [TASK-GM-08] FA 원 소속 · 등급
             GMFrontOffice.Initialize(state);                 // [TASK-GM-06] 구단주 · 목표 · 시즌 이력 · 스토리 안건
+            if (starter)
+            {
+                GMFrontOffice.Ensure(state).StarterDeckSeed = starterDeckSeed.Value; // [TASK-GM-16]
+                var mine = GMStarterDeck.LastDraws.Where(d => d.TeamCode == userCode).ToList();
+                var stars = mine.Where(d => d.Actual <= GMStarterTier.A).OrderBy(d => d.Actual).ThenByDescending(d => d.Card.GetBaseOverall()).Take(4).ToList();
+                state.AddNews(new GMNewsItem
+                {
+                    GameIndex = 0, DateLabel = $"{state.SeasonYear} 스토브리그", Kind = GMNewsKind.Season, IsUserTeam = true, IsMajor = true,
+                    Title = $"[스타터 덱] {NameAliasTable.DisplayTeamName(userCode)} 첫 선수단 지급 - {GMStarterDeck.Summary(mine)}",
+                    Body = stars.Count > 0 ? "레전드 합류: " + string.Join(" · ", stars.Select(d => $"{d.Card.SeasonYear} {d.Card.PlayerName}({GMStarterDeck.TierName(d.Actual)}급)")) : "이번 덱에는 S · A급이 없습니다 - 새 게임으로 다시 뽑을 수 있습니다.",
+                });
+            }
             return state;
         }
 

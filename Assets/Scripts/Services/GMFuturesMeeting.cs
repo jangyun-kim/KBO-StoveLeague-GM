@@ -18,7 +18,11 @@ namespace KBOManager.Services
     /// </summary>
     public static class GMFuturesMeeting
     {
-        public const int MaxMentorSlots = 3, MaxGrowthAge = 27;
+        public const int MaxMentorSlots = 3, MaxGrowthAge = 29; // [TASK-GM-16] 에이징 커브 - 25~29세 +0~+1까지 성장(기존 27세)
+        public const int YoungMaxGrowth = 3, YoungMentoredMaxGrowth = 4, PrimeMaxGrowth = 1, YoungMaxAge = 24;
+
+        /// <summary>[TASK-GM-16] 나이별 연간 성장 상한 - 19~24세 +3(멘토링 +4) · 25~29세 +1 · 30세 이상 0(하락은 GMAgingCurve).</summary>
+        public static int GrowthCap(int age, bool mentored) => age <= YoungMaxAge ? (mentored ? YoungMentoredMaxGrowth : YoungMaxGrowth) : age <= MaxGrowthAge ? PrimeMaxGrowth : 0;
 
         public static readonly GMTrainingFocus[] BatterFocuses = { GMTrainingFocus.Balanced, GMTrainingFocus.Contact, GMTrainingFocus.Power, GMTrainingFocus.DefenseSpeed };
         public static readonly GMTrainingFocus[] PitcherFocuses = { GMTrainingFocus.Balanced, GMTrainingFocus.Control, GMTrainingFocus.Stuff, GMTrainingFocus.Stamina };
@@ -212,7 +216,7 @@ namespace KBOManager.Services
         {
             int room = PotentialMax(p) - p.BaseOverall;
             if (room <= 0 || p.Age > MaxGrowthAge) return 0;
-            return Math.Max(1, (int)Math.Round(room * TypeRate(TypeOf(p))));
+            return Math.Min(GrowthCap(p.Age, false), Math.Max(1, (int)Math.Round(room * TypeRate(TypeOf(p)))));
         }
 
         /// <summary>한 해 성장치(OVR) - year 연도 변동 포함. mentor가 있으면 +1 · 변동 하한 0.</summary>
@@ -223,7 +227,7 @@ namespace KBOManager.Services
             if (room <= 0) return 0;
             int roll = Roll(p, year);
             if (mentored) roll = Math.Max(0, roll) + 1;
-            return Math.Max(0, Math.Min(room, BaseGrowth(p) + FocusFit(p, focus) + roll));
+            return Math.Max(0, Math.Min(Math.Min(room, GrowthCap(p.Age, mentored)), BaseGrowth(p) + FocusFit(p, focus) + roll));
         }
 
         /// <summary>화면 표시용 예상 성장(변동 0 기준).</summary>
@@ -232,7 +236,7 @@ namespace KBOManager.Services
             if (p?.Template == null || p.Age > MaxGrowthAge) return 0;
             int room = PotentialMax(p) - p.BaseOverall;
             bool mentored = MentorOf(league, p) != null;
-            return Math.Max(0, Math.Min(room, BaseGrowth(p) + FocusFit(p, FocusOf(league, p)) + (mentored ? 1 : 0)));
+            return Math.Max(0, Math.Min(Math.Min(room, GrowthCap(p.Age, mentored)), BaseGrowth(p) + FocusFit(p, FocusOf(league, p)) + (mentored ? 1 : 0)));
         }
 
         /// <summary>
@@ -257,9 +261,7 @@ namespace KBOManager.Services
                     int g = GrowthFor(p, plan?.Focus ?? GMTrainingFocus.Balanced, mentored.Contains(p), year);
                     if (plan != null) { plan.LastGrowth = g; plan.LastGrowthYear = year; }
                     if (g <= 0) continue;
-                    int before = p.BaseOverall;
-                    GMRosterTiers.ApplyProspectShift(p, p.ProspectStatShift + g);
-                    int actual = p.BaseOverall - before;
+                    int actual = GMRosterTiers.ApplyOvrDelta(p, g); // [TASK-GM-16] 실제 OVR 상승이 성장치(나이 상한)를 넘지 않게
                     if (plan != null) plan.LastGrowth = actual;
                     if (actual > 0) grown.Add((p, actual));
                 }

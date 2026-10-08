@@ -306,7 +306,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(wbc.Result, back.Tournaments.Single(t => t.Kind == GMTournamentKind.WBC).Result);
             var star = squad.First();
             Assert.AreEqual(star.FameBonus, back.Teams.SelectMany(t => t.Roster).Single(p => p.InstanceId == star.InstanceId).FameBonus, "팬덤 가치 저장");
-            Assert.AreEqual(25, new GameSaveData().SaveVersion); // [TASK-GM-15] v25 · [TASK-GM-14] v24 · [TASK-GM-13] v23 · [TASK-GM-11] v22
+            Assert.AreEqual(26, new GameSaveData().SaveVersion); // [TASK-GM-16] v26 · [TASK-GM-15] v25 · [TASK-GM-14] v24 · [TASK-GM-13] v23 · [TASK-GM-11] v22
             // 재현성 - 같은 모드 · 구단 · 시드면 같은 InstanceId
             var again = NewLeague(team: "SAM", seed: 909);
             CollectionAssert.AreEqual(NewLeague(team: "SAM", seed: 909).UserTeam.Roster.Select(p => p.InstanceId).ToList(), again.UserTeam.Roster.Select(p => p.InstanceId).ToList(), "안정 InstanceId");

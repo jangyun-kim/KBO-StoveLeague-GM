@@ -1,3 +1,4 @@
+using System.Linq;
 using KBOManager.Services;
 using KBOManager.Simulation;
 using KBOManager.UI;
@@ -109,6 +110,7 @@ namespace KBOManager.Controllers
             if (pctPopup != null) pctPopup.gameObject.SetActive(false);
             if (counterPopup != null) counterPopup.gameObject.SetActive(false);
             if (lrEventPopup != null) lrEventPopup.gameObject.SetActive(false);
+            if (assistantPopup != null) assistantPopup.gameObject.SetActive(false); // [TASK-GM-16]
             return true;
         }
 
@@ -123,11 +125,18 @@ namespace KBOManager.Controllers
                 SetStatus($"{GMStoveTurns.Label(turn)} - {GMStoveTurns.Rooms[turn - 1]}을(를) 확인한 뒤 메인 홈에서 [진행하기]로 다음 Turn을 여십시오.");
                 return true;
             }
-            if (!GMStoveTurns.Advance(league, out string msg)) { SetStatus(msg); Refresh(); return false; }
-            if (GMStoveTurns.IsGating(league)) OpenTurnRoom(GMStoveTurns.Current(league));
-            else Refresh();
-            SetStatus(msg);
-            return true;
+            // [TASK-GM-16] 하드 차단이 없고 놓친 필수 행동(미계약 만료자 · 지명 0명 · 주장 · 1군 부족)이 있으면 조력자(운영팀장)가 먼저 개입한다
+            if (GMStoveTurns.BlockReason(league) == "")
+            {
+                var issues = GMAssistant.PendingIssues(league);
+                if (issues.Count > 0)
+                {
+                    ShowAssistant(issues);
+                    SetStatus($"{GMAssistant.ProfileFor(league).Plate}이(가) 확인을 요청했습니다 - {string.Join(" · ", issues.Select(i => i.Title))}");
+                    return true;
+                }
+            }
+            return AdvanceStoveTurnNow();
         }
 
         public void OpenTurnRoom(int turn)

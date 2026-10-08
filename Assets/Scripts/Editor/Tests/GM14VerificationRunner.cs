@@ -298,6 +298,7 @@ namespace KBOManager.EditorTests
                 }
                 int before = hub.StoveTurn;
                 Assert.IsTrue(hub.Continue(), $"Turn {before} 진행");
+                if (hub.IsAssistantOpen) Assert.IsTrue(hub.AssistantChoose(2), $"Turn {before} 조력자 경고 무시 → 진행"); // [TASK-GM-16] 조력자 개입
                 if (GMStoveTurns.IsGating(league))
                 {
                     Assert.Greater(hub.StoveTurn, before, "다음 Turn");
@@ -331,14 +332,15 @@ namespace KBOManager.EditorTests
             hub.SelectSubTab(0);
             Assert.IsFalse(hub.IsTurnLockShown, "완료 후 모든 방 열림");
 
-            // 완료 후 메인 홈 [진행하기] = 개막전 전력 분석, 다시 [진행하기] = 전력 분석 닫고 메인 홈(경기 미진행)
+            // 완료 후 메인 홈 [진행하기] = [TASK-GM-16] 실시간 시즌 대시보드, 다시 [진행하기] = 대시보드 닫고 메인 홈(경기 미진행)
+            var dash = NewDash(hub);
             hub.GoMainHome();
             Assert.IsTrue(hub.Continue());
-            Assert.AreEqual(GMMatchStage.PreGame, prePost.Stage, "개막전 전력 분석");
-            Assert.IsTrue(prePost.gameObject.activeSelf);
+            Assert.IsTrue(dash.gameObject.activeSelf, "개막 = 실시간 시즌 대시보드");
+            Assert.IsFalse(prePost.gameObject.activeSelf, "전력 분석으로 튕기지 않음");
             hub.SelectMainTab(3);
             Assert.IsTrue(hub.Continue());
-            Assert.IsFalse(prePost.gameObject.activeSelf, "[진행하기] = 경기 화면 닫기");
+            Assert.IsFalse(dash.gameObject.activeSelf, "[진행하기] = 대시보드 닫기");
             Assert.IsTrue(hub.IsAtMainHome, "메인 홈 리렌더링");
             Assert.AreEqual(0, sim.GamesPlayed, "경기로 튕기지 않음");
 
@@ -351,6 +353,19 @@ namespace KBOManager.EditorTests
         }
 
         // ================================================================== 공통
+
+        private GMLiveLeagueDashboardUIController NewDash(GMOotpFrontOfficeUIController hub)
+        {
+            var go = new GameObject("GM14_Dash", typeof(RectTransform));
+            go.transform.SetParent(hub.transform.parent, false);
+            var rect = (RectTransform)go.transform;
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
+            var dash = go.AddComponent<GMLiveLeagueDashboardUIController>();
+            dash.Build();
+            dash.gameObject.SetActive(false);
+            hub.DashView = dash;
+            return dash;
+        }
 
         private GMOotpFrontOfficeUIController NewHub(GMLiveSeasonSimulator sim, out GMMatchPrePostUIController prePost)
         {

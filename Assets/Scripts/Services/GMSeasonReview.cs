@@ -24,6 +24,7 @@ namespace KBOManager.Services
         public const int SeasonGames = 144;
 
         public static string ToneLabel(GMReportTone t) => t == GMReportTone.Strong ? "강점" : t == GMReportTone.Weak ? "약점" : t == GMReportTone.Risk ? "위험" : "보통";
+        /// <summary>[TASK-GM-16] 화면 문자열에는 쓰지 않는다(색 이름 직접 노출 금지 - 화면은 색 · 막대로만 표시). 로그 · 문서용.</summary>
         public static string ToneColorName(GMReportTone t) => t == GMReportTone.Strong ? "빨강" : t == GMReportTone.Weak ? "파랑" : t == GMReportTone.Risk ? "주황" : "초록";
         public static string ConfidenceText(GMReportConfidence c) => c == GMReportConfidence.High ? "신뢰도 높음" : c == GMReportConfidence.Medium ? "신뢰도 보통" : "신뢰도 낮음";
 
@@ -351,22 +352,22 @@ namespace KBOManager.Services
                 if (w.War <= replacement)
                 {
                     w.Tone = GMReportTone.Weak;
-                    w.Comment = $"{w.PositionLabel} 포지션의 종합 기여도가 대체 선수 수준입니다(파랑) - {w.PlayerName} WAR {w.War:0.0} · {metric} {w.Production:0}.";
+                    w.Comment = $"{w.PositionLabel} 포지션의 종합 기여도가 대체 선수 수준입니다 - {w.PlayerName} WAR {w.War:0.0} · {metric} {w.Production:0}.";
                 }
                 else if (w.Production < 90 || w.Gap <= -10)
                 {
                     w.Tone = GMReportTone.Weak;
-                    w.Comment = $"{w.PositionLabel} 포지션의 {metric}이 {w.Production:0}으로 10구단 같은 포지션 평균({w.LeagueProduction:0})보다 낮습니다(파랑) - {w.PlayerName}.";
+                    w.Comment = $"{w.PositionLabel} 포지션의 {metric}이 {w.Production:0}으로 10구단 같은 포지션 평균({w.LeagueProduction:0})보다 낮습니다 - {w.PlayerName}.";
                 }
                 else if (w.Gap >= 15)
                 {
                     w.Tone = GMReportTone.Strong;
-                    w.Comment = $"{w.PositionLabel} 포지션은 {metric} {w.Production:0}으로 리그 상위권입니다(빨강) - {w.PlayerName}.";
+                    w.Comment = $"{w.PositionLabel} 포지션은 {metric} {w.Production:0}으로 리그 상위권입니다 - {w.PlayerName}.";
                 }
                 else
                 {
                     w.Tone = GMReportTone.Neutral;
-                    w.Comment = $"{w.PositionLabel} 포지션은 {metric} {w.Production:0}으로 평균권입니다(초록).";
+                    w.Comment = $"{w.PositionLabel} 포지션은 {metric} {w.Production:0}으로 평균권입니다.";
                 }
             }
             return result;
@@ -420,7 +421,7 @@ namespace KBOManager.Services
             {
                 var lowest = summary.AllPositions.OrderBy(w => w.Gap).First();
                 lowest.Tone = GMReportTone.Neutral;
-                lowest.Comment = $"뚜렷한 약점은 없지만 {lowest.PositionLabel} 포지션이 상대적으로 가장 낮습니다(초록) - 생산성 {lowest.Production:0} · 리그 {lowest.LeagueProduction:0}.";
+                lowest.Comment = $"뚜렷한 약점은 없지만 {lowest.PositionLabel} 포지션이 상대적으로 가장 낮습니다 - 생산성 {lowest.Production:0} · 리그 {lowest.LeagueProduction:0}.";
                 weak.Add(lowest);
             }
             if (summary.Confidence == GMReportConfidence.Low)

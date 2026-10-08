@@ -73,12 +73,12 @@ namespace KBOManager.Controllers
         private Text psChampion, psNext;
         private Button psNextButton, psAutoButton;
 
-        // ---- 감독 설정
+        // ---- 단장 설정(구 감독 설정)
         private RectTransform managerPopup;
         private InputField mgNameInput;
         private readonly Button[] mgTeamButtons = new Button[10];
         private readonly Button[] mgOptions = new Button[ManagerOptionCount];
-        private Button mgRole, mgMode, mgVirtual, mgDifficulty, mgStart, mgApply;
+        private Button mgRole, mgMode, mgVirtual, mgDifficulty, mgStart, mgApply, mgGender;
         private RectTransform mgDifficultyList, mgModeList, mgRoleList;
         private Text mgDifficultyDesc, mgTeamLabel;
         private string mgTeam = NameAliasTable.SAM;
@@ -113,9 +113,9 @@ namespace KBOManager.Controllers
             Btn(root, "NavHome", "홈", 94, 4, 150, 40, ButtonIdle, SmallPt).onClick.AddListener(GoMainHome);
             var actions = new (string label, Action action)[][]
             {
-                new (string, Action)[] { ("저장하기", SaveNow), ("감독 설정 · 새 게임", OpenManagerSetup), ("새 시즌/난이도 모달", OpenSeasonSettings), ("클래식 로비", GoClassicLobby) },
-                new (string, Action)[] { ("진행하기 (메인 홈 → 전력 분석)", () => Continue()), ("한 경기 전력 분석", OpenPreGame), ("실시간 시즌 대시보드", OpenDashboard), ("직전 경기 결과", OpenLastBox) },
-                new (string, Action)[] { ("감독 설정 · 플레이 모드", OpenManagerSetup), ("구단주 목표 · 재정", GoMainHome), ("스토리 안건", () => { SelectMainTab(0); SelectSubTab(5); }) },
+                new (string, Action)[] { ("저장하기", SaveNow), ("단장 설정 · 새 게임", OpenManagerSetup), ("새 시즌/난이도 모달", OpenSeasonSettings), ("클래식 로비", GoClassicLobby) },
+                new (string, Action)[] { ("진행하기 (메인 홈 → 대시보드)", () => Continue()), ("한 경기 전력 분석", OpenPreGame), ("실시간 시즌 대시보드", OpenDashboard), ("직전 경기 결과", OpenLastBox) },
+                new (string, Action)[] { ("단장 설정 · 플레이 모드", OpenManagerSetup), ("구단주 목표 · 재정", GoMainHome), ("스토리 안건", () => { SelectMainTab(0); SelectSubTab(5); }) },
                 new (string, Action)[] { ("순위 · 리더 · 소식", () => SelectMainTab(1)), ("시즌 일정 (캘린더)", OpenSchedule), ("포스트시즌 트리", OpenPostseasonTree), ("시상식", OpenAwards) },
                 new (string, Action)[] { ("선수단 · 라인업", () => SelectMainTab(2)), ("트레이드 · FA 시장", () => SelectMainTab(4)), ("응원단", () => SelectMainTab(6)), ("구단 역사", () => SelectMainTab(7)) },
                 new (string, Action)[] { ("한 경기 (3단계 플로우)", OpenPreGame), ("전반기 · 한 시즌 (대시보드)", OpenDashboard), ("포스트시즌 다음 경기", () => PlayNextPostseason()) },
@@ -393,7 +393,7 @@ namespace KBOManager.Controllers
             CompyaUiKit.Paint(managerPopup, new Color(0f, 0f, 0f, 0.75f), true);
             CompyaUiKit.Box(managerPopup, "SetupBox", 200, 80, 1720, 1010, new Color(0.17f, 0.17f, 0.18f, 0.99f));
             CompyaUiKit.Box(managerPopup, "SetupTitleBar", 200, 80, 1720, 130, new Color(0.24f, 0.24f, 0.26f));
-            L(managerPopup, "SetupTitle", "감독 설정", 200, 82, 1720, 128, PanelTitlePt + 5, TextAnchor.MiddleCenter, White);
+            L(managerPopup, "SetupTitle", "단장 설정", 200, 82, 1720, 128, PanelTitlePt + 5, TextAnchor.MiddleCenter, White);
 
             // 좌측 - 팀 선택
             L(managerPopup, "TeamSelectTitle", "팀 선택", 230, 140, 760, 172, BodyPt, TextAnchor.MiddleLeft, Muted);
@@ -419,6 +419,9 @@ namespace KBOManager.Controllers
             mgNameInput = BuildInput(managerPopup, "NameInput", 1000, 178, 1700, 212);
             L(managerPopup, "RoleLabel", "당신의 역할", 810, 218, 990, 252, BodyPt, TextAnchor.MiddleLeft, White);
             mgRole = Btn(managerPopup, "RoleDrop", "", 1000, 218, 1400, 252, new Color(0.25f, 0.25f, 0.28f), SmallPt);
+            // [TASK-GM-16] 단장 성별 - 조력자(운영팀장)는 반대 성별로 배정된다
+            mgGender = Btn(managerPopup, "GenderToggle", "", 1410, 218, 1700, 252, new Color(0.25f, 0.25f, 0.28f), SmallPt);
+            mgGender.onClick.AddListener(() => { mgProfile.Female = !mgProfile.Female; RefreshManagerSetup(); });
             L(managerPopup, "ModeLabel", "시작 모드", 810, 258, 990, 292, BodyPt, TextAnchor.MiddleLeft, White);
             mgMode = Btn(managerPopup, "ModeDrop", "", 1000, 258, 1400, 292, new Color(0.25f, 0.25f, 0.28f), SmallPt);
             mgVirtual = Btn(managerPopup, "VirtualToggle", "", 1410, 258, 1700, 292, new Color(0.25f, 0.25f, 0.28f), SmallPt);
@@ -500,7 +503,7 @@ namespace KBOManager.Controllers
             var current = fo?.Manager ?? new GMManagerProfile();
             mgProfile.Name = current.Name; mgProfile.Role = current.Role;
             mgProfile.Commissioner = current.Commissioner; mgProfile.NoFiring = current.NoFiring; mgProfile.HardTrade = current.HardTrade;
-            mgProfile.PennantMode = current.PennantMode; mgProfile.Challenge = current.Challenge;
+            mgProfile.PennantMode = current.PennantMode; mgProfile.Challenge = current.Challenge; mgProfile.Female = current.Female;
             mgTeam = League?.SelectedTeamCode ?? NameAliasTable.SAM;
             mgStartMode = League?.Mode ?? GMStartMode.RealCurrent2026;
             mgDiff = fo?.Difficulty ?? GMDifficulty.Majors;
@@ -558,6 +561,7 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetButtonText(mgRole, $"{mgProfile.RoleLabel} ▼");
             CompyaUiKit.SetButtonText(mgMode, $"{GMModeLabel(mgStartMode)} ▼");
             CompyaUiKit.SetButtonText(mgVirtual, mgVirtualNames ? "선수 이름: 가상명" : "선수 이름: 실명");
+            CompyaUiKit.SetButtonText(mgGender, $"단장 성별: {mgProfile.GenderLabel} ▶ 조력자 {(mgProfile.Female ? "남" : "여")}");
             for (int k = 0; k < ManagerOptionCount; k++)
                 CompyaUiKit.SetButtonText(mgOptions[k], $"{(OptionOn(mgProfile, k) ? "[✔]" : "[  ]")} {ManagerOptionLabels[k]}");
             CompyaUiKit.SetButtonText(mgDifficulty, $"{GMFrontOffice.DifficultyLabel(mgDiff)} ▼");
@@ -574,7 +578,7 @@ namespace KBOManager.Controllers
         private GMManagerProfile ProfileCopy() => new GMManagerProfile
         {
             Name = mgProfile.Name, Role = mgProfile.Role, Commissioner = mgProfile.Commissioner, NoFiring = mgProfile.NoFiring,
-            HardTrade = mgProfile.HardTrade, PennantMode = mgProfile.PennantMode, Challenge = mgProfile.Challenge,
+            HardTrade = mgProfile.HardTrade, PennantMode = mgProfile.PennantMode, Challenge = mgProfile.Challenge, Female = mgProfile.Female,
         };
 
         /// <summary>[✔ 게임 시작] - 선택 구단 · 시작 모드 · 실명/가상명으로 새 리그를 만들고 감독 설정(프로필 · 옵션 5종 · 난이도)을 적용한 뒤 메인 홈으로 간다.</summary>
@@ -610,7 +614,7 @@ namespace KBOManager.Controllers
             CaptureName();
             GMFrontOffice.ApplyManagerSetup(League, ProfileCopy(), mgDiff);
             CloseManagerSetup();
-            SetStatus($"감독 설정 적용 - {mgProfile.Name} {mgProfile.RoleLabel} · {GMFrontOffice.DifficultyLabel(mgDiff)}");
+            SetStatus($"단장 설정 적용 - {mgProfile.Name} {mgProfile.RoleLabel} · {GMFrontOffice.DifficultyLabel(mgDiff)}");
             Refresh();
             return true;
         }

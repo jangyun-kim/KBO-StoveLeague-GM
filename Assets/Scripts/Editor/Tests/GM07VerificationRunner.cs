@@ -205,7 +205,7 @@ namespace KBOManager.EditorTests
         // ================================================================== 2) [진행하기] 라우팅
 
         [Test]
-        public void T2_ContinueRoutesToMainHome_ThenPreGame_NoInstantGame()
+        public void T2_ContinueRoutesToMainHome_ThenDashboard_NoInstantGame()
         {
             var sim = new GMLiveSeasonSimulator(NewLeague(team: "NC", seed: 74));
             var hub = NewHub(sim, out _, out var prePost);
@@ -219,12 +219,16 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(0, sim.GamesPlayed, "경기를 바로 진행하지 않는다");
             Assert.IsFalse(prePost.gameObject.activeSelf);
 
-            // 메인 홈에서 다시 누르면 ① 전력 분석
+            // [TASK-GM-16] 메인 홈에서 다시 누르면 실시간 시즌 대시보드(전력 분석으로 튕기지 않음 - 한 경기 3단계는 대시보드 [한 경기])
+            var dash = NewView<GMLiveLeagueDashboardUIController>(hub.transform.parent.gameObject, "GM07_Dash");
+            dash.Build();
+            dash.gameObject.SetActive(false);
+            hub.DashView = dash;
             Click(hub.Root, "ContinueButton");
-            Assert.AreEqual(GMMatchStage.PreGame, prePost.Stage, "메인 홈 → 전력 분석");
-            Assert.IsTrue(prePost.PreRoot.gameObject.activeSelf);
-            Assert.AreEqual(0, sim.GamesPlayed, "전력 분석 단계에서도 경기 미진행");
-            prePost.CloseAll();
+            Assert.IsTrue(dash.gameObject.activeSelf, "메인 홈 → 실시간 시즌 대시보드");
+            Assert.IsFalse(prePost.gameObject.activeSelf, "전력 분석으로 튕기지 않음");
+            Assert.AreEqual(0, sim.GamesPlayed, "대시보드 단계에서도 경기 미진행");
+            dash.gameObject.SetActive(false);
 
             // 툴바 [홈] · 사이드바 [홈] · 메뉴 항목도 메인 홈으로
             hub.SelectMainTab(2);
