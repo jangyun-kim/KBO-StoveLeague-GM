@@ -359,6 +359,9 @@ namespace KBOManager.Managers
             return NextEventTrack();
         }
 
+        /// <summary>[TASK-GM-13] 지시서 표기 - 이벤트 BGM 하이재킹(= PlayEvent).</summary>
+        public string PlayEventBgm(GMAudioEvent ev, string teamCode = null) => PlayEvent(ev, teamCode);
+
         private string NextEventTrack()
         {
             if (eventChain.Count == 0) return null;

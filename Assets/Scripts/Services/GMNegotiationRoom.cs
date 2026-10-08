@@ -114,7 +114,7 @@ namespace KBOManager.Services
                 Shift = new[] { -0.08f, 0.05f, 0.03f, 0f },
                 Affinity = A((GMAgentArchetype.RoleSeeker, 1.5f), (GMAgentArchetype.WinNow, 1.1f), (GMAgentArchetype.Realist, 0.9f)),
                 Valid = c => c.Player.EgoLevel >= 3 || c.Player.RoleArchetype == LockerRoomRole.Prospect || c.Player.RoleArchetype == LockerRoomRole.Ambitious,
-                Pitch = c => "다음 시즌 주전 · 보직을 약속합니다(약속 추적 · 위반 페널티는 2단계)." },
+                Pitch = c => "다음 시즌 주전 · 보직을 약속합니다(약속 트래커 등록 - 위반 시 충성도 -25 · 선수단 신뢰도 -10)." },
             new CardDef { Id = "REW_OPTION", Category = GMNegotiationCardCategory.Reward, Title = "성적 옵션(인센티브) 계약",
                 Shift = new[] { -0.12f, 0.06f, 0.05f, 0.01f },
                 Affinity = A((GMAgentArchetype.MoneyFirst, 1.3f), (GMAgentArchetype.LongTermSeeker, 0.5f), (GMAgentArchetype.Realist, 1.1f)),
@@ -288,10 +288,14 @@ namespace KBOManager.Services
             fo.NegotiationAttempts++;
             string name = p.Template.PlayerName;
             string cardText = f.Card != null ? $"[{f.Card.Title}]" : "[카드 없이 기본 제시]";
+            // [TASK-GM-13] [주전 · 보직 보장] 카드 = 약속 제안(PROPOSED) - 타결 시 ACTIVE, 결렬 · 자금 부족 시 폐기
+            var promise = f.Card != null && f.Card.Id == GMPromiseSystem.RoleCardId && team.IsUserTeam
+                ? GMPromiseSystem.Propose(league, team, p, GMPromiseKind.StarterGuarantee, "계약 협상실") : null;
 
             if (rng.NextDouble() >= f.Progress)
             {
                 r.Broken = true;
+                GMPromiseSystem.Cancel(league, promise, "협상 결렬");
                 fo.NegotiationCooldownIds.Add(p.InstanceId);
                 p.PersonalMorale = Math.Max(0, p.PersonalMorale - 6);
                 p.Loyalty = p.Loyalty - 4;
@@ -317,7 +321,7 @@ namespace KBOManager.Services
             }
             int salary = f.Salaries[(int)outcome];
             long bonus = (long)salary * f.Years * GMStoveLeagueMarket.ExtensionBonusPercent / 100;
-            if (team.Budget < bonus) { r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다(협상 보류)."; return r; }
+            if (team.Budget < bonus) { GMPromiseSystem.Cancel(league, promise, "운영 자금 부족"); r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다(협상 보류)."; return r; }
             team.Budget -= bonus;
             p.Salary = salary;
             p.ContractYears = f.Years;
@@ -327,6 +331,7 @@ namespace KBOManager.Services
             p.PersonalMorale = Math.Max(0, Math.Min(100, p.PersonalMorale + morale));
             p.Loyalty = p.Loyalty + loyalty;
             team.LockerRoomTrust = Math.Min(100, team.LockerRoomTrust + 1);
+            if (GMPromiseSystem.Activate(league, promise)) r.Promise = promise; // [TASK-GM-13] 계약 체결 = 약속 활성
             r.Success = true;
             r.Outcome = outcome;
             r.Salary = salary;

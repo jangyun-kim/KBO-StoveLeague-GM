@@ -316,10 +316,12 @@ namespace KBOManager.Controllers
                 BuildProtectPane();      // [TASK-GM-08] FA 보상 · 보호 명단
                 BuildSeasonSummaryPane();  // [TASK-GM-11] 시즌 결산실
                 BuildNegotiationPane();    // [TASK-GM-11] 계약 협상실(3지선다)
+                BuildLockerRoomPane();     // [TASK-GM-13] 선수단 회의실
                 BuildDiscussPopup();
                 BuildPercentilePopup();
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
                 BuildCounterPopup();     // [TASK-GM-08] AI 단장 1:N 역제안
+                BuildLockerEventPopup(); // [TASK-GM-13] 라커룸 사건
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -467,7 +469,7 @@ namespace KBOManager.Controllers
                 new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory),
                     P("시즌 결산실", PaneSeasonSummary), P("계약 협상실", PaneNegotiation) }, // [TASK-GM-11] 스토브리그 Turn 1 결산 · Turn 4 계약 협상
                 new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
-                new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem) },
+                new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem), P("선수단 회의실", PaneLockerRoom) }, // [TASK-GM-13]
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
                 new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("연봉·재계약", PaneSalaries), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08]
                 new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA) },
@@ -512,6 +514,7 @@ namespace KBOManager.Controllers
             if (discussPopup != null) discussPopup.SetAsLastSibling();
             if (pctPopup != null) pctPopup.SetAsLastSibling();
             if (counterPopup != null) counterPopup.SetAsLastSibling(); // [TASK-GM-08]
+            if (lrEventPopup != null) lrEventPopup.SetAsLastSibling(); // [TASK-GM-13]
             foreach (var m in menuLists) if (m != null) m.SetAsLastSibling(); // [TASK-GM-07] 툴바 메뉴 · 감독 설정은 맨 위
             if (managerPopup != null) managerPopup.SetAsLastSibling();
         }
@@ -1099,6 +1102,7 @@ namespace KBOManager.Controllers
                     case PaneProtect: RefreshProtect(); break;        // [TASK-GM-08]
                     case PaneSeasonSummary: RefreshSeasonSummary(); break; // [TASK-GM-11]
                     case PaneNegotiation: RefreshNegotiation(); break;     // [TASK-GM-11]
+                    case PaneLockerRoom: RefreshLockerRoom(); break;       // [TASK-GM-13]
                 }
             }
         }

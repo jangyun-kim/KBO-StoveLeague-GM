@@ -776,6 +776,7 @@ namespace KBOManager.Services
                 });
             }
             if (team == null) return;
+            GMPromiseSystem.Evaluate(league); // [TASK-GM-13] 약속 이행 검사(시즌 기록이 남아 있는 연도 전환 전) - 위반 = 충성도 -25 · 신뢰도 -10 · 긴장 BGM
             foreach (var g in fo.Goals) UpdateGoalProgress(league, team, g);
             int rank = regularSeasonRanks.ToList().IndexOf(team.TeamCode) + 1;
             int delta = 0;
@@ -815,6 +816,7 @@ namespace KBOManager.Services
             if (league.UserTeam != null) league.UserTeam.AgendaTeamworkBonus /= 2;
             OpenAgendas(league);
             RefreshGoals(league);
+            GMDynamicEventEngine.Generate(league); // [TASK-GM-13] 새 스토브리그 - 1티어 동적 사건(연봉 갈등 · 라커룸 파벌)
         }
 
         // ================================================================== 유틸

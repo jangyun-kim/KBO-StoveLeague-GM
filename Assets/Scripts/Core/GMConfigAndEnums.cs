@@ -89,6 +89,15 @@ namespace KBOManager.Core
     /// <summary>[TASK-GM-11] 선수 간 유대(규칙 기반 연결 고리 - 저장하지 않고 현재 로스터로 매번 계산).</summary>
     public enum GMBondKind { Battery = 0, Keystone = 1, Mentor = 2 }
 
+    /// <summary>[TASK-GM-13] 약속 종류 - 주전 보장(계약 협상실 [주전 · 보직 보장] 카드) · 동료 재계약 보장(라커룸 사건 선택지).</summary>
+    public enum GMPromiseKind { StarterGuarantee = 0, TeammateRetention = 1 }
+
+    /// <summary>[TASK-GM-13] 약속 상태 기계 - PROPOSED(제안) → ACTIVE(계약 체결) → FULFILLED(이행) / BROKEN(위반). Cancelled = 계약 불발로 폐기.</summary>
+    public enum GMPromiseState { Proposed = 0, Active = 1, Fulfilled = 2, Broken = 3, Cancelled = 4 }
+
+    /// <summary>[TASK-GM-13] 1티어 동적 사건 종류.</summary>
+    public enum GMDynamicEventKind { SalaryDispute = 0, LockerRoomFaction = 1 }
+
     public enum TeamMoraleState
     {
         Slump = 0,               // 침체 (승률 및 클러치 페널티)

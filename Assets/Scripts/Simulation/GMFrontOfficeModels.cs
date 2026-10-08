@@ -143,6 +143,10 @@ namespace KBOManager.Simulation
         // [TASK-GM-11] 계약 협상실 - 결렬 후 재협상 쿨다운(이번 스토브리그 동안 불가, 해 넘김 시 초기화) · 협상 시도 횟수(카드 재추첨 시드)
         public List<string> NegotiationCooldownIds = new List<string>();
         public int NegotiationAttempts;
+        // [TASK-GM-13] 선수단 회의실 - 약속(상태 기계) · 1티어 동적 사건(연봉 갈등 · 라커룸 파벌) · 일련번호
+        public List<GMPromise> Promises = new List<GMPromise>();
+        public List<GMDynamicEvent> DynamicEvents = new List<GMDynamicEvent>();
+        public int PromiseSeq, EventSeq;
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

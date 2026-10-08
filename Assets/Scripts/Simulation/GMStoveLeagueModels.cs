@@ -4,6 +4,67 @@ using KBOManager.Core;
 
 namespace KBOManager.Simulation
 {
+    /// <summary>[TASK-GM-13] 단장의 약속 1건(세이브 v23 GMFrontOfficeState.Promises) - 상태 기계 · 이행 검사 시즌(DueYear).</summary>
+    [Serializable]
+    public class GMPromise
+    {
+        public string Id = "";
+        public string TeamCode = "";
+        public string PlayerId = "";
+        public string PlayerName = "";
+        public GMPromiseKind Kind;
+        public GMPromiseState State;
+        public string TargetPlayerId = "";   // 동료 재계약 보장 대상
+        public string TargetPlayerName = "";
+        public int MadeYear;
+        public int DueYear;                  // 이 시즌 정규시즌 종료 시 이행 여부를 판정
+        public string Source = "";           // 계약 협상실 · 라커룸 사건
+        public string ResultNote = "";
+    }
+
+    /// <summary>[TASK-GM-13] 동적 사건 1건(세이브 v23 GMFrontOfficeState.DynamicEvents) - 팝업 데이터 + 선택 결과.</summary>
+    [Serializable]
+    public class GMDynamicEvent
+    {
+        public string Id = "";
+        public GMDynamicEventKind Kind;
+        public int Year;
+        public string TeamCode = "";
+        public string PlayerId = "";          // 주인공(연봉 갈등 타자 · 파벌 리더 A)
+        public string PlayerName = "";
+        public string RivalId = "";           // 파벌 리더 B
+        public string RivalName = "";
+        public string MediatorId = "";        // 주장 · 베테랑 중재자
+        public string MediatorName = "";
+        public string Title = "";
+        public string Body = "";
+        public List<string> Choices = new List<string>();
+        public List<string> ChoiceHints = new List<string>();
+        public bool Resolved;
+        public int ChosenIndex = -1;
+        public string ResultText = "";
+        public long Cost;                     // 즉시 보상금(만 원)
+    }
+
+    /// <summary>[TASK-GM-13] 동적 사건 선택 결과.</summary>
+    public class GMDynamicEventResult
+    {
+        public bool Applied;
+        public bool Success;
+        public string Message = "";
+        public int LoyaltyDelta, TrustDelta;
+        public long BudgetDelta;
+        public KBOManager.Services.GMAudioEvent? Audio;
+    }
+
+    /// <summary>[TASK-GM-13] 약속 이행 검사 결과 1건.</summary>
+    public class GMPromiseVerdict
+    {
+        public GMPromise Promise;
+        public bool Broken;
+        public string Message = "";
+    }
+
     /// <summary>
     /// [TASK-GM-11] 시즌 결산 스냅숏 1줄(세이브 v22 GMFrontOfficeState.LastSeasonReview) - 정규시즌 종료 시점 선수 기록.
     /// 연도 전환(AdvancePhase)에서 Stats가 비워지므로 결산 · 협상 근거는 이 스냅숏을 쓴다. Estimated = 시뮬레이션 기록이 아닌 추정치.
@@ -139,5 +200,6 @@ namespace KBOManager.Simulation
         public GMNegotiationOutcome Outcome;
         public int Salary, Years;
         public string Message = "";
+        public GMPromise Promise;            // [TASK-GM-13] 이 계약으로 활성화된 약속(없으면 null)
     }
 }
