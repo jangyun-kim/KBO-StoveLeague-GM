@@ -280,12 +280,16 @@ namespace KBOManager.Controllers
             if (League == null || UserTeam == null || negSelected == null) { SetStatus("협상할 선수를 먼저 고르십시오."); return null; }
             var session = negSession ?? GMNegotiationRoom.Open(League, UserTeam, negSelected, negYears);
             if (session.OnCooldown || session.BlockReason != "") { SetStatus(session.BlockReason); return null; }
+            var player = session.Player;
             var result = GMNegotiationRoom.Resolve(League, UserTeam, session, index);
             negSession = null;
             RefreshNegotiation();
             negMessage.text = result.Message;
             negMessage.color = result.Success ? ToneNeutral : result.Broken ? ToneRisk : White;
             SetStatus(result.Message);
+            // [TASK-GM-12] 결렬 · 삭감 = 공통 긴장 BGM / 성사 = 환희(프랜차이즈 잔류 = 엘도라도)
+            if (result.Broken || result.Outcome == GMNegotiationOutcome.Cut) PlayAudioEvent(GMAudioEvent.Tension);
+            else if (result.Success) PlayAudioEvent(ContractEventFor(player, true));
             return result;
         }
 

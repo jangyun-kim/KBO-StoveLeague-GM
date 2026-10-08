@@ -279,10 +279,12 @@ namespace KBOManager.Controllers
         public GMNegotiationResult AcceptCounterOffer()
         {
             if (counterOffer == null || !counterOffer.Valid) return new GMNegotiationResult { Message = "역제안이 없습니다." };
+            var incoming = counterOffer.Target;
             var r = GMTradeAI.AcceptCounterOffer(League, UserTeam, counterOffer);
             SetStatus(r.Message);
             if (r.Success) { trMine.Clear(); trTheirs.Clear(); trCash = 0; shopOffers.Clear(); shopTarget = null; counterOffer = null; CloseCounterPopup(); }
             Refresh();
+            if (r.Success) PlayAudioEvent(ContractEventFor(incoming, false)); // [TASK-GM-12]
             return r;
         }
 
@@ -531,13 +533,48 @@ namespace KBOManager.Controllers
             mgSfxLabel.text = $"효과음 볼륨 {Mathf.RoundToInt(mgSfxSlider.value * 100)}%";
         }
 
-        /// <summary>프런트 오피스 진입 · 갱신 - 내 구단 테마 BGM(삼성 = 구단 공식 BGM, 그 밖 = 기본 앰비언스). 같은 구단이면 그대로 둔다.</summary>
+        /// <summary>
+        /// 프런트 오피스 진입 · 갱신 - 현재 화면의 BGM 그룹 풀(삼성 = 구단 BGM 로테이션, 그 밖 = 기본 앰비언스).
+        /// [TASK-GM-12] 같은 그룹 화면이면 곡을 끊지 않는다(매니저가 논리 상태로 판정 - Refresh가 여러 번 불려도 재시작 없음).
+        /// </summary>
         private void PlayFrontOfficeBgm()
         {
             var team = UserTeam;
             if (team == null || !isActiveAndEnabled) return;
-            GMAudioManager.Ensure().PlayTeamBgm(team.TeamCode);
+            GMAudioManager.Ensure().EnterScreen(CurrentAudioScreen, team.TeamCode);
         }
+
+        /// <summary>[TASK-GM-12] 현재 패널 → BGM 화면 그룹(구단주 건의 팝업이 열려 있으면 구단주 보고실).</summary>
+        public GMAudioScreen CurrentAudioScreen => discussPopup != null && discussPopup.gameObject.activeSelf ? GMAudioScreen.OwnerReport : AudioScreenFor(currentPane);
+
+        public static GMAudioScreen AudioScreenFor(string pane)
+        {
+            switch (pane)
+            {
+                case PaneFA: case PaneTrade: case PaneSalaries: case PaneProtect: case PaneNegotiation: return GMAudioScreen.Market;
+                case PaneRoster: case PaneChem: case PaneDraft: return GMAudioScreen.Squad;
+                default: return GMAudioScreen.Hub;
+            }
+        }
+
+        /// <summary>[TASK-GM-12] 이벤트 전용곡 트리거(내 구단 기준).</summary>
+        private void PlayAudioEvent(GMAudioEvent ev)
+        {
+            var team = UserTeam;
+            if (team == null) return;
+            GMAudioManager.Ensure().PlayEvent(ev, team.TeamCode);
+        }
+
+        /// <summary>[TASK-GM-12] 계약 성사 등급 - S급(OVR 80 이상 · 연봉 10억 이상) 또는 프랜차이즈(주장 · 충성도 80 이상) = 엘도라도, 그 밖 = 환희.</summary>
+        public static GMAudioEvent ContractEventFor(Player p, bool franchise)
+        {
+            if (p == null) return GMAudioEvent.PositiveResult;
+            bool star = p.BaseOverall >= MajorSigningOvr || p.Salary >= MajorSigningSalary;
+            bool franchiseStar = franchise && (p.IsCaptain || p.Loyalty >= 80 || p.BaseOverall >= MajorSigningOvr - 5);
+            return star || franchiseStar ? GMAudioEvent.MajorResult : GMAudioEvent.PositiveResult;
+        }
+
+        public const int MajorSigningOvr = 80, MajorSigningSalary = 100000;
 
         /// <summary>정규시즌 첫 경기 전 [진행하기] - 정산 대기 FA 보상을 처리한다. 처리 메시지(없으면 null).</summary>
         private string SettleCompensationsBeforeSeason()

@@ -54,6 +54,9 @@ namespace KBOManager.Controllers
 
         /// <summary>[TASK-GM-08] 마지막 타석의 사운드 연출 큐(없으면 null).</summary>
         public GMAudioCue? LastLiveCue { get; private set; }
+        public GMAudioCue? LastExtraCue { get; private set; }       // [TASK-GM-12]
+        public GMAudioEvent? LastResultEvent { get; private set; }  // [TASK-GM-12]
+        private bool lateCloseUsed;
 
         public RectTransform LiveRoot => liveRoot;
         public GMMatchStage Stage => stage;
@@ -222,6 +225,7 @@ namespace KBOManager.Controllers
             session = null;
             if (result == null) { CloseAll(); return false; }
             ShowPostGameBoxScoreView(result);
+            PlayResultAudio(result); // [TASK-GM-12]
             return true;
         }
 
@@ -235,10 +239,37 @@ namespace KBOManager.Controllers
             var audio = GMAudioManager.Ensure();
             var user = session.UserTeam;
             audio.PlayMatchAmbience(user?.TeamCode);
+            if (audio.ActiveEvent == GMAudioEvent.Lineup) audio.EndEvent(); // [TASK-GM-12] 라인업송은 플레이 볼과 함께 페이드아웃
             if (user != null) audio.SetCheerleaderMix(GMCheerleaderRules.EntryCount(user.CheerEntry), user.CheerLeadershipBuff > 0);
             audioSession = session;
             audioSession.OnStepped += OnLiveStep;
             LastLiveCue = null;
+            LastExtraCue = null;
+            lateCloseUsed = false;
+        }
+
+        /// <summary>[TASK-GM-12] ① 전력 분석 진입 - 경기 화면 그룹(관중 앰비언스)으로 옮기고 라인업송을 1회 튼다.</summary>
+        private void PlayPreGameAudio()
+        {
+            string user = simulator?.League?.SelectedTeamCode;
+            if (string.IsNullOrEmpty(user)) return;
+            var audio = GMAudioManager.Ensure();
+            audio.EnterScreen(GMAudioScreen.Match, user);
+            audio.PlayEvent(GMAudioEvent.Lineup, user);
+        }
+
+        /// <summary>[TASK-GM-12] ③ 경기 결과 - 응원가를 끊고 승리 = 승리의 라이온즈(대승 → 엘도라도), 패배 = 공통 패배 BGM.</summary>
+        private void PlayResultAudio(GMMatchBoxScoreData result)
+        {
+            string user = simulator?.League?.SelectedTeamCode;
+            if (result == null || string.IsNullOrEmpty(user) || (result.HomeCode != user && result.AwayCode != user)) return;
+            bool home = result.HomeCode == user;
+            var ev = GMLiveAudioDirector.ResultEventFor(home ? result.HomeR : result.AwayR, home ? result.AwayR : result.HomeR);
+            LastResultEvent = ev;
+            if (!ev.HasValue) return;
+            var audio = GMAudioManager.Ensure();
+            audio.StopMatchAudio();
+            audio.PlayEvent(ev.Value, user);
         }
 
         private void DetachLiveAudio()
@@ -261,6 +292,11 @@ namespace KBOManager.Controllers
             int userAfter = userAway ? step.AwayScore : step.HomeScore, oppAfter = userAway ? step.HomeScore : step.AwayScore;
             LastLiveCue = GMLiveAudioDirector.CueFor(step, userBatting, ctx.RispBefore, ctx.HalfRuns, userBefore, oppBefore, step.GameEnded && userAfter > oppAfter);
             if (LastLiveCue.HasValue) GMAudioManager.Ensure().PlayCue(LastLiveCue.Value, user.TeamCode, ctx.Inning);
+            // [TASK-GM-12] 빅이닝(아파트) · 7~9회 접전(Jump up Lions, 경기당 1회) · 득점 환호 / 아웃 박수 효과음
+            LastExtraCue = GMLiveAudioDirector.ExtraCueFor(step, userBatting, LastLiveCue, ctx.HalfRuns, ctx.Inning, userAfter, oppAfter, lateCloseUsed);
+            if (!LastExtraCue.HasValue) return;
+            string played = GMAudioManager.Ensure().PlayCue(LastExtraCue.Value, user.TeamCode, ctx.Inning);
+            if (LastExtraCue == GMAudioCue.LateCloseSong && played != null) lateCloseUsed = true;
         }
 
         private void SetLiveMessage(string text)

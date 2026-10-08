@@ -1021,7 +1021,7 @@ namespace KBOManager.Controllers
             Btn(discussPopup, "DiscussRelax", $"목표 완화 요청 (신임도 -{GMFrontOffice.DiscussTrustCost})", 600, 510, 1320, 560, new Color(0.25f, 0.27f, 0.36f), ButtonPt).onClick.AddListener(() => Discuss(GMDiscussOption.RelaxGoal));
             Btn(discussPopup, "DiscussBudget", $"추가 예산 요청 · 샐러리캡 {GMFrontOffice.ExtraBudgetPercent}% (신임도 -{GMFrontOffice.ExtraBudgetTrustCost})", 600, 570, 1320, 620, new Color(0.25f, 0.27f, 0.36f), ButtonPt).onClick.AddListener(() => Discuss(GMDiscussOption.ExtraBudget));
             Btn(discussPopup, "DiscussTrade", $"트레이드 한도 +2 해제 (신임도 -{GMFrontOffice.LiftTradeTrustCost})", 600, 630, 1320, 680, new Color(0.25f, 0.27f, 0.36f), ButtonPt).onClick.AddListener(() => Discuss(GMDiscussOption.LiftTradeLimit));
-            Btn(discussPopup, "DiscussCancel", "취소", 600, 700, 1320, 760, ButtonIdle, ButtonPt).onClick.AddListener(() => discussPopup.gameObject.SetActive(false));
+            Btn(discussPopup, "DiscussCancel", "취소", 600, 700, 1320, 760, ButtonIdle, ButtonPt).onClick.AddListener(() => { discussPopup.gameObject.SetActive(false); PlayFrontOfficeBgm(); });
             discussPopup.gameObject.SetActive(false);
         }
 
@@ -1035,6 +1035,7 @@ namespace KBOManager.Controllers
             discussBody.text = $"{discussGoal.Description}\n진행: {discussGoal.Progress}\n{fo.Owner.OwnerName} · 기분 {GMFrontOffice.MoodLabel(fo.OwnerTrust)} · 신임도 {fo.OwnerTrust}\n신임도를 쓰면 목표 완화 · 예산 확보가 가능하지만, 신임도가 바닥나면 해임 위험이 커집니다.";
             discussPopup.gameObject.SetActive(true);
             discussPopup.SetAsLastSibling();
+            PlayFrontOfficeBgm(); // [TASK-GM-12] 구단주 보고실 BGM 그룹
         }
 
         public bool Discuss(GMDiscussOption option)
@@ -1044,6 +1045,7 @@ namespace KBOManager.Controllers
             discussPopup.gameObject.SetActive(false);
             SetStatus(message);
             Refresh();
+            PlayAudioEvent(ok ? GMAudioEvent.OwnerApproval : GMAudioEvent.Tension); // [TASK-GM-12] 승인 = 승리를 위해 → 엘도라도, 거절 · 경고 = 긴장
             return ok;
         }
 
@@ -1391,10 +1393,12 @@ namespace KBOManager.Controllers
         public GMNegotiationResult SubmitExtension()
         {
             if (extSelected == null) return null;
+            var player = extSelected;
             var r = GMStoveLeagueMarket.Extend(League, UserTeam, extSelected, extYearsValue, ExtensionOfferSalary, extConcessionOn);
             extMessage.text = r.Message;
             SetStatus(r.Message);
             Refresh();
+            if (r.Success) PlayAudioEvent(ContractEventFor(player, true)); // [TASK-GM-12] 재계약 성공 = 환희 · 프랜차이즈 잔류 = 엘도라도
             return r;
         }
 
@@ -1530,11 +1534,13 @@ namespace KBOManager.Controllers
         public GMNegotiationResult OfferSelected()
         {
             if (faSelected == null) return null;
+            var player = faSelected;
             var r = GMStoveLeagueMarket.OfferContract(League, UserTeam, faSelected, faYearsValue, FAOfferSalary, faRoleOn);
             faMessage.text = r.Message;
             SetStatus(r.Message);
             if (r.Success) faSelected = null;
             Refresh();
+            if (r.Success) PlayAudioEvent(ContractEventFor(player, false)); // [TASK-GM-12] FA 계약 = 환희 · S급 = 엘도라도
             return r;
         }
 
@@ -1642,10 +1648,12 @@ namespace KBOManager.Controllers
 
         public GMNegotiationResult ProposeTrade()
         {
+            var incoming = trTheirs.OrderByDescending(p => p.BaseOverall).FirstOrDefault();
             var r = GMStoveLeagueMarket.ExecuteTrade(League, UserTeam, trMine.ToList(), TradePartner, trTheirs.ToList(), trCash);
             SetStatus(r.Message);
             if (r.Success) { trMine.Clear(); trTheirs.Clear(); shopOffers.Clear(); shopTarget = null; trCash = 0; }
             Refresh();
+            if (r.Success) PlayAudioEvent(ContractEventFor(incoming, false)); // [TASK-GM-12]
             return r;
         }
 
@@ -1669,10 +1677,12 @@ namespace KBOManager.Controllers
         public GMNegotiationResult AcceptShopOffer(int index)
         {
             if (index >= shopOffers.Count || shopTarget == null) return null;
+            var incoming = shopOffers[index].Player;
             var r = GMStoveLeagueMarket.AcceptOffer(League, UserTeam, shopTarget, shopOffers[index]);
             SetStatus(r.Message);
             if (r.Success) { shopOffers.Clear(); trMine.Clear(); trTheirs.Clear(); shopTarget = null; }
             Refresh();
+            if (r.Success) PlayAudioEvent(ContractEventFor(incoming, false)); // [TASK-GM-12]
             return r;
         }
 
@@ -1730,6 +1740,7 @@ namespace KBOManager.Controllers
             SetStatus(r.Message);
             if (r.Success) drSelected = null;
             Refresh();
+            if (r.Success) PlayAudioEvent(GMAudioEvent.ProspectBoom); // [TASK-GM-12] 유망주 지명 = Jump up Lions
             return r;
         }
 

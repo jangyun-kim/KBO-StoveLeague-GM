@@ -104,6 +104,7 @@ namespace KBOManager.Controllers
             preRoot.gameObject.SetActive(true);
             stage = GMMatchStage.PreGame;
             BindPreview();
+            PlayPreGameAudio(); // [TASK-GM-12] 라인업송
         }
 
         public void ShowPostGameBoxScoreView(GMMatchBoxScoreData boxScore)
