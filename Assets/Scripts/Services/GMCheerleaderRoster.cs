@@ -111,6 +111,26 @@ namespace KBOManager.Services
             return ordered;
         }
 
+        // ================================================================== [TASK-GM-17] 응원단 육성(강화) - 클래식 로비 성장 화면 대체
+
+        /// <summary>강화 비용(만 원) = 기존 응원 포인트 강화 비용표(CheerGrowth.ReinforceCost)를 운영 예산으로 지불.</summary>
+        public static int ReinforceCost(Cheerleader c) => CheerGrowth.ReinforceCost(CheerGrowth.Reinforce(c));
+
+        /// <summary>[응원단 육성 +1강] - 운영 예산을 써서 강화 단계 +1(최대 +10강) → 4대 스탯 +2 · 역할 효과 상승(CheerGrowth).</summary>
+        public static bool TryReinforce(GMTeamState team, Cheerleader c, out string message)
+        {
+            message = "";
+            if (team == null || c == null || !team.CheerleaderPool.Contains(c)) { message = "구단 응원단 인원을 고르십시오."; return false; }
+            if (CheerGrowth.Reinforce(c) >= CheerGrowth.MaxReinforce) { message = $"{c.DisplayName}은(는) 이미 최대 +{CheerGrowth.MaxReinforce}강입니다."; return false; }
+            int cost = ReinforceCost(c);
+            if (team.Budget < cost) { message = $"운영 예산 부족 - 육성비 {GMDiagnosticFormat.Short(cost)} 필요(잔여 {GMDiagnosticFormat.Short(team.Budget)})."; return false; }
+            int before = GMCheerleaderStats.Cheer(c);
+            team.Budget -= cost;
+            c.ReinforceLevel = CheerGrowth.Reinforce(c) + 1;
+            message = $"{c.DisplayName} 응원단 육성 +{c.ReinforceLevel}강 - 육성비 {GMDiagnosticFormat.Short(cost)} · CHEER {before} → {GMCheerleaderStats.Cheer(c)} · 예산 {GMDiagnosticFormat.Short(team.Budget)}";
+            return true;
+        }
+
         // ================================================================== 4대 스탯 → 경기 · 구단 효과
 
         private static double Sum(IEnumerable<Cheerleader> entry, GMCheerStat stat) =>

@@ -181,7 +181,7 @@ namespace KBOManager.Controllers
             headerBar = CompyaUiKit.Box(root, "HeaderBar", 0, 0, 1920, 150, TeamThemePalette.Primary(Team.Samsung));
             seasonTitle = L(kit, "SeasonTitle", GMLeagueState.SeasonTitle(1), 20, 10, 330, 70, TitlePt, TextAnchor.MiddleLeft, White);
             awardsReportButton = Btn(kit, "AwardsReportButton", "시상 리포트", 340, 10, 560, 70, ButtonIdle, ButtonPt - 2);
-            awardsReportButton.onClick.AddListener(() => OpenAwards(null));
+            awardsReportButton.onClick.AddListener(() => { if (simulator != null && simulator.IsSeasonComplete) GoPostseasonOrAwards(); else OpenAwards(null); }); // [TASK-GM-17] 시즌 종료 후엔 포스트시즌부터
             gameCounter = L(kit, "GameCounter", "G 000 / 144", 570, 10, 860, 70, CounterPt, TextAnchor.MiddleRight, Gold);
             newSeasonButton = Btn(kit, "NewSeasonButton", "새 시즌 설정", 870, 10, 1110, 70, ButtonIdle, ButtonPt - 2);
             newSeasonButton.onClick.AddListener(OpenSeasonModal);
@@ -198,7 +198,7 @@ namespace KBOManager.Controllers
             // [TASK-GM-04] 정규시즌 종료 후 진행 버튼 자리에 표시
             awardsButton = Btn(kit, "AwardsButton", "포스트시즌 & 시상식 보기", 20, 80, 700, 142, new Color(0.15f, 0.45f, 0.85f), ButtonPt);
             nextSeasonButton = Btn(kit, "NextSeasonButton", "다음 시즌 전환", 712, 80, 1184, 142, new Color(0.62f, 0.42f, 0.1f), ButtonPt);
-            awardsButton.onClick.AddListener(() => OpenAwards(null));
+            awardsButton.onClick.AddListener(() => GoPostseasonOrAwards()); // [TASK-GM-17] 정규시즌 종료 → 시즌 결산실 → 포스트시즌 트리(1경기씩)
             nextSeasonButton.onClick.AddListener(() => AdvanceSeason());
             awardsButton.gameObject.SetActive(false);
             nextSeasonButton.gameObject.SetActive(false);
@@ -583,8 +583,10 @@ namespace KBOManager.Controllers
             modeSingle.gameObject.SetActive(!seasonOver);
             modeHalf.gameObject.SetActive(!seasonOver);
             modeFull.gameObject.SetActive(!seasonOver);
+            bool psDone = league?.Awards?.Postseason != null && league.Awards.Postseason.Completed; // [TASK-GM-17] 포스트시즌을 직접 보기 전에는 시즌 전환 숨김
             awardsButton.gameObject.SetActive(seasonOver);
-            nextSeasonButton.gameObject.SetActive(seasonOver);
+            nextSeasonButton.gameObject.SetActive(seasonOver && psDone);
+            CompyaUiKit.SetButtonText(awardsButton, psDone ? "시상식 보기" : "포스트시즌 트리로 ▶");
             CompyaUiKit.SetButtonText(nextSeasonButton, $"{(league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR) + 1} 시즌 전환");
             var awards = league?.Awards;
             awardsReportButton.interactable = (awards != null && awards.HasAny) || seasonOver;
@@ -719,6 +721,28 @@ namespace KBOManager.Controllers
                 }
                 return view;
             }
+        }
+
+        /// <summary>
+        /// [TASK-GM-17] 정규시즌 종료 후 [포스트시즌 트리로 ▶] - 대시보드를 닫고 프런트 오피스 허브의 [진행하기] 흐름(시즌 결산실 1회 → 포스트시즌 트리 1경기씩)으로 보낸다.
+        /// 포스트시즌이 끝났으면 시상식을 연다. 허브가 없으면 기존처럼 시상식(포스트시즌 일괄 진행).
+        /// </summary>
+        public Func<bool> PostseasonRoute { get; set; }
+
+        public void GoPostseasonOrAwards()
+        {
+            var league = simulator?.League;
+            bool psDone = league?.Awards?.Postseason != null && league.Awards.Postseason.Completed;
+            if (!psDone && simulator != null && simulator.IsSeasonComplete)
+            {
+                if (simulator != null) simulator.Stop();
+                HidePopup();
+                var route = PostseasonRoute;
+                if (route != null && route()) { gameObject.SetActive(false); return; }
+                var hub = FindAnyObjectByType<GMOotpFrontOfficeUIController>(FindObjectsInactive.Include);
+                if (hub != null && hub.ContinueFromDashboard(simulator)) { gameObject.SetActive(false); return; }
+            }
+            OpenAwards(null);
         }
 
         /// <summary>[시상 리포트] · [포스트시즌 & 시상식 보기] - 시상식 화면을 연다(정규시즌이 끝났으면 포스트시즌 → 11월 시상식 개최).</summary>

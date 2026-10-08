@@ -111,6 +111,7 @@ namespace KBOManager.Controllers
             if (counterPopup != null) counterPopup.gameObject.SetActive(false);
             if (lrEventPopup != null) lrEventPopup.gameObject.SetActive(false);
             if (assistantPopup != null) assistantPopup.gameObject.SetActive(false); // [TASK-GM-16]
+            if (staffPopup != null) staffPopup.gameObject.SetActive(false); // [TASK-GM-17]
             return true;
         }
 

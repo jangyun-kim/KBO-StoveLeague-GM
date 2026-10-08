@@ -14,16 +14,59 @@ namespace KBOManager.Services
     ///   ② 제시: 풀에서 서로 다른 분류(성과 · 재정 · 관계 · 보상)를 우선해 3장을 무작위로(재현 가능 시드) 추린다.
     ///   ③ 확률: 협상 진행 가능성 = 베이스라인(만족도 · 충성도 · 선수단 신뢰도 · 팀 분위기 · Ego · 난이도) + 카드 가산(기본 +10%p × 에이전트 성향 배수 0.5~1.5).
     ///      예상 결과 분포(요구액 수용 / 소폭 인상 / 동결 / 삭감)는 성과 등급 기준선에 카드별 이동량(× 성향 배수)을 더해 정규화한다.
-    ///   ④ 결렬: 쿨다운(이번 스토브리그 재협상 불가) · 만족도/충성도/선수단 신뢰도 하락 · 에이전트 루머 소식(타 구단 관심 · 트레이드 요청 가능성).
-    ///   동료 연봉 연쇄 효과 · 약속 상태 기계는 2단계 범위다(보직 보장 카드는 약속 예고 문구만 남긴다).
+    ///   [TASK-GM-17] 협상 모델 개편(사용자 피드백 - "카드가 협상의 전부 · 한 번 결렬하면 끝"):
+    ///   ⑤ 단장 제시액(슬라이더, 요구액의 70~120%) - 진행 가능성의 뼈대 = 요구액 대비 제시액 갭(100% = 80% · 90% = 54% · 80% = 28%) + 선수 · 라커룸 보정(베이스라인 - 45%p).
+    ///      카드는 그 위에 +10%p × 성향 배수를 더하는 "협상 근거"다. 타결 연봉 = 제시액.
+    ///   ⑥ 협상 실패 = 결렬 위기(기회 3회): 선수 측이 요구액을 제시액과의 차이 35%만큼 양보하고 다시 테이블에 앉는다(실패 1회당 진행 가능성 -4%p).
+    ///      3회 실패 = 최종 결렬 → 선수는 즉시 FA 시장(원 소속 = 내 구단)으로 나간다(쿨다운 대신 시장 이동).
     /// </summary>
     public static class GMNegotiationRoom
     {
         public const float CardBaseBonus = 0.10f;          // 카드 기본 +10%p
         public const float MinArchetypeMultiplier = 0.5f, MaxArchetypeMultiplier = 1.5f;
-        public const float MinProgress = 0.05f, MaxProgress = 0.95f;
+        public const float MinProgress = 0.03f, MaxProgress = 0.97f;
         public const int PoolMin = 5, PoolMax = 7, OfferCount = 3;
         public const int MinRaisePercent = 5;               // 협상 테이블 요구액은 현재 연봉 +5% 이상
+        public const int MaxStrikes = 3;                    // [TASK-GM-17] 협상 기회 3회
+        public const float ConcessionRate = 0.35f, StrikePenalty = 0.04f, MinOfferRatio = 0.7f, MaxOfferRatio = 1.2f, DefaultOfferRatio = 0.95f;
+
+        /// <summary>[TASK-GM-17] 요구액 대비 제시액 갭 → 진행 가능성 뼈대(선수 · 라커룸 보정 전).</summary>
+        public static float GapProgress(int offer, int demand)
+        {
+            double r = offer / (double)Math.Max(1, demand);
+            double v = r >= 1.0 ? 0.80 + (r - 1.0) * 1.2 : 0.80 - (1.0 - r) * 2.6;
+            return (float)Math.Max(MinProgress, Math.Min(0.92, v));
+        }
+
+        public static int ClampOffer(int demand, int offer) => Round(Math.Max(demand * MinOfferRatio, Math.Min(demand * MaxOfferRatio, offer)));
+
+        /// <summary>제시액 기준 결과 분류.</summary>
+        public static GMNegotiationOutcome Classify(int current, int demand, int offer) =>
+            offer >= demand ? GMNegotiationOutcome.AcceptDemand : offer > current ? GMNegotiationOutcome.SmallRaise : offer >= current * 0.95 ? GMNegotiationOutcome.Freeze : GMNegotiationOutcome.Cut;
+
+        /// <summary>이번 스토브리그 협상 진행 기록(없으면 null).</summary>
+        public static GMNegotiationTalk TalkOf(GMLeagueState league, Player p) =>
+            league == null || p == null ? null : GMFrontOffice.Ensure(league).NegotiationTalks.FirstOrDefault(t => t.PlayerId == p.InstanceId && t.Year == league.SeasonYear);
+
+        private static GMNegotiationTalk EnsureTalk(GMLeagueState league, Player p, int demand)
+        {
+            var t = TalkOf(league, p);
+            if (t != null) return t;
+            var fo = GMFrontOffice.Ensure(league);
+            fo.NegotiationTalks.RemoveAll(x => x.PlayerId == p.InstanceId);
+            t = new GMNegotiationTalk { PlayerId = p.InstanceId, Year = league.SeasonYear, Demand = demand };
+            fo.NegotiationTalks.Add(t);
+            return t;
+        }
+
+        /// <summary>제시액을 바꾸고 기본 · 카드별 예측을 다시 계산한다.</summary>
+        public static void SetOffer(GMLeagueState league, GMTeamState team, GMNegotiationSession s, int offer)
+        {
+            if (s?.Player == null || league == null || team == null) return;
+            s.Offer = ClampOffer(s.Demand, offer);
+            s.Baseline = Forecast(league, team, s, null);
+            for (int i = 0; i < s.Forecasts.Count; i++) s.Forecasts[i] = Forecast(league, team, s, s.Forecasts[i].Card);
+        }
 
         public static string OutcomeLabel(GMNegotiationOutcome o) => o == GMNegotiationOutcome.AcceptDemand ? "요구액 수용" : o == GMNegotiationOutcome.SmallRaise ? "소폭 인상" : o == GMNegotiationOutcome.Freeze ? "동결" : "삭감";
         public static string CategoryLabel(GMNegotiationCardCategory c) => c == GMNegotiationCardCategory.Performance ? "성과 근거" : c == GMNegotiationCardCategory.Finance ? "재정 근거" : c == GMNegotiationCardCategory.Relationship ? "관계 근거" : "보상 조건";
@@ -149,7 +192,7 @@ namespace KBOManager.Services
         }
 
         /// <summary>협상 테이블 열기 - 리포트 · 유대 · 카드 풀(5~7) · 제시 3장 · 카드별 예측.</summary>
-        public static GMNegotiationSession Open(GMLeagueState league, GMTeamState team, Player p, int years = 0, int reroll = 0)
+        public static GMNegotiationSession Open(GMLeagueState league, GMTeamState team, Player p, int years = 0, int reroll = 0, int offer = 0)
         {
             var s = new GMNegotiationSession { Player = p };
             if (league == null || team == null || p?.Template == null || !team.ReservePlayers.Contains(p)) { s.BlockReason = "우리 구단 선수를 선택하십시오."; return s; }
@@ -161,11 +204,15 @@ namespace KBOManager.Services
             };
             s.Report = ctx.Report;
             s.CurrentSalary = p.Salary;
-            s.Demand = DemandOf(league, p);
+            s.BaseDemand = DemandOf(league, p);
+            var talk = TalkOf(league, p); // [TASK-GM-17] 실패할 때마다 양보한 요구액 · 남은 기회
+            s.Demand = talk != null && talk.Demand > 0 ? talk.Demand : s.BaseDemand;
+            s.Strikes = talk?.Strikes ?? 0;
+            s.Offer = ClampOffer(s.Demand, offer > 0 ? offer : (int)Math.Round(s.Demand * DefaultOfferRatio));
             s.Years = years > 0 ? Math.Max(1, Math.Min(Player.MaxContractYears, years)) : GMStoveLeagueMarket.PreferredYears(p);
             s.Bonds.AddRange(ctx.Bonds.Select(b => $"{GMPlayerBonds.KindLabel(b.kind)} · {b.partner.Template.PlayerName}"));
-            s.OnCooldown = IsOnCooldown(league, p);
-            if (s.OnCooldown) s.BlockReason = $"{p.Template.PlayerName} 측과 협상이 결렬되어 이번 스토브리그에는 재협상할 수 없습니다(쿨다운).";
+            s.OnCooldown = IsOnCooldown(league, p) || s.Strikes >= MaxStrikes;
+            if (s.OnCooldown) s.BlockReason = $"{p.Template.PlayerName} 측과 협상이 최종 결렬되었습니다(협상 기회 {MaxStrikes}회 소진).";
 
             // ① 후보 풀 5~7장
             var rng = new Random(Seed(league, p, reroll));
@@ -211,30 +258,19 @@ namespace KBOManager.Services
             return (float)Math.Max(0.15, Math.Min(0.85, v));
         }
 
-        private static float[] BaseDistribution(GMPlayerReport r)
-        {
-            switch (r.War.Tone)
-            {
-                case GMReportTone.Strong: return new[] { 0.40f, 0.33f, 0.20f, 0.07f };
-                case GMReportTone.Weak: return new[] { 0.15f, 0.25f, 0.35f, 0.25f };
-                default: return new[] { 0.28f, 0.34f, 0.28f, 0.10f };
-            }
-        }
-
         public static GMNegotiationForecast Forecast(GMLeagueState league, GMTeamState team, GMNegotiationSession s, GMNegotiationCard card)
         {
             var f = new GMNegotiationForecast { Card = card };
             var p = s.Player;
             float m = card?.ArchetypeMultiplier ?? 1f;
             f.Bonus = card == null ? 0f : CardBaseBonus * m;
-            f.Progress = Math.Max(MinProgress, Math.Min(MaxProgress, BaselineProgress(league, team, p) + f.Bonus));
-            var dist = BaseDistribution(s.Report);
-            if (p.EgoLevel >= 4) { dist[0] += 0.05f; dist[3] -= 0.03f; }
-            var def = card == null ? null : Defs.FirstOrDefault(d => d.Id == card.Id);
-            if (def != null) for (int i = 0; i < 4; i++) dist[i] += def.Shift[i] * m;
-            float sum = 0f;
-            for (int i = 0; i < 4; i++) { dist[i] = Math.Max(0.02f, dist[i]); sum += dist[i]; }
-            for (int i = 0; i < 4; i++) f.Distribution[i] = dist[i] / sum;
+            // [TASK-GM-17] 진행 가능성 = 제시액 갭 뼈대 + 선수 · 라커룸 보정(베이스라인 - 0.45) - 실패 횟수 × 4%p + 카드 가산
+            int offer = s.Offer > 0 ? s.Offer : ClampOffer(s.Demand, (int)Math.Round(s.Demand * DefaultOfferRatio));
+            float core = GapProgress(offer, s.Demand) + (BaselineProgress(league, team, p) - 0.45f) - s.Strikes * StrikePenalty;
+            f.Progress = Math.Max(MinProgress, Math.Min(MaxProgress, core + f.Bonus));
+            f.Salary = offer;
+            f.Outcome = Classify(s.CurrentSalary, s.Demand, offer);
+            for (int i = 0; i < 4; i++) f.Distribution[i] = i == (int)f.Outcome ? 1f : 0f;
 
             f.Years = Math.Max(1, Math.Min(Player.MaxContractYears, s.Years + (card?.ExtraYears ?? 0)));
             f.Salaries[(int)GMNegotiationOutcome.AcceptDemand] = s.Demand;
@@ -242,41 +278,42 @@ namespace KBOManager.Services
             f.Salaries[(int)GMNegotiationOutcome.Freeze] = s.CurrentSalary;
             f.Salaries[(int)GMNegotiationOutcome.Cut] = Round(s.CurrentSalary * 0.9);
 
-            // 재무팀장 - 최악(요구액 수용) 기준 샐러리캡 · 운영 자금
-            long payrollAfter = (long)team.Payroll - (team.Roster.Contains(p) ? s.CurrentSalary : 0) + s.Demand;
-            long bonus = (long)s.Demand * f.Years * GMStoveLeagueMarket.ExtensionBonusPercent / 100;
+            // 재무팀장 - 제시액 기준 샐러리캡 · 운영 자금(계약금)
+            long payrollAfter = (long)team.Payroll - (team.Roster.Contains(p) ? s.CurrentSalary : 0) + offer;
+            long bonus = (long)offer * f.Years * GMStoveLeagueMarket.ExtensionBonusPercent / 100;
             if (payrollAfter > team.PayrollCap)
             {
                 f.FinanceTone = GMReportTone.Risk;
-                f.FinanceWarning = $"재무팀장 경고: 요구액 수용 시 페이롤 {GMDiagnosticFormat.Short(payrollAfter)} - 샐러리캡 {GMDiagnosticFormat.Short(payrollAfter - team.PayrollCap)} 초과";
+                f.FinanceWarning = $"재무팀장 경고: 제시액 타결 시 페이롤 {GMDiagnosticFormat.Short(payrollAfter)} - 샐러리캡 {GMDiagnosticFormat.Short(payrollAfter - team.PayrollCap)} 초과";
             }
             else if (team.Budget < bonus)
             {
                 f.FinanceTone = GMReportTone.Risk;
-                f.FinanceWarning = $"재무팀장 경고: 계약금 {GMDiagnosticFormat.Short(bonus)} - 운영 자금 부족";
+                f.FinanceWarning = $"재무팀장 경고: 계약금 {GMDiagnosticFormat.Short(bonus)} - 운영 자금 부족(잔여 {GMDiagnosticFormat.Short(team.Budget)})";
             }
             else if (payrollAfter > team.PayrollCap * 90L / 100)
             {
                 f.FinanceTone = GMReportTone.Weak;
-                f.FinanceWarning = $"재무팀장 주의: 요구액 수용 시 캡 여유 {GMDiagnosticFormat.Short(team.PayrollCap - payrollAfter)}(10% 미만)";
+                f.FinanceWarning = $"재무팀장 주의: 타결 시 캡 여유 {GMDiagnosticFormat.Short(team.PayrollCap - payrollAfter)}(10% 미만) · 계약금 {GMDiagnosticFormat.Short(bonus)}";
             }
             else
             {
                 f.FinanceTone = GMReportTone.Neutral;
-                f.FinanceWarning = $"재무팀장: 요구액 수용 시에도 캡 여유 {GMDiagnosticFormat.Short(team.PayrollCap - payrollAfter)}";
+                f.FinanceWarning = $"재무팀장: 타결 시 캡 여유 {GMDiagnosticFormat.Short(team.PayrollCap - payrollAfter)} · 계약금 {GMDiagnosticFormat.Short(bonus)} · 예산 {GMDiagnosticFormat.Short(team.Budget)} → {GMDiagnosticFormat.Short(team.Budget - bonus)}";
             }
             return f;
         }
 
         public static string ProgressText(GMNegotiationForecast f) => $"협상 진행 가능성 {f.Progress * 100:0}% · 결렬 위험 {f.BreakRisk * 100:0}%";
 
+        /// <summary>[TASK-GM-17] 타결 시 조건 - 제시액 · 기간 · 결과 분류.</summary>
         public static string DistributionText(GMNegotiationForecast f) =>
-            string.Join(" · ", Enumerable.Range(0, 4).Select(i => $"{OutcomeLabel((GMNegotiationOutcome)i)} {f.Distribution[i] * 100:0}%"));
+            $"타결 시 {f.Years}년 · 연봉 {GMDiagnosticFormat.Short(f.Salary)}({OutcomeLabel(f.Outcome)})";
 
         // ================================================================== 결과
 
         /// <summary>카드(제시 3장 중 index, -1 = 카드 없이) 선택 → 진행 판정 → 결과 분포 추첨 → 연봉 · 계약 · 충성도 반영.</summary>
-        public static GMNegotiationRoomResult Resolve(GMLeagueState league, GMTeamState team, GMNegotiationSession s, int cardIndex)
+        public static GMNegotiationRoomResult Resolve(GMLeagueState league, GMTeamState team, GMNegotiationSession s, int cardIndex, double? rollOverride = null)
         {
             var r = new GMNegotiationRoomResult();
             var p = s?.Player;
@@ -292,34 +329,50 @@ namespace KBOManager.Services
             var promise = f.Card != null && f.Card.Id == GMPromiseSystem.RoleCardId && team.IsUserTeam
                 ? GMPromiseSystem.Propose(league, team, p, GMPromiseKind.StarterGuarantee, "계약 협상실") : null;
 
-            if (rng.NextDouble() >= f.Progress)
+            double roll = rng.NextDouble();
+            if (rollOverride.HasValue) roll = rollOverride.Value; // [TASK-GM-17] 검증 · 툴 - 판정 고정
+            if (roll >= f.Progress)
             {
+                // [TASK-GM-17] 실패 = 결렬 위기 - 요구액 양보 후 다음 기회, 3회째 = 최종 결렬 → FA 시장
+                GMPromiseSystem.Cancel(league, promise, "협상 불발");
+                var talk = EnsureTalk(league, p, s.Demand);
+                talk.Strikes++;
+                talk.LastOffer = f.Salary;
+                p.PersonalMorale = Math.Max(0, p.PersonalMorale - 3);
+                p.Loyalty = p.Loyalty - 2;
+                r.ChancesLeft = Math.Max(0, MaxStrikes - talk.Strikes);
+                if (talk.Strikes < MaxStrikes)
+                {
+                    int conceded = f.Salary < s.Demand ? Round(Math.Max(s.CurrentSalary, s.Demand - (s.Demand - f.Salary) * ConcessionRate)) : s.Demand;
+                    talk.Demand = conceded;
+                    r.Stalled = true;
+                    r.NewDemand = conceded;
+                    r.Message = $"{name} 측 거절 {cardText} - 제시 {GMDiagnosticFormat.Short(f.Salary)} · 진행 가능성 {f.Progress * 100:0}%에서 불발. " +
+                                $"에이전트가 요구액을 {GMDiagnosticFormat.Short(s.Demand)} → {GMDiagnosticFormat.Short(conceded)}로 낮춰 다시 협상하자고 합니다(남은 기회 {r.ChancesLeft}회 · 만족도 -3 · 충성도 -2).";
+                    return r;
+                }
                 r.Broken = true;
-                GMPromiseSystem.Cancel(league, promise, "협상 결렬");
                 fo.NegotiationCooldownIds.Add(p.InstanceId);
-                p.PersonalMorale = Math.Max(0, p.PersonalMorale - 6);
-                p.Loyalty = p.Loyalty - 4;
                 team.LockerRoomTrust = Math.Max(0, team.LockerRoomTrust - 2);
                 bool tradeRisk = p.EgoLevel >= 4 && p.Loyalty < 45;
-                r.Message = $"{name} 측 협상 결렬 {cardText} - 만족도 -6 · 충성도 -4 · 선수단 신뢰도 -2, 이번 스토브리그 재협상 불가." +
-                            (tradeRisk ? " 트레이드 요청 가능성이 있습니다." : "");
+                var bonded = GMSalaryChain.ApplyDeparture(league, team, p, "최종 결렬");
+                r.MovedToFA = GMFaCompensation.DeclareFreeAgent(league, team, p) != null; // FA 시장 방출 훅(원 소속 = 내 구단)
+                league.PriorityNegotiationIds.Remove(p.InstanceId);
+                GMFuturesMeeting.Prune(league);
+                r.ChainEffects = bonded;
+                r.Message = $"{name} 측 최종 결렬 {cardText} - 협상 기회 {MaxStrikes}회 소진, {(r.MovedToFA ? "FA 시장으로 나갔습니다" : "구단을 떠났습니다")}(선수단 신뢰도 -2)." +
+                            GMSalaryChain.Summary(bonded) + (tradeRisk ? " 동료들 사이에 동요가 있습니다." : "");
                 league.AddNews(new GMNewsItem
                 {
                     GameIndex = league.GamesPlayed, DateLabel = $"{league.SeasonYear} 스토브리그", Kind = GMNewsKind.Trade, IsUserTeam = true,
-                    Title = $"[루머] {name} 에이전트, 타 구단 관심 시사",
-                    Body = $"{CompyaName(team.TeamCode)}와(과)의 연봉 협상이 결렬됐다. 에이전트는 다른 구단의 역제안 가능성을 언급했다." + (tradeRisk ? " 선수 측 트레이드 요청설도 돈다." : ""),
+                    Title = $"[FA] {name}, {CompyaName(team.TeamCode)}와 협상 최종 결렬 - 시장 출격",
+                    Body = $"세 차례 협상이 모두 무산됐다. 에이전트는 다른 구단의 관심을 언급했다(최종 요구 {GMDiagnosticFormat.Short(s.Demand)} · 구단 제시 {GMDiagnosticFormat.Short(f.Salary)}).",
                 });
                 return r;
             }
 
-            double roll = rng.NextDouble(), acc = 0;
-            var outcome = GMNegotiationOutcome.Freeze;
-            for (int i = 0; i < 4; i++)
-            {
-                acc += f.Distribution[i];
-                if (roll < acc) { outcome = (GMNegotiationOutcome)i; break; }
-            }
-            int salary = f.Salaries[(int)outcome];
+            var outcome = f.Outcome;
+            int salary = f.Salary; // [TASK-GM-17] 타결 연봉 = 단장 제시액
             long bonus = (long)salary * f.Years * GMStoveLeagueMarket.ExtensionBonusPercent / 100;
             if (team.Budget < bonus) { GMPromiseSystem.Cancel(league, promise, "운영 자금 부족"); r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다(협상 보류)."; return r; }
             team.Budget -= bonus;
@@ -333,6 +386,7 @@ namespace KBOManager.Services
             team.LockerRoomTrust = Math.Min(100, team.LockerRoomTrust + 1);
             if (GMPromiseSystem.Activate(league, promise)) r.Promise = promise; // [TASK-GM-13] 계약 체결 = 약속 활성
             r.ChainEffects = GMSalaryChain.Apply(league, team, p, s.CurrentSalary, salary, outcome); // [TASK-GM-14] 동료 연봉 연쇄
+            fo.NegotiationTalks.RemoveAll(t => t.PlayerId == p.InstanceId); // [TASK-GM-17] 타결 = 협상 기록 종료
             r.Success = true;
             r.Outcome = outcome;
             r.Salary = salary;

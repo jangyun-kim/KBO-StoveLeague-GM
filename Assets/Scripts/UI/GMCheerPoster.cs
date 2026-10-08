@@ -124,6 +124,18 @@ namespace KBOManager.UI
             new[] { 392f, 395f, 528f, 620f },
         };
 
+        /// <summary>[TASK-GM-17] 원래 프레임 윗변(4 · 5번 칸은 버튼 영역만 잘랐다) - 사진은 원래 높이로 그려 6칸 사진 크기를 똑같이 맞춘다.</summary>
+        public static readonly float[] PhotoTop = { 38f, 93f, 152f, 282f, 335f, 395f };
+
+        /// <summary>그리기 순서 - 아래 칸(4 · 5 · 6)을 먼저, 위 칸(1 · 2 · 3)을 나중에 그려 사선 모서리 겹침은 위 칸 사진이 덮는다.</summary>
+        public static readonly int[] DrawOrder = { 3, 4, 5, 0, 1, 2 };
+
+        /// <summary>슬롯 버튼들을 그리기 순서대로 정렬한다.</summary>
+        public static void ApplyDrawOrder(IList<Button> slots)
+        {
+            foreach (int i in DrawOrder) if (i < slots.Count && slots[i] != null) slots[i].transform.SetAsLastSibling();
+        }
+
         /// <summary>포스터를 (x0, y0)에 높이 height로 놓을 때 i번 칸의 절대 좌표(1920×1080 기준).</summary>
         public static (float x0, float y0, float x1, float y1) SlotRect(int i, float x0, float y0, float height)
         {
@@ -138,11 +150,20 @@ namespace KBOManager.UI
         /// 슬롯 버튼 내부 장식 - 사진(포스터 프레임을 채우는 Envelope · 마스크) · 역할 태그 · CHEER 태그. 이름은 버튼 라벨(Text)을 하단 이름판으로 옮겨 쓴다.
         /// 만든 사진 RawImage를 돌려준다.
         /// </summary>
-        public static RawImage Decorate(Button slot, Font font, int namePt, int tagPt, bool hasTemplate, Color team)
+        public static RawImage Decorate(Button slot, Font font, int namePt, int tagPt, bool hasTemplate, Color team, int index = -1)
         {
             var rect = (RectTransform)slot.transform;
             if (!hasTemplate) CompyaUiKit.Paint(CompyaUiKit.Norm(rect, "FrameBg", 0f, 0f, 1f, 1f), new Color(team.r * 0.5f, team.g * 0.5f, team.b * 0.5f, 0.85f));
-            var holder = CompyaUiKit.Norm(rect, "PhotoMask", 0.05f, 0.13f, 0.95f, 0.97f);
+            // [TASK-GM-17] 잘린 칸(4 · 5)은 사진 영역을 원래 프레임 윗변까지 늘려 6칸 사진 크기 · 얼굴 높이를 맞춘다(cheerleader_lineup_ref 기준)
+            float bottom = 0.12f, top = 0.985f;
+            if (index >= 0 && index < Frames.Length)
+            {
+                var f = Frames[index];
+                float trimmed = Math.Max(1f, f[3] - f[1]), original = f[3] - PhotoTop[index];
+                bottom = 0.12f * original / trimmed;                                  // 이름판 위
+                top = 1f + (f[1] - PhotoTop[index]) / trimmed - 0.015f * original / trimmed; // 원래 프레임 윗변 바로 아래
+            }
+            var holder = CompyaUiKit.Norm(rect, "PhotoMask", 0.03f, bottom, 0.97f, top);
             holder.gameObject.AddComponent<RectMask2D>();
             var photoRect = CompyaUiKit.Fill(holder, "Photo");
             var raw = photoRect.gameObject.AddComponent<RawImage>();
@@ -150,13 +171,13 @@ namespace KBOManager.UI
             var fitter = photoRect.gameObject.AddComponent<AspectRatioFitter>();
             fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
             raw.color = new Color(0f, 0f, 0f, 0f);
-            if (!hasTemplate) CompyaUiKit.Paint(CompyaUiKit.Norm(rect, "PlateBg", 0.3f, 0f, 1f, 0.12f), new Color(1f, 1f, 1f, 0.92f));
+            if (!hasTemplate) CompyaUiKit.Paint(CompyaUiKit.Norm(rect, "PlateBg", 0.3f, 0f, 1f, bottom), new Color(1f, 1f, 1f, 0.92f));
 
             var label = slot.transform.Find("Text") as RectTransform;
             if (label != null)
             {
                 label.anchorMin = new Vector2(0.3f, 0f);
-                label.anchorMax = new Vector2(1f, 0.12f);
+                label.anchorMax = new Vector2(1f, bottom); // 이름판
                 label.offsetMin = label.offsetMax = Vector2.zero;
                 label.SetAsLastSibling();
                 var t = label.GetComponent<Text>();
@@ -165,7 +186,7 @@ namespace KBOManager.UI
             }
             // 이름 라벨이 슬롯의 첫 Text가 되도록 태그는 라벨 뒤에 붙인다(GetComponentInChildren<Text> = 이름 · "빈 슬롯")
             Tag(rect, "RoleTag", font, tagPt, 0.04f, 0.86f, 0.96f, 0.99f, TextAnchor.MiddleLeft);
-            Tag(rect, "CheerTag", font, tagPt, 0.04f, 0.13f, 0.96f, 0.24f, TextAnchor.MiddleLeft);
+            Tag(rect, "CheerTag", font, tagPt, 0.04f, bottom + 0.01f, 0.96f, bottom + 0.12f, TextAnchor.MiddleLeft);
             return raw;
         }
 

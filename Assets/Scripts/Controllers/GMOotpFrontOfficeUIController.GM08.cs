@@ -262,8 +262,10 @@ namespace KBOManager.Controllers
                 : "제시할 수 있는 패키지가 없습니다.";
             var e = counterOffer.Evaluation;
             float ratio = e != null && e.Required > 0 ? e.Ratio : 0f;
-            cpValue.text = $"트레이드 가치 바: {ratio * 100:0}% ({(e != null && e.Acceptable ? "수락 가능" : "부족")})";
-            SetFill(cpValueFill, Mathf.Clamp01(ratio / 1.5f));
+            var steps = CounterOfferSteps(counterOffer); // [TASK-GM-17] 패키지를 한 명씩 얹을 때 수락 게이지가 타결점을 찾아가는 과정
+            cpValue.text = $"상대 단장 수락 게이지 {string.Join(" → ", steps.Select(x => $"{x * 100:0}%"))} (타결점 100% · {(e != null && e.Acceptable ? "수락 가능" : "부족")})";
+            SetFill(cpValueFill, AcceptanceFill(ratio));
+            AddAcceptanceTick(cpValueFill);
             if (cpValueFill != null) cpValueFill.GetComponent<Image>().color = e != null && e.Acceptable ? BarGreen : BarRed;
             counterPopup.Find("CounterAccept").GetComponent<Button>().interactable = counterOffer.Valid && e != null && e.Acceptable;
             counterPopup.Find("CounterLoad").GetComponent<Button>().interactable = counterOffer.Valid;

@@ -19,7 +19,7 @@ namespace KBOManager.Controllers
     ///      단장과 반대 성별의 운영팀장이 스토리형 대사(한 줄씩 [다음 ▶] · [대화 건너뛰기])로 개입하고 3지선다를 낸다:
     ///      [제가 직접 처리하겠습니다(돌아가기)] · [팀장 선에서 적당히 처리해 주세요(AI 위임)] · [괜찮으니 그냥 진행하세요(무시)].
     ///   ② 선수 스카우팅 리포트 팝업(구 백분위 팝업 확장) - 프로필(OVR · 스타터 덱 등급 · 포지션) · 헤드라인 · 성향 · 수상 · 백분위 막대(색 구간) + 20-80 등급 · 기록 · 스카우트 코멘트.
-    ///   ③ 응원단 탭 = 단상 라인업 포스터(사진) + 엔트리 시너지 · 4대 스탯 합계. 클래식(세로) 영입 화면 경로는 스카우트 허브 치어리더 섹션으로 바로잡는다.
+    ///   ③ 응원단 탭 = 단상 라인업 포스터(사진) + 엔트리 시너지 · 4대 스탯 합계. [TASK-GM-17] 클래식(세로) 영입 · 보유 화면 진입점은 제거했다.
     /// </summary>
     public partial class GMOotpFrontOfficeUIController
     {
@@ -306,9 +306,10 @@ namespace KBOManager.Controllers
                 int index = i;
                 var r = GMCheerPoster.SlotRect(i, CePosterX, CePosterY, CePosterH);
                 ceSlots[i] = Btn(poster, $"CeSlot{i}", "", r.x0, r.y0, r.x1, r.y1, new Color(1f, 1f, 1f, 0.001f), BodyPt);
-                ceSlotPhotos[i] = GMCheerPoster.Decorate(ceSlots[i], font, BodyPt, CellPt, true, pink);
+                ceSlotPhotos[i] = GMCheerPoster.Decorate(ceSlots[i], font, BodyPt, CellPt, true, pink, i);
                 ceSlots[i].onClick.AddListener(() => OpenCheerEntryAt(index));
             }
+            GMCheerPoster.ApplyDrawOrder(ceSlots); // [TASK-GM-17]
             float lx = CePosterX + GMCheerPoster.WidthFor(CePosterH) + 12; // ≈ 625
             for (int i = 0; i < ceEntryLines.Length; i++)
             {
@@ -341,9 +342,8 @@ namespace KBOManager.Controllers
             L(syn, "CePoolTitle", "구단 응원단 풀", 1024, 734, 1896, 768, PanelTitlePt - 1, TextAnchor.MiddleLeft, pink);
             cePool = L(syn, "CePool", "", 1024, 772, 1896, 900, CellPt, TextAnchor.UpperLeft, Muted);
             cePool.lineSpacing = 1.1f;
-            Btn(syn, "CeOpenShop", "치어리더 영입 (스카우트)", 1024, 910, 1452, 970, ButtonIdle, BodyPt).onClick.AddListener(GoCheerRecruit);
-            Btn(syn, "CeOpenInventory", "보유 치어리더 · 성장(강화 · 각성)", 1464, 910, 1896, 970, ButtonIdle, BodyPt).onClick.AddListener(() => GoLegacy(ScreenType.CheerleaderInventory));
-            L(syn, "CeNote", "영입 · 성장은 치어리더 핵심 시스템(축소 금지)이라 기존 화면을 그대로 씁니다.", 1024, 978, 1896, 1028, CellPt, TextAnchor.MiddleLeft, Muted);
+            // [TASK-GM-17] 클래식 로비 영입 · 보유 화면 진입점 제거 - 구단 15인 풀은 실제 응원단이고, 성장(강화)은 엔트리 화면 [응원단 육성]으로 옮겼다
+            L(syn, "CeNote", "응원단 육성(강화)은 15인 풀 · 엔트리 화면에서 - 운영 예산을 써서 4대 스탯을 올립니다.", 1024, 910, 1896, 970, CellPt, TextAnchor.MiddleLeft, Muted);
         }
 
         private void RefreshCheer()
@@ -383,14 +383,6 @@ namespace KBOManager.Controllers
             var view = CheerView != null ? CheerView : FindAnyObjectByType<GMCheerleaderEntryUIController>(FindObjectsInactive.Include);
             var entry = GMCheerleaderRoster.Entry(UserTeam);
             if (view != null && view.gameObject.activeSelf && slot >= 0 && slot < entry.Count) view.Select(entry[slot]);
-        }
-
-        /// <summary>[치어리더 영입] - 구 CheerleaderShop 화면은 스카우트 허브(ScreenType.Scout)의 치어리더 섹션으로 합쳐졌다(TASK-KBO-129). 그 섹션을 바로 연다.</summary>
-        public void GoCheerRecruit()
-        {
-            GoLegacy(ScreenType.Scout);
-            var hubView = FindAnyObjectByType<ScoutHubUIController>(FindObjectsInactive.Include);
-            if (hubView != null) hubView.ShowCheerleaderSection();
         }
     }
 }

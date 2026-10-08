@@ -268,29 +268,22 @@ namespace KBOManager.EditorTests
             Click(pane, "SalSort_AGE");
             Assert.AreEqual(team.Roster.Min(p => p.Age).ToString(), pane.Find("SalRow0/C2").GetComponent<Text>().text, "나이 정렬");
 
-            // ① 재계약 + 보직 양보 인센티브 → 연봉 · 계약연수 · 만족도 · 팀워크 즉시 갱신
+            // ① [TASK-GM-17] 재계약 · 연봉 협상은 계약 협상실에서만 - 연봉 현황 화면은 협상실로 보낸다(요구액 100% 맞추면 되던 우회 계약 제거)
             foreach (var p in team.Roster) { p.HasRoleConcessionBonus = false; p.EgoLevel = Math.Min(p.EgoLevel, p.IsPitcher ? 4 : 3); }
-            foreach (var p in team.Roster.Where(x => !x.IsPitcher).Take(6)) p.EgoLevel = 4;
-            team.AgendaTeamworkBonus = -20; // 팀워크 상한(100) 클램프에 가리지 않도록 기준을 낮춘다
-            var star = TeamChemistryEngine.GetDissatisfiedStars(team.AvailableRoster).First();
+            var star = team.Roster.OrderByDescending(p => p.BaseOverall).First();
             star.ContractYears = 1;
-            int morale0 = star.PersonalMorale;
-            long budget0 = team.Budget;
+            int salary0 = star.Salary;
             hub.SelectExtension(star);
             Assert.AreSame(star, hub.ExtensionSelected);
-            int demand = GMStoveLeagueMarket.ExtensionDemand(star, fo.Difficulty);
-            hub.SetExtensionTerms(3, demand * 105 / 100, true);
-            int offered = hub.ExtensionOfferSalary;
-            Assert.That(offered, Is.InRange(demand, demand * 11 / 10), "슬라이더 제시액");
+            Assert.IsNull(pane.Find("ExtSubmit"), "재계약 실행 버튼 제거");
+            Assert.IsNull(pane.Find("ExtSalarySlider"), "연봉 슬라이더 제거");
             var ext = hub.SubmitExtension();
-            Assert.IsTrue(ext.Success, ext.Message);
-            Assert.AreEqual(offered, star.Salary, "연봉 갱신");
-            Assert.AreEqual(3, star.ContractYears, "계약연수 갱신");
-            Assert.AreEqual(Math.Min(100, morale0 + 12), star.PersonalMorale, "만족도 +12(인센티브)");
-            Assert.IsTrue(star.HasRoleConcessionBonus, "보직 양보 인센티브");
-            Assert.Greater(ext.TeamworkAfter, ext.TeamworkBefore, "팀워크 즉시 상승(보직 불만 해소)");
-            Assert.AreEqual(budget0 - (long)offered * 3 * GMStoveLeagueMarket.ExtensionBonusPercent / 100, team.Budget, "계약금 차감");
-            StringAssert.Contains("재계약", T(pane, "ExtMessage"));
+            Assert.IsFalse(ext.Success, "이 화면에서 직접 계약하지 않는다");
+            Assert.AreEqual(salary0, star.Salary);
+            Assert.AreEqual(GMOotpFrontOfficeUIController.PaneNegotiation, hub.CurrentPane, "계약 협상실로 이동");
+            Assert.AreSame(star, hub.NegotiationSelected);
+            hub.SelectMainTab(0);
+            hub.SelectSubTab(1);
             var low = team.Roster.First(p => p != star && p.BaseOverall < 80);
             var lowball = GMStoveLeagueMarket.Extend(league, team, low, 2, Player.MinSalary, false);
             Assert.IsFalse(lowball.Success && GMStoveLeagueMarket.ExtensionDemand(low, fo.Difficulty) > Player.MinSalary * 1.06, "헐값 제시는 거절");

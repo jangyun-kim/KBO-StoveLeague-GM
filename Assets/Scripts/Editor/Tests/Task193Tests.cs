@@ -396,7 +396,7 @@ namespace KBOManager.EditorTests
             data.StoveLeague.TradeRound = 3;
             data.HallOfFame.Add(new HallOfFameEntrySaveData { SeasonNumber = 2, TierName = "퓨처스", KoreanSeriesWon = true, Mvp = "구자욱", Titles = new List<string> { "타격왕 구자욱 .352 ★" } });
             var back = JsonUtility.FromJson<GameSaveData>(JsonUtility.ToJson(data));
-            Assert.AreEqual(26, back.SaveVersion); // [TASK-GM-16] v26 - 단장 성별 · 조력자 · 스타터 덱 / [TASK-GM-15] v25 - 육성 · 2차 드래프트 · 브리핑 / [TASK-GM-14] v24 - 8 Turn / [TASK-GM-13] v23 - 약속 · 동적 사건 / [TASK-GM-11] v22 - 충성도 · 에이전트 성향 · 시즌 결산 / [TASK-GM-10] v21 - 우선 협상 / [TASK-GM-09] v20 - 글로벌 대회 / [TASK-GM-08] v19 - 퓨처스 풀 · FA 보상 / [TASK-GM-07] v18 - 경기 결과 · 감독 설정 · 포스트시즌 진행 / [TASK-GM-06] v17 - 프런트 오피스 · 드래프트 · ABS(v16 = GM-05 치어리더 피로도, v15 = GM-04 시상, v14 = GM-02 단장 모드)
+            Assert.AreEqual(27, back.SaveVersion); // [TASK-GM-17] v27 - 협상 진행 기록 · [TASK-GM-16] v26 - 단장 성별 · 조력자 · 스타터 덱 / [TASK-GM-15] v25 - 육성 · 2차 드래프트 · 브리핑 / [TASK-GM-14] v24 - 8 Turn / [TASK-GM-13] v23 - 약속 · 동적 사건 / [TASK-GM-11] v22 - 충성도 · 에이전트 성향 · 시즌 결산 / [TASK-GM-10] v21 - 우선 협상 / [TASK-GM-09] v20 - 글로벌 대회 / [TASK-GM-08] v19 - 퓨처스 풀 · FA 보상 / [TASK-GM-07] v18 - 경기 결과 · 감독 설정 · 포스트시즌 진행 / [TASK-GM-06] v17 - 프런트 오피스 · 드래프트 · ABS(v16 = GM-05 치어리더 피로도, v15 = GM-04 시상, v14 = GM-02 단장 모드)
             Assert.AreEqual(2026, back.StoveLeague.SeasonKey);
             CollectionAssert.AreEqual(new[] { "FA_1" }, back.StoveLeague.SignedFaIds);
             Assert.IsTrue(back.StoveLeague.DraftUsed);

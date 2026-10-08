@@ -518,12 +518,13 @@ namespace KBOManager.Services
                     effects.Add($"{q.Template.PlayerName} 충성도 -{d}(상대적 박탈감)");
                 }
             }
-            else if (outcome == GMNegotiationOutcome.Cut)
+            else if (outcome == GMNegotiationOutcome.Cut || IsBigCut(oldSalary, newSalary))
             {
+                int d = CutLoyaltyDrop(oldSalary, newSalary); // [TASK-GM-17] 대폭 삭감 = 유대 동료 충성도 -5~-10
                 foreach (var b in bonded)
                 {
-                    b.Loyalty -= CutResentment;
-                    effects.Add($"유대 동료 {b.Template.PlayerName} 충성도 -{CutResentment}(동료 삭감 반감)");
+                    b.Loyalty -= d;
+                    effects.Add($"유대 동료 {b.Template.PlayerName} 충성도 -{d}(동료 삭감 반감)");
                 }
             }
             if (effects.Count > 0)
@@ -536,6 +537,69 @@ namespace KBOManager.Services
         }
 
         public static string Summary(List<string> effects) => effects == null || effects.Count == 0 ? "" : " / 라커룸 연쇄: " + string.Join(" · ", effects);
+
+        // ================================================================== [TASK-GM-17] 삭감 · 방출 연쇄 심화 + 사전 경고
+
+        public const int CutLoyaltyMin = 5, CutLoyaltyMax = 10, DepartureLoyalty = 8, DepartureTrustPerBond = 2;
+
+        /// <summary>대폭 삭감 = 현재 연봉의 5% 이상 깎임.</summary>
+        public static bool IsBigCut(int oldSalary, int newSalary) => oldSalary > 0 && newSalary <= oldSalary * 0.95;
+
+        /// <summary>삭감 폭 → 유대 동료 충성도 하락(-5 ~ -10, 삭감 5% = -5 · 25% 이상 = -10).</summary>
+        public static int CutLoyaltyDrop(int oldSalary, int newSalary)
+        {
+            double cut = oldSalary <= 0 ? 0 : (oldSalary - newSalary) / (double)oldSalary;
+            return Math.Max(CutLoyaltyMin, Math.Min(CutLoyaltyMax, CutLoyaltyMin + (int)Math.Round(Math.Max(0, cut - 0.05) * 25)));
+        }
+
+        /// <summary>유대 동료(배터리 · 키스톤 · 멘토, 최대 2명).</summary>
+        public static List<(GMBondKind kind, Player partner)> BondedOf(GMTeamState team, Player p) =>
+            team == null || p == null ? new List<(GMBondKind, Player)>() :
+                GMPlayerBonds.For(team, p).Where(b => b.partner?.Template != null).GroupBy(b => b.partner).Select(g => g.First()).Take(MaxBonded).ToList();
+
+        /// <summary>삭감 사전 경고(조력자 대사) - 영향받는 유대 동료가 없거나 삭감이 아니면 빈 문자열.</summary>
+        public static string PreviewCut(GMLeagueState league, GMTeamState team, Player p, int oldSalary, int newSalary)
+        {
+            if (p?.Template == null || !IsBigCut(oldSalary, newSalary)) return "";
+            var bonded = BondedOf(team, p);
+            if (bonded.Count == 0) return "";
+            int d = CutLoyaltyDrop(oldSalary, newSalary);
+            return Warn(league, $"{p.Template.PlayerName} 연봉 {(oldSalary - newSalary) * 100 / Math.Max(1, oldSalary)}% 삭감은 " +
+                                string.Join(" · ", bonded.Select(b => $"{b.partner.Template.PlayerName}({GMPlayerBonds.KindLabel(b.kind)})")) +
+                                $"와(과)의 유대를 해쳐 충성도 -{d}, 락커룸 분위기에 악영향을 줄 수 있습니다.");
+        }
+
+        /// <summary>방출 · 최종 결렬 사전 경고.</summary>
+        public static string PreviewDeparture(GMLeagueState league, GMTeamState team, Player p)
+        {
+            var bonded = BondedOf(team, p);
+            if (p?.Template == null || bonded.Count == 0) return "";
+            return Warn(league, $"{p.Template.PlayerName}을(를) 내보내면 " + string.Join(" · ", bonded.Select(b => $"{b.partner.Template.PlayerName}({GMPlayerBonds.KindLabel(b.kind)})")) +
+                                $"와(과)의 유대가 끊겨 충성도 -{DepartureLoyalty} · 선수단 신뢰도 -{DepartureTrustPerBond * bonded.Count}가 예상됩니다. 락커룸 분위기에 악영향을 줄 수 있습니다.");
+        }
+
+        private static string Warn(GMLeagueState league, string body) => $"{GMAssistant.ProfileFor(league).Plate}: \"단장님, {body}\"";
+
+        /// <summary>방출 · 최종 결렬 · 트레이드로 떠날 때 - 유대 동료 충성도 -8 · 선수단 신뢰도 -2/명. 반응 목록.</summary>
+        public static List<string> ApplyDeparture(GMLeagueState league, GMTeamState team, Player p, string reason)
+        {
+            var effects = new List<string>();
+            if (league == null || team == null || p?.Template == null) return effects;
+            var bonded = BondedOf(team, p);
+            foreach (var b in bonded)
+            {
+                b.partner.Loyalty -= DepartureLoyalty;
+                effects.Add($"유대 동료 {b.partner.Template.PlayerName} 충성도 -{DepartureLoyalty}({reason})");
+            }
+            if (bonded.Count > 0 && team.IsUserTeam) team.LockerRoomTrust = Math.Max(0, team.LockerRoomTrust - DepartureTrustPerBond * bonded.Count);
+            if (effects.Count > 0)
+                league.AddNews(new GMNewsItem
+                {
+                    GameIndex = league.GamesPlayed, DateLabel = $"{league.SeasonYear} 스토브리그", Kind = GMNewsKind.Trade, IsUserTeam = team.IsUserTeam,
+                    Title = $"[라커룸] {p.Template.PlayerName} {reason} - 유대 동료들 동요", Body = string.Join(" · ", effects),
+                });
+            return effects;
+        }
     }
 
     /// <summary>[TASK-GM-13] 선수단 회의실 요약 - 평균 충성도 · 충성도 등급 · 선수별 불만 사항.</summary>

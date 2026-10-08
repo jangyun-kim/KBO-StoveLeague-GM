@@ -177,7 +177,7 @@ namespace KBOManager.EditorTests
         // ================================================================== 3) 3지선다 협상
 
         [Test]
-        public void T3_NegotiationRoom_ThreeValidCards_ForecastDistribution_Cooldown()
+        public void T3_NegotiationRoom_ThreeValidCards_OfferGapProgress_RetryConcession()
         {
             var league = NewLeague(seed: 4040);
             var team = league.UserTeam;
@@ -207,14 +207,21 @@ namespace KBOManager.EditorTests
                     CheckForecast(f, s, $"{who} {f.Card.Title}");
                     Assert.That(f.Card.ArchetypeMultiplier, Is.InRange(GMNegotiationRoom.MinArchetypeMultiplier, GMNegotiationRoom.MaxArchetypeMultiplier));
                     Assert.AreEqual(GMNegotiationRoom.CardBaseBonus * f.Card.ArchetypeMultiplier, f.Bonus, 1e-5, "카드 가산 = +10%p × 성향 배수");
-                    Assert.AreEqual(Math.Min(GMNegotiationRoom.MaxProgress, s.Baseline.Progress + f.Bonus), f.Progress, 1e-4, "진행 가능성 = 베이스라인 + 카드 가산");
-                    Assert.Less(f.Distribution[0], s.Baseline.Distribution[0] + 1e-6, "카드는 요구액 수용 비중을 낮춘다");
+                    Assert.AreEqual(Math.Min(GMNegotiationRoom.MaxProgress, s.Baseline.Progress + f.Bonus), f.Progress, 1e-4, "진행 가능성 = 제시액 갭 기본 + 카드 가산");
+                    Assert.AreEqual(s.Offer, f.Salary, "타결 연봉 = 제시액");
                     StringAssert.Contains("협상 진행 가능성", GMNegotiationRoom.ProgressText(f));
                     StringAssert.Contains("결렬 위험", GMNegotiationRoom.ProgressText(f));
-                    foreach (var label in new[] { "요구액 수용", "소폭 인상", "동결", "삭감" }) StringAssert.Contains(label, GMNegotiationRoom.DistributionText(f));
+                    StringAssert.Contains("타결 시", GMNegotiationRoom.DistributionText(f));
                 }
                 Debug.Log($"[GM11] {who}({GMNegotiationRoom.ArchetypeLabel(p.AgentArchetype)}) 기본 {GMNegotiationRoom.ProgressText(s.Baseline)} | " +
                           string.Join(" | ", s.Forecasts.Select(f => $"{f.Card.Title} {f.Progress * 100:0}% [{GMNegotiationRoom.DistributionText(f)}]")));
+                // [TASK-GM-17] 제시액 갭 = 진행 가능성의 뼈대 - 요구액 100% 제시가 95% 제시보다 높고, 80% 제시보다 훨씬 높다
+                var full = GMNegotiationRoom.Open(league, team, p, 0, 0, s.Demand);
+                var low = GMNegotiationRoom.Open(league, team, p, 0, 0, s.Demand * 8 / 10);
+                Assert.Greater(full.Baseline.Progress, s.Baseline.Progress, "제시액 ↑ = 진행 가능성 ↑");
+                Assert.Greater(s.Baseline.Progress, low.Baseline.Progress + 0.1f, "요구액 80% 제시는 크게 낮다");
+                Assert.Greater(full.Baseline.Progress, 0.5f, "요구액 100% 제시 = 과반 이상(진행 가능성 과소 문제 해소)");
+                Assert.AreEqual(GMNegotiationOutcome.AcceptDemand, full.Baseline.Outcome);
             }
             foreach (var id in GMNegotiationRoom.AllCardIds)
                 foreach (GMAgentArchetype a in Enum.GetValues(typeof(GMAgentArchetype)))
@@ -224,35 +231,54 @@ namespace KBOManager.EditorTests
             var target = targets[0];
             int cap = team.PayrollCap;
             team.PayrollCap = team.Payroll;
-            var tight = GMNegotiationRoom.Open(league, team, target);
+            var tight = GMNegotiationRoom.Open(league, team, target, 0, 0, GMNegotiationRoom.DemandOf(league, target) * 11 / 10); // [TASK-GM-17] 제시액(요구액 110%) 기준 캡 초과
             Assert.IsTrue(tight.Forecasts.All(f => f.FinanceTone == GMReportTone.Risk && f.FinanceWarning.Contains("샐러리캡")), "캡 초과 경고");
             team.PayrollCap = cap;
 
-            // 결과 반영 - 타결이면 연봉 · 계약, 결렬이면 쿨다운 + 루머
+            // [TASK-GM-17] 결과 반영 - 타결 = 제시액으로 계약, 실패 = 요구액 양보 + 다음 기회, 3회 실패 = 최종 결렬 → FA 시장
             var session = GMNegotiationRoom.Open(league, team, target);
             int news = league.News.Count;
             var r = GMNegotiationRoom.Resolve(league, team, session, 0);
-            Assert.IsTrue(r.Success ^ r.Broken, r.Message);
-            Assert.Greater(league.News.Count, news, "협상 결과 소식");
+            Assert.IsTrue(r.Success ^ r.Stalled, r.Message);
             if (r.Success)
             {
                 Assert.AreEqual(r.Salary, target.Salary);
                 Assert.AreEqual(r.Years, target.ContractYears);
-                Assert.AreEqual(session.Forecasts[0].Salaries[(int)r.Outcome], r.Salary);
+                Assert.AreEqual(session.Offer, r.Salary, "타결 연봉 = 제시액");
+                Assert.Greater(league.News.Count, news, "협상 타결 소식");
             }
-            else Assert.IsTrue(GMNegotiationRoom.IsOnCooldown(league, target));
 
-            // 결렬 쿨다운 - 이번 스토브리그 재협상 불가, 해 넘김 시 해제
+            // 실패 = 결렬 위기 → 요구액 양보 · 남은 기회, 3회째 = 최종 결렬(FA 시장)
             var other = targets[1];
-            GMFrontOffice.Ensure(league).NegotiationCooldownIds.Add(other.InstanceId);
-            var blocked = GMNegotiationRoom.Open(league, team, other);
-            Assert.IsTrue(blocked.OnCooldown);
-            StringAssert.Contains("쿨다운", blocked.BlockReason);
-            int salary = other.Salary;
-            Assert.IsFalse(GMNegotiationRoom.Resolve(league, team, blocked, 0).Success);
-            Assert.AreEqual(salary, other.Salary);
+            other.ContractYears = 1;
+            var s1 = GMNegotiationRoom.Open(league, team, other, 0, 0, 1); // 최저 제시(요구액의 70%)
+            int demand0 = s1.Demand, salary = other.Salary;
+            GMNegotiationRoomResult last = null;
+            for (int attempt = 0; attempt < 20 && team.ReservePlayers.Contains(other); attempt++)
+            {
+                var sx = GMNegotiationRoom.Open(league, team, other, 0, 0, 1);
+                Assert.AreEqual("", sx.BlockReason);
+                last = GMNegotiationRoom.Resolve(league, team, sx, -1);
+                if (last.Success) break;
+                if (last.Stalled)
+                {
+                    Assert.Less(last.NewDemand, sx.Demand, "실패 = 요구액 양보(맞춰 가기)");
+                    Assert.AreEqual(GMNegotiationRoom.MaxStrikes - GMNegotiationRoom.TalkOf(league, other).Strikes, last.ChancesLeft);
+                    Assert.AreEqual(last.NewDemand, GMNegotiationRoom.Open(league, team, other).Demand, "다음 테이블 = 양보한 요구액");
+                }
+            }
+            Assert.IsNotNull(last);
+            if (!last.Success)
+            {
+                Assert.IsTrue(last.Broken, "3회 실패 = 최종 결렬");
+                Assert.IsTrue(last.MovedToFA, "최종 결렬 = FA 시장 이동");
+                Assert.Contains(other, league.FreeAgents);
+                Assert.IsFalse(team.ReservePlayers.Contains(other));
+                Assert.AreEqual(GMOriginOf(league, other), team.TeamCode, "원 소속 = 내 구단");
+            }
+            TestContext.WriteLine($"[GM11 협상] 최초 요구 {demand0} · 결과 {(last.Success ? "타결" : "최종 결렬 → FA")} · {last.Message}");
             GMFrontOffice.OnNewSeason(league);
-            Assert.IsFalse(GMNegotiationRoom.IsOnCooldown(league, other), "새 스토브리그 = 쿨다운 해제");
+            Assert.IsNull(GMNegotiationRoom.TalkOf(league, targets[0]), "새 스토브리그 = 협상 기록 초기화");
 
             // 유대 - 주전 포수 ↔ 선발(배터리)
             var catcher = LineupAssignment.AssignStarters(team.Roster, team.Lineup).First(x => x.Position == BatterPosition.Catcher).Player;
@@ -268,11 +294,12 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMTeamState.DefaultLockerRoomTrust, new GMTeamSaveData().LockerRoomTrust);
         }
 
+        private static string GMOriginOf(GMLeagueState league, Player p) => league.FAOrigins.TryGetValue(p.InstanceId, out var o) ? o.TeamCode : "";
+
         private static void CheckForecast(GMNegotiationForecast f, GMNegotiationSession s, string label)
         {
             Assert.That(f.Progress, Is.InRange(GMNegotiationRoom.MinProgress, GMNegotiationRoom.MaxProgress), label);
-            Assert.AreEqual(1f, f.Distribution.Sum(), 1e-4, label + " 분포 합 1");
-            Assert.IsTrue(f.Distribution.All(d => d > 0f && d < 1f), label);
+            Assert.AreEqual(1f, f.Distribution.Sum(), 1e-4, label + " 결과 분류 1개");
             Assert.AreEqual(1f - f.Progress, f.BreakRisk, 1e-6);
             Assert.GreaterOrEqual(f.Salaries[0], f.Salaries[1], label + " 수용 ≥ 소폭");
             if (s.CurrentSalary < Player.MaxSalary) Assert.Greater(f.Salaries[1], f.Salaries[2], label + " 소폭 > 동결");
@@ -319,7 +346,7 @@ namespace KBOManager.EditorTests
             {
                 Assert.IsTrue(neg.Find($"NegCardsPanel/NegCard{i}").gameObject.activeSelf, $"카드 {i}");
                 StringAssert.Contains("협상 진행 가능성", T(neg, $"NegCardsPanel/NegProgress{i}"));
-                StringAssert.Contains("요구액 수용", T(neg, $"NegCardsPanel/NegDist{i}"));
+                StringAssert.Contains("타결 시", T(neg, $"NegCardsPanel/NegDist{i}")); // [TASK-GM-17] 타결 조건(제시액 · 기간)
                 StringAssert.Contains("재무팀장", T(neg, $"NegCardsPanel/NegFinance{i}"));
             }
             StringAssert.Contains("에이전트 성향", T(neg, "NegReportPanel/NegInfo"));

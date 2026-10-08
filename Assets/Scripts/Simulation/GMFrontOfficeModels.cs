@@ -164,6 +164,16 @@ namespace KBOManager.Simulation
         public string AssistantLastNote = "";
         public List<string> AssistantIgnored = new List<string>(); // "연도|이슈 키" - 무시한 경고는 그해 다시 묻지 않는다
         public int StarterDeckSeed;
+        // [TASK-GM-17] 계약 협상 진행 기록(선수별 실패 횟수 · 양보 반영 요구액 · 연도) - 세이브 v27
+        public List<GMNegotiationTalk> NegotiationTalks = new List<GMNegotiationTalk>();
+    }
+
+    /// <summary>[TASK-GM-17] 한 선수와의 이번 스토브리그 협상 진행 - 실패할 때마다 요구액을 양보하고(제시액과의 차이 35%), 3회 실패 = 최종 결렬.</summary>
+    [Serializable]
+    public class GMNegotiationTalk
+    {
+        public string PlayerId = "";
+        public int Year, Strikes, Demand, LastOffer;
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

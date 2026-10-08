@@ -99,16 +99,13 @@ namespace KBOManager.Controllers
         // ---- 연봉 · 재계약
         private readonly Button[] salRows = new Button[TableRows];
         private readonly Text[,] salCells = new Text[TableRows, 9];
-        private Text salPage, extPlayer, extInfo, extSalaryLabel, extTeamwork, extMessage;
-        private readonly Button[] extYears = new Button[5];
-        private Slider extSlider;
-        private Button extConcession, extSubmit, extCaptain, extRelease;
+        private Text salPage, extPlayer, extInfo, extTeamwork, extMessage;
+        private Button extSubmit, extCaptain, extRelease;
+        private Text extWarning; // [TASK-GM-17] 방출 사전 경고(조력자)
         private string salSort = "OVR";
         private bool salDesc = true;
         private int salPageIndex;
         private Player extSelected;
-        private int extYearsValue = 3;
-        private bool extConcessionOn;
         private List<Player> salShown = new List<Player>();
 
         // ---- FA
@@ -327,6 +324,7 @@ namespace KBOManager.Controllers
                 BuildCounterPopup();     // [TASK-GM-08] AI 단장 1:N 역제안
                 BuildLockerEventPopup(); // [TASK-GM-13] 라커룸 사건
                 BuildAssistantPopup();   // [TASK-GM-16] 조력자(운영팀장) 대화 모달
+                BuildStaffReportPopup(); // [TASK-GM-17] 프런트 직원 리포트
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -443,8 +441,9 @@ namespace KBOManager.Controllers
             continueButton.onClick.AddListener(() => Continue());
             settingsButton = Btn(root, "SettingsButton", "단장 설정", 1772, 50, 1908, 88, ButtonIdle, 15);
             settingsButton.onClick.AddListener(OpenManagerSetup);
-            lobbyButton = Btn(root, "LobbyButton", "클래식 로비", 1772, 94, 1908, 130, ButtonIdle, SmallPt);
-            lobbyButton.onClick.AddListener(GoClassicLobby);
+            // [TASK-GM-17] 클래식 로비 버튼 제거 → 단장 설정 아래 재정 바로가기(직원 리포트 - 재무팀장)
+            lobbyButton = Btn(root, "FinanceButton", "재정 · 직원 리포트", 1772, 94, 1908, 130, new Color(0.45f, 0.36f, 0.12f), SmallPt);
+            lobbyButton.onClick.AddListener(() => OpenStaffReport(1));
 
             CompyaUiKit.Box(root, "MainTabBar", 0, 136, 1920, 192, TabBarColor);
             for (int i = 0; i < MainTabCount; i++)
@@ -478,7 +477,7 @@ namespace KBOManager.Controllers
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
                 new List<SubTab> { P("FA 영입 협상", PaneFA), P("트레이드·Shop a Player", PaneTrade), P("FA 보상·보호명단", PaneProtect) }, // [TASK-GM-08] · [TASK-GM-16] 외부 영입 전용(내부 계약 = 프런트 오피스 계약 협상실)
                 new List<SubTab> { P("신인 드래프트·백분위", PaneDraft), P("FA 스카우팅", PaneFA), P("2차 드래프트", PaneSecondDraft) }, // [TASK-GM-15] Turn 3
-                new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리 관리 열기", OpenCheerEntry), A("치어리더 영입", GoCheerRecruit), A("보유 치어리더·성장", () => GoLegacy(ScreenType.CheerleaderInventory)) },
+                new List<SubTab> { P("엔트리·전담 응원", PaneCheer), A("15인 풀·엔트리·육성 열기", OpenCheerEntry) }, // [TASK-GM-17] 클래식 로비 영입 · 보유 화면 제거(육성은 엔트리 화면 [응원단 육성])
                 new List<SubTab> { P("구단 역사", PaneHistory), P("포스트시즌 트리", PanePostseason), A("시상식 열기", OpenAwards), P("스토리 엔딩", PaneStory) },
             };
         }
@@ -521,6 +520,7 @@ namespace KBOManager.Controllers
             if (pctPopup != null) pctPopup.SetAsLastSibling();
             if (counterPopup != null) counterPopup.SetAsLastSibling(); // [TASK-GM-08]
             if (lrEventPopup != null) lrEventPopup.SetAsLastSibling(); // [TASK-GM-13]
+            if (staffPopup != null) staffPopup.SetAsLastSibling(); // [TASK-GM-17]
             if (assistantPopup != null) assistantPopup.SetAsLastSibling(); // [TASK-GM-16]
             foreach (var m in menuLists) if (m != null) m.SetAsLastSibling(); // [TASK-GM-07] 툴바 메뉴 · 감독 설정은 맨 위
             if (managerPopup != null) managerPopup.SetAsLastSibling();
@@ -657,24 +657,14 @@ namespace KBOManager.Controllers
             }
 
             CompyaUiKit.Box(pane, "ExtBg", 1302, 248, 1908, 1036, PanelColor);
-            L(pane, "ExtTitle", "재계약 · 연장 협상 (SALARIES & EXTENSIONS)", 1314, 254, 1896, 290, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
+            L(pane, "ExtTitle", "연봉 현황 · 주장 · 방출 (SALARIES)", 1314, 254, 1896, 290, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
             extPlayer = L(pane, "ExtPlayer", "", 1314, 294, 1896, 328, BannerPt - 1, TextAnchor.MiddleLeft, White);
             extInfo = L(pane, "ExtInfo", "", 1314, 330, 1896, 396, BodyPt, TextAnchor.UpperLeft, Muted);
-            L(pane, "ExtYearsLabel", "계약 기간", 1314, 402, 1440, 440, BodyPt, TextAnchor.MiddleLeft, Muted);
-            for (int k = 0; k < 5; k++)
-            {
-                int years = k + 1;
-                float x0 = 1446 + k * 90;
-                extYears[k] = Btn(pane, $"ExtYears{years}", $"{years}년", x0, 402, x0 + 84, 440, ButtonIdle, BodyPt);
-                extYears[k].onClick.AddListener(() => { extYearsValue = years; RefreshExtensionPanel(); });
-            }
-            extSalaryLabel = L(pane, "ExtSalaryLabel", "", 1314, 448, 1896, 482, BodyPt, TextAnchor.MiddleLeft, White);
-            extSlider = BuildSlider(pane, "ExtSalarySlider", 1314, 488, 1896, 520);
-            extSlider.onValueChanged.AddListener(_ => RefreshExtensionSalaryLabel());
-            extConcession = Btn(pane, "ExtConcession", "", 1314, 530, 1896, 572, ButtonIdle, BodyPt);
-            extConcession.onClick.AddListener(() => { extConcessionOn = !extConcessionOn; RefreshExtensionPanel(); });
-            extSubmit = Btn(pane, "ExtSubmit", "재계약/연장 협상 실행", 1314, 582, 1896, 636, ButtonOn, ButtonPt + 1);
+            // [TASK-GM-17] 재계약 · 연봉 협상은 계약 협상실 하나로(요구액 100%만 맞추면 되던 우회 협상 제거)
+            L(pane, "ExtNote", "재계약 · 연봉 협상은 계약 협상실에서만 진행합니다 - 요구액 대비 제시액 갭 + 협상 카드 · 협상 기회 3회.", 1314, 402, 1896, 470, CellPt, TextAnchor.UpperLeft, Muted);
+            extSubmit = Btn(pane, "ExtToNegotiation", "계약 협상실에서 재계약 협상 ▶", 1314, 478, 1896, 534, ButtonOn, ButtonPt + 1);
             extSubmit.onClick.AddListener(() => SubmitExtension());
+            extWarning = L(pane, "ExtWarning", "", 1314, 542, 1896, 638, CellPt, TextAnchor.UpperLeft, new Color(1f, 0.62f, 0.2f));
             extCaptain = Btn(pane, "ExtCaptain", "주장(Captain) 임명", 1314, 646, 1600, 698, new Color(0.45f, 0.36f, 0.12f), ButtonPt);
             extCaptain.onClick.AddListener(() => AppointCaptainSelected());
             extRelease = Btn(pane, "ExtRelease", "방출(Release)", 1610, 646, 1896, 698, new Color(0.55f, 0.18f, 0.16f), ButtonPt);
@@ -732,11 +722,12 @@ namespace KBOManager.Controllers
             faSlider.onValueChanged.AddListener(_ => RefreshFASalaryLabel());
             faRole = Btn(pane, "FARoleGuarantee", "", 1314, 578, 1896, 620, ButtonIdle, BodyPt);
             faRole.onClick.AddListener(() => { faRoleOn = !faRoleOn; RefreshFAPanel(); });
-            faOffer = Btn(pane, "FAOffer", "계약 제시 (Offer Contract)", 1314, 630, 1896, 684, ButtonOn, ButtonPt + 1);
+            faOffer = Btn(pane, "FAOffer", "계약 제시 · 입찰 (Offer / Bid)", 1314, 630, 1896, 684, ButtonOn, ButtonPt + 1);
             faOffer.onClick.AddListener(() => OfferSelected());
             faBudget = L(pane, "FABudget", "", 1314, 692, 1896, 740, CellPt, TextAnchor.UpperLeft, Gold);
             faCompensation = L(pane, "FACompensation", "", 1314, 744, 1896, 800, CellPt, TextAnchor.UpperLeft, BlueLink); // [TASK-GM-08] FA 등급 · 보상
-            faMessage = L(pane, "FAMessage", "", 1314, 806, 1896, 1030, BodyPt, TextAnchor.UpperLeft, White);
+            BuildFABidControls(pane); // [TASK-GM-17] 입찰 경쟁(역제안 · 추가 베팅 · 포기)
+            faMessage = L(pane, "FAMessage", "", 1314, 952, 1896, 1030, CellPt, TextAnchor.UpperLeft, White);
             faMessage.lineSpacing = 1.15f;
         }
 
@@ -770,6 +761,7 @@ namespace KBOManager.Controllers
             trTheirSlots = L(pane, "TrTheirSlots", "", 1264, 350, 1896, 406, CellPt, TextAnchor.UpperLeft, White);
             trValueLabel = L(pane, "TrValueLabel", "", 1264, 410, 1896, 440, CellPt, TextAnchor.MiddleLeft, Gold);
             trValueFill = Bar(pane, "TrValueBar", 1264, 444, 1896, 466, BarGreen);
+            AddAcceptanceTick(trValueFill); // [TASK-GM-17] 타결점 100% 눈금
             trNeeds = L(pane, "TrNeeds", "", 1264, 470, 1896, 502, CellPt, TextAnchor.MiddleLeft, Muted);
             BuildTradeCashRow(pane); // [TASK-GM-08] 연봉 보조
             Btn(pane, "TrPropose", "트레이드 제안", 1264, 546, 1576, 590, ButtonOn, ButtonPt).onClick.AddListener(() => ProposeTrade());
@@ -1315,16 +1307,10 @@ namespace KBOManager.Controllers
             SelectExtension(salShown[row]);
         }
 
-        /// <summary>재계약 대상 선택 - 기간은 선호 기간, 연봉 슬라이더는 요구액(중앙)으로 맞춘다.</summary>
+        /// <summary>연봉 현황 선택(주장 · 방출 · 협상실 이동 대상).</summary>
         public void SelectExtension(Player p)
         {
             extSelected = p;
-            if (p != null)
-            {
-                extYearsValue = GMStoveLeagueMarket.PreferredYears(p);
-                extConcessionOn = false;
-                if (extSlider != null) extSlider.SetValueWithoutNotify(0.5f);
-            }
             Refresh();
         }
 
@@ -1333,16 +1319,6 @@ namespace KBOManager.Controllers
         public static float SliderFor(int demand, int salary) => demand <= 0 ? 0.5f : Mathf.InverseLerp(0.7f, 1.5f, salary / (float)demand);
 
         private int ExtensionDemand => extSelected != null ? GMStoveLeagueMarket.ExtensionDemand(extSelected, GMFrontOffice.Ensure(League).Difficulty) : 0;
-        public int ExtensionOfferSalary => extSelected != null ? SliderSalary(ExtensionDemand, extSlider.value) : 0;
-
-        /// <summary>테스트 · 단축 - 제시 조건을 직접 넣는다.</summary>
-        public void SetExtensionTerms(int years, int salary, bool concession)
-        {
-            extYearsValue = Mathf.Clamp(years, 1, Player.MaxContractYears);
-            extConcessionOn = concession;
-            if (extSelected != null) extSlider.SetValueWithoutNotify(SliderFor(ExtensionDemand, salary));
-            RefreshExtensionPanel();
-        }
 
         private void RefreshExtensionPanel()
         {
@@ -1350,41 +1326,29 @@ namespace KBOManager.Controllers
             var team = UserTeam;
             var report = TeamChemistryEngine.EvaluateRoster(team.AvailableRoster, team.PayrollCap, team.TeamworkBuff);
             extTeamwork.text = $"팀워크 {report.TeamworkScore} · 실효 전력 x{report.EffectivePowerMultiplier:0.00} · {PenaltySummary(report)}";
-            for (int k = 0; k < 5; k++) extYears[k].targetGraphic.color = k + 1 == extYearsValue ? ButtonOn : ButtonIdle;
-            CompyaUiKit.SetButtonText(extConcession, $"[{(extConcessionOn ? "V" : " ")}] 보직 양보 인센티브 (스타 불만 즉시 해소)");
-            extConcession.targetGraphic.color = extConcessionOn ? new Color(0.2f, 0.5f, 0.3f) : ButtonIdle;
-            bool has = p != null && team.Roster.Contains(p);
-            extSubmit.interactable = extCaptain.interactable = extRelease.interactable = has;
+            bool has = p != null && team.ReservePlayers.Contains(p);
+            extCaptain.interactable = extRelease.interactable = has && team.Roster.Contains(p);
+            extSubmit.interactable = has && GMNegotiationRoom.Targets(team).Contains(p);
             if (!has)
             {
                 extPlayer.text = "선수를 선택하십시오 (계약 만료 임박 = 잔여 1년 이하 경고색)";
-                extInfo.text = "";
-                extSalaryLabel.text = "";
+                extInfo.text = extWarning.text = "";
                 return;
             }
             extPlayer.text = $"{GMFrontOffice.PositionLabel(p.Position)} {p.Template.PlayerName} · {p.Age}세 · OVR {p.BaseOverall}/{p.Potential}{(p.IsCaptain ? " · 주장" : "")}";
-            extInfo.text = $"현재 연봉 {GMDiagnosticFormat.Won(p.Salary)} · 잔여 {p.ContractYears}년 · 만족도 {p.PersonalMorale} · {GMStoveLeagueMarket.RoleLabel(p.RoleArchetype)}(Ego {p.EgoLevel})\n" +
-                           $"요구 조건: {GMDiagnosticFormat.Won(ExtensionDemand)} × {GMStoveLeagueMarket.PreferredYears(p)}년{(GMStoveLeagueMarket.IsExtensionTarget(p) ? " · 재계약 대상" : " · 연장 협상")}";
-            RefreshExtensionSalaryLabel();
+            extInfo.text = $"현재 연봉 {GMDiagnosticFormat.Won(p.Salary)} · 잔여 {p.ContractYears}년 · 만족도 {p.PersonalMorale} · 충성도 {p.Loyalty} · {GMStoveLeagueMarket.RoleLabel(p.RoleArchetype)}(Ego {p.EgoLevel})\n" +
+                           $"요구 조건: {GMDiagnosticFormat.Won(ExtensionDemand)} × {GMStoveLeagueMarket.PreferredYears(p)}년{(GMStoveLeagueMarket.IsExtensionTarget(p) ? " · 재계약 대상(계약 협상실)" : " · 잔여 계약 2년 이상")}";
+            extWarning.text = GMSalaryChain.PreviewDeparture(League, team, p); // [TASK-GM-17] 방출 전 조력자 경고
         }
 
-        private void RefreshExtensionSalaryLabel()
-        {
-            if (extSelected == null || extSalaryLabel == null) return;
-            int s = ExtensionOfferSalary, d = Math.Max(1, ExtensionDemand);
-            extSalaryLabel.text = $"제시 연봉 {GMDiagnosticFormat.Won(s)} (요구 대비 {s * 100 / d}%) · {extYearsValue}년 총액 {GMDiagnosticFormat.Won((long)s * extYearsValue)}";
-        }
-
+        /// <summary>[TASK-GM-17] 재계약은 계약 협상실에서만 - 선택 선수로 협상실을 연다(이 화면에서 직접 계약하지 않는다).</summary>
         public GMNegotiationResult SubmitExtension()
         {
-            if (extSelected == null) return null;
-            if (TurnBlocked(PaneSalaries, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
-            var player = extSelected;
-            var r = GMStoveLeagueMarket.Extend(League, UserTeam, extSelected, extYearsValue, ExtensionOfferSalary, extConcessionOn);
-            extMessage.text = r.Message;
-            SetStatus(r.Message);
-            Refresh();
-            PlayNegotiationSfx(r.Success, !r.Success); // [TASK-GM-14] 재계약 · 연봉 협상 = BGM 유지 + 짧은 효과음
+            var r = new GMNegotiationResult { Message = "재계약 · 연봉 협상은 계약 협상실에서 진행합니다." };
+            if (extSelected == null) return r;
+            if (!GMNegotiationRoom.Targets(UserTeam).Contains(extSelected)) { r.Message = $"{extSelected.Template.PlayerName}은(는) 잔여 계약 2년 이상 - 협상 대상이 아닙니다."; SetStatus(r.Message); return r; }
+            OpenNegotiationRoom(extSelected);
+            SetStatus($"{extSelected.Template.PlayerName} - 계약 협상실로 이동했습니다.");
             return r;
         }
 
@@ -1491,6 +1455,7 @@ namespace KBOManager.Controllers
                 faPlayer.text = "FA 선수를 선택하십시오";
                 faInfo.text = faSalaryLabel.text = "";
                 faCompensation.text = league.PendingCompensations.Count > 0 ? $"FA 보상 정산 대기 {league.PendingCompensations.Count}건 - [FA 보상·보호명단]에서 확인" : "";
+                RefreshFABid(); // [TASK-GM-17]
                 return;
             }
             faPlayer.text = $"{GMFrontOffice.PositionLabel(p.Position)} {p.Template.PlayerName} · {p.Age}세 · OVR {GMStoveLeagueMarket.OvrLabel(p)}";
@@ -1498,6 +1463,7 @@ namespace KBOManager.Controllers
             faInfo.text += $"\n요구: {GMStoveLeagueMarket.DemandLabel(p, fo.Difficulty, true)}";
             faCompensation.text = GMFaCompensation.CompensationLabel(league, p, team.TeamCode); // [TASK-GM-08]
             RefreshFASalaryLabel();
+            RefreshFABid(); // [TASK-GM-17] 입찰 경쟁 현황
         }
 
         private void RefreshFASalaryLabel()
@@ -1522,13 +1488,7 @@ namespace KBOManager.Controllers
             if (faSelected == null) return null;
             if (TurnBlocked(PaneFA, out var lockMsg)) return new GMNegotiationResult { Message = lockMsg }; // [TASK-GM-14]
             var player = faSelected;
-            var r = GMStoveLeagueMarket.OfferContract(League, UserTeam, faSelected, faYearsValue, FAOfferSalary, faRoleOn);
-            faMessage.text = r.Message;
-            SetStatus(r.Message);
-            if (r.Success) faSelected = null;
-            Refresh();
-            if (r.Success) PlayAudioEvent(ContractEventFor(player, false)); // [TASK-GM-12] FA 계약 = 환희 · S급 = 엘도라도
-            return r;
+            return BidFA(FAOfferSalary); // [TASK-GM-17] 계약 제시 = 입찰 경쟁 1라운드(경쟁 구단 역제안 · 추가 베팅 · 포기)
         }
 
         // ---- 트레이드
@@ -1582,8 +1542,8 @@ namespace KBOManager.Controllers
             trTheirSlots.text = $"받을 선수({trTheirs.Count}/{GMStoveLeagueMarket.MaxTradeSide}): {(trTheirs.Count > 0 ? string.Join(" · ", trTheirs.Select(p => $"{p.Template.PlayerName}(가치 {GMStoveLeagueMarket.TradeValue(p):0})")) : "-")}";
             var e = GMStoveLeagueMarket.Evaluate(League, team, trMine, partner, trTheirs, trCash); // [TASK-GM-08] 1:N · 연봉 보조
             RefreshTradeCash();
-            trValueLabel.text = e.Required > 0 ? $"트레이드 가치 바: {e.Ratio * 100:0}% (100% 이상 = 상대 단장 수락)" : $"트레이드 가치 바: {e.Reason}";
-            SetFill(trValueFill, e.Required > 0 ? Mathf.Clamp01(e.Ratio / 1.5f) : 0f);
+            trValueLabel.text = e.Required > 0 ? $"상대 단장 수락 게이지 {Math.Min(999, e.Ratio * 100):0}% / 타결점 100% · {(e.Acceptable ? "수락 가능" : $"{Math.Max(0, (1 - e.Ratio) * 100):0}%p 부족")}" : $"상대 단장 수락 게이지: {e.Reason}";
+            SetFill(trValueFill, e.Required > 0 ? AcceptanceFill(e.Ratio) : 0f); // [TASK-GM-17] 100% = 막대 80% 지점(눈금)
             if (trValueFill != null) trValueFill.GetComponent<Image>().color = e.Acceptable ? BarGreen : BarRed;
             var fo = GMFrontOffice.Ensure(League);
             trNeeds.text = (e.Required > 0 ? e.NeedsNote : "구단 니즈 평가 대기") + $" · 올해 트레이드 {fo.TradesThisYear}/{GMFrontOffice.HouseRuleLabel(fo.HouseRuleMaxTrades > 0 ? fo.HouseRuleMaxTrades + fo.ExtraTradeAllowance : 0)}";
@@ -2023,21 +1983,6 @@ namespace KBOManager.Controllers
             simulator = next;
             ResetSelections();
             Refresh();
-        }
-
-        /// <summary>기존(세로) 화면으로 이동 - 허브를 잠시 내리고 UIManager로 전환한다. 그 화면을 닫고 로비로 오면 허브가 다시 열린다.</summary>
-        public void GoLegacy(ScreenType type)
-        {
-            if (UIManager.Instance == null) { SetStatus("화면 관리자가 없습니다."); return; }
-            Hide();
-            UIManager.Instance.ShowScreen(type);
-        }
-
-        public void GoClassicLobby()
-        {
-            SuppressAutoOpenOnce = true;
-            Hide();
-            UIManager.Instance?.ShowScreen(ScreenType.Lobby);
         }
     }
 }

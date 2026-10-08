@@ -422,10 +422,24 @@ namespace KBOManager.EditorTests
             dash.AwardsView = awardsView;
             dash.Bind(sim);
             var root = dash.Root;
-            Assert.IsTrue(root.Find("AwardsButton").gameObject.activeSelf, "[포스트시즌 & 시상식 보기]");
+            // [TASK-GM-17] 정규시즌 종료 → [포스트시즌 트리로 ▶](허브 [진행하기] 흐름 - 결산실 → 트리 1경기씩), 포스트시즌을 보기 전에는 시즌 전환 숨김
+            Assert.IsTrue(root.Find("AwardsButton").gameObject.activeSelf, "[포스트시즌 트리로]");
+            StringAssert.Contains("포스트시즌 트리", root.Find("AwardsButton").GetComponentInChildren<Text>().text);
+            Assert.IsFalse(root.Find("NextSeasonButton").gameObject.activeSelf, "포스트시즌 전 시즌 전환 숨김");
+            Assert.IsFalse(root.Find("ModeFull").gameObject.activeSelf, "진행 버튼 숨김");
+            bool routed = false;
+            awardsView.gameObject.SetActive(false); // Build 직후 활성 상태 - 열렸는지 보려면 먼저 내린다
+            dash.PostseasonRoute = () => { routed = true; return true; };
+            root.Find("AwardsButton").GetComponent<Button>().onClick.Invoke();
+            Assert.IsTrue(routed, "포스트시즌 트리로 라우팅(시상식으로 건너뛰지 않음)");
+            Assert.IsFalse(league.Awards.Postseason.Completed, "포스트시즌 일괄 진행 안 함");
+            Assert.IsFalse(awardsView.gameObject.activeSelf, "시상식으로 바로 가지 않음");
+            GMAwardEvaluator.RunPostseason(sim); // 트리에서 끝까지 치렀다고 가정
+            dash.gameObject.SetActive(true);
+            dash.Refresh();
             Assert.IsTrue(root.Find("NextSeasonButton").gameObject.activeSelf, "[2027 시즌 전환]");
             Assert.AreEqual("2027 시즌 전환", root.Find("NextSeasonButton").GetComponentInChildren<Text>().text);
-            Assert.IsFalse(root.Find("ModeFull").gameObject.activeSelf, "진행 버튼 숨김");
+            StringAssert.Contains("시상식", root.Find("AwardsButton").GetComponentInChildren<Text>().text);
             root.Find("AwardsButton").GetComponent<Button>().onClick.Invoke();
             Assert.IsTrue(awardsView.gameObject.activeSelf, "시상식 화면 열림");
             Assert.AreEqual(GMAwardsTab.KboCeremony, awardsView.CurrentTab);

@@ -175,6 +175,9 @@ namespace KBOManager.Simulation
         public readonly float[] Distribution = new float[4]; // GMNegotiationOutcome 순서(합 1)
         public readonly int[] Salaries = new int[4];
         public int Years;
+        /// <summary>[TASK-GM-17] 타결 시 연봉(= 단장 제시액) · 제시액 기준 결과 분류(요구액 수용 · 소폭 인상 · 동결 · 삭감).</summary>
+        public int Salary;
+        public GMNegotiationOutcome Outcome;
         public GMReportTone FinanceTone = GMReportTone.Neutral;
         public string FinanceWarning = "";
     }
@@ -185,6 +188,9 @@ namespace KBOManager.Simulation
         public KBOManager.Models.Player Player;
         public GMPlayerReport Report;
         public int CurrentSalary, Demand, Years;
+        /// <summary>[TASK-GM-17] 단장 제시액(슬라이더) · 최초 요구액(양보 전) · 이번 스토브리그 협상 실패 횟수(3회 = 최종 결렬 → FA 시장).</summary>
+        public int Offer, BaseDemand, Strikes;
+        public int ChancesLeft => Math.Max(0, KBOManager.Services.GMNegotiationRoom.MaxStrikes - Strikes);
         public readonly List<GMNegotiationCard> Pool = new List<GMNegotiationCard>();
         public readonly List<GMNegotiationCard> Offered = new List<GMNegotiationCard>();
         public GMNegotiationForecast Baseline;
@@ -198,7 +204,12 @@ namespace KBOManager.Simulation
     public class GMNegotiationRoomResult
     {
         public bool Success;
+        /// <summary>최종 결렬(협상 기회 소진) - 선수는 FA 시장으로 나간다([TASK-GM-17]).</summary>
         public bool Broken;
+        /// <summary>[TASK-GM-17] 협상 실패(결렬 위기) - 선수 측이 요구액을 일부 양보하고 다음 협상 기회를 남긴다.</summary>
+        public bool Stalled;
+        public bool MovedToFA;
+        public int ChancesLeft, NewDemand;
         public GMNegotiationOutcome Outcome;
         public int Salary, Years;
         public string Message = "";

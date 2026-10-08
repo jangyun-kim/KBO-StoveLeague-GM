@@ -108,7 +108,8 @@ namespace KBOManager.Controllers
 
             var staff = Panel(pane, "SummaryStaffPanel", 652, 248, 1908, 560);
             L(staff, "StaffTitle", "포지션 약점 분석 · 직원 보고", 664, 254, 1180, 286, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
-            L(staff, "StaffLegend", ToneLegend, 1190, 254, 1900, 286, CellPt, TextAnchor.MiddleRight, Muted);
+            L(staff, "StaffLegend", ToneLegend, 1190, 254, 1640, 286, CellPt, TextAnchor.MiddleRight, Muted);
+            Btn(staff, "SummaryStaffReport", "프런트 직원 리포트 ▶", 1650, 252, 1900, 288, new Color(0.45f, 0.36f, 0.12f), SmallPt).onClick.AddListener(() => OpenStaffReport(0)); // [TASK-GM-17]
             for (int i = 0; i < WeakRows; i++)
             {
                 float y0 = 292 + i * 44;
@@ -246,15 +247,19 @@ namespace KBOManager.Controllers
                 negYearButtons[k] = Btn(rep, $"NegYears{years}", $"{years}년", x0, 706, x0 + 76, 742, ButtonIdle, BodyPt);
                 negYearButtons[k].onClick.AddListener(() => { negYears = years; negSession = null; RefreshNegotiation(); });
             }
-            negBaseline = L(rep, "NegBaseline", "", 584, 748, 1118, 804, CellPt, TextAnchor.UpperLeft, White);
-            negBasic = Btn(rep, "NegBasic", "카드 없이 기본 제시", 584, 810, 1118, 856, new Color(0.35f, 0.35f, 0.4f), ButtonPt);
+            // [TASK-GM-17] 제시 연봉 슬라이더(요구액 70~120%) - 요구액과의 갭이 진행 가능성의 뼈대, 카드는 가산
+            negBaseline = L(rep, "NegBaseline", "", 584, 748, 1118, 778, CellPt, TextAnchor.MiddleLeft, White);
+            negOfferSlider = BuildSlider(rep, "NegOfferSlider", 584, 782, 1118, 808);
+            negOfferSlider.onValueChanged.AddListener(OnNegotiationSlider);
+            negBasic = Btn(rep, "NegBasic", "카드 없이 이 금액으로 제시", 584, 814, 1118, 856, new Color(0.35f, 0.35f, 0.4f), ButtonPt);
             negBasic.onClick.AddListener(() => ChooseNegotiationCard(-1));
             negTrust = L(rep, "NegTrust", "", 584, 862, 1118, 890, CellPt, TextAnchor.MiddleLeft, Muted);
-            negMessage = L(rep, "NegMessage", "", 584, 896, 1118, 1030, BodyPt, TextAnchor.UpperLeft, White);
+            negWarning = L(rep, "NegWarning", "", 584, 894, 1118, 950, CellPt, TextAnchor.UpperLeft, ToneRisk);
+            negMessage = L(rep, "NegMessage", "", 584, 954, 1118, 1030, CellPt, TextAnchor.UpperLeft, White);
             negMessage.lineSpacing = 1.1f;
 
             var cards = Panel(pane, "NegCardsPanel", 1142, 248, 1908, 1036);
-            L(cards, "NegCardsTitle", "협상 카드 3장 - 근거를 하나 고르십시오", 1154, 254, 1600, 286, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
+            L(cards, "NegCardsTitle", "협상 카드 3장 - 제시액에 근거를 더합니다", 1154, 254, 1600, 286, PanelTitlePt, TextAnchor.MiddleLeft, Gold);
             negPool = L(cards, "NegPool", "", 1604, 254, 1896, 286, CellPt, TextAnchor.MiddleRight, Muted);
             for (int i = 0; i < 3; i++)
             {
@@ -291,12 +296,13 @@ namespace KBOManager.Controllers
             var player = session.Player;
             var result = GMNegotiationRoom.Resolve(League, UserTeam, session, index);
             negSession = null;
+            if (result.Broken) negSelected = null; // [TASK-GM-17] 최종 결렬 = FA 시장으로 떠남
             RefreshNegotiation();
             negMessage.text = result.Message;
-            negMessage.color = result.Success ? ToneNeutral : result.Broken ? ToneRisk : White;
+            negMessage.color = result.Success ? ToneNeutral : result.Broken ? ToneRisk : result.Stalled ? ToneRisk : White;
             SetStatus(result.Message);
             // [TASK-GM-14] 연봉 협상은 BGM을 바꾸지 않는다(스토브리그 기본 BGM 유지) - 타결 · 결렬 짧은 효과음 1회
-            PlayNegotiationSfx(result.Success, result.Broken);
+            PlayNegotiationSfx(result.Success, result.Broken || result.Stalled);
             return result;
         }
 
@@ -323,7 +329,9 @@ namespace KBOManager.Controllers
                 SetCell(negCells[r, 2], p.Age.ToString(), White);
                 SetCell(negCells[r, 3], GMDiagnosticFormat.Short(p.Salary), White);
                 SetCell(negCells[r, 4], $"{p.ContractYears}년", White);
-                SetCell(negCells[r, 5], cooldown ? "결렬" : p.ContractYears == 0 ? "만료" : "협상", cooldown ? ToneRisk : p.ContractYears == 0 ? Gold : Muted);
+                var talk = GMNegotiationRoom.TalkOf(League, p); // [TASK-GM-17] 남은 협상 기회
+                string state = cooldown ? "결렬" : talk != null && talk.Strikes > 0 ? $"기회 {GMNegotiationRoom.MaxStrikes - talk.Strikes}" : p.ContractYears == 0 ? "만료" : "협상";
+                SetCell(negCells[r, 5], state, cooldown || (talk != null && talk.Strikes > 0) ? ToneRisk : p.ContractYears == 0 ? Gold : Muted);
             }
 
             negTrust.text = $"선수단의 단장 신뢰도 {team.LockerRoomTrust} · 팀 분위기(팀워크) {TeamChemistryEngine.EvaluateRoster(team.AvailableRoster, team.PayrollCap, team.TeamworkBuff).TeamworkScore}";
@@ -331,20 +339,20 @@ namespace KBOManager.Controllers
             {
                 negName.text = "협상 대상 없음";
                 negInfo.text = "잔여 계약 1년 이하 선수가 없습니다(시즌 종료 · 연도 전환 후 만료자가 생깁니다).";
-                negMoney.text = negConfidence.text = negBonds.text = negBaseline.text = negPool.text = "";
+                negMoney.text = negConfidence.text = negBonds.text = negBaseline.text = negPool.text = negWarning.text = "";
                 for (int i = 0; i < 6; i++) { negMetricLabels[i].text = negMetricValues[i].text = negMetricVerdicts[i].text = ""; SetFill(negMetricFills[i], 0f); }
                 for (int i = 0; i < 3; i++) { negCards[i].gameObject.SetActive(false); negPitch[i].text = negReaction[i].text = negProgress[i].text = negDist[i].text = negFinance[i].text = ""; }
                 negBasic.interactable = false;
                 return;
             }
 
-            if (negSession == null || negSession.Player != negSelected) negSession = GMNegotiationRoom.Open(League, team, negSelected, negYears);
+            if (negSession == null || negSession.Player != negSelected) negSession = GMNegotiationRoom.Open(League, team, negSelected, negYears, 0, negSession != null && negSession.Player == negSelected ? negSession.Offer : 0);
             var s = negSession;
             var sel = negSelected;
             var rep = s.Report;
             negName.text = $"{sel.Template.PlayerName} · {rep.PositionLabel} · {sel.Age}세 · OVR {sel.BaseOverall}";
             negInfo.text = $"에이전트 성향 {GMNegotiationRoom.ArchetypeLabel(sel.AgentArchetype)} · 라커룸 {RoleLabel(sel.RoleArchetype)} · Ego {sel.EgoLevel}\n구단 충성도 {sel.Loyalty} · 개인 만족도 {sel.PersonalMorale}{(sel.IsCaptain ? " · 주장" : "")}";
-            negMoney.text = $"현재 {GMDiagnosticFormat.Short(s.CurrentSalary)} → 요구 {GMDiagnosticFormat.Short(s.Demand)} · 희망 {s.Years}년";
+            negMoney.text = $"현재 {GMDiagnosticFormat.Short(s.CurrentSalary)} → 요구 {GMDiagnosticFormat.Short(s.Demand)}{(s.Demand < s.BaseDemand ? $"(양보 · 최초 {GMDiagnosticFormat.Short(s.BaseDemand)})" : "")} · 희망 {s.Years}년 · 협상 기회 {s.ChancesLeft}/{GMNegotiationRoom.MaxStrikes}";
             negConfidence.text = $"성과 리포트 {rep.ConfidenceLabel} · {rep.SampleNote}";
             negConfidence.color = rep.SampleWarning ? ToneRisk : Muted;
             var metrics = rep.Metrics.ToList();
@@ -362,7 +370,9 @@ namespace KBOManager.Controllers
             negBonds.text = s.Bonds.Count > 0 ? "유대: " + string.Join(" / ", s.Bonds.Take(3)) : "유대: 규칙 기반 연결 고리 없음(배터리 · 키스톤 · 멘토)";
             for (int k = 0; k < 5; k++) negYearButtons[k].targetGraphic.color = k + 1 == s.Years ? ButtonOn : ButtonIdle;
             var b = s.Baseline;
-            negBaseline.text = $"기본 제시: {GMNegotiationRoom.ProgressText(b)}\n결과별 연봉: 수용 {GMDiagnosticFormat.Short(b.Salaries[0])} · 소폭 {GMDiagnosticFormat.Short(b.Salaries[1])} · 동결 {GMDiagnosticFormat.Short(b.Salaries[2])} · 삭감 {GMDiagnosticFormat.Short(b.Salaries[3])}";
+            negBaseline.text = $"제시 연봉 {GMDiagnosticFormat.Short(s.Offer)}(요구 대비 {s.Offer * 100 / Math.Max(1, s.Demand)}% · {GMNegotiationRoom.OutcomeLabel(b.Outcome)}) · 카드 없이 {b.Progress * 100:0}%";
+            if (negOfferSlider != null) negOfferSlider.SetValueWithoutNotify(OfferSliderValue(s));
+            negWarning.text = NegotiationWarningText(s); // [TASK-GM-17] 조력자 사전 경고(삭감 유대 반발 · 마지막 기회)
             negBasic.interactable = !s.OnCooldown;
             negPool.text = $"후보 풀 {s.Pool.Count}장 중 3장";
             for (int i = 0; i < 3; i++)

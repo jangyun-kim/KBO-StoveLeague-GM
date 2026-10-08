@@ -52,6 +52,7 @@ namespace KBOManager.Controllers
         private Image detailFrame;
         private Button closeButton, toggleButton, dedicateButton, autoButton, rotateButton, backButton;
         private Button dedicationTargetButton; // [TASK-GM-06] D.3
+        private Button reinforceButton;        // [TASK-GM-17] 응원단 육성(강화)
 
         private GMTeamState team;
         private Cheerleader selected;
@@ -108,9 +109,10 @@ namespace KBOManager.Controllers
                 int index = i;
                 var r = GMCheerPoster.SlotRect(i, PosterX, PosterY, PosterH);
                 slots[i] = Btn(kit, $"Slot{i}", "", r.x0, r.y0, r.x1, r.y1, new Color(1f, 1f, 1f, 0.001f), SlotPt);
-                slotPhotos[i] = GMCheerPoster.Decorate(slots[i], font, SlotPt, RolePt, true, Pink);
+                slotPhotos[i] = GMCheerPoster.Decorate(slots[i], font, SlotPt, RolePt, true, Pink, i);
                 slots[i].onClick.AddListener(() => SelectSlot(index));
             }
+            GMCheerPoster.ApplyDrawOrder(slots); // [TASK-GM-17] 위 칸이 사선 모서리를 덮도록
 
             // ---- 중: 선택 치어리더 상세(사진 · 4대 스탯)
             float dx = PosterX + pw + 14; // ≈ 786
@@ -136,7 +138,9 @@ namespace KBOManager.Controllers
             }
             toggleButton = Btn(kit, "ToggleEntryButton", "엔트리 배치", dx, 576, dx + 270, 630, EntryOn, ButtonPt);
             dedicateButton = Btn(kit, "DedicateButton", "전담 응원 지정", dx + 278, 576, 1334, 630, new Color(0.45f, 0.3f, 0.65f), ButtonPt);
-            autoButton = Btn(kit, "AutoArrangeButton", "최적 컨디션 5인 자동 편성", dx, 638, 1334, 690, new Color(0.15f, 0.45f, 0.85f), ButtonPt - 1);
+            autoButton = Btn(kit, "AutoArrangeButton", "최적 컨디션 5인 자동 편성", dx, 638, dx + 270, 690, new Color(0.15f, 0.45f, 0.85f), ButtonPt - 2);
+            reinforceButton = Btn(kit, "ReinforceButton", "응원단 육성 +1강", dx + 278, 638, 1334, 690, new Color(0.62f, 0.45f, 0.12f), ButtonPt - 2); // [TASK-GM-17]
+            reinforceButton.onClick.AddListener(() => ReinforceSelected());
             toggleButton.onClick.AddListener(() => ToggleSelected());
             dedicateButton.onClick.AddListener(() => DedicateSelected());
             autoButton.onClick.AddListener(AutoArrange);
@@ -285,6 +289,16 @@ namespace KBOManager.Controllers
             return next;
         }
 
+        /// <summary>[TASK-GM-17] [응원단 육성 +1강] - 운영 예산으로 강화(클래식 로비 성장 화면 대체).</summary>
+        public bool ReinforceSelected()
+        {
+            if (team == null || selected == null) return false;
+            bool ok = GMCheerleaderRoster.TryReinforce(team, selected, out string reason);
+            message.text = reason;
+            Refresh();
+            return ok;
+        }
+
         /// <summary>[최적 컨디션 5인 자동 편성].</summary>
         public void AutoArrange()
         {
@@ -309,7 +323,7 @@ namespace KBOManager.Controllers
         {
             if (root == null || team == null) return;
             var entry = GMCheerleaderRoster.Entry(team);
-            title.text = $"{NameAliasTable.DisplayTeamName(team.TeamCode)} 응원단 엔트리";
+            title.text = $"{NameAliasTable.DisplayTeamName(team.TeamCode)} 응원단 엔트리 · 운영 예산 {GMDiagnosticFormat.Short(team.Budget)}";
             summary.text = $"{GMCheerleaderRules.Summary(entry.Count, team.CheerleaderPool.Count)} · 팀워크 +{GMCheerleaderRoster.LeadershipTeamworkBonus(entry)} · " +
                            $"실책 -{GMCheerleaderRoster.ErrorReduction(entry) * 100f:0}% · 홈 흥행 +{GMCheerleaderRoster.HomeRevenue(entry):N0}만 원";
 
@@ -359,6 +373,9 @@ namespace KBOManager.Controllers
                     gaugeFills[k].offsetMin = gaugeFills[k].offsetMax = Vector2.zero;
                 }
                 CompyaUiKit.SetButtonText(toggleButton, idx >= 0 ? "엔트리 해제" : "엔트리 배치");
+                bool maxed = CheerGrowth.Reinforce(s) >= CheerGrowth.MaxReinforce;
+                CompyaUiKit.SetButtonText(reinforceButton, maxed ? "육성 완료(+10강)" : $"응원단 육성 +1강 (-{GMDiagnosticFormat.Short(GMCheerleaderRoster.ReinforceCost(s))})");
+                reinforceButton.interactable = !maxed;
                 dedicateButton.interactable = GMCheerleaderRoster.IsAceOrLeader(team, s);
                 var dedicated = GMCheerleaderRoster.DedicatedPlayerOf(team, s);
                 dedicationTargetButton.interactable = dedicateButton.interactable;
@@ -372,6 +389,7 @@ namespace KBOManager.Controllers
                 for (int k = 0; k < 4; k++) { gaugeValues[k].text = "-"; gaugeFills[k].anchorMax = new Vector2(0f, 1f); }
                 dedicateButton.interactable = false;
                 dedicationTargetButton.interactable = false;
+                reinforceButton.interactable = false;
             }
 
             for (int i = 0; i < PoolRows; i++)

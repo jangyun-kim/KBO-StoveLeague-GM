@@ -113,9 +113,9 @@ namespace KBOManager.Controllers
             Btn(root, "NavHome", "홈", 94, 4, 150, 40, ButtonIdle, SmallPt).onClick.AddListener(GoMainHome);
             var actions = new (string label, Action action)[][]
             {
-                new (string, Action)[] { ("저장하기", SaveNow), ("단장 설정 · 새 게임", OpenManagerSetup), ("새 시즌/난이도 모달", OpenSeasonSettings), ("클래식 로비", GoClassicLobby) },
+                new (string, Action)[] { ("저장하기", SaveNow), ("단장 설정 · 새 게임", OpenManagerSetup), ("새 시즌/난이도 모달", OpenSeasonSettings), ("프런트 직원 리포트", () => OpenStaffReport(0)) }, // [TASK-GM-17] 클래식 로비 제거
                 new (string, Action)[] { ("진행하기 (메인 홈 → 대시보드)", () => Continue()), ("한 경기 전력 분석", OpenPreGame), ("실시간 시즌 대시보드", OpenDashboard), ("직전 경기 결과", OpenLastBox) },
-                new (string, Action)[] { ("단장 설정 · 플레이 모드", OpenManagerSetup), ("구단주 목표 · 재정", GoMainHome), ("스토리 안건", () => { SelectMainTab(0); SelectSubTab(5); }) },
+                new (string, Action)[] { ("단장 설정 · 플레이 모드", OpenManagerSetup), ("프런트 직원 리포트", () => OpenStaffReport(0)), ("구단주 목표 · 재정", GoMainHome), ("스토리 안건", () => { SelectMainTab(0); SelectSubTab(5); }) },
                 new (string, Action)[] { ("순위 · 리더 · 소식", () => SelectMainTab(1)), ("시즌 일정 (캘린더)", OpenSchedule), ("포스트시즌 트리", OpenPostseasonTree), ("시상식", OpenAwards) },
                 new (string, Action)[] { ("선수단 · 라인업", () => SelectMainTab(2)), ("트레이드 · FA 시장", () => SelectMainTab(4)), ("응원단", () => SelectMainTab(6)), ("구단 역사", () => SelectMainTab(7)) },
                 new (string, Action)[] { ("한 경기 (3단계 플로우)", OpenPreGame), ("전반기 · 한 시즌 (대시보드)", OpenDashboard), ("포스트시즌 다음 경기", () => PlayNextPostseason()) },
@@ -652,7 +652,8 @@ namespace KBOManager.Controllers
             string phase = simulator.IsSeasonComplete ? "포스트시즌" : simulator.GamesPlayed == 0 ? "스토브리그" : "정규시즌";
             var date = simulator.IsSeasonComplete ? new DateTime(league.SeasonYear, 10, 6) : GMLiveSeasonSimulator.DateOf(simulator.GamesPlayed, league.SeasonYear);
             toolbarInfo1.text = $"KBO {phase} | {date:yyyy년 M월 d일} ({WeekdayLabels[(int)date.DayOfWeek].Substring(0, 1)})";
-            toolbarInfo2.text = $"{NameAliasTable.DisplayTeamName(team.TeamCode)} {rec.W}-{rec.L} · 승률 {GMTeamRecord.PctLabel(rec.Pct)} · {GMFrontOffice.RankOf(league, team.TeamCode)}위";
+            toolbarInfo1.text += $" · {NameAliasTable.DisplayTeamName(team.TeamCode)} {rec.W}-{rec.L} · {GMFrontOffice.RankOf(league, team.TeamCode)}위";
+            RefreshFinanceStrip(); // [TASK-GM-17] 둘째 줄 = 운영 예산 · 페이롤/캡 · FA 가용 · 경쟁균형세 위험도
         }
     }
 }

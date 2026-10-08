@@ -127,6 +127,7 @@ namespace KBOManager.Services
             if (team.Roster.Count <= MinRosterAfterRelease) { r.Message = $"로스터 최소 {MinRosterAfterRelease}인 - 더 방출할 수 없습니다."; return r; }
             long buyout = (long)p.Salary * Math.Max(1, p.ContractYears) * ReleaseBuyoutPercent / 100;
             r.TeamworkBefore = Teamwork(team);
+            var chain = team.IsUserTeam ? GMSalaryChain.ApplyDeparture(league, team, p, "방출") : new List<string>(); // [TASK-GM-17] 유대 동료 반발
             RemoveFromTeam(team, p);
             team.Budget -= buyout;
             p.ContractYears = 0;
@@ -136,7 +137,7 @@ namespace KBOManager.Services
             league.FAOrigins.Remove(p.InstanceId); // [TASK-GM-08] 방출 = 자유계약(보상 없음)
             r.TeamworkAfter = Teamwork(team);
             r.Success = true;
-            r.Message = $"{p.Template.PlayerName} 방출 - 위약금 {GMDiagnosticFormat.Won(buyout)} · 로스터 {team.Roster.Count}/{RosterMax}인";
+            r.Message = $"{p.Template.PlayerName} 방출 - 위약금 {GMDiagnosticFormat.Won(buyout)} · 로스터 {team.Roster.Count}/{RosterMax}인 · FA 시장 이동" + GMSalaryChain.Summary(chain);
             News(league, GMNewsKind.Trade, $"{p.Template.PlayerName} 방출", r.Message);
             return r;
         }
@@ -252,12 +253,29 @@ namespace KBOManager.Services
             if (p.Template.CurrentTeam == team.Team || p.Template.Team == team.Team) score += 0.05f; // 충성도(친정)
             r.Score = score;
             r.RivalBid = GMFreeAgencyCycle.BestRivalBid(league, p, out var bidder);
-            long bonus = (long)salary * years * FABonusPercent / 100;
             if (score < r.RivalBid && !GMFrontOffice.Manager(league).Commissioner) // [TASK-GM-07] 커미셔너 모드 - 경쟁 입찰 판정 건너뜀
             {
                 r.Message = $"{p.Template.PlayerName} 영입 실패 - 경쟁 구단{(bidder != null ? $" {NameAliasTable.DisplayTeamName(bidder)}" : "")} 최고 입찰(지수 {r.RivalBid:0.00})이 우리 제안(지수 {score:0.00})보다 좋습니다. 요구 {GMDiagnosticFormat.Won(r.Demand)} × {pref}년";
                 return r;
             }
+            var signed = SignFreeAgent(league, team, p, years, salary, roleGuarantee);
+            signed.Demand = r.Demand; signed.Score = r.Score; signed.RivalBid = r.RivalBid;
+            return signed;
+        }
+
+        /// <summary>
+        /// [TASK-GM-17] FA 계약 체결(경쟁 입찰 판정 이후 - OfferContract · 입찰 경쟁 GMMarketBidding 공용): 로스터 합류 · 페이롤 증가 · 계약금(총액 25%) 예산 차감 · 하우스 룰 카운트 · 원 소속 보상.
+        /// </summary>
+        public static GMNegotiationResult SignFreeAgent(GMLeagueState league, GMTeamState team, Player p, int years, int salary, bool roleGuarantee)
+        {
+            var r = new GMNegotiationResult();
+            if (team == null || p == null || !league.FreeAgents.Contains(p)) { r.Message = "FA 시장의 선수를 선택하십시오."; return r; }
+            if (!GMFrontOffice.CanSignFreeAgent(league, out var rule)) { r.Message = rule; return r; }
+            if (team.Roster.Count >= RosterMax) { r.Message = $"로스터 {RosterMax}인 가득 - 먼저 [방출]로 자리를 비우십시오."; return r; }
+            years = Math.Max(1, Math.Min(MaxFAYears, years));
+            salary = RoundSalary(salary);
+            var fo = GMFrontOffice.Ensure(league);
+            long bonus = (long)salary * years * FABonusPercent / 100;
             if (team.Budget < bonus) { r.Message = $"운영 자금 부족 - 계약금 {GMDiagnosticFormat.Won(bonus)}이 필요합니다."; return r; }
             r.TeamworkBefore = Teamwork(team);
             league.FreeAgents.Remove(p);
