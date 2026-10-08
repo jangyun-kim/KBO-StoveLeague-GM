@@ -136,6 +136,13 @@ namespace KBOManager.Simulation
         public string EndingNote = "";
         public int EndingYear;
         public bool Initialized;
+        // [TASK-GM-11] 시즌 결산실 - 정규시즌 종료 시 전 구단 선수 기록 스냅숏(연도 전환 후에도 Turn 1 결산 · 협상 근거로 쓴다) · 결산실 첫 열람 연도
+        public List<GMSeasonReviewLine> LastSeasonReview = new List<GMSeasonReviewLine>();
+        public int LastSeasonReviewYear;
+        public int SeasonReviewSeenYear;
+        // [TASK-GM-11] 계약 협상실 - 결렬 후 재협상 쿨다운(이번 스토브리그 동안 불가, 해 넘김 시 초기화) · 협상 시도 횟수(카드 재추첨 시드)
+        public List<string> NegotiationCooldownIds = new List<string>();
+        public int NegotiationAttempts;
     }
 
     /// <summary>[TASK-GM-06] 백분위 랭킹(Percentile Rankings) 한 줄 - KBO 전체 같은 유형(타자/투수) 대비 1~99%.</summary>

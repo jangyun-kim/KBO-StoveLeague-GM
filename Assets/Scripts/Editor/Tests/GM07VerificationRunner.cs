@@ -240,10 +240,15 @@ namespace KBOManager.EditorTests
             Assert.IsTrue(hub.IsAtMainHome, "경기 ▼ 진행하기 → 메인 홈");
             Assert.IsFalse(hub.MenuList(1).gameObject.activeSelf, "메뉴 닫힘");
 
-            // 시즌 종료 후 [진행하기] = 포스트시즌 트리
+            // 시즌 종료 후 [진행하기] = (TASK-GM-11) 시즌 결산실 1회 → 포스트시즌 트리
             var full = SharedSeason();
             hub.Bind(full);
             hub.SelectMainTab(2);
+            if (hub.SeasonReviewPending)
+            {
+                Assert.IsTrue(hub.Continue());
+                Assert.AreEqual(GMOotpFrontOfficeUIController.PaneSeasonSummary, hub.CurrentPane, "정규시즌 종료 → 시즌 결산실(TASK-GM-11)");
+            }
             Assert.IsTrue(hub.Continue());
             Assert.AreEqual(GMOotpFrontOfficeUIController.PanePostseason, hub.CurrentPane, "정규시즌 종료 → 포스트시즌 트리");
         }

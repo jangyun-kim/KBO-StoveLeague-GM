@@ -26,7 +26,7 @@ namespace KBOManager.Controllers
     {
         public const string RootName = "FrontOfficeRoot";
         public const int BannerTitlePt = 30, BannerPt = 19, SmallPt = 16, TabPt = 18, SubTabPt = 18, PanelTitlePt = 19, BodyPt = 16, TablePt = 16, CellPt = 15, ButtonPt = 18, BigPt = 36;
-        public const int MainTabCount = 8, SubTabMax = 6, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 7, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
+        public const int MainTabCount = 8, SubTabMax = 8, GoalRows = 6, CostRows = 12, BudgetRows = 8, HistoryBars = 10, TableRows = 14, FARows = 15, ShopRows = 7, DraftRows = 10, PctRows = 7, AgendaBlocks = 5;
 
         public static readonly Color Gold = new Color(0.961f, 0.722f, 0.18f); // #F5B82E
         private static readonly Color Bg = new Color(0.09f, 0.09f, 0.1f);
@@ -274,6 +274,7 @@ namespace KBOManager.Controllers
             trMine.Clear(); trTheirs.Clear(); shopOffers.Clear();
             partnerIndex = salPageIndex = trMyPageIndex = roPageIndex = 0;
             trCash = 0; counterOffer = null; prSelected = null; protectPage = 0; // [TASK-GM-08]
+            negSelected = null; negSession = null; negPage = 0; ssPage = 0; negYears = 0; // [TASK-GM-11]
         }
 
         // ================================================================== 조립
@@ -313,6 +314,8 @@ namespace KBOManager.Controllers
                 BuildSchedulePane();     // [TASK-GM-07] 시즌 일정(달력)
                 BuildPostseasonPane();   // [TASK-GM-07] 포스트시즌 트리 · [TASK-GM-08] KBO 리더 · 4열 브래킷 · 일일 리포트
                 BuildProtectPane();      // [TASK-GM-08] FA 보상 · 보호 명단
+                BuildSeasonSummaryPane();  // [TASK-GM-11] 시즌 결산실
+                BuildNegotiationPane();    // [TASK-GM-11] 계약 협상실(3지선다)
                 BuildDiscussPopup();
                 BuildPercentilePopup();
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
@@ -448,8 +451,8 @@ namespace KBOManager.Controllers
             for (int k = 0; k < SubTabMax; k++)
             {
                 int index = k;
-                float x0 = 12 + k * 312;
-                subTabButtons[k] = Btn(root, $"SubTab{k}", "", x0, 200, x0 + 300, 238, new Color(0f, 0f, 0f, 0f), SubTabPt, Dark);
+                float x0 = 12 + k * SubTabPitch; // [TASK-GM-11] 6칸 → 8칸(시즌 결산실 · 계약 협상실)
+                subTabButtons[k] = Btn(root, $"SubTab{k}", "", x0, 200, x0 + SubTabPitch - 8, 238, new Color(0f, 0f, 0f, 0f), SubTabPt, Dark);
                 subTabButtons[k].onClick.AddListener(() => SelectSubTab(index));
             }
             statusLine = L(root, "StatusLine", "", 12, 1046, 1908, 1076, SmallPt, TextAnchor.MiddleLeft, Gold);
@@ -461,7 +464,8 @@ namespace KBOManager.Controllers
             SubTab A(string label, Action action) => new SubTab { Label = label, Action = action };
             return new[]
             {
-                new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory) },
+                new List<SubTab> { P("구단주·재정 대시보드", PaneOwner), P("연봉·재계약 협상", PaneSalaries), P("FA 영입 협상", PaneFA), P("트레이드(Shop Player)", PaneTrade), P("신인 드래프트", PaneDraft), P("스토리 안건", PaneStory),
+                    P("시즌 결산실", PaneSeasonSummary), P("계약 협상실", PaneNegotiation) }, // [TASK-GM-11] 스토브리그 Turn 1 결산 · Turn 4 계약 협상
                 new List<SubTab> { P("순위·리더·소식", PaneLive), P("시즌 일정(캘린더)", PaneSchedule), A("대시보드 열기", OpenDashboard), A("한 경기 3단계 진행", OpenPreGame), A("직전 경기 박스스코어", OpenLastBox) },
                 new List<SubTab> { P("타자", PaneRoster), P("투수", PaneRoster), P("팀워크 진단", PaneChem) },
                 new List<SubTab> { P("ABS 분석·팀 비교", PaneAbs), P("팀워크·전술 기조", PaneChem) },
@@ -522,6 +526,7 @@ namespace KBOManager.Controllers
                 bool used = k < list.Count;
                 subTabButtons[k].gameObject.SetActive(used);
                 if (!used) continue;
+                LayoutSubTab(k, list.Count); // [TASK-GM-11] 6칸 이하 = 기존 312px 간격, 7~8칸 = 237px
                 CompyaUiKit.SetButtonText(subTabButtons[k], list[k].Action != null ? list[k].Label + " ▶" : list[k].Label);
                 bool on = k == subTab && list[k].Pane != null;
                 subTabButtons[k].targetGraphic.color = on ? Dark : new Color(0f, 0f, 0f, 0f);
@@ -1090,6 +1095,8 @@ namespace KBOManager.Controllers
                     case PaneSchedule: RefreshSchedule(); break;      // [TASK-GM-07]
                     case PanePostseason: RefreshPostseason(); break;  // [TASK-GM-07]
                     case PaneProtect: RefreshProtect(); break;        // [TASK-GM-08]
+                    case PaneSeasonSummary: RefreshSeasonSummary(); break; // [TASK-GM-11]
+                    case PaneNegotiation: RefreshNegotiation(); break;     // [TASK-GM-11]
                 }
             }
         }
@@ -1120,7 +1127,7 @@ namespace KBOManager.Controllers
             tickerValues[2].text = MatchupLabel(simulator.GamesPlayed + 1, false);
             tickerValues[3].text = NextSeriesLabel();
             // [TASK-GM-07] 메인 홈이 아니면 [진행하기] = 메인 홈 이동, 메인 홈이면 ① 전력 분석부터 3단계 플로우
-            string next = simulator.IsSeasonComplete ? "포스트시즌 트리" : !IsAtMainHome ? "메인 홈으로" : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
+            string next = simulator.IsSeasonComplete ? (SeasonReviewPending ? "시즌 결산실" : "포스트시즌 트리") : !IsAtMainHome ? "메인 홈으로" : stove ? "개막전 전력 분석" : "오늘 경기 전력 분석";
             CompyaUiKit.SetButtonText(continueButton, $"✔ 진행하기 (CONTINUE) >\n{next}");
         }
 
@@ -1957,6 +1964,13 @@ namespace KBOManager.Controllers
             if (simulator == null) { SetStatus("단장 모드 리그가 없습니다."); return false; }
             if (simulator.IsSeasonComplete)
             {
+                if (SeasonReviewPending) // [TASK-GM-11] 정규시즌 종료 직후 첫 화면 = 시즌 결산실
+                {
+                    GMFrontOffice.Ensure(League).SeasonReviewSeenYear = League.SeasonYear;
+                    OpenSeasonSummary();
+                    SetStatus("정규시즌 종료 - 시즌 결산실에서 성적 · 재정 · 포지션 약점을 확인하고 [진행하기]로 포스트시즌을 시작하십시오.");
+                    return true;
+                }
                 var ps = GMAwardEvaluator.BeginPostseason(simulator);
                 if (ps != null && ps.Completed) { OpenAwards(); return true; }
                 OpenPostseasonTree();

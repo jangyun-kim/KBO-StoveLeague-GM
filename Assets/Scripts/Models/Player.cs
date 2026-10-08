@@ -448,6 +448,66 @@ namespace KBOManager.Models
         /// <summary>[TASK-GM-09] 팬덤 가치 가산 - 국가대표 금메달 · 우승 등 글로벌 대회 성과로 오른다(세이브 보존). 시장 가치(트레이드 가치)에 반영된다.</summary>
         public int FameBonus;
 
+        /// <summary>[TASK-GM-11] 구단 충성도 0~100(장기 신뢰 - 페이컷 · FA 이적 저항 · 보직 변경 수용). -1 = 미산출(첫 접근 시 성향 기본값).</summary>
+        public int LoyaltyRaw = -1;
+        public int Loyalty
+        {
+            get => LoyaltyRaw >= 0 ? LoyaltyRaw : (LoyaltyRaw = DefaultLoyalty());
+            set => LoyaltyRaw = Clamp(value, 0, 100);
+        }
+
+        /// <summary>[TASK-GM-11] 에이전트 성향 태그. -1 = 자동(해시 · 라커룸 성향 · 나이로 결정, 같은 선수는 항상 같은 값).</summary>
+        public int AgentArchetypeRaw = -1;
+        public GMAgentArchetype AgentArchetype
+        {
+            get => AgentArchetypeRaw >= 0 ? (GMAgentArchetype)AgentArchetypeRaw : DefaultAgentArchetype();
+            set => AgentArchetypeRaw = (int)value;
+        }
+
+        private int GMHash(int salt)
+        {
+            string seed = Template != null && !string.IsNullOrEmpty(Template.RealPlayerId) ? Template.RealPlayerId : InstanceId ?? string.Empty;
+            int h = 29 + salt;
+            foreach (char c in seed) h = (h * 137 + c * 11) & 0x7FFFFFFF;
+            return h;
+        }
+
+        /// <summary>[TASK-GM-11] 라커룸 성향 + 나이 + 해시 → 에이전트 성향(후보 2~3개 중 해시로 고정).</summary>
+        public GMAgentArchetype DefaultAgentArchetype()
+        {
+            GMAgentArchetype[] pool;
+            switch (RoleArchetype)
+            {
+                case LockerRoomRole.AlphaDog: pool = new[] { GMAgentArchetype.MoneyFirst, GMAgentArchetype.WinNow, GMAgentArchetype.RoleSeeker }; break;
+                case LockerRoomRole.Ambitious: pool = new[] { GMAgentArchetype.MoneyFirst, GMAgentArchetype.Realist, GMAgentArchetype.RoleSeeker }; break;
+                case LockerRoomRole.DugoutLeader: pool = new[] { GMAgentArchetype.Loyal, GMAgentArchetype.WinNow, GMAgentArchetype.LongTermSeeker }; break;
+                case LockerRoomRole.Prospect: pool = new[] { GMAgentArchetype.RoleSeeker, GMAgentArchetype.LongTermSeeker, GMAgentArchetype.Realist }; break;
+                default: pool = new[] { GMAgentArchetype.Loyal, GMAgentArchetype.Realist, GMAgentArchetype.RoleSeeker, GMAgentArchetype.WinNow }; break;
+            }
+            if (Age >= 33 && RoleArchetype != LockerRoomRole.AlphaDog) pool = pool.Concat(new[] { GMAgentArchetype.LongTermSeeker }).ToArray();
+            return pool[GMHash(3) % pool.Length];
+        }
+
+        /// <summary>[TASK-GM-11] 충성도 기본값 = 50 + 라커룸 성향(리더 +12 · 살림꾼 +6 · 유망주 +4 · 알파독 -6 · 야망가 -8) + 주장 +5 + 에이전트(충성형 +15 · 금전 우선 -10) ± 해시 8.</summary>
+        public int DefaultLoyalty()
+        {
+            int v = 50;
+            switch (RoleArchetype)
+            {
+                case LockerRoomRole.DugoutLeader: v += 12; break;
+                case LockerRoomRole.UnsungHero: v += 6; break;
+                case LockerRoomRole.Prospect: v += 4; break;
+                case LockerRoomRole.AlphaDog: v -= 6; break;
+                case LockerRoomRole.Ambitious: v -= 8; break;
+            }
+            if (IsCaptain) v += 5;
+            var a = AgentArchetype;
+            if (a == GMAgentArchetype.Loyal) v += 15;
+            else if (a == GMAgentArchetype.MoneyFirst) v -= 10;
+            v += GMHash(7) % 17 - 8;
+            return Clamp(v, 10, 95);
+        }
+
         [NonSerialized] private KBOManager.Engine.PerformanceData performance;
         /// <summary>[TASK-GM-10] 기준 시즌 원 기록(Raw Stats) - 실제 기록 CSV가 있으면 그것, 없으면 세부 능력치 추정(Log5 엔진 입력).</summary>
         public KBOManager.Engine.PerformanceData Performance => performance ?? (performance = KBOManager.Engine.GMLog5.For(this));

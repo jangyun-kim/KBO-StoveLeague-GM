@@ -59,6 +59,8 @@ namespace KBOManager.Managers
         public int AbsTrainingBonus; // [TASK-GM-06] v17 - ABS 적응 훈련 보정(없으면 0)
         public int FameBonus;         // [TASK-GM-09] v20 - 글로벌 대회 팬덤 가치(없으면 0)
         public int ProspectStatShift; // [TASK-GM-08] v19 - 퓨처스 유망주 능력치 보정(없으면 0 = 원본 카드)
+        public int Loyalty = -1;        // [TASK-GM-11] v22 - 구단 충성도(없으면 -1 = 성향 기본값)
+        public int AgentArchetype = -1; // [TASK-GM-11] v22 - 에이전트 성향(없으면 -1 = 자동)
     }
 
     /// <summary>
@@ -179,7 +181,7 @@ namespace KBOManager.Managers
         //      없는 구버전 세이브는 새 시즌 상태 · 빈 확장 필드(기록실은 "-"로 표기)로 채워진다.
         // v14: 단장 모드(TASK-GM-02) - 선수 GM 속성(PlayerSaveData.Age ~ CareerAwardIds)과 리그 상태(GMLeague: 모드 · 연도 · 경기 진행 인덱스 ·
         //      10구단 로스터/치어리더 풀 · 순위 · 개인 누적 기록 · 최신 소식). GMLeague.HasData가 false면 단장 모드 미시작.
-        public int SaveVersion = 21; // [TASK-GM-10] v21 - 원 소속 우선 협상 명단(Log5 원 기록은 템플릿에서 재계산) / [TASK-GM-09] v20 - 글로벌 대회 일정 · 결과 · 팬덤 가치 / [TASK-GM-08] v19 - 퓨처스 핵심 유망주 풀 · 육성 슬롯 · FA 원 소속/등급 · 보상 정산 대기 · 자동/수동 보호 명단 / [TASK-GM-07] v18 - 내 구단 경기 결과(시즌 일정) · 감독 설정 · 포스트시즌 진행 상태 / [TASK-GM-06] v17 - 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건) · 드래프트 풀 · ABS 보정(v16 = GM-05)
+        public int SaveVersion = 22; // [TASK-GM-11] v22 - 구단 충성도 · 에이전트 성향 · 선수단 단장 신뢰도 · 시즌 결산 스냅숏 · 협상 쿨다운 / [TASK-GM-10] v21 - 원 소속 우선 협상 명단(Log5 원 기록은 템플릿에서 재계산) / [TASK-GM-09] v20 - 글로벌 대회 일정 · 결과 · 팬덤 가치 / [TASK-GM-08] v19 - 퓨처스 핵심 유망주 풀 · 육성 슬롯 · FA 원 소속/등급 · 보상 정산 대기 · 자동/수동 보호 명단 / [TASK-GM-07] v18 - 내 구단 경기 결과(시즌 일정) · 감독 설정 · 포스트시즌 진행 상태 / [TASK-GM-06] v17 - 프런트 오피스(구단주 · 목표 · 난이도 · 하우스 룰 · 시즌 이력 · 스토리 안건) · 드래프트 풀 · ABS 보정(v16 = GM-05)
         // [TASK-GM-05] v16 - 치어리더 피로도 · 자동 로테이션 · 전담 응원 · 홈 흥행 누적(v15 = GM-04 시상)
         public string SavedAtUtc;
 
@@ -500,6 +502,8 @@ namespace KBOManager.Managers
             AbsTrainingBonus = player.AbsTrainingBonus,
             ProspectStatShift = player.ProspectStatShift, // [TASK-GM-08]
             FameBonus = player.FameBonus,                 // [TASK-GM-09]
+            Loyalty = player.LoyaltyRaw,                  // [TASK-GM-11]
+            AgentArchetype = player.AgentArchetypeRaw,
         };
 
         // ----- [TASK-GM-02] 단장 모드 리그 -----
@@ -536,6 +540,7 @@ namespace KBOManager.Managers
                     CheerFanPoints = team.CheerFanPoints,
                     Futures = team.Futures.Select(ToSaveData).ToList(), // [TASK-GM-08]
                     DevelopmentSlots = team.DevelopmentSlots,
+                    LockerRoomTrust = team.LockerRoomTrust, // [TASK-GM-11]
                 };
                 t.Lineup.CopyFrom(team.Lineup);
                 data.Teams.Add(t);
@@ -594,6 +599,7 @@ namespace KBOManager.Managers
                     CheerAutoRotate = t.CheerAutoRotate,
                     CheerFanPoints = t.CheerFanPoints,
                     DevelopmentSlots = t.DevelopmentSlots > 0 ? t.DevelopmentSlots : GMRosterTiers.DefaultDevelopmentSlots, // [TASK-GM-08]
+                    LockerRoomTrust = Math.Max(0, Math.Min(100, t.LockerRoomTrust)), // [TASK-GM-11]
                 };
                 team.CheerDedications.AddRange((t.CheerDedications ?? new List<GMCheerDedication>()).Where(d => d != null && !string.IsNullOrEmpty(d.PlayerId)));
                 team.Lineup.CopyFrom(t.Lineup);
@@ -831,6 +837,8 @@ namespace KBOManager.Managers
             player.AbsTrainingBonus = saved.AbsTrainingBonus; // [TASK-GM-06]
             player.ProspectStatShift = saved.ProspectStatShift; // [TASK-GM-08]
             player.FameBonus = Math.Max(0, saved.FameBonus);     // [TASK-GM-09]
+            player.LoyaltyRaw = saved.Loyalty < 0 ? -1 : Math.Min(100, saved.Loyalty); // [TASK-GM-11]
+            player.AgentArchetypeRaw = saved.AgentArchetype < 0 || saved.AgentArchetype > (int)GMAgentArchetype.WinNow ? -1 : saved.AgentArchetype;
         }
 
         private Player RestorePlayer(PlayerSaveData saved)

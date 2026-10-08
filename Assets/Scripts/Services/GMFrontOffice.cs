@@ -762,6 +762,7 @@ namespace KBOManager.Services
         {
             var fo = Ensure(league);
             var team = league.UserTeam;
+            GMSeasonReview.TakeSnapshot(league); // [TASK-GM-11] 연도 전환(기록 초기화) 전에 시즌 결산 스냅숏
             int prevRank = team != null ? LastRank(league, team.TeamCode) : 5;
             for (int i = 0; i < regularSeasonRanks.Count; i++)
             {
@@ -808,6 +809,7 @@ namespace KBOManager.Services
         {
             var fo = Ensure(league);
             fo.FASigningsThisYear = fo.TradesThisYear = fo.DraftPicksThisYear = fo.ExtraTradeAllowance = 0;
+            fo.NegotiationCooldownIds.Clear(); // [TASK-GM-11] 결렬 쿨다운은 한 스토브리그 한정
             foreach (var g in fo.Goals) g.Discussed = false;
             fo.Goals.RemoveAll(g => g.TargetYear < league.SeasonYear);
             if (league.UserTeam != null) league.UserTeam.AgendaTeamworkBonus /= 2;

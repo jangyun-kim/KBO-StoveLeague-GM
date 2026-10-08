@@ -61,6 +61,34 @@ namespace KBOManager.Core
         Prospect = 4             // 유망주 (멘티): 베테랑 멘토링 시 급성장, 출전 기회 박탈 시 성장 정체
     }
 
+    /// <summary>
+    /// [TASK-GM-11] 에이전트 성향 태그(협상 카드 선호/반감 배수 0.5~1.5의 기준) - 실명 관계 하드코딩 없이 RealPlayerId 해시 + 라커룸 성향 · 나이로 결정한다.
+    /// </summary>
+    public enum GMAgentArchetype
+    {
+        Realist = 0,        // 현실형: 성과 · 재정 근거를 받아들인다, 관계 호소에는 덤덤
+        Loyal = 1,          // 충성형: 관계 · 프랜차이즈 근거에 약하다, 성적 하락 지적에 상처
+        LongTermSeeker = 2, // 장기계약 선호: 계약 기간 보장에 강하게 반응, 단년 옵션 계약은 싫어함
+        MoneyFirst = 3,     // 금전 우선: 옵션 · 시장가 근거에 반응, 예산 한계 호소는 통하지 않음
+        RoleSeeker = 4,     // 보직 중시: 주전 · 보직 보장에 반응, 성적 하락 근거에 반발
+        WinNow = 5,         // 우승 지향: 우승 목표 호소에 반응, 연봉 효율 비교표에는 반감
+    }
+
+    /// <summary>[TASK-GM-11] 성과 리포트 색상 코딩(기획서 4.1) - 빨강 = 강점 · 초록 = 보통 · 파랑 = 약점 · 주황 = 위험/추가 확인.</summary>
+    public enum GMReportTone { Strong = 0, Neutral = 1, Weak = 2, Risk = 3 }
+
+    /// <summary>[TASK-GM-11] 직원 보고 분석 신뢰도(기획서 3절) - 표본이 모자라면 낮음 + 표본 부족 경고.</summary>
+    public enum GMReportConfidence { High = 0, Medium = 1, Low = 2 }
+
+    /// <summary>[TASK-GM-11] 협상 카드(근거) 4종 분류(기획서 6.1).</summary>
+    public enum GMNegotiationCardCategory { Performance = 0, Finance = 1, Relationship = 2, Reward = 3 }
+
+    /// <summary>[TASK-GM-11] 연봉 협상 예상 결과(구단 입장 - 요구액 수용이 가장 비싸다).</summary>
+    public enum GMNegotiationOutcome { AcceptDemand = 0, SmallRaise = 1, Freeze = 2, Cut = 3 }
+
+    /// <summary>[TASK-GM-11] 선수 간 유대(규칙 기반 연결 고리 - 저장하지 않고 현재 로스터로 매번 계산).</summary>
+    public enum GMBondKind { Battery = 0, Keystone = 1, Mentor = 2 }
+
     public enum TeamMoraleState
     {
         Slump = 0,               // 침체 (승률 및 클러치 페널티)

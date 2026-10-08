@@ -46,6 +46,9 @@ namespace KBOManager.Services
         public bool AutoRotateUserCheerleaders { get => CheerAutoRotate; set => CheerAutoRotate = value; }
         /// <summary>[TASK-GM-06] 스토리 안건 · 단장 결단으로 생긴 팀워크 가감(-20 ~ +20). 응원단 리더십과 함께 TeamChemistryEngine에 더해진다.</summary>
         public int AgendaTeamworkBonus;
+        /// <summary>[TASK-GM-11] 선수단의 단장 신뢰도 0~100(기본 60) - 구단주 신임도(OwnerTrust)와 별개. 협상 진행 가능성 베이스라인 · 약속 위반 페널티(2단계) 대상.</summary>
+        public int LockerRoomTrust = DefaultLockerRoomTrust;
+        public const int DefaultLockerRoomTrust = 60;
         /// <summary>[TASK-GM-07] 단장 모드 연도 시너지 - 같은 시즌 · 같은 구단 출신 동료 그룹 팀워크 가산(0~+8, GMYearSynergy).</summary>
         public int YearSynergyBonus => GMYearSynergy.TeamworkBonus(AvailableRoster);
         /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정 + [TASK-GM-07] 연도 시너지.</summary>

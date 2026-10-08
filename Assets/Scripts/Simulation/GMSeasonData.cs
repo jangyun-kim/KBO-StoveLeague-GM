@@ -333,6 +333,7 @@ namespace KBOManager.Simulation
         // [TASK-GM-08] v19 - 퓨처스 핵심 유망주 풀 · 익명 육성 슬롯(구버전 세이브는 빈 목록 → 로드 시 GMRosterTiers.BackfillFutures)
         public List<PlayerSaveData> Futures = new List<PlayerSaveData>();
         public int DevelopmentSlots = GMRosterTiers.DefaultDevelopmentSlots;
+        public int LockerRoomTrust = GMTeamState.DefaultLockerRoomTrust; // [TASK-GM-11] v22 - 선수단 단장 신뢰도(없으면 60)
     }
 
     /// <summary>[TASK-GM-07] 내 구단 정규시즌 경기 결과 한 줄(시즌 일정 캘린더 - 날짜 칸에 결과 스코어 표시).</summary>
