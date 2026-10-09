@@ -50,7 +50,7 @@ namespace KBOManager.Controllers
         private RawImage emblem;
         private RectTransform emblemHolder;
         private Text seasonTitle, gameCounter, statusText, lastGameText;
-        private Button modeSingle, modeHalf, modeFull, speed1, speed2, speed4, pauseButton, closeButton, tabBatter, tabPitcher;
+        private Button modeSingle, modeWeek, modeHalf, modeFull, speed1, speed2, speed4, pauseButton, closeButton, tabBatter, tabPitcher;
         // [TASK-GM-03] 새 시즌 설정 · 직전 경기 결과
         private Button newSeasonButton, lastBoxButton;
         // [TASK-GM-04] 시상 리포트 · 포스트시즌 & 시상식 · 연도 전환
@@ -88,7 +88,19 @@ namespace KBOManager.Controllers
         private RectTransform popup;
         private Text popupTitle, popupBody;
         private Button popupPrimary, popupSecondary;
-        private readonly Button[] candidateButtons = new Button[3];
+        private readonly Button[] candidateButtons = new Button[4]; // [TASK-GM-18] 단장 개입 선택지 최대 4개(부상 직접 관리는 3개)
+        // [TASK-GM-18] 단장 개입 사건 팝업 상태 · 결과 확인 · 커리어 엔딩
+        private GMSeasonEvent viewingEvent;
+        private bool showingEventResult, showingCareerEnding;
+        private Text popupTag;
+        private List<string> pendingNewGamePlus;
+        public const string EventTagName = "PopupEventTag";
+        public GMSeasonEvent ViewingEvent => viewingEvent;
+        public bool IsShowingEventResult => showingEventResult;
+        public bool IsShowingCareerEnding => showingCareerEnding;
+        public string PopupTitleText => popupTitle != null ? popupTitle.text : "";
+        public string PopupBodyText => popupBody != null ? popupBody.text : "";
+        public RectTransform PopupRoot => popup;
 
         private GMLiveSeasonSimulator simulator;
         private bool showPitchers;
@@ -145,6 +157,7 @@ namespace KBOManager.Controllers
             paused = false;
             HidePopup();
             Refresh();
+            if (sim?.PendingInterrupt != null) ShowInterrupt(sim.PendingInterrupt); // [TASK-GM-18] 허브에서 넘어와도 대기 중인 단장 개입 사건을 바로 띄운다
         }
 
         public void Close()
@@ -189,9 +202,12 @@ namespace KBOManager.Controllers
             closeButton = Btn(kit, "CloseButton", "X", 1800, 10, 1908, 70, ButtonIdle, ButtonPt + 2);
             closeButton.onClick.AddListener(Close);
 
-            modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 80, 400, 142, ButtonIdle, ButtonPt);
-            modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 412, 80, 792, 142, ButtonIdle, ButtonPt);
-            modeFull = Btn(kit, "ModeFull", "한 시즌", 804, 80, 1184, 142, ButtonIdle, ButtonPt);
+            // [TASK-GM-18] 진행 단위 4종 - 한 경기 · 주간(6경기, 주간 종료 후 단장 개입) · 전반기/후반기 · 한 시즌(주간마다 사건이 있으면 멈춤)
+            modeSingle = Btn(kit, "ModeSingle", "한 경기", 20, 80, 300, 142, ButtonIdle, ButtonPt);
+            modeWeek = Btn(kit, "ModeWeek", "주간 진행", 310, 80, 590, 142, new Color(0.2f, 0.42f, 0.32f), ButtonPt);
+            modeHalf = Btn(kit, "ModeHalf", "전반기 진행", 600, 80, 890, 142, ButtonIdle, ButtonPt);
+            modeFull = Btn(kit, "ModeFull", "한 시즌", 900, 80, 1184, 142, ButtonIdle, ButtonPt);
+            modeWeek.onClick.AddListener(() => Run(GMRunMode.Week));
             modeSingle.onClick.AddListener(OpenPreGameOrRun);
             modeHalf.onClick.AddListener(() => Run(GMRunMode.FirstHalf));
             modeFull.onClick.AddListener(() => Run(GMRunMode.FullSeason));
@@ -284,18 +300,19 @@ namespace KBOManager.Controllers
             // ---- 인터럽트 · 소식 팝업
             popup = CompyaUiKit.Fill(root, "Popup");
             CompyaUiKit.Paint(popup, new Color(0f, 0f, 0f, 0.7f), true);
-            CompyaUiKit.Box(popup, "PopupBox", 460, 190, 1460, 900, new Color(0.1f, 0.12f, 0.2f, 0.98f));
-            popupTitle = L(kit, "PopupTitle", "", 500, 210, 1420, 270, PopupTitlePt, TextAnchor.MiddleLeft, Gold, popup);
-            popupBody = L(kit, "PopupBody", "", 500, 280, 1420, 520, PopupBodyPt, TextAnchor.UpperLeft, White, popup);
+            CompyaUiKit.Box(popup, "PopupBox", 400, 120, 1520, 960, new Color(0.1f, 0.12f, 0.2f, 0.98f));
+            popupTag = L(kit, EventTagName, "", 440, 136, 1480, 174, HeadPt, TextAnchor.MiddleLeft, Muted, popup); // [TASK-GM-18] 우선순위 · 주차 결산 태그
+            popupTitle = L(kit, "PopupTitle", "", 440, 180, 1480, 236, PopupTitlePt, TextAnchor.MiddleLeft, Gold, popup);
+            popupBody = L(kit, "PopupBody", "", 440, 244, 1480, 548, PopupBodyPt, TextAnchor.UpperLeft, White, popup);
             popupBody.lineSpacing = 1.2f;
             for (int k = 0; k < candidateButtons.Length; k++)
             {
                 int index = k;
-                candidateButtons[k] = Btn(kit, $"Candidate{k}", "", 500, 540 + k * 80, 1420, 610 + k * 80, new Color(0.2f, 0.32f, 0.6f), ButtonPt - 1, popup);
+                candidateButtons[k] = Btn(kit, $"Candidate{k}", "", 440, 560 + k * 76, 1480, 626 + k * 76, new Color(0.2f, 0.32f, 0.6f), ButtonPt - 2, popup);
                 candidateButtons[k].onClick.AddListener(() => ChooseCandidate(index));
             }
-            popupPrimary = Btn(kit, "PopupPrimary", "확인 후 계속 진행", 500, 800, 950, 880, new Color(0.15f, 0.45f, 0.85f), ButtonPt, popup);
-            popupSecondary = Btn(kit, "PopupSecondary", "라인업/엔트리 직접 관리", 970, 800, 1420, 880, new Color(0.3f, 0.34f, 0.46f), ButtonPt, popup);
+            popupPrimary = Btn(kit, "PopupPrimary", "확인 후 계속 진행", 440, 870, 950, 940, new Color(0.15f, 0.45f, 0.85f), ButtonPt, popup);
+            popupSecondary = Btn(kit, "PopupSecondary", "라인업/엔트리 직접 관리", 970, 870, 1480, 940, new Color(0.3f, 0.34f, 0.46f), ButtonPt, popup);
             popupPrimary.onClick.AddListener(OnPopupPrimary);
             popupSecondary.onClick.AddListener(OnPopupSecondary);
             popup.gameObject.SetActive(false);
@@ -436,6 +453,7 @@ namespace KBOManager.Controllers
             else league = GMRosterLoader.LoadModeRoster(pendingMode, pendingTeam, pendingVirtual);
             if (league == null) return null;
             GMFrontOffice.ApplySettings(league, pendingDifficulty, pendingMaxFA, pendingMaxTrades); // [TASK-GM-06]
+            if (pendingNewGamePlus != null) { GMCareer.ApplyNewGamePlus(league, pendingNewGamePlus); pendingNewGamePlus = null; } // [TASK-GM-18] 뉴게임+ 해금 계승
             sim = sim ?? new GMLiveSeasonSimulator(league);
             GMStoveTurns.Begin(league); // [TASK-GM-14] 새 시즌 = 스토브리그 Turn 1부터
             seasonModal.gameObject.SetActive(false);
@@ -542,7 +560,7 @@ namespace KBOManager.Controllers
 
         /// <summary>[TASK-GM-15] 스토브리그 8 Turn 진행 중(개막 전) - 고속 진행 · 한 경기 버튼 잠금.</summary>
         public bool IsStoveLocked => GMStoveTurns.IsGating(simulator?.League);
-        public bool AnyRunButtonInteractable => modeSingle != null && (modeSingle.interactable || modeHalf.interactable || modeFull.interactable);
+        public bool AnyRunButtonInteractable => modeSingle != null && (modeSingle.interactable || modeWeek.interactable || modeHalf.interactable || modeFull.interactable);
 
         private bool StoveBlocked()
         {
@@ -576,11 +594,13 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetButtonText(modeHalf, simulator != null ? simulator.HalfButtonLabel : "전반기 진행");
             bool done = simulator == null || simulator.IsSeasonComplete;
             bool stoveLocked = IsStoveLocked; // [TASK-GM-15]
-            modeSingle.interactable = modeHalf.interactable = modeFull.interactable = !done && !stoveLocked;
+            modeSingle.interactable = modeWeek.interactable = modeHalf.interactable = modeFull.interactable = !done && !stoveLocked;
+            CompyaUiKit.SetButtonText(modeWeek, simulator != null && !done ? $"주간 진행 ({simulator.GamesLeftThisWeek}경기)" : "주간 진행"); // [TASK-GM-18]
             stoveLock.gameObject.SetActive(stoveLocked);
             if (stoveLocked) stoveLockText.text = $"잠김 - 스토브리그 {GMStoveTurns.Label(GMStoveTurns.Current(league))} 진행 중 · 8 Turn을 마쳐야 개막합니다";
             bool seasonOver = simulator != null && simulator.IsSeasonComplete; // [TASK-GM-04]
             modeSingle.gameObject.SetActive(!seasonOver);
+            modeWeek.gameObject.SetActive(!seasonOver);
             modeHalf.gameObject.SetActive(!seasonOver);
             modeFull.gameObject.SetActive(!seasonOver);
             bool psDone = league?.Awards?.Postseason != null && league.Awards.Postseason.Completed; // [TASK-GM-17] 포스트시즌을 직접 보기 전에는 시즌 전환 숨김
@@ -593,7 +613,8 @@ namespace KBOManager.Controllers
             CompyaUiKit.SetButtonText(pauseButton, paused ? "계속" : "일시정지");
             Highlight(speed1, speed == 1); Highlight(speed2, speed == 2); Highlight(speed4, speed == 4);
             Highlight(tabBatter, !showPitchers); Highlight(tabPitcher, showPitchers);
-            statusText.text = stoveLocked ? "스토브리그 진행 중 · 개막 전" : done ? (league?.Awards != null && league.Awards.IsComplete ? "시상식 종료" : "정규시즌 종료") : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
+            statusText.text = stoveLocked ? "스토브리그 진행 중 · 개막 전" : done ? (league?.Awards != null && league.Awards.IsComplete ? "시상식 종료" : "정규시즌 종료") :
+                simulator.PendingSeasonEvent != null ? "일시정지 · 단장 개입 필요" : simulator.PendingInterrupt != null ? "일시정지 · 소식 확인" :
                 paused ? "일시정지" : simulator.IsRunning ? $"진행 중 · {speed}x" : "대기 중";
             lastGameText.text = simulator?.LastUserGameLine ?? "";
             lastBoxButton.interactable = simulator?.League?.LastUserMatchBoxScore != null;
@@ -675,6 +696,7 @@ namespace KBOManager.Controllers
         {
             viewingNews = null;
             manualSelecting = false;
+            if (interrupt.Kind == GMInterruptKind.SeasonEvent && interrupt.Event != null) { ShowSeasonEvent(interrupt.Event); return; } // [TASK-GM-18]
             if (interrupt.Kind == GMInterruptKind.Injury)
                 ShowPopup($"부상 발생 · {interrupt.News.Title}", $"{interrupt.News.DateLabel}\n{interrupt.News.Body}\n대체 선수를 어떻게 처리할까요?",
                     "대체 선수 자동 콜업 후 계속", interrupt.Player != null && !interrupt.Player.IsPitcher && interrupt.ReplacementCandidates.Count > 0 ? "라인업/엔트리 직접 관리" : null);
@@ -690,6 +712,10 @@ namespace KBOManager.Controllers
         {
             popup.gameObject.SetActive(true);
             popup.SetAsLastSibling();
+            viewingEvent = null;
+            showingEventResult = showingCareerEnding = false;
+            popupPrimary.gameObject.SetActive(true);
+            if (popupTag != null) popupTag.text = "";
             popupTitle.text = title;
             popupBody.text = body;
             CompyaUiKit.SetButtonText(popupPrimary, primary);
@@ -703,6 +729,67 @@ namespace KBOManager.Controllers
             if (popup != null) popup.gameObject.SetActive(false);
             manualSelecting = false;
             popupOpensAwards = false;
+            viewingEvent = null;
+            showingEventResult = showingCareerEnding = false;
+        }
+
+        // ================================================================== [TASK-GM-18] 단장 개입 사건 · 커리어 엔딩
+
+        /// <summary>주간 종료 사건 팝업 - [우선순위 · 주차 결산] 태그 · 제목 · 상황/핵심 정보 · 선택지(효과 미리보기) 최대 4개. 선택해야 진행이 이어진다.</summary>
+        public void ShowSeasonEvent(GMSeasonEvent ev)
+        {
+            if (ev == null) return;
+            ShowPopup(ev.Title, "", "확인", null);
+            viewingEvent = ev;
+            popupTag.text = $"[단장 개입 · {GMSeasonEvents.PriorityLabel(ev.Priority)} · {GMSeasonEvents.KindLabel(ev.Kind)}]  {ev.WeekSummary}";
+            popupBody.text = ev.Situation + (ev.Facts.Count > 0 ? "\n" + string.Join("\n", ev.Facts.Select(f => "· " + f)) : "");
+            popupPrimary.gameObject.SetActive(false);
+            popupSecondary.gameObject.SetActive(false);
+            for (int k = 0; k < candidateButtons.Length; k++)
+            {
+                bool has = k < ev.Choices.Count;
+                candidateButtons[k].gameObject.SetActive(has);
+                if (!has) continue;
+                var c = ev.Choices[k];
+                CompyaUiKit.SetButtonText(candidateButtons[k], $"{k + 1}. {c.Label}  -  {(c.Available ? c.Effect : c.BlockReason)}");
+                candidateButtons[k].interactable = c.Available;
+            }
+        }
+
+        /// <summary>단장 개입 선택(선택지 index) - 결과를 보여 주고 [확인 후 계속 진행]으로 다음 사건 · 진행을 잇는다.</summary>
+        public GMSeasonEventResult ChooseSeasonEvent(int index)
+        {
+            if (viewingEvent == null || simulator == null || simulator.PendingSeasonEvent != viewingEvent) return null;
+            var ev = viewingEvent;
+            var r = simulator.ResolveSeasonEvent(index);
+            string label = ev.Choices[Math.Max(0, Math.Min(ev.Choices.Count - 1, index))].Label;
+            ShowPopup($"결정 결과 · {ev.Title}", (r?.Message ?? "") + $"\n\n선택: {label}", "확인 후 계속 진행", null);
+            showingEventResult = true;
+            popupTag.text = $"[단장 결정 · {GMSeasonEvents.KindLabel(ev.Kind)}]  올해 단장 개입 {GMSeasonEvents.DecisionsThisYear(simulator.League)}건";
+            Refresh();
+            return r;
+        }
+
+        /// <summary>커리어 엔딩 팝업 - 은퇴 · 해임 요약, 명예의 전당 · 해금, [뉴게임+로 새 커리어].</summary>
+        public void ShowCareerEnding()
+        {
+            var league = simulator?.League;
+            if (league == null) return;
+            var c = GMCareer.Ensure(league);
+            ShowPopup(c.Ending == GMCareerEnding.Retired ? $"단장 은퇴 엔딩 · {c.Seasons}시즌의 여정" : $"단장 해임 엔딩 · {c.Term}기 임기 만료",
+                c.Note + "\n\n" + (c.HallOfFame ? "명예의 전당에 헌액되었습니다. " : "") + "새 커리어는 [뉴게임+]로 시작합니다 - 해금 1개당 시작 운영 예산 +2억.",
+                "확인", "뉴게임+로 새 커리어");
+            showingCareerEnding = true;
+            popupTag.text = $"[커리어 엔딩 · {GMCareer.EndingLabel(c.Ending)}]  레거시 {c.LegacyScore}점";
+        }
+
+        /// <summary>[뉴게임+] - 새 시즌 설정 모달을 연다. 시작하면 이전 커리어 해금을 새 리그에 물려준다.</summary>
+        public void StartNewGamePlus()
+        {
+            var league = simulator?.League;
+            pendingNewGamePlus = league != null ? new List<string>(GMCareer.Ensure(league).Unlocks) : GMCareer.StoredUnlocks();
+            HidePopup();
+            OpenSeasonModal();
         }
 
         // ================================================================== [TASK-GM-04] 시상식 · 연도 전환
@@ -758,7 +845,11 @@ namespace KBOManager.Controllers
         {
             if (simulator == null || !simulator.IsSeasonComplete) return null;
             var league = simulator.League;
-            if (!GMAwardEvaluator.AdvanceToNextSeasonYear(simulator)) return null;
+            if (!GMAwardEvaluator.AdvanceToNextSeasonYear(simulator))
+            {
+                if (GMCareer.Ensure(league).Ended) { ShowCareerEnding(); Refresh(); } // [TASK-GM-18] 30시즌 은퇴 · 임기 말 해임
+                return null;
+            }
             var gm = GameManager.Instance;
             GMLiveSeasonSimulator next;
             if (gm != null && gm.GMLeague == league)
@@ -800,6 +891,8 @@ namespace KBOManager.Controllers
 
         private void OnPopupPrimary()
         {
+            if (showingEventResult || showingCareerEnding) { viewingNews = null; AfterPopup(); return; } // [TASK-GM-18] 결과 확인 = 이미 처리됨
+            if (viewingEvent != null) return; // 사건은 선택지로만 처리
             var pending = simulator?.PendingInterrupt;
             if (viewingNews == null && pending != null)
                 simulator.ResolveInterrupt(pending.Kind == GMInterruptKind.Injury ? GMInterruptChoice.AutoCallUp : GMInterruptChoice.Continue);
@@ -809,6 +902,7 @@ namespace KBOManager.Controllers
 
         private void OnPopupSecondary()
         {
+            if (showingCareerEnding) { StartNewGamePlus(); return; } // [TASK-GM-18]
             if (popupOpensAwards)
             {
                 if (simulator?.PendingInterrupt != null && simulator.PendingInterrupt.Kind == GMInterruptKind.Record) simulator.ResolveInterrupt(GMInterruptChoice.Continue);
@@ -834,6 +928,7 @@ namespace KBOManager.Controllers
 
         private void ChooseCandidate(int index)
         {
+            if (viewingEvent != null) { ChooseSeasonEvent(index); return; } // [TASK-GM-18]
             var pending = simulator?.PendingInterrupt;
             if (!manualSelecting || pending == null || index >= pending.ReplacementCandidates.Count) return;
             simulator.ResolveInterrupt(GMInterruptChoice.ManualLineup, pending.ReplacementCandidates[index]);

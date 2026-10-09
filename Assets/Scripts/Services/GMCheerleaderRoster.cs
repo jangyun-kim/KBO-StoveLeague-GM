@@ -116,18 +116,21 @@ namespace KBOManager.Services
         /// <summary>강화 비용(만 원) = 기존 응원 포인트 강화 비용표(CheerGrowth.ReinforceCost)를 운영 예산으로 지불.</summary>
         public static int ReinforceCost(Cheerleader c) => CheerGrowth.ReinforceCost(CheerGrowth.Reinforce(c));
 
-        /// <summary>[응원단 육성 +1강] - 운영 예산을 써서 강화 단계 +1(최대 +10강) → 4대 스탯 +2 · 역할 효과 상승(CheerGrowth).</summary>
+        /// <summary>
+        /// [응원단 육성 +1강] - 강화 단계 +1(최대 +10강) → 4대 스탯 +2 · 역할 효과 상승(CheerGrowth).
+        /// [TASK-GM-18] 비용은 선수단 페이롤 · 운영 예산과 분리된 마케팅 예산(MarketingBudget, 관중 흥행 · 굿즈 수익)에서 낸다.
+        /// </summary>
         public static bool TryReinforce(GMTeamState team, Cheerleader c, out string message)
         {
             message = "";
             if (team == null || c == null || !team.CheerleaderPool.Contains(c)) { message = "구단 응원단 인원을 고르십시오."; return false; }
             if (CheerGrowth.Reinforce(c) >= CheerGrowth.MaxReinforce) { message = $"{c.DisplayName}은(는) 이미 최대 +{CheerGrowth.MaxReinforce}강입니다."; return false; }
             int cost = ReinforceCost(c);
-            if (team.Budget < cost) { message = $"운영 예산 부족 - 육성비 {GMDiagnosticFormat.Short(cost)} 필요(잔여 {GMDiagnosticFormat.Short(team.Budget)})."; return false; }
+            if (team.MarketingBudget < cost) { message = $"마케팅 예산 부족 - 육성비 {GMDiagnosticFormat.Short(cost)} 필요(잔여 {GMDiagnosticFormat.Short(team.MarketingBudget)}). 홈경기 흥행 · 굿즈 수익으로 쌓입니다."; return false; }
             int before = GMCheerleaderStats.Cheer(c);
-            team.Budget -= cost;
+            team.MarketingBudget -= cost;
             c.ReinforceLevel = CheerGrowth.Reinforce(c) + 1;
-            message = $"{c.DisplayName} 응원단 육성 +{c.ReinforceLevel}강 - 육성비 {GMDiagnosticFormat.Short(cost)} · CHEER {before} → {GMCheerleaderStats.Cheer(c)} · 예산 {GMDiagnosticFormat.Short(team.Budget)}";
+            message = $"{c.DisplayName} 응원단 육성 +{c.ReinforceLevel}강 - 육성비 {GMDiagnosticFormat.Short(cost)} · CHEER {before} → {GMCheerleaderStats.Cheer(c)} · 마케팅 예산 {GMDiagnosticFormat.Short(team.MarketingBudget)}";
             return true;
         }
 
@@ -200,7 +203,9 @@ namespace KBOManager.Services
         /// <summary>홈경기 관중 수익을 구단 예산에 더하고, 누적 수익 4,000만 원마다 팬 지지율 +1. 더한 수익(만 원)을 돌려준다.</summary>
         public static int ApplyHomeGate(GMTeamState team)
         {
-            int revenue = HomeRevenue(team?.CheerEntry);
+            if (team == null) return 0;
+            int revenue = HomeRevenue(team.CheerEntry);
+            team.MarketingBudget += GMLeagueRules.MarketingIncome(team, revenue); // [TASK-GM-18] 마케팅 예산 = 흥행 수익 50% + 굿즈(팬 지지율 × 5만 원)
             if (revenue <= 0) return 0;
             team.Budget += revenue;
             team.CheerFanPoints += revenue;

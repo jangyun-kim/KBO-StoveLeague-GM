@@ -280,6 +280,16 @@ namespace KBOManager.Services
             return null;
         }
 
+        /// <summary>
+        /// [TASK-GM-18] 경기 중 효과음(SFX) 판정 - BGM은 건드리지 않는다. 내 공격 득점 · 안타 = 관중 환호, 내 수비 아웃 = 짧은 박수, 그 밖 · 경기 종료 타석 = 없음.
+        /// </summary>
+        public static GMAudioCue? SfxFor(AtBatStepResult step, bool userBatting)
+        {
+            if (step == null || step.GameEnded) return null;
+            if (userBatting) return step.RunsScoredThisPlay > 0 || (IsHit(step.Result) && !step.IsError) ? GMAudioCue.CrowdCheer : (GMAudioCue?)null;
+            return IsOut(step.Result) ? GMAudioCue.OutCheer : (GMAudioCue?)null;
+        }
+
         /// <summary>[TASK-GM-12] 경기 종료 BGM 이벤트 - 승리 = 승리의 라이온즈(5점 차 이상 대승 = → 엘도라도 연계), 패배 = 공통 패배 BGM, 무승부 = null.</summary>
         public static GMAudioEvent? ResultEventFor(int userRuns, int oppRuns)
         {

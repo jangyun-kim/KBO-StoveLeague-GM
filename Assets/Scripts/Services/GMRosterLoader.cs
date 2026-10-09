@@ -52,7 +52,16 @@ namespace KBOManager.Services
         /// <summary>[TASK-GM-07] 단장 모드 연도 시너지 - 같은 시즌 · 같은 구단 출신 동료 그룹 팀워크 가산(0~+8, GMYearSynergy).</summary>
         public int YearSynergyBonus => GMYearSynergy.TeamworkBonus(AvailableRoster);
         /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정 + [TASK-GM-07] 연도 시너지.</summary>
-        public int TeamworkBuff => CheerLeadershipBuff + AgendaTeamworkBonus + YearSynergyBonus;
+        public int TeamworkBuff => CheerLeadershipBuff + AgendaTeamworkBonus + YearSynergyBonus + SeasonEventTeamwork;
+        /// <summary>[TASK-GM-18] 시즌 중 단장 개입 사건이 남긴 팀워크 보정(-5 ~ +5, 남은 주 SeasonEventTeamworkWeeks가 0이 되면 사라진다).</summary>
+        public int SeasonEventTeamwork;
+        public int SeasonEventTeamworkWeeks;
+        /// <summary>
+        /// [TASK-GM-18] 마케팅 예산(만 원) - 선수단 페이롤 · 운영 예산(Budget)과 섞지 않는 응원단 전용 재화. 홈경기 관중 흥행 수익의 50% + 굿즈 수익(팬 지지율 × 5만 원)이 쌓이고,
+        /// 응원단 육성(강화) · 시즌 중 치어리더 이벤트가 이 예산을 쓴다.
+        /// </summary>
+        public long MarketingBudget = DefaultMarketingBudget;
+        public const long DefaultMarketingBudget = 30000;
         /// <summary>[TASK-GM-05] 전담 응원 매칭(최대 2쌍).</summary>
         public readonly List<GMCheerDedication> CheerDedications = new List<GMCheerDedication>();
         /// <summary>[TASK-GM-05] 홈 흥행 누적 관중 수익(팬 지지율 환산 잔여분, 만 원).</summary>

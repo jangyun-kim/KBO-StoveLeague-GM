@@ -91,6 +91,7 @@ namespace KBOManager.Services
             if (s.State == GMFaBidState.Won || s.State == GMFaBidState.Lost || s.State == GMFaBidState.Withdrawn) return s;
             var p = s.Player;
             if (!league.FreeAgents.Contains(p)) { s.State = GMFaBidState.Lost; s.Log.Add("이미 시장을 떠난 선수입니다."); return s; }
+            if (GMLeagueRules.FreeAgencyLocked(league, team, out var locked)) { s.Log.Add(locked); return s; } // [TASK-GM-18] 7/31 마감 · 예산 하드 락 = 입찰 불가
             s.Round++;
             s.UserSalary = Round(salary);
             s.Years = Math.Max(1, Math.Min(GMStoveLeagueMarket.MaxFAYears, years));

@@ -89,6 +89,7 @@ namespace KBOManager.Services
             var fo = Ensure(league);
             reason = null;
             if (fo.HouseRuleMaxFA > 0 && fo.FASigningsThisYear >= fo.HouseRuleMaxFA) { reason = $"하우스 룰 - 올해 FA 영입 한도({fo.HouseRuleMaxFA}회)를 모두 썼습니다."; return false; }
+            if (GMLeagueRules.FreeAgencyLocked(league, league.UserTeam, out var locked)) { reason = locked; return false; } // [TASK-GM-18] 7/31 마감 · 예산 하드 락
             return true;
         }
 
@@ -96,6 +97,7 @@ namespace KBOManager.Services
         {
             var fo = Ensure(league);
             reason = null;
+            if (GMLeagueRules.TradeLocked(league, out var locked)) { reason = locked; return false; } // [TASK-GM-18] 7/31 트레이드 마감
             int limit = fo.HouseRuleMaxTrades > 0 ? fo.HouseRuleMaxTrades + fo.ExtraTradeAllowance : 0;
             if (limit > 0 && fo.TradesThisYear >= limit) { reason = $"하우스 룰 - 올해 트레이드 한도({limit}회)를 모두 썼습니다. 구단주에게 한도 해제를 건의하십시오."; return false; }
             return true;
@@ -130,6 +132,7 @@ namespace KBOManager.Services
             fo.Agendas.Clear();
             OpenAgendas(league);
             RefreshGoals(league);
+            fo.Career = new GMCareerState { StartYear = league.SeasonYear, Term = 1, TermEndYear = league.SeasonYear + GMCareer.TermYears - 1 }; // [TASK-GM-18] 단장 1기 임기
         }
 
         private static readonly Dictionary<string, string> Companies = new Dictionary<string, string>
@@ -793,6 +796,16 @@ namespace KBOManager.Services
             if (championCode == team.TeamCode) delta += 15;
             fo.OwnerTrust = Math.Max(fo.Manager != null && fo.Manager.NoFiring ? NoFiringTrustFloor : 0, Math.Min(MaxTrust, fo.OwnerTrust + delta)); // [TASK-GM-07] 해임당하지 않음
             GMPressBriefing.EvaluateSeason(league, regularSeasonRanks); // [TASK-GM-15] 기록된 발언(순위 공언) 판정 - 실패 = 구단주 신임도 대폭 하락
+            // [TASK-GM-18] 시즌 중 단장 개입 결산 - 구단주 중간 점검 약속 판정 · 결정 수 소식
+            string pledge = GMSeasonEvents.EvaluateSeason(league, regularSeasonRanks);
+            int decisions = GMSeasonEvents.DecisionsThisYear(league);
+            if (decisions > 0 || pledge != "")
+                league.AddNews(new GMNewsItem
+                {
+                    GameIndex = league.GamesPlayed, DateLabel = $"{league.SeasonYear} 시즌 결산", Kind = GMNewsKind.Decision, IsUserTeam = true, IsMajor = true,
+                    Title = $"{league.SeasonYear} 시즌 단장 개입 {decisions}건 결산",
+                    Body = (pledge != "" ? pledge + " · " : "") + string.Join(" / ", fo.SeasonDecisions.Where(d => d.Year == league.SeasonYear).Reverse().Take(4).Select(d => $"{d.Week}주차 {d.Choice}")),
+                });
             if (league.Mode == GMStartMode.StoryCampaign)
             {
                 fo.Ending = EvaluateEnding(rank > 0 && rank <= 5, team.Budget, fo.OwnerTrust, rank > 0 && rank < prevRank, team.Roster.Average(p => p.Age));

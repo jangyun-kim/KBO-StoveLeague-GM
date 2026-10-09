@@ -352,10 +352,11 @@ namespace KBOManager.EditorTests
             var c = team.CheerEntry.First();
             view.Select(c);
             int lv = CheerGrowth.Reinforce(c), cheer0 = GMCheerleaderStats.Cheer(c);
-            long budget = team.Budget;
+            long budget = team.MarketingBudget, opBudget = team.Budget;
             Click(view.Root, "ReinforceButton");
             Assert.AreEqual(lv + 1, CheerGrowth.Reinforce(c), "육성 +1강");
-            Assert.AreEqual(budget - CheerGrowth.ReinforceCost(lv), team.Budget, "육성비 = 운영 예산 차감");
+            Assert.AreEqual(budget - CheerGrowth.ReinforceCost(lv), team.MarketingBudget, "육성비 = 마케팅 예산 차감([TASK-GM-18])");
+            Assert.AreEqual(opBudget, team.Budget, "운영 예산 · 페이롤과 분리");
             Assert.Greater(GMCheerleaderStats.Cheer(c), cheer0, "CHEER 상승");
             StringAssert.Contains("육성", view.LastMessage);
             CheckLayer(view.Root, "응원단 엔트리(육성 버튼)");

@@ -289,7 +289,7 @@ namespace KBOManager.Controllers
             return next;
         }
 
-        /// <summary>[TASK-GM-17] [응원단 육성 +1강] - 운영 예산으로 강화(클래식 로비 성장 화면 대체).</summary>
+        /// <summary>[TASK-GM-17] [응원단 육성 +1강] - [TASK-GM-18] 마케팅 예산으로 강화(클래식 로비 성장 화면 대체).</summary>
         public bool ReinforceSelected()
         {
             if (team == null || selected == null) return false;
@@ -323,7 +323,7 @@ namespace KBOManager.Controllers
         {
             if (root == null || team == null) return;
             var entry = GMCheerleaderRoster.Entry(team);
-            title.text = $"{NameAliasTable.DisplayTeamName(team.TeamCode)} 응원단 엔트리 · 운영 예산 {GMDiagnosticFormat.Short(team.Budget)}";
+            title.text = $"{NameAliasTable.DisplayTeamName(team.TeamCode)} 응원단 엔트리 · 마케팅 예산 {GMDiagnosticFormat.Short(team.MarketingBudget)}"; // [TASK-GM-18] 응원단 전용 재화
             summary.text = $"{GMCheerleaderRules.Summary(entry.Count, team.CheerleaderPool.Count)} · 팀워크 +{GMCheerleaderRoster.LeadershipTeamworkBonus(entry)} · " +
                            $"실책 -{GMCheerleaderRoster.ErrorReduction(entry) * 100f:0}% · 홈 흥행 +{GMCheerleaderRoster.HomeRevenue(entry):N0}만 원";
 

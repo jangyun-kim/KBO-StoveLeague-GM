@@ -54,33 +54,41 @@ namespace KBOManager.Services
             return string.Join(" · ", list.Take(max)) + (list.Count > max ? $" 외 {list.Count - max}회" : "");
         }
 
-        /// <summary>시즌 기록 한 줄 - 이번 시즌 기록이 있으면 그것, 없으면 직전 시즌 결산 스냅숏, 그것도 없으면 카드 시즌 능력치.</summary>
+        /// <summary>[TASK-GM-18] 기록 출처 태그 - 실제 KBO 기록(카드 시즌 원 기록 · 2025년까지 누적) / 게임 내 시뮬레이션 기록(2026년~ 진행 시즌 · 결산).</summary>
+        public const string RealRecordTag = "[실제 KBO 기록]", SimRecordTag = "[시뮬레이션 기록]";
+        public static readonly string RealTagColor = "#D9481F", SimTagColor = "#1F6FD9";
+        public static string Tagged(string tag, string color, string text) => $"<color={color}>{tag}</color> {text}";
+
+        /// <summary>
+        /// 시즌 기록 한 줄 - 이번 시즌 기록이 있으면 그것, 없으면 직전 시즌 결산 스냅숏, 그것도 없으면 카드 시즌 능력치.
+        /// [TASK-GM-18] 각 머리줄에 출처 태그 - 진행 시즌 · 결산 = [시뮬레이션 기록](파랑 견본), 카드 시즌 = [실제 KBO 기록](주황 견본).
+        /// </summary>
         public static List<string> StatLines(GMLeagueState league, Player p)
         {
             var lines = new List<string>();
             if (p?.Template == null) return lines;
             if (league != null && league.Stats.TryGetValue(p.InstanceId, out var s) && (s.PA > 0 || s.OutsPitched > 0))
             {
-                lines.Add($"{league.SeasonYear} 시즌(진행 중)");
+                lines.Add(Tagged(SimRecordTag, SimTagColor, $"{league.SeasonYear} 시즌(진행 중)"));
                 lines.Add(p.IsPitcher ? PitchLine(s.PG, s.W, s.L, s.SV, s.HLD, s.OutsPitched, s.ER, s.PSO, s.PBB, s.WAR) : BatLine(s.G, s.PA, s.AB, s.H, s.HR, s.RBI, s.SB, s.BB, s.SO, s.Doubles, s.Triples, s.WAR));
             }
             var fo = league != null ? GMFrontOffice.Ensure(league) : null;
             var last = fo?.LastSeasonReview?.FirstOrDefault(l => l.PlayerId == p.InstanceId && !l.Estimated);
             if (last != null)
             {
-                lines.Add($"{fo.LastSeasonReviewYear} 시즌(결산)");
+                lines.Add(Tagged(SimRecordTag, SimTagColor, $"{fo.LastSeasonReviewYear} 시즌(결산)"));
                 lines.Add(p.IsPitcher ? PitchLine(last.PG, -1, -1, last.SV, last.HLD, last.OutsPitched, last.ER, last.PSO, last.PBB, last.War) : BatLine(last.G, last.PA, last.AB, last.H, last.HR, -1, last.SB, last.BB, last.SO, last.Doubles, last.Triples, last.War));
             }
             var t = GMRosterTiers.OriginalOf(p.Template);
             if (p.IsPitcher)
             {
                 var ps = p.Template.PitcherStats;
-                lines.Add($"{t.SeasonYear} 카드 능력치 · 구위 {ps.Stuff} · 구속 {ps.Velocity} · 무브먼트 {ps.Movement} · 제구 {ps.Control} · 체력 {ps.Stamina}");
+                lines.Add(Tagged(RealRecordTag, RealTagColor, $"{t.SeasonYear} 시즌 카드") + $" · 구위 {ps.Stuff} · 구속 {ps.Velocity} · 무브먼트 {ps.Movement} · 제구 {ps.Control} · 체력 {ps.Stamina}");
             }
             else
             {
                 var bs = p.Template.BatterStats;
-                lines.Add($"{t.SeasonYear} 카드 능력치 · 파워 {bs.Power} · 컨택 {bs.Contact} · 선구 {bs.Discipline} · 스피드 {bs.Speed} · 수비 {bs.Defense}");
+                lines.Add(Tagged(RealRecordTag, RealTagColor, $"{t.SeasonYear} 시즌 카드") + $" · 파워 {bs.Power} · 컨택 {bs.Contact} · 선구 {bs.Discipline} · 스피드 {bs.Speed} · 수비 {bs.Defense}");
             }
             return lines;
         }

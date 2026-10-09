@@ -71,7 +71,7 @@ namespace KBOManager.Controllers
         private void BuildTurnLockOverlay()
         {
             turnLock = CompyaUiKit.Fill(root, TurnLockName);
-            CompyaUiKit.Box(turnLock, "LockBg", 0, 240, 1920, 1040, new Color(0.05f, 0.06f, 0.08f, 0.95f));
+            CompyaUiKit.Box(turnLock, "LockBg", 0, 240, 1920, 1040, new Color(0.05f, 0.06f, 0.08f, 0.95f)).raycastTarget = true; // [TASK-GM-18] 잠금 막이 클릭을 흡수한다
             turnLockTitle = L(turnLock, "LockTitle", "", 460, 420, 1460, 472, PanelTitlePt + 4, TextAnchor.MiddleCenter, Gold);
             turnLockBody = L(turnLock, "LockBody", "", 460, 480, 1460, 600, BodyPt, TextAnchor.UpperCenter, White);
             turnLockBody.lineSpacing = 1.15f;
@@ -82,6 +82,7 @@ namespace KBOManager.Controllers
         private void UpdateTurnLock()
         {
             if (turnLock == null) return;
+            foreach (var pair in panes) SetPaneInputBlocked(pair.Value, IsPaneLocked(pair.Key)); // [TASK-GM-18] 잠긴 방 = CanvasGroup 입력 원천 차단
             bool locked = IsPaneLocked(currentPane);
             turnLock.gameObject.SetActive(locked);
             if (!locked) return;
@@ -89,6 +90,27 @@ namespace KBOManager.Controllers
             turnLockTitle.text = $"잠김 - {GMStoveTurns.Label(need)}에서 열립니다";
             turnLockBody.text = $"현재 {GMStoveTurns.Label(now)} · 활성 방: {GMStoveTurns.Rooms[now - 1]}\n스토브리그는 8 Turn 순서대로 진행됩니다. 이번 Turn의 방을 확인한 뒤 메인 홈에서 [진행하기]를 누르십시오.";
             turnLock.SetAsLastSibling();
+        }
+
+        /// <summary>
+        /// [TASK-GM-18] 잠긴 Turn 방의 입력 원천 차단 - CanvasGroup.interactable · blocksRaycasts = false(잠금 막 아래 버튼 · 행이 클릭되던 문제).
+        /// 해금되면 다시 켠다.
+        /// </summary>
+        private static void SetPaneInputBlocked(RectTransform pane, bool blocked)
+        {
+            if (pane == null) return;
+            var group = pane.GetComponent<CanvasGroup>();
+            if (group == null) { if (!blocked) return; group = pane.gameObject.AddComponent<CanvasGroup>(); }
+            group.interactable = !blocked;
+            group.blocksRaycasts = !blocked;
+        }
+
+        /// <summary>[TASK-GM-18] 방(패널)의 입력이 막혀 있는지(CanvasGroup) - 검증용.</summary>
+        public bool IsPaneInputBlocked(string pane)
+        {
+            if (!panes.TryGetValue(pane, out var rect) || rect == null) return false;
+            var group = rect.GetComponent<CanvasGroup>();
+            return group != null && (!group.blocksRaycasts || !group.interactable);
         }
 
         /// <summary>[진행하기] 전 정리 - 전력 분석 · 경기 결과 화면 · 대시보드 · 팝업을 닫는다. 실시간 이닝 경기 중이면 false(경기를 먼저 끝내야 한다).</summary>

@@ -258,6 +258,7 @@ namespace KBOManager.Controllers
             if (faBidStatus == null) return;
             bool live = faBid != null && faBid.Player == faSelected && faSelected != null;
             faRaise.interactable = faWithdraw.interactable = live && faBid.State == GMFaBidState.CounterBid;
+            if (faRaise.interactable && GMLeagueRules.FreeAgencyLocked(League, UserTeam, out _)) faRaise.interactable = false; // [TASK-GM-18] 하드 락 = 추가 베팅 불가
             if (!live)
             {
                 faBidStatus.text = faSelected == null ? "" : "입찰 경쟁 - [계약 제시]로 첫 입찰을 넣으면 관심 구단의 역제안이 표시됩니다.";

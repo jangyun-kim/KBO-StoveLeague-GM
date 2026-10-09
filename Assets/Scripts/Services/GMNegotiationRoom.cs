@@ -19,6 +19,8 @@ namespace KBOManager.Services
     ///      카드는 그 위에 +10%p × 성향 배수를 더하는 "협상 근거"다. 타결 연봉 = 제시액.
     ///   ⑥ 협상 실패 = 결렬 위기(기회 3회): 선수 측이 요구액을 제시액과의 차이 35%만큼 양보하고 다시 테이블에 앉는다(실패 1회당 진행 가능성 -4%p).
     ///      3회 실패 = 최종 결렬 → 선수는 즉시 FA 시장(원 소속 = 내 구단)으로 나간다(쿨다운 대신 시장 이동).
+    ///   [TASK-GM-18] 제시액 ≥ 요구액 = 진행 가능성 100%(판정 없이 타결) · 희망 기간은 충성도 연동(40 미만 1~2년 · 70 이상 4~5년) ·
+    ///      유망주 인상 상한(OVR 65 미만 · 지난 시즌 WAR 1.0 미만 = 현재 연봉 + min(30%, 5,000만 원)).
     /// </summary>
     public static class GMNegotiationRoom
     {
@@ -187,8 +189,19 @@ namespace KBOManager.Services
 
         public static int DemandOf(GMLeagueState league, Player p)
         {
-            int demand = GMStoveLeagueMarket.ExtensionDemand(p, GMFrontOffice.Ensure(league).Difficulty);
-            return Round(Math.Max(demand, p.Salary * (100 + MinRaisePercent) / 100.0));
+            double war = LastWar(league, p);
+            int demand = GMStoveLeagueMarket.ExtensionDemand(p, GMFrontOffice.Ensure(league).Difficulty, war);
+            int floor = Round(Math.Max(demand, p.Salary * (100 + MinRaisePercent) / 100.0));
+            return GMStoveLeagueMarket.IsRaiseCapTarget(p, war) ? Math.Min(floor, GMStoveLeagueMarket.RaiseCapOf(p)) : floor; // [TASK-GM-18] 유망주 인상 상한
+        }
+
+        /// <summary>[TASK-GM-18] 지난 시즌 WAR - 진행 중 시즌 기록 → 직전 시즌 결산 스냅숏 → (기록 없음) OVR 예상 WAR 순.</summary>
+        public static double LastWar(GMLeagueState league, Player p)
+        {
+            if (p == null) return 0;
+            if (league != null && league.Stats.TryGetValue(p.InstanceId, out var s) && (s.PA > 0 || s.OutsPitched > 0)) return s.WAR;
+            var last = league != null ? GMFrontOffice.Ensure(league).LastSeasonReview?.FirstOrDefault(l => l.PlayerId == p.InstanceId && !l.Estimated) : null;
+            return last != null ? last.War : GMSeasonReview.ProjectedWar(p, 1.0);
         }
 
         /// <summary>협상 테이블 열기 - 리포트 · 유대 · 카드 풀(5~7) · 제시 3장 · 카드별 예측.</summary>
@@ -268,6 +281,7 @@ namespace KBOManager.Services
             int offer = s.Offer > 0 ? s.Offer : ClampOffer(s.Demand, (int)Math.Round(s.Demand * DefaultOfferRatio));
             float core = GapProgress(offer, s.Demand) + (BaselineProgress(league, team, p) - 0.45f) - s.Strikes * StrikePenalty;
             f.Progress = Math.Max(MinProgress, Math.Min(MaxProgress, core + f.Bonus));
+            if (offer >= s.Demand) f.Progress = 1f; // [TASK-GM-18] 요구액 이상을 맞춰 주면 무조건 타결(깎을 때만 확률이 낮아진다)
             f.Salary = offer;
             f.Outcome = Classify(s.CurrentSalary, s.Demand, offer);
             for (int i = 0; i < 4; i++) f.Distribution[i] = i == (int)f.Outcome ? 1f : 0f;
@@ -331,7 +345,7 @@ namespace KBOManager.Services
 
             double roll = rng.NextDouble();
             if (rollOverride.HasValue) roll = rollOverride.Value; // [TASK-GM-17] 검증 · 툴 - 판정 고정
-            if (roll >= f.Progress)
+            if (f.Progress < 1f && roll >= f.Progress) // [TASK-GM-18] 진행 가능성 100%(제시액 ≥ 요구액) = 판정 없이 타결
             {
                 // [TASK-GM-17] 실패 = 결렬 위기 - 요구액 양보 후 다음 기회, 3회째 = 최종 결렬 → FA 시장
                 GMPromiseSystem.Cancel(league, promise, "협상 불발");

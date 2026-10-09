@@ -60,6 +60,8 @@ namespace KBOManager.Simulation
         public bool IsFirstHalfDone => league.GamesPlayed >= HalfGames;
         public GMSimInterrupt PendingInterrupt => interrupts.Count > 0 ? interrupts.Peek() : null;
         public bool IsRunning => ActiveMode.HasValue && league.GamesPlayed < TargetGames && PendingInterrupt == null;
+        /// <summary>[TASK-GM-18] 이번 주 남은 경기 수(주간 진행 버튼 라벨).</summary>
+        public int GamesLeftThisWeek => Math.Max(0, GMSeasonEvents.NextWeekEnd(league.GamesPlayed) - league.GamesPlayed);
         /// <summary>전반기 버튼 라벨 - 72경기를 마치면 자동으로 [후반기 진행]으로 바뀐다.</summary>
         public string HalfButtonLabel => IsFirstHalfDone ? "후반기 진행" : "전반기 진행";
         /// <summary>마지막으로 진행한 날의 내 구단 경기 결과 한 줄.</summary>
@@ -179,6 +181,7 @@ namespace KBOManager.Simulation
             {
                 GMRunMode.SingleGame => Math.Min(SeasonGames, league.GamesPlayed + 1),
                 GMRunMode.FirstHalf => HalfGames,
+                GMRunMode.Week => GMSeasonEvents.NextWeekEnd(league.GamesPlayed), // [TASK-GM-18]
                 _ => SeasonGames,
             };
             ActiveMode = mode;
@@ -189,7 +192,11 @@ namespace KBOManager.Simulation
                 league.LastAiSignings.AddRange(GMFreeAgencyCycle.PrepareOpeningDay(league));
                 GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.PreSeason, league.Seed);
             }
-            if (league.Phase == GMSeasonPhase.StoveLeague) league.Phase = GMSeasonPhase.RegularSeason;
+            if (league.Phase == GMSeasonPhase.StoveLeague)
+            {
+                league.Phase = GMSeasonPhase.RegularSeason;
+                GMLeagueRules.ApplyOpeningBudgetPenalty(league); // [TASK-GM-18] 예산 초과 상태로 개막 = 구단주 신임도 -20
+            }
             if (league.GamesPlayed == 0 && league.News.All(n => n.Kind != GMNewsKind.Season || n.GameIndex != 0))
                 AddNews(0, GMNewsKind.Season, $"{league.SeasonYear} KBO 리그 개막", $"{league.SeasonYear} 시즌 정규리그 144경기 대장정이 시작됩니다.", false, false);
             return true;
@@ -197,17 +204,51 @@ namespace KBOManager.Simulation
 
         public void Stop() => ActiveMode = null;
 
-        /// <summary>인터럽트 처리 - 대기록은 Continue, 부상은 AutoCallUp(벤치 자동 대체) 또는 ManualLineup(replacement를 그 자리에 고정).</summary>
+        /// <summary>
+        /// 인터럽트 처리 - 대기록은 Continue, 부상은 AutoCallUp(벤치 자동 대체) 또는 ManualLineup(replacement를 그 자리에 고정).
+        /// [TASK-GM-18] 단장 개입 사건을 이 경로로 넘기면 기본 선택지(DefaultChoice - 경기력에 영향 없는 보수적 선택)로 처리한다.
+        /// </summary>
         public void ResolveInterrupt(GMInterruptChoice choice, Player replacement = null)
         {
             if (interrupts.Count == 0) return;
             var current = interrupts.Dequeue();
+            if (current.Kind == GMInterruptKind.SeasonEvent)
+            {
+                if (current.Event != null && !current.Event.Resolved) LastSeasonEventResult = GMSeasonEvents.Resolve(league, current.Event, current.Event.DefaultChoice);
+                return;
+            }
             if (current.Kind == GMInterruptKind.Injury && choice == GMInterruptChoice.ManualLineup && replacement != null && !current.Player.IsPitcher)
             {
                 var team = league.Teams[current.TeamCode];
                 team.Lineup.Starters.RemoveAll(pin => pin.Position == current.Position);
                 team.Lineup.Starters.Add(new LineupAssignment.StarterPin { InstanceId = replacement.InstanceId, Position = current.Position });
             }
+        }
+
+        /// <summary>[TASK-GM-18] 대기 중인 단장 개입 사건(맨 앞 인터럽트가 사건이 아니면 null).</summary>
+        public GMSeasonEvent PendingSeasonEvent => PendingInterrupt != null && PendingInterrupt.Kind == GMInterruptKind.SeasonEvent ? PendingInterrupt.Event : null;
+        public GMSeasonEventResult LastSeasonEventResult { get; private set; }
+        /// <summary>[TASK-GM-18] 이번 시즌 발생한 단장 개입 사건 수(테스트 · 결산).</summary>
+        public int SeasonEventsRaised { get; private set; }
+
+        /// <summary>[TASK-GM-18] 단장 개입 사건 선택(선택지 index). 맨 앞 인터럽트가 사건이 아니면 null.</summary>
+        public GMSeasonEventResult ResolveSeasonEvent(int choiceIndex)
+        {
+            var ev = PendingSeasonEvent;
+            if (ev == null) return null;
+            interrupts.Dequeue();
+            LastSeasonEventResult = GMSeasonEvents.Resolve(league, ev, choiceIndex);
+            var r = LastSeasonEventResult;
+            if (r != null && r.Applied)
+            {
+                var audio = KBOManager.Managers.GMAudioManager.Instance;
+                if (audio != null)
+                {
+                    if (!string.IsNullOrEmpty(r.Sfx)) audio.PlaySfx(r.Sfx);
+                    if (r.Audio.HasValue) audio.PlayEvent(r.Audio.Value, league.SelectedTeamCode); // 고속 진행 중이면 SimulationMode가 무시(효과음만)
+                }
+            }
+            return r;
         }
 
         /// <summary>테스트/빠른 진행 - 목표까지 즉시 진행. autoResolve면 인터럽트를 자동 처리(부상 = 자동 콜업)한다. 진행한 일수를 반환.</summary>
@@ -332,6 +373,16 @@ namespace KBOManager.Simulation
             else if (league.GamesPlayed == HalfGames)
             {
                 AddNews(day, GMNewsKind.Season, "전반기 종료 · 올스타 브레이크", "72경기를 마쳤습니다. 후반기 진행으로 이어갑니다.", false, false);
+            }
+            // [TASK-GM-18] 주간 종료 → 단장 개입 사건 0~3건(경기 중간이 아닌 주간 마감 후에만 시뮬레이션을 멈춘다)
+            if (!IsSeasonComplete && GMSeasonEvents.IsWeekEnd(league.GamesPlayed))
+            {
+                GMSeasonEvents.OnWeekEnd(league);
+                foreach (var ev in GMSeasonEvents.Generate(this))
+                {
+                    SeasonEventsRaised++;
+                    interrupts.Enqueue(new GMSimInterrupt { Kind = GMInterruptKind.SeasonEvent, Event = ev, News = league.News.FirstOrDefault(n => n.Kind == GMNewsKind.Decision) });
+                }
             }
             if (ActiveMode.HasValue && league.GamesPlayed >= TargetGames) ActiveMode = null;
             OnDayCompleted?.Invoke();

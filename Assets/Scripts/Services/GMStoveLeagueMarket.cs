@@ -32,19 +32,50 @@ namespace KBOManager.Services
 
         // ================================================================== 공통
 
-        public static int PreferredYears(Player p) => p.Age <= 26 ? 4 : p.Age <= 30 ? 3 : p.Age <= 33 ? 2 : 1;
+        /// <summary>
+        /// 희망 계약 기간. [TASK-GM-18] 충성도 연동 - 충성도 40 미만 = FA로 떠나려고 1~2년 단기(30세 이하 2년 · 그 위 1년),
+        /// 70 이상 = 4~5년 장기(30세 이하 5년 · 그 위 4년), 그 사이 = 나이 기준(26세 이하 4 · 30세 이하 3 · 33세 이하 2 · 그 위 1년).
+        /// </summary>
+        public static int PreferredYears(Player p)
+        {
+            if (p == null) return 1;
+            if (p.Loyalty < LowLoyalty) return p.Age <= 30 ? 2 : 1;
+            if (p.Loyalty >= HighLoyalty) return p.Age <= 30 ? 5 : 4;
+            return p.Age <= 26 ? 4 : p.Age <= 30 ? 3 : p.Age <= 33 ? 2 : 1;
+        }
+
+        public const int LowLoyalty = 40, HighLoyalty = 70;
+        /// <summary>[TASK-GM-18] 충성도 40 미만 = 단기 계약 + 높은 요구액(+10%) - 시장 가치를 확인하려는 선수.</summary>
+        public const double LowLoyaltyDemandPremium = 1.10;
+        /// <summary>[TASK-GM-18] 유망주 연봉 인상 상한 - OVR 65 미만 · 지난 시즌 WAR 1.0 미만이면 요구 인상폭 = min(현재 연봉의 30%, 5,000만 원).</summary>
+        public const int ProspectCapOvr = 65, ProspectRaiseMax = 5000;
+        public const double ProspectCapWar = 1.0, ProspectRaiseRate = 0.30;
+
+        public static bool IsRaiseCapTarget(Player p, double lastWar) => p?.Template != null && p.BaseOverall < ProspectCapOvr && lastWar < ProspectCapWar;
+
+        /// <summary>[TASK-GM-18] 인상 상한 적용 요구액 상한 = 현재 연봉 + min(30%, 5,000만 원).</summary>
+        public static int RaiseCapOf(Player p) => p == null ? Player.MinSalary : RoundSalary(p.Salary + Math.Min(p.Salary * ProspectRaiseRate, ProspectRaiseMax));
 
         private static int RoundSalary(double v) => Math.Max(Player.MinSalary, Math.Min(Player.MaxSalary, (int)Math.Round(v / 100.0) * 100));
 
-        /// <summary>재계약 · 연장 요구 연봉(성적 기반 기준 연봉 × 나이 보정 × 난이도 배수, 현재 연봉의 90% 이상).</summary>
-        public static int ExtensionDemand(Player p, GMDifficulty difficulty)
+        /// <summary>재계약 · 연장 요구 연봉(성적 기반 기준 연봉 × 나이 보정 × 난이도 배수, 현재 연봉의 90% 이상). 지난 시즌 WAR를 모르면 OVR 예상 WAR로 본다.</summary>
+        public static int ExtensionDemand(Player p, GMDifficulty difficulty) => ExtensionDemand(p, difficulty, null);
+
+        /// <summary>
+        /// [TASK-GM-18] 재계약 요구 연봉 - 충성도 40 미만 +10% · 유망주 인상 상한(OVR 65 미만 · 지난 시즌 WAR 1.0 미만 → 현재 연봉 + min(30%, 5,000만 원)).
+        /// 1군에 잠깐 올라온 3,000만 원 유망주가 OVR 기반 기준 연봉으로 수억 원을 부르던 문제를 막는다.
+        /// </summary>
+        public static int ExtensionDemand(Player p, GMDifficulty difficulty, double? lastWar)
         {
             if (p?.Template == null) return Player.MinSalary;
             int majors = p.CareerAwardIds?.Count(Player.IsMajorAward) ?? 0;
             double baseSalary = Player.ComputeSalary(p.BaseOverall, p.EgoLevel, majors);
             double age = p.Age >= 35 ? 0.75 : p.Age >= 32 ? 0.9 : p.Age <= 24 ? 0.85 : 1.0;
             double v = Math.Max(baseSalary * age, p.Salary * 0.9) * GMFrontOffice.DemandMultiplier(difficulty);
-            return RoundSalary(v);
+            if (p.Loyalty < LowLoyalty) v *= LowLoyaltyDemandPremium;
+            int demand = RoundSalary(v);
+            double war = lastWar ?? GMSeasonReview.ProjectedWar(p, 1.0);
+            return IsRaiseCapTarget(p, war) ? Math.Min(demand, RaiseCapOf(p)) : demand;
         }
 
         /// <summary>FA 요구 연봉(재계약 요구액 × 1.1 - 시장 프리미엄).</summary>

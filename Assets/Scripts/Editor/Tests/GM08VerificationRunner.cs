@@ -225,16 +225,23 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMCheerleaderRules.IsValidEntryCount(GMCheerleaderRules.EntryCount(userTeam.CheerEntry)) && userTeam.CheerLeadershipBuff > 0, audio.CheerMixActive, "치어리더 엔트리(4~6인) 단상 버프 = 응원 믹스");
             Assert.AreEqual(TeamAudioProfile.SynthCrowd, audio.CurrentBgmKey, "경기 = 관중 앰비언스");
             var cues = new HashSet<GMAudioCue>();
+            var sfx = new HashSet<GMAudioCue>();
+            int starts = audio.BgmTrackStarts;
+            int requests0 = audio.Requests.Count;
             for (int i = 0; i < 400 && !prePost.Session.IsOver; i++)
             {
                 prePost.LiveStepAtBat();
                 if (prePost.LastLiveCue.HasValue) cues.Add(prePost.LastLiveCue.Value);
+                if (prePost.LastExtraCue.HasValue) sfx.Add(prePost.LastExtraCue.Value);
             }
-            TestContext.WriteLine("[GM08 오디오] 실시간 경기 큐: " + string.Join(", ", cues));
-            Assert.IsTrue(cues.Contains(GMAudioCue.OutSong) || cues.Contains(GMAudioCue.InningEndSong), "수비 아웃송 트리거");
-            Assert.IsTrue(cues.Contains(GMAudioCue.ChanceSong) || cues.Contains(GMAudioCue.HighlightSong) || cues.Contains(GMAudioCue.ComebackSong), "공격 응원가 트리거");
-            Assert.IsTrue(audio.Requests.Any(h => h.key.StartsWith("SAM/sam_out_")), "삼성 아웃송 트리거 → 클립 바인딩");
-            Assert.IsTrue(audio.Requests.Any(h => h.key.StartsWith("SAM/sam_") && !h.key.StartsWith("SAM/sam_out_") && !h.key.StartsWith("SAM/sam_bgm_home1")), "삼성 공격 응원가 트리거 → 클립 바인딩");
+            TestContext.WriteLine("[GM08 오디오] 실시간 경기 상황 판정: " + string.Join(", ", cues) + " / 효과음: " + string.Join(", ", sfx));
+            Assert.IsTrue(cues.Contains(GMAudioCue.OutSong) || cues.Contains(GMAudioCue.InningEndSong), "수비 상황 판정");
+            Assert.IsTrue(cues.Contains(GMAudioCue.ChanceSong) || cues.Contains(GMAudioCue.HighlightSong) || cues.Contains(GMAudioCue.ComebackSong), "공격 상황 판정");
+            // [TASK-GM-18] 경기 중 BGM 교체 완전 차단 - 응원가(곡 채널) 요청 0건 · BGM 곡 시작 0회 · 효과음만
+            Assert.AreEqual(requests0, audio.Requests.Count, "경기 중 응원가 · 아웃송 요청 0건");
+            Assert.AreEqual(starts, audio.BgmTrackStarts, "경기 중 BGM 곡 교체 0회");
+            Assert.AreEqual(TeamAudioProfile.SynthCrowd, audio.CurrentBgmKey, "경기 중 BGM = 관중 앰비언스 고정");
+            Assert.IsTrue(sfx.Contains(GMAudioCue.OutCheer) || sfx.Contains(GMAudioCue.CrowdCheer), "타석 효과음(SFX)");
             Assert.IsTrue(prePost.FinishLiveMatch());
             Assert.IsFalse(audio.CheerMixActive, "경기 종료 - 응원 믹스 정리");
         }
@@ -602,7 +609,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMFaCompensation.OriginOf(league, leftover).Grade, restored.FAOrigins[leftover.InstanceId].Grade);
             Assert.AreEqual(1, restored.PendingCompensations.Count, "보상 대기 복원");
             CollectionAssert.AreEqual(league.UserProtectedIds, restored.UserProtectedIds, "수동 보호 명단 복원");
-            Assert.AreEqual(27, new GameSaveData().SaveVersion, "세이브 v27([TASK-GM-17])");
+            Assert.AreEqual(28, new GameSaveData().SaveVersion, "세이브 v28([TASK-GM-18])");
         }
 
         // ================================================================== 6) 레이아웃 · Bold · 씬

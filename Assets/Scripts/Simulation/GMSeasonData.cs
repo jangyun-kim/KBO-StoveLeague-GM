@@ -15,6 +15,7 @@ namespace KBOManager.Simulation
         FirstHalf = 1,   // 개막 ~ 올스타 브레이크(72경기)
         SecondHalf = 2,  // 73 ~ 144경기
         FullSeason = 3,  // 1 ~ 144경기
+        Week = 4,        // [TASK-GM-18] 주간 진행 - 이번 주(개막 주말 2경기 · 이후 화~일 6경기) 마지막 경기까지 → 주간 종료 후 단장 개입 사건
     }
 
     /// <summary>[TASK-GM-02] 구단 시즌 성적(순위표 한 행).</summary>
@@ -121,7 +122,7 @@ namespace KBOManager.Simulation
         public string IPLabel => OutsPitched % 3 == 0 ? $"{OutsPitched / 3}" : $"{OutsPitched / 3} {OutsPitched % 3}/3";
     }
 
-    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8, Award = 9, Postseason = 10, Cheer = 11 }
+    public enum GMNewsKind { Record = 0, Injury = 1, Return = 2, Weekly = 3, Monthly = 4, Scouting = 5, Trade = 6, Milestone = 7, Season = 8, Award = 9, Postseason = 10, Cheer = 11, Decision = 12 } // [TASK-GM-18] Decision = 시즌 중 단장 개입
 
     /// <summary>[TASK-GM-02] 최신 소식 피드 한 줄(날짜 + 제목 + 본문).</summary>
     [Serializable]
@@ -233,7 +234,7 @@ namespace KBOManager.Simulation
     }
 
     /// <summary>[TASK-GM-02] 인터럽트 팝업 종류 - 대기록 뉴스 / 내 구단 주전 부상.</summary>
-    public enum GMInterruptKind { Record = 0, Injury = 1 }
+    public enum GMInterruptKind { Record = 0, Injury = 1, SeasonEvent = 2 } // [TASK-GM-18] SeasonEvent = 주간 종료 후 단장 개입 사건
 
     public enum GMInterruptChoice { Continue = 0, AutoCallUp = 1, ManualLineup = 2 }
 
@@ -246,6 +247,8 @@ namespace KBOManager.Simulation
         public string TeamCode;
         public BatterPosition Position;             // 부상 타자 포지션(직접 관리 시 대체 자리)
         public readonly List<Player> ReplacementCandidates = new List<Player>();
+        /// <summary>[TASK-GM-18] 단장 개입 사건(Kind = SeasonEvent).</summary>
+        public KBOManager.Services.GMSeasonEvent Event;
     }
 
     /// <summary>
@@ -334,6 +337,9 @@ namespace KBOManager.Simulation
         public List<PlayerSaveData> Futures = new List<PlayerSaveData>();
         public int DevelopmentSlots = GMRosterTiers.DefaultDevelopmentSlots;
         public int LockerRoomTrust = GMTeamState.DefaultLockerRoomTrust; // [TASK-GM-11] v22 - 선수단 단장 신뢰도(없으면 60)
+        // [TASK-GM-18] v28 - 마케팅 예산(-1 = 구버전 세이브 → 로드 시 기본값) · 시즌 중 단장 개입 팀워크 보정(남은 주)
+        public long MarketingBudget = -1;
+        public int SeasonEventTeamwork, SeasonEventTeamworkWeeks;
     }
 
     /// <summary>[TASK-GM-07] 내 구단 정규시즌 경기 결과 한 줄(시즌 일정 캘린더 - 날짜 칸에 결과 스코어 표시).</summary>

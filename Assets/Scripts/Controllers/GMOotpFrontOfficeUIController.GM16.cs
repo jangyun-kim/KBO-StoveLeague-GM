@@ -215,8 +215,13 @@ namespace KBOManager.Controllers
                 pctValues[k] = L(pctPopup, $"PctValue{k}", "", 880, y0, 975, y0 + 50, BodyPt + 1, TextAnchor.MiddleRight, ink);
                 scGrades[k] = L(pctPopup, $"ScGrade{k}", "", 985, y0, 1080, y0 + 50, BodyPt + 1, TextAnchor.MiddleCenter, ink);
             }
-            L(pctPopup, "ScStatsTitle", "기록 (시즌 · 결산 · 카드)", 1110, 500, 1800, 534, PanelTitlePt, TextAnchor.MiddleLeft, ink);
+            L(pctPopup, "ScStatsTitle", "기록", 1110, 500, 1240, 534, PanelTitlePt, TextAnchor.MiddleLeft, ink);
+            // [TASK-GM-18] 기록 출처 태그 범례 - 실제 KBO 기록(카드 시즌) / 시뮬레이션 기록(인게임 진행 시즌)
+            var tags = L(pctPopup, "ScRecordTags", $"<color={GMScoutingReport.RealTagColor}>■</color> {GMScoutingReport.RealRecordTag}   <color={GMScoutingReport.SimTagColor}>■</color> {GMScoutingReport.SimRecordTag}",
+                1250, 500, 1800, 534, SmallPt, TextAnchor.MiddleRight, ink);
+            tags.supportRichText = true;
             scStats = L(pctPopup, "ScStats", "", 1110, 540, 1800, 720, BodyPt, TextAnchor.UpperLeft, ink);
+            scStats.supportRichText = true; // [TASK-GM-18] 출처 태그 색 견본
             scStats.lineSpacing = 1.1f;
             L(pctPopup, "ScReportTitle", "스카우트 코멘트", 1110, 728, 1800, 762, PanelTitlePt, TextAnchor.MiddleLeft, ink);
             scReport = L(pctPopup, "ScReport", "", 1110, 768, 1800, 944, BodyPt, TextAnchor.UpperLeft, soft);
@@ -343,7 +348,7 @@ namespace KBOManager.Controllers
             cePool = L(syn, "CePool", "", 1024, 772, 1896, 900, CellPt, TextAnchor.UpperLeft, Muted);
             cePool.lineSpacing = 1.1f;
             // [TASK-GM-17] 클래식 로비 영입 · 보유 화면 진입점 제거 - 구단 15인 풀은 실제 응원단이고, 성장(강화)은 엔트리 화면 [응원단 육성]으로 옮겼다
-            L(syn, "CeNote", "응원단 육성(강화)은 15인 풀 · 엔트리 화면에서 - 운영 예산을 써서 4대 스탯을 올립니다.", 1024, 910, 1896, 970, CellPt, TextAnchor.MiddleLeft, Muted);
+            L(syn, "CeNote", "응원단 육성(강화)은 15인 풀 · 엔트리 화면에서 - 마케팅 예산(관중 · 굿즈 수익)을 써서 4대 스탯을 올립니다.", 1024, 910, 1896, 970, CellPt, TextAnchor.MiddleLeft, Muted);
         }
 
         private void RefreshCheer()

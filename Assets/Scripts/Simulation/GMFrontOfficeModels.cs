@@ -166,6 +166,49 @@ namespace KBOManager.Simulation
         public int StarterDeckSeed;
         // [TASK-GM-17] 계약 협상 진행 기록(선수별 실패 횟수 · 양보 반영 요구액 · 연도) - 세이브 v27
         public List<GMNegotiationTalk> NegotiationTalks = new List<GMNegotiationTalk>();
+        // [TASK-GM-18] 세이브 v28 - 시즌 중 단장 개입(결정 로그 · 사건 쿨다운 · 조용한 주 · 시즌 사건 수 · 구단주 중간 점검 약속 · 트레이드 블록)
+        public List<GMSeasonDecisionLog> SeasonDecisions = new List<GMSeasonDecisionLog>();
+        public List<GMSeasonEventCooldown> SeasonEventCooldowns = new List<GMSeasonEventCooldown>();
+        public int SeasonEventYear, SeasonEventCount, SeasonEventQuietWeeks;
+        public int OwnerPledgeYear, OwnerPledgeRank;
+        public string SeasonTradeBlockId = "";
+        // [TASK-GM-18] 예산 초과 개막 페널티(구단주 신임도 -20)를 적용한 연도 · 단장 커리어(임기제 · 30시즌 엔딩 · 해금)
+        public int BudgetPenaltyYear;
+        public GMCareerState Career = new GMCareerState();
+    }
+
+    /// <summary>[TASK-GM-18] 시즌 중 단장 개입 결정 1건(시즌 결산 · 스토브리그 평가 근거).</summary>
+    [Serializable]
+    public class GMSeasonDecisionLog
+    {
+        public int Year, Week, Day, Priority;
+        public string Kind = "", Title = "", Choice = "", Result = "";
+    }
+
+    /// <summary>[TASK-GM-18] 사건 종류별 마지막 발생 주차 · 시즌 발생 횟수(쿨다운 · 시즌 상한).</summary>
+    [Serializable]
+    public class GMSeasonEventCooldown
+    {
+        public string Kind = "";
+        public int Year, LastWeek, Count;
+    }
+
+    /// <summary>[TASK-GM-18] 단장 커리어 엔딩 - 30시즌 은퇴 · 임기 말 재계약 실패(해임).</summary>
+    public enum GMCareerEnding { None = 0, Retired = 1, Dismissed = 2 }
+
+    /// <summary>
+    /// [TASK-GM-18] 단장 커리어(임기제) - 3년 임기, 임기 말 구단주 신임도로 재계약/해임 판정(임기 중 해임 없음), 최대 30시즌에서 은퇴 엔딩 · 명예의 전당 · 해금.
+    /// </summary>
+    [Serializable]
+    public class GMCareerState
+    {
+        public int StartYear, TermEndYear, Term;
+        public bool Ended;
+        public GMCareerEnding Ending = GMCareerEnding.None;
+        public int EndYear, LegacyScore, Titles, Postseasons, Seasons;
+        public bool HallOfFame;
+        public string Note = "";
+        public List<string> Unlocks = new List<string>();
     }
 
     /// <summary>[TASK-GM-17] 한 선수와의 이번 스토브리그 협상 진행 - 실패할 때마다 요구액을 양보하고(제시액과의 차이 35%), 3회 실패 = 최종 결렬.</summary>

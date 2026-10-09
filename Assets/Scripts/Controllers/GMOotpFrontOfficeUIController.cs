@@ -115,6 +115,12 @@ namespace KBOManager.Controllers
         private readonly Button[] faYears = new Button[GMStoveLeagueMarket.MaxFAYears];
         private Slider faSlider;
         private Button faScout, faRole, faOffer;
+        // [TASK-GM-18] 7/31 트레이드 마감 잠금 대상 버튼 · FA 영입 잠금 사유
+        private Button trProposeButton, trCounterButton, trShopButton;
+        public string FALockReason { get; private set; } = "";
+        public string TradeLockReason { get; private set; } = "";
+        public bool IsFAOfferInteractable => faOffer != null && faOffer.interactable;
+        public bool IsTradeProposeInteractable => trProposeButton != null && trProposeButton.interactable;
         private string faSort = "OVR";
         private Player faSelected;
         private int faYearsValue = 3;
@@ -764,11 +770,14 @@ namespace KBOManager.Controllers
             AddAcceptanceTick(trValueFill); // [TASK-GM-17] 타결점 100% 눈금
             trNeeds = L(pane, "TrNeeds", "", 1264, 470, 1896, 502, CellPt, TextAnchor.MiddleLeft, Muted);
             BuildTradeCashRow(pane); // [TASK-GM-08] 연봉 보조
-            Btn(pane, "TrPropose", "트레이드 제안", 1264, 546, 1576, 590, ButtonOn, ButtonPt).onClick.AddListener(() => ProposeTrade());
+            trProposeButton = Btn(pane, "TrPropose", "트레이드 제안", 1264, 546, 1576, 590, ButtonOn, ButtonPt);
+            trProposeButton.onClick.AddListener(() => ProposeTrade());
             Btn(pane, "TrClear", "선택 초기화", 1586, 546, 1896, 590, ButtonIdle, ButtonPt).onClick.AddListener(() => { trMine.Clear(); trTheirs.Clear(); trCash = 0; RefreshTrade(); });
-            Btn(pane, "TrCounter", "AI 단장 역제안 받기 (받을 선수 1명 기준 · 1:N 패키지)", 1264, 596, 1896, 636, new Color(0.3f, 0.32f, 0.5f), BodyPt).onClick.AddListener(() => RequestCounterOffer());
+            trCounterButton = Btn(pane, "TrCounter", "AI 단장 역제안 받기 (받을 선수 1명 기준 · 1:N 패키지)", 1264, 596, 1896, 636, new Color(0.3f, 0.32f, 0.5f), BodyPt);
+            trCounterButton.onClick.AddListener(() => RequestCounterOffer());
             L(pane, "TrShopTitle", "Shop a Player (트레이드 매물 내놓기)", 1264, 642, 1896, 676, PanelTitlePt - 1, TextAnchor.MiddleLeft, Gold);
-            Btn(pane, "TrShopButton", "선택한 내 선수를 매물로 등록 → 9개 구단 제안 받기", 1264, 680, 1896, 718, new Color(0.45f, 0.36f, 0.12f), BodyPt).onClick.AddListener(() => ShopSelected());
+            trShopButton = Btn(pane, "TrShopButton", "선택한 내 선수를 매물로 등록 → 9개 구단 제안 받기", 1264, 680, 1896, 718, new Color(0.45f, 0.36f, 0.12f), BodyPt);
+            trShopButton.onClick.AddListener(() => ShopSelected());
             for (int k = 0; k < 5; k++)
             {
                 var sort = (GMOfferSort)k;
@@ -1449,7 +1458,12 @@ namespace KBOManager.Controllers
             faRole.targetGraphic.color = faRoleOn ? new Color(0.2f, 0.5f, 0.3f) : ButtonIdle;
             var p = faSelected;
             bool has = p != null && league.FreeAgents.Contains(p);
-            faOffer.interactable = faScout.interactable = has;
+            faScout.interactable = has;
+            // [TASK-GM-18] 7/31 영입 마감 · 예산 하드 락(페이롤 > 샐러리캡 · 운영 예산 적자) = [계약 제시] 버튼 자체가 눌리지 않는다
+            bool faLocked = GMLeagueRules.FreeAgencyLocked(league, team, out string faLockReason);
+            faOffer.interactable = has && !faLocked;
+            CompyaUiKit.SetButtonText(faOffer, !faLocked ? "계약 제시 · 입찰 (Offer / Bid)" : GMLeagueRules.IsPastTradeDeadline(league) ? "영입 잠김 - 7/31 마감(KBO 규정)" : "영입 잠김 - 예산 초과(하드 락)");
+            FALockReason = faLocked ? faLockReason : "";
             if (!has)
             {
                 faPlayer.text = "FA 선수를 선택하십시오";
@@ -1547,6 +1561,12 @@ namespace KBOManager.Controllers
             if (trValueFill != null) trValueFill.GetComponent<Image>().color = e.Acceptable ? BarGreen : BarRed;
             var fo = GMFrontOffice.Ensure(League);
             trNeeds.text = (e.Required > 0 ? e.NeedsNote : "구단 니즈 평가 대기") + $" · 올해 트레이드 {fo.TradesThisYear}/{GMFrontOffice.HouseRuleLabel(fo.HouseRuleMaxTrades > 0 ? fo.HouseRuleMaxTrades + fo.ExtraTradeAllowance : 0)}";
+            // [TASK-GM-18] 7/31 트레이드 마감(KBO 규정) - 시즌 종료까지 [트레이드 제안] · [역제안] · [매물 등록] · 제안 체결 잠금
+            bool tradeLocked = GMLeagueRules.TradeLocked(League, out string tradeReason);
+            TradeLockReason = tradeReason;
+            trProposeButton.interactable = trCounterButton.interactable = trShopButton.interactable = !tradeLocked;
+            CompyaUiKit.SetButtonText(trProposeButton, tradeLocked ? "트레이드 잠김 (7/31 마감)" : "트레이드 제안");
+            if (tradeLocked) trNeeds.text = "7/31 트레이드 마감(KBO 규정) · 스토브리그에서 재개";
             for (int k = 0; k < 5; k++) trShopSorts[k].targetGraphic.color = (int)shopSort == k ? ButtonOn : ButtonIdle;
             for (int i = 0; i < ShopRows; i++)
             {
@@ -1555,6 +1575,7 @@ namespace KBOManager.Controllers
                 if (o == null) continue;
                 CompyaUiKit.SetButtonText(trOffers[i], $"{CompyaUiKit.ShortName(NameAliasTable.ToTeam(o.TeamCode))} · {PlayerLine(o.Player)} · 체결 ▶");
                 trOffers[i].targetGraphic.color = i % 2 == 0 ? RowIdle : RowAlt;
+                trOffers[i].interactable = !tradeLocked;
             }
         }
 

@@ -297,13 +297,13 @@ namespace KBOManager.EditorTests
             var groundout = new AtBatStepResult { Result = AtBatResult.Groundout, IsTopHalf = false, State = new MatchState() };
             Assert.AreEqual(GMAudioCue.OutCheer, GMLiveAudioDirector.ExtraCueFor(groundout, false, null, 0, 2, 0, 0, false), "수비 아웃 = 박수 효과음");
 
-            // 한 경기 3단계 - 전력 분석 = 라인업송 → 플레이 볼 = 관중 앰비언스(라인업송 페이드아웃) → 결과 = 승리/패배 BGM
+            // 한 경기 3단계 - [TASK-GM-18] 전력 분석 = 관중 앰비언스(라인업송 하이재킹 폐지) → 플레이 볼 = 그대로(곡 교체 없음) → 결과 = 승리/패배 BGM
             audio.StopAll();
             var sim = new GMLiveSeasonSimulator(league);
             var hub = NewHub(sim, out var prePost);
             Assert.IsTrue(prePost.ShowPreGameView(sim));
-            Assert.AreEqual(GMAudioEvent.Lineup, audio.ActiveEvent, "경기 전 = 라인업송");
-            Assert.AreEqual(TeamAudioProfile.SamLineup, audio.CurrentBgmKey);
+            Assert.IsNull(audio.ActiveEvent, "경기 전 = 이벤트곡 없음");
+            Assert.AreEqual(TeamAudioProfile.SynthCrowd, audio.CurrentBgmKey, "경기 전 = 관중 앰비언스");
             Assert.IsTrue(prePost.PlayBall());
             Assert.IsNull(audio.ActiveEvent, "플레이 볼 = 라인업송 종료");
             Assert.AreEqual(TeamAudioProfile.SynthCrowd, audio.CurrentBgmKey, "경기 중 = 관중 앰비언스");

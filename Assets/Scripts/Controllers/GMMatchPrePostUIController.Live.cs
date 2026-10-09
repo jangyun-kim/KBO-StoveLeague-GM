@@ -232,15 +232,20 @@ namespace KBOManager.Controllers
 
         // ================================================================== [TASK-GM-08] 구단 사운드 연출
 
-        /// <summary>경기 시작 - 관중 앰비언스 · 치어리더 단상 믹스(엔트리 4~6인 + 리더십 버프) · 타석 이벤트 구독.</summary>
+        /// <summary>
+        /// 경기 시작 - 관중 앰비언스 · 치어리더 단상 믹스(엔트리 4~6인 + 리더십 버프) · 타석 이벤트 구독.
+        /// [TASK-GM-18] 경기 중 BGM 교체 완전 차단 - GMAudioManager.LiveMatchQuiet을 켜 이벤트 하이재킹 · 응원가 · 화면 BGM 전환을 모두 막고,
+        /// 타석마다 짧은 효과음(득점 · 안타 = 환호, 수비 아웃 = 박수)만 낸다.
+        /// </summary>
         private void StartLiveAudio()
         {
             if (session == null) return;
             DetachLiveAudio();
             var audio = GMAudioManager.Ensure();
             var user = session.UserTeam;
+            if (audio.ActiveEvent.HasValue) audio.EndEvent(); // 경기 전 이벤트곡(결과 BGM 등)이 남아 있으면 정리 - 그 뒤로는 앰비언스 고정
             audio.PlayMatchAmbience(user?.TeamCode);
-            if (audio.ActiveEvent == GMAudioEvent.Lineup) audio.EndEvent(); // [TASK-GM-12] 라인업송은 플레이 볼과 함께 페이드아웃
+            GMAudioManager.LiveMatchQuiet = true;
             if (user != null) audio.SetCheerleaderMix(GMCheerleaderRules.EntryCount(user.CheerEntry), user.CheerLeadershipBuff > 0);
             audioSession = session;
             audioSession.OnStepped += OnLiveStep;
@@ -249,19 +254,20 @@ namespace KBOManager.Controllers
             lateCloseUsed = false;
         }
 
-        /// <summary>[TASK-GM-12] ① 전력 분석 진입 - 경기 화면 그룹(관중 앰비언스)으로 옮기고 라인업송을 1회 튼다.</summary>
+        /// <summary>[TASK-GM-12 → GM-18] ① 전력 분석 진입 - 경기 화면 그룹(관중 앰비언스)으로만 옮긴다(라인업송 하이재킹 폐지 - 플레이 볼에서 곡이 바뀌지 않는다).</summary>
         private void PlayPreGameAudio()
         {
             string user = simulator?.League?.SelectedTeamCode;
             if (string.IsNullOrEmpty(user)) return;
             var audio = GMAudioManager.Ensure();
+            if (audio.ActiveEvent.HasValue) audio.EndEvent();
             audio.EnterScreen(GMAudioScreen.Match, user);
-            audio.PlayEvent(GMAudioEvent.Lineup, user);
         }
 
-        /// <summary>[TASK-GM-12] ③ 경기 결과 - 응원가를 끊고 승리 = 승리의 라이온즈(대승 → 엘도라도), 패배 = 공통 패배 BGM.</summary>
+        /// <summary>[TASK-GM-12] ③ 경기 결과(경기 종료 후 1회) - 승리 = 승리의 라이온즈(대승 → 엘도라도), 패배 = 공통 패배 BGM.</summary>
         private void PlayResultAudio(GMMatchBoxScoreData result)
         {
+            GMAudioManager.LiveMatchQuiet = false;
             string user = simulator?.League?.SelectedTeamCode;
             if (result == null || string.IsNullOrEmpty(user) || (result.HomeCode != user && result.AwayCode != user)) return;
             bool home = result.HomeCode == user;
@@ -277,11 +283,15 @@ namespace KBOManager.Controllers
         {
             if (audioSession != null) audioSession.OnStepped -= OnLiveStep;
             audioSession = null;
+            GMAudioManager.LiveMatchQuiet = false; // [TASK-GM-18]
             var audio = GMAudioManager.Instance;
             if (audio != null) audio.SetCheerleaderMix(0, false);
         }
 
-        /// <summary>타석 1회 → 내 구단 기준 큐 판정(GMLiveAudioDirector) → 구단 프로필 클립 재생(삼성 = 공식 응원가 · 아웃송, 그 밖 = 기본 앰비언스).</summary>
+        /// <summary>
+        /// 타석 1회 → 내 구단 기준 상황 판정(GMLiveAudioDirector.CueFor - 기록 · 해설용) → [TASK-GM-18] 효과음만 재생(SfxFor).
+        /// 응원가 · 아웃송 · 빅이닝/접전 곡은 더 이상 경기 중에 틀지 않는다(BGM 혼선 원인).
+        /// </summary>
         private void OnLiveStep(AtBatStepResult step, GMLiveSeasonSimulator.StepContext ctx)
         {
             if (liveAudioMuted || audioSession == null || step == null || ctx == null) return;
@@ -290,14 +300,10 @@ namespace KBOManager.Controllers
             bool userAway = user == audioSession.Away;
             bool userBatting = step.IsTopHalf == userAway;
             int userBefore = userAway ? ctx.AwayBefore : ctx.HomeBefore, oppBefore = userAway ? ctx.HomeBefore : ctx.AwayBefore;
-            int userAfter = userAway ? step.AwayScore : step.HomeScore, oppAfter = userAway ? step.HomeScore : step.AwayScore;
-            LastLiveCue = GMLiveAudioDirector.CueFor(step, userBatting, ctx.RispBefore, ctx.HalfRuns, userBefore, oppBefore, step.GameEnded && userAfter > oppAfter);
-            if (LastLiveCue.HasValue) GMAudioManager.Ensure().PlayCue(LastLiveCue.Value, user.TeamCode, ctx.Inning);
-            // [TASK-GM-12] 빅이닝(아파트) · 7~9회 접전(Jump up Lions, 경기당 1회) · 득점 환호 / 아웃 박수 효과음
-            LastExtraCue = GMLiveAudioDirector.ExtraCueFor(step, userBatting, LastLiveCue, ctx.HalfRuns, ctx.Inning, userAfter, oppAfter, lateCloseUsed);
-            if (!LastExtraCue.HasValue) return;
-            string played = GMAudioManager.Ensure().PlayCue(LastExtraCue.Value, user.TeamCode, ctx.Inning);
-            if (LastExtraCue == GMAudioCue.LateCloseSong && played != null) lateCloseUsed = true;
+            int userAfter = userAway ? step.AwayScore : step.HomeScore;
+            LastLiveCue = GMLiveAudioDirector.CueFor(step, userBatting, ctx.RispBefore, ctx.HalfRuns, userBefore, oppBefore, step.GameEnded && userAfter > (userAway ? step.HomeScore : step.AwayScore));
+            LastExtraCue = GMLiveAudioDirector.SfxFor(step, userBatting);
+            if (LastExtraCue.HasValue) GMAudioManager.Ensure().PlayCue(LastExtraCue.Value, user.TeamCode, ctx.Inning);
         }
 
         private void SetLiveMessage(string text)

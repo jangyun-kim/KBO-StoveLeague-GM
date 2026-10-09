@@ -43,6 +43,19 @@ namespace KBOManager.Managers
         public static bool SimulationMode { get; set; }
         public static int IgnoredEventCount { get; private set; }
 
+        /// <summary>
+        /// [TASK-GM-18] 실시간 이닝 경기 진행 중(플레이 볼 ~ 경기 종료) - 경기 중 BGM 교체를 완전히 차단한다.
+        /// 이벤트 하이재킹(PlayEvent) · 응원가(곡 채널 PlayCue)는 무시하고, 관중 앰비언스 루프 + 짧은 효과음(환호 · 박수 OneShot)만 낸다.
+        /// GMMatchPrePostUIController가 경기 시작에 켜고 경기 종료 · 화면 이탈에 끈다. 막은 요청 수는 BlockedMatchRequests.
+        /// </summary>
+        public static bool LiveMatchQuiet { get; set; }
+        public static int BlockedMatchRequests { get; private set; }
+
+        /// <summary>[TASK-GM-18] 곡 채널(응원가 · 아웃송 · 승리 응원가)을 쓰는 경기 큐 - 경기 중에는 재생하지 않는다.</summary>
+        public static bool IsSongCue(GMAudioCue cue) =>
+            cue == GMAudioCue.ChanceSong || cue == GMAudioCue.HighlightSong || cue == GMAudioCue.ComebackSong || cue == GMAudioCue.OutSong ||
+            cue == GMAudioCue.InningEndSong || cue == GMAudioCue.WinSong || cue == GMAudioCue.BigInningSong || cue == GMAudioCue.LateCloseSong;
+
         /// <summary>[GM-12] 실제 소리 출력 허용 여부 - CLI Batchmode(자동 테스트)에서는 항상 false.</summary>
         public static bool SoundOutputEnabled => !Application.isBatchMode;
 
@@ -241,6 +254,7 @@ namespace KBOManager.Managers
         /// </summary>
         public string EnterScreen(GMAudioScreen screen, string teamCode)
         {
+            if (LiveMatchQuiet && screen != GMAudioScreen.Match) { BlockedMatchRequests++; return CurrentBgmKey; } // [TASK-GM-18] 경기 중 뒤편 화면 갱신이 BGM을 바꾸지 못한다
             var profile = TeamAudioProfile.For(teamCode);
             var playlist = profile.PlaylistFor(screen);
             bool keep = IsBgmPlaying && CurrentBgmTeam == profile.TeamCode && CurrentGroupId == playlist.GroupId;
@@ -356,6 +370,7 @@ namespace KBOManager.Managers
         public string PlayEvent(GMAudioEvent ev, string teamCode = null)
         {
             if (SimulationMode) { IgnoredEventCount++; return null; } // [TASK-GM-14] 고속 시뮬레이션 중 하이재킹 금지
+            if (LiveMatchQuiet) { IgnoredEventCount++; BlockedMatchRequests++; return null; } // [TASK-GM-18] 경기 중 BGM 교체 금지
             var profile = teamCode != null ? TeamAudioProfile.For(teamCode) : currentProfile ?? TeamAudioProfile.For(CurrentBgmTeam);
             if (currentProfile == null) currentProfile = profile;
             if (CurrentPlaylist == null) { CurrentScreen = GMAudioScreen.Hub; CurrentPlaylist = profile.PlaylistFor(GMAudioScreen.Hub); CurrentGroupId = CurrentPlaylist.GroupId; CurrentBgmTeam = profile.TeamCode; }
@@ -402,6 +417,7 @@ namespace KBOManager.Managers
                 PlayOneShot(cue, fx);
                 return fx;
             }
+            if (LiveMatchQuiet && IsSongCue(cue)) { BlockedMatchRequests++; return null; } // [TASK-GM-18] 경기 중 응원가 금지 - 효과음만
             string key = profile.ClipFor(cue, variant++, inning);
             requests.Add((cue, key));
             if (requests.Count > MaxHistory) requests.RemoveAt(0);
@@ -470,6 +486,7 @@ namespace KBOManager.Managers
 
         public void StopAll()
         {
+            LiveMatchQuiet = false; // [TASK-GM-18]
             StopMatchAudio();
             if (fadeRoutine != null) { StopCoroutine(fadeRoutine); fadeRoutine = null; }
             fading = false;
