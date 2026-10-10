@@ -119,6 +119,7 @@ namespace KBOManager.Services
             if (league == null || signer == null || p == null) return null;
             if (!league.FASignedThisYear.Contains(p.InstanceId)) league.FASignedThisYear.Add(p.InstanceId);
             var o = OriginOf(league, p);
+            GMCareerTimeline.OnFreeAgentSigned(league, p, signer.TeamCode, o?.TeamCode); // [TASK-GM-19] 커리어 타임라인 · 근속 초기화(유저 · AI 공통 FA 계약 지점)
             league.FAOrigins.Remove(p.InstanceId);
             if (o == null || o.TeamCode == signer.TeamCode || !league.Teams.ContainsKey(o.TeamCode)) return null;
             var pending = new GMPendingCompensation

@@ -178,6 +178,7 @@ namespace KBOManager.Services
             else picker.Futures.Add(p);
             picker.Budget -= fee;
             from.Budget += fee;
+            GMCareerTimeline.OnDrafted(league, p, picker.TeamCode, $"{league.SeasonYear} 2차 드래프트 {round}R"); // [TASK-GM-19] 이적 = 근속 초기화
             var pick = new GMSecondDraftPick
             {
                 Year = league.SeasonYear, Round = round, PickerCode = picker.TeamCode, FromCode = from.TeamCode,

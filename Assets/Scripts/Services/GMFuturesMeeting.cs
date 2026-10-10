@@ -194,6 +194,7 @@ namespace KBOManager.Services
             team.Futures.Remove(prospect);
             if (!GMRosterTiers.SendDown(team, swapOut, out message)) { team.Futures.Add(prospect); return false; }
             team.Roster.Add(prospect);
+            GMCareerTimeline.OnCalledUp(league, prospect, team.TeamCode); // [TASK-GM-19]
             message = $"스왑 - {prospect.Template.PlayerName} 1군 콜업 ↔ {swapOut.Template.PlayerName} 퓨처스 이관 · {GMRosterTiers.Summary(team)}";
             return true;
         }

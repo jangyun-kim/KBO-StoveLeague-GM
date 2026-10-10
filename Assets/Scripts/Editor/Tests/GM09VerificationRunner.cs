@@ -165,6 +165,7 @@ namespace KBOManager.EditorTests
             Assert.Greater(expiring.Count, 10, "만료자 다수");
             foreach (var (id, (team, _)) in expiring.Select(x => (x.Key, x.Value)))
             {
+                if (GMRetirement.RetiredPlayer(id) != null) continue; // [TASK-GM-19] 36세 이상 만료자는 은퇴할 수 있다(은퇴 = FA 시장에 나오지 않음)
                 var p = l.FreeAgents.FirstOrDefault(f => f.InstanceId == id);
                 Assert.IsNotNull(p, $"{id} FA 시장 이동");
                 var origin = GMFaCompensation.OriginOf(l, p);
@@ -306,7 +307,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(wbc.Result, back.Tournaments.Single(t => t.Kind == GMTournamentKind.WBC).Result);
             var star = squad.First();
             Assert.AreEqual(star.FameBonus, back.Teams.SelectMany(t => t.Roster).Single(p => p.InstanceId == star.InstanceId).FameBonus, "팬덤 가치 저장");
-            Assert.AreEqual(28, new GameSaveData().SaveVersion); // [TASK-GM-18] v28 · [TASK-GM-17] v27 · [TASK-GM-16] v26 · [TASK-GM-15] v25 · [TASK-GM-14] v24 · [TASK-GM-13] v23 · [TASK-GM-11] v22
+            Assert.AreEqual(29, new GameSaveData().SaveVersion); // [TASK-GM-19] v29 · [TASK-GM-18] v28 · [TASK-GM-17] v27 · [TASK-GM-16] v26 · [TASK-GM-15] v25 · [TASK-GM-14] v24 · [TASK-GM-13] v23 · [TASK-GM-11] v22
             // 재현성 - 같은 모드 · 구단 · 시드면 같은 InstanceId
             var again = NewLeague(team: "SAM", seed: 909);
             CollectionAssert.AreEqual(NewLeague(team: "SAM", seed: 909).UserTeam.Roster.Select(p => p.InstanceId).ToList(), again.UserTeam.Roster.Select(p => p.InstanceId).ToList(), "안정 InstanceId");

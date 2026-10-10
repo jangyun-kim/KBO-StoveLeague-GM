@@ -470,7 +470,8 @@ namespace KBOManager.EditorTests
             Assert.IsTrue(last.IsComplete);
             Assert.AreEqual(2027, league.Awards.SeasonYear);
             Assert.IsFalse(league.Awards.HasAny);
-            var mvpPlayer = league.FindPlayer(mvpId) ?? league.FreeAgents.FirstOrDefault(p => p.InstanceId == mvpId); // [TASK-GM-09/10] 계약 만료 · 보류 제외로 FA 시장에 있을 수 있다
+            var mvpPlayer = league.FindPlayer(mvpId) ?? league.FreeAgents.FirstOrDefault(p => p.InstanceId == mvpId) // [TASK-GM-09/10] 계약 만료 · 보류 제외로 FA 시장에 있을 수 있다
+                            ?? GMRetirement.RetiredPlayer(mvpId); // [TASK-GM-19] 36세 이상 만료자는 은퇴했을 수 있다
             CollectionAssert.Contains(mvpPlayer.CareerAwardIds, "MVP_2026", "수상 이력 보존");
 
             // 나이 +1 · 계약 -1 · 수상자 Ego +1 · 연봉 15~30% 인상, 그 외 Ego · 연봉 유지

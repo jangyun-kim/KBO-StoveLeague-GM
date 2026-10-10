@@ -609,7 +609,7 @@ namespace KBOManager.EditorTests
             Assert.AreEqual(GMFaCompensation.OriginOf(league, leftover).Grade, restored.FAOrigins[leftover.InstanceId].Grade);
             Assert.AreEqual(1, restored.PendingCompensations.Count, "보상 대기 복원");
             CollectionAssert.AreEqual(league.UserProtectedIds, restored.UserProtectedIds, "수동 보호 명단 복원");
-            Assert.AreEqual(28, new GameSaveData().SaveVersion, "세이브 v28([TASK-GM-18])");
+            Assert.AreEqual(29, new GameSaveData().SaveVersion, "세이브 v29([TASK-GM-19])");
         }
 
         // ================================================================== 6) 레이아웃 · Bold · 씬

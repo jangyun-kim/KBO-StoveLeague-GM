@@ -361,6 +361,11 @@ namespace KBOManager.Simulation
                 return true;
             }
 
+            /// <summary>[TASK-GM-19] 오늘 투구수(실시간 경기 대시보드 투구수 · 체력 게이지).</summary>
+            public int TodayPitchCount(Player p) => p != null && pit.TryGetValue(p, out var l) ? l.NP : 0;
+            /// <summary>[TASK-GM-19] 오늘 상대 타자 수 · 피안타(대시보드 오늘 피안타율).</summary>
+            public (int bf, int hits, int walks) TodayFaced(Player p) => p != null && pit.TryGetValue(p, out var l) ? (l.BF, l.H, l.BB) : (0, 0, 0);
+
             /// <summary>오늘 경기 타자 라인(타수-안타) 한 줄.</summary>
             public string TodayBatting(Player p) => p != null && bat.TryGetValue(p, out var l) ? $"오늘 {l.AB}타수 {l.H}안타{(l.HR > 0 ? $" {l.HR}홈런" : "")}{(l.RBI > 0 ? $" {l.RBI}타점" : "")}" : "오늘 첫 타석";
             public string TodayPitching(Player p) => p != null && pit.TryGetValue(p, out var l) ? $"오늘 {l.Outs / 3}{(l.Outs % 3 > 0 ? $" {l.Outs % 3}/3" : "")}이닝 투구수 {l.NP} · {l.SO}K {l.R}실점" : "오늘 첫 등판";
@@ -530,6 +535,8 @@ namespace KBOManager.Simulation
                     sim.weeklyHits.TryGetValue(player.InstanceId, out int wk);
                     sim.weeklyHits[player.InstanceId] = wk + line.H;
                     sim.CheckBatterEvents(day, player, code, line, st);
+                    if ((line.H > 0 || line.HR > 0) && GMCareerTimeline.TracksDebut(player)) // [TASK-GM-19] 게임 안 데뷔 선수의 첫 안타 · 홈런
+                        GMCareerTimeline.CheckDebut(league, player, code, DateLabel, code == Home.TeamCode ? Away.TeamCode : Home.TeamCode, line.H, line.HR, false);
                 }
                 foreach (var pair in pit)
                 {
@@ -546,6 +553,8 @@ namespace KBOManager.Simulation
                     bool complete = own.Count == 1 && own[0].Pitcher == player;
                     int allowed = code == Home.TeamCode ? awayRuns : homeRuns;
                     sim.CheckPitcherEvents(day, player, code, line, complete, allowed);
+                    if (player == winP && GMCareerTimeline.TracksDebut(player)) // [TASK-GM-19] 데뷔 첫 승리
+                        GMCareerTimeline.CheckDebut(league, player, code, DateLabel, code == Home.TeamCode ? Away.TeamCode : Home.TeamCode, 0, 0, true);
                 }
                 // [TASK-GM-04] 개인 수비 누적(수비 출전 · 포지션별 출전 · 실책 · 처리 기회 · 호수비)
                 foreach (var (team, field) in new[] { (Home, homeField), (Away, awayField) })

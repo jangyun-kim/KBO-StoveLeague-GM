@@ -49,6 +49,9 @@ namespace KBOManager.Services
         /// <summary>[TASK-GM-11] 선수단의 단장 신뢰도 0~100(기본 60) - 구단주 신임도(OwnerTrust)와 별개. 협상 진행 가능성 베이스라인 · 약속 위반 페널티(2단계) 대상.</summary>
         public int LockerRoomTrust = DefaultLockerRoomTrust;
         public const int DefaultLockerRoomTrust = 60;
+        /// <summary>[TASK-GM-19] 감독(현장)의 단장 신뢰도 0~100(기본 60) - 2티어 [감독과의 갈등] 사건 · 실시간 경기 [투수 교체 지시] · [대타 기용 지시] 수용 확률에 쓴다.</summary>
+        public int ManagerTrust = DefaultManagerTrust;
+        public const int DefaultManagerTrust = 60;
         /// <summary>[TASK-GM-07] 단장 모드 연도 시너지 - 같은 시즌 · 같은 구단 출신 동료 그룹 팀워크 가산(0~+8, GMYearSynergy).</summary>
         public int YearSynergyBonus => GMYearSynergy.TeamworkBonus(AvailableRoster);
         /// <summary>[TASK-GM-06] 팀워크 가산 합계 = 응원단 단장 리더십 + 스토리 안건 보정 + [TASK-GM-07] 연도 시너지.</summary>

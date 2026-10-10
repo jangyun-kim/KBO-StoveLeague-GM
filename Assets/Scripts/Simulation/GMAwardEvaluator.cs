@@ -115,6 +115,7 @@ namespace KBOManager.Simulation
                 if (p.CareerAwardIds == null) p.CareerAwardIds = new List<string>();
                 if (!p.CareerAwardIds.Contains(tag)) p.CareerAwardIds.Add(tag);
             }
+            GMCareerTimeline.RecordAward(c.League, p, awardId, name, w.TeamCode, c.Year); // [TASK-GM-19] MVP · 골든글러브 · 신인상 · 타이틀 홀더 → 커리어 타임라인
             return w;
         }
 
@@ -665,6 +666,7 @@ namespace KBOManager.Simulation
             {
                 string tag = $"KS_MVP_{c.Year}";
                 if (!ksMvp.CareerAwardIds.Contains(tag)) ksMvp.CareerAwardIds.Add(tag);
+                GMCareerTimeline.RecordAward(c.League, ksMvp, "KS_MVP", "한국시리즈 MVP", ps.ChampionCode, c.Year); // [TASK-GM-19]
             }
             foreach (var p in champ.Roster)
             {
@@ -1082,7 +1084,9 @@ namespace KBOManager.Simulation
             }
             int oldYear = league.SeasonYear;
             // [TASK-GM-06] 프런트 오피스 결산 - 10구단 시즌 이력 · 관중, 구단주 목표 · 신임도, 스토리 캠페인 4종 엔딩
-            GMFrontOffice.OnSeasonCompleted(league, sim.Standings().Select(r => r.TeamCode).ToList(), bundle.Postseason.ChampionCode);
+            var finalRanks = sim.Standings().Select(r => r.TeamCode).ToList();
+            GMFrontOffice.OnSeasonCompleted(league, finalRanks, bundle.Postseason.ChampionCode);
+            GMCareerTimeline.OnSeasonCompleted(league, oldYear, finalRanks, bundle.Postseason.ChampionCode); // [TASK-GM-19] 근속 +1 · 통산 WAR 누적 · 우승 기여 이벤트(기록 초기화 전)
             if (GMCareer.OnSeasonCompleted(league, oldYear)) return false; // [TASK-GM-18] 30시즌 은퇴 · 임기 말 재계약 실패(해임) = 커리어 엔딩
             GMFuturesMeeting.ApplySeasonGrowth(league, oldYear); // [TASK-GM-15] 육성 회의실 - 훈련 방향 · 멘토링 반영 퓨처스 연간 성장(나이 +1 전)
             GMAgingCurve.Apply(league, oldYear);                 // [TASK-GM-16] 에이징 커브 - 30~33세 동결/-1 · 34세 이상 -1~-3(레전드 · 유대 완화)
@@ -1090,6 +1094,8 @@ namespace KBOManager.Simulation
             GMGlobalTournamentManager.Trigger(league, GMTournamentWindow.PostSeason, league.Seed);
             league.Phase = GMSeasonPhase.AwardsCeremony;
             if (!league.AdvancePhase()) return false;
+            GMRetirement.Process(league, league.SeasonYear); // [TASK-GM-19] 36세 이상 은퇴 판정 · 영구결번 자격(근속 10년 · 통산 WAR 40) 은퇴식 대기 큐 - FA 공시 · 우선 협상 전
+            GMRetirement.ApplyFanFloors(league);
             GMPromiseSystem.RecoverPenalties(league, oldYear); // [TASK-GM-15] 약속 위반 페널티 기간제 회복(과거 위반 1건당 신뢰도 +5 · 충성도 +10, 원래 페널티까지)
             // [TASK-GM-10] 내 구단 만료자 = 원 소속 우선 협상 명단 → AI 구단 만료자 FA 공시 → 11/25 보류명단(AI 방출)
             GMReserveList.OpenPriorityNegotiation(league);

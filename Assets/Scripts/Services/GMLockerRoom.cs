@@ -140,6 +140,7 @@ namespace KBOManager.Services
                 player.PersonalMorale = Math.Max(0, player.PersonalMorale - 10);
             }
             if (team != null) team.LockerRoomTrust = Math.Max(0, team.LockerRoomTrust - BrokenTrustPenalty);
+            GMCareerTimeline.OnPromise(league, player, promise.TeamCode, false, $"{Describe(promise)} · {detail}"); // [TASK-GM-19] 유대 갈등 → 커리어 타임라인
             string msg = $"약속 위반 - {Describe(promise)} ({detail}) · 충성도 -{BrokenLoyaltyPenalty} · 선수단 신뢰도 -{BrokenTrustPenalty}";
             league.AddNews(new GMNewsItem
             {
@@ -194,6 +195,7 @@ namespace KBOManager.Services
             promise.ResultNote = detail ?? "";
             if (player != null) player.Loyalty = player.Loyalty + FulfilledLoyaltyBonus;
             if (team != null) team.LockerRoomTrust = Math.Min(100, team.LockerRoomTrust + FulfilledTrustBonus);
+            GMCareerTimeline.OnPromise(league, player, promise.TeamCode, true, $"{Describe(promise)} · {detail}"); // [TASK-GM-19]
             string msg = $"약속 이행 - {Describe(promise)} ({detail}) · 충성도 +{FulfilledLoyaltyBonus} · 선수단 신뢰도 +{FulfilledTrustBonus}";
             league.AddNews(new GMNewsItem
             {

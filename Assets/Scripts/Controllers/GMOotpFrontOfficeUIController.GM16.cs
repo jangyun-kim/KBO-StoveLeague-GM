@@ -253,7 +253,7 @@ namespace KBOManager.Controllers
             scHeadline.color = new Color(primary.r * 0.8f, primary.g * 0.8f, primary.b * 0.8f);
             var origin = GMRosterTiers.OriginalOf(p.Template);
             var tier = GMStarterDeck.TierOf(p);
-            pctTitle.text = $"스카우팅 리포트 · {p.Template.PlayerName}";
+            pctTitle.text = $"스카우팅 리포트 · {GMRetirement.NameRich(league, p)}"; // [TASK-GM-19] 영구결번 = 황금색
             scTeamLabel.text = $"{(teamCode != null ? NameAliasTable.DisplayTeamName(teamCode) : "FA 시장")} · {origin.SeasonYear} 시즌 카드";
             scOvr.text = p.BaseOverall.ToString();
             scOvrCaption.text = $"OVR · 잠재력 {p.Potential}";
@@ -282,6 +282,7 @@ namespace KBOManager.Controllers
             scReport.text = GMScoutingReport.Narrative(league, p, rows);
             pctPopup.gameObject.SetActive(true);
             pctPopup.SetAsLastSibling();
+            if (tlPanel != null) ShowTimelineTab(false); // [TASK-GM-19] 새 선수 = 스카우팅 리포트 탭부터
         }
 
         // ================================================================== ③ 응원단 포스터(허브)

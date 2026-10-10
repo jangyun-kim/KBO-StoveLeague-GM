@@ -448,6 +448,14 @@ namespace KBOManager.Models
         /// <summary>[TASK-GM-09] 팬덤 가치 가산 - 국가대표 금메달 · 우승 등 글로벌 대회 성과로 오른다(세이브 보존). 시장 가치(트레이드 가치)에 반영된다.</summary>
         public int FameBonus;
 
+        // [TASK-GM-19] 프랜차이즈 애착 시스템(세이브 v29) - 커리어 타임라인 · 현 구단 근속 · 통산 WAR(입단 전 추정 + 인게임 누적)
+        public List<GMCareerEvent> CareerHistory = new List<GMCareerEvent>();
+        public string TenureTeam = "";         // 근속을 세는 구단 코드(빈 값 = 미산출 → 첫 접근 시 추정)
+        public int TenureYears;                // 현 구단 근속 연수(완료 시즌 기준)
+        public float CareerWarEstimate = -1f;  // 게임 시작 전 통산 WAR 추정치(-1 = 미산출)
+        public float CareerWarSim;             // 인게임 시즌 WAR 누적(연도 전환마다 더한다)
+        public float CareerWar => Math.Max(0f, CareerWarEstimate) + CareerWarSim;
+
         /// <summary>[TASK-GM-11] 구단 충성도 0~100(장기 신뢰 - 페이컷 · FA 이적 저항 · 보직 변경 수용). -1 = 미산출(첫 접근 시 성향 기본값).</summary>
         public int LoyaltyRaw = -1;
         public int Loyalty

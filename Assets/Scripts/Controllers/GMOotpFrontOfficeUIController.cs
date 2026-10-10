@@ -278,6 +278,7 @@ namespace KBOManager.Controllers
             partnerIndex = salPageIndex = trMyPageIndex = roPageIndex = 0;
             trCash = 0; counterOffer = null; prSelected = null; protectPage = 0; // [TASK-GM-08]
             negSelected = null; negSession = null; negPage = 0; ssPage = 0; negYears = 0; // [TASK-GM-11]
+            rtSnoozed = false; // [TASK-GM-19]
         }
 
         // ================================================================== 조립
@@ -326,11 +327,13 @@ namespace KBOManager.Controllers
                 BuildTurnLockOverlay();    // [TASK-GM-14] 8 Turn 잠금 화면
                 BuildDiscussPopup();
                 BuildPercentilePopup();
+                BuildCareerTimeline();   // [TASK-GM-19] 선수 상세 [커리어 타임라인] 탭
                 BuildManagerSetup();     // [TASK-GM-07] 감독 설정
                 BuildCounterPopup();     // [TASK-GM-08] AI 단장 1:N 역제안
                 BuildLockerEventPopup(); // [TASK-GM-13] 라커룸 사건
                 BuildAssistantPopup();   // [TASK-GM-16] 조력자(운영팀장) 대화 모달
                 BuildStaffReportPopup(); // [TASK-GM-17] 프런트 직원 리포트
+                BuildRetirementPopup();  // [TASK-GM-19] 은퇴식 · 영구결번 결정
             }
             subTabs = BuildSubTabs();
             mainTab = 0; subTab = 0; currentPane = PaneOwner;
@@ -1085,6 +1088,7 @@ namespace KBOManager.Controllers
                     case PanePress: RefreshPress(); break;                   // [TASK-GM-15]
                 }
             }
+            PromptRetirementCeremony(); // [TASK-GM-19] 영구결번 자격 은퇴식 대기 큐
         }
 
         private void RefreshHeader()
@@ -1820,6 +1824,7 @@ namespace KBOManager.Controllers
                 };
                 for (int c = 0; c < 10; c++) roCells[r, c].text = v[c];
                 roCells[r, 6].color = p.PersonalMorale < 50 ? RedBad : White;
+                roCells[r, 1].color = GMRetirement.IsRetiredNumber(League, p) ? RetiredGold : White; // [TASK-GM-19] 영구결번 이름 황금색 고정
                 roRows[r].targetGraphic.color = r % 2 == 0 ? RowIdle : RowAlt;
             }
         }

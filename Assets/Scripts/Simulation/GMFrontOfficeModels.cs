@@ -175,6 +175,42 @@ namespace KBOManager.Simulation
         // [TASK-GM-18] 예산 초과 개막 페널티(구단주 신임도 -20)를 적용한 연도 · 단장 커리어(임기제 · 30시즌 엔딩 · 해금)
         public int BudgetPenaltyYear;
         public GMCareerState Career = new GMCareerState();
+        // [TASK-GM-19] 세이브 v29 - 프랜차이즈 애착(영구결번 · 은퇴식 대기 큐 · 은퇴 기록) · 2티어 사건(라이벌 S급 영입 확인 목록 · 맞불 영입 공언)
+        public List<GMRetiredNumber> RetiredNumbers = new List<GMRetiredNumber>();
+        public List<GMRetirementCeremony> PendingCeremonies = new List<GMRetirementCeremony>();
+        public List<GMRetirementLog> Retirements = new List<GMRetirementLog>();
+        public List<string> RivalSigningSeen = new List<string>(); // "연도|선수 ID" - 같은 영입으로 사건을 두 번 내지 않는다
+        public int CounterPledgeYear, CounterPledgeDay;
+        public string CounterPledgeRival = "", CounterPledgeTarget = "";
+    }
+
+    /// <summary>[TASK-GM-19] 영구결번 1건 - RealPlayerId 기준으로 같은 선수의 다른 시즌 카드도 이름을 황금색으로 고정 표기한다.</summary>
+    [Serializable]
+    public class GMRetiredNumber
+    {
+        public string RealPlayerId = "", PlayerId = "", PlayerName = "", TeamCode = "", Position = "";
+        public int Year, TenureYears;
+        public float CareerWar;
+    }
+
+    /// <summary>[TASK-GM-19] 은퇴식 대기(영구결번 자격 선수 - 단장의 선택 팝업 큐). Resolved = 처리 완료.</summary>
+    [Serializable]
+    public class GMRetirementCeremony
+    {
+        public string PlayerId = "", RealPlayerId = "", PlayerName = "", TeamCode = "", Position = "";
+        public int Year, Age, TenureYears, Ovr;
+        public float CareerWar;
+        public bool Resolved;
+        public string Choice = "", Result = "";
+    }
+
+    /// <summary>[TASK-GM-19] 은퇴 기록 1줄(리그 전체 · 최근 60건).</summary>
+    [Serializable]
+    public class GMRetirementLog
+    {
+        public string PlayerName = "", TeamCode = "", Reason = "";
+        public int Year, Age, Ovr, TenureYears;
+        public float CareerWar;
     }
 
     /// <summary>[TASK-GM-18] 시즌 중 단장 개입 결정 1건(시즌 결산 · 스토브리그 평가 근거).</summary>

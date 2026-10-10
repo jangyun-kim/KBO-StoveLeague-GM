@@ -340,6 +340,7 @@ namespace KBOManager.Simulation
         // [TASK-GM-18] v28 - 마케팅 예산(-1 = 구버전 세이브 → 로드 시 기본값) · 시즌 중 단장 개입 팀워크 보정(남은 주)
         public long MarketingBudget = -1;
         public int SeasonEventTeamwork, SeasonEventTeamworkWeeks;
+        public int ManagerTrust = -1; // [TASK-GM-19] v29 - 감독(현장)의 단장 신뢰도(-1 = 구버전 세이브 → 기본 60)
     }
 
     /// <summary>[TASK-GM-07] 내 구단 정규시즌 경기 결과 한 줄(시즌 일정 캘린더 - 날짜 칸에 결과 스코어 표시).</summary>

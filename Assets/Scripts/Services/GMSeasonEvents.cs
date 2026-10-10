@@ -22,6 +22,9 @@ namespace KBOManager.Services
         FanDrop = 7,         // 팬심 하락 - 치어리더 테마 이벤트 · 티켓 프로모션 · 무대응
         OwnerCheck = 8,      // 구단주 중간 점검(목표 달성률) - 보강 약속 · 재정 절감 · 육성 기조
         ManagerConflict = 9, // 감독 갈등 - 감독 지지 · 단장 개입 · 코치진 교체
+        // [TASK-GM-19] 2티어 사건
+        ManagerDemotion = 10, // 감독과의 갈등 - 5연패 중 감독이 부진한 고액 연봉자 2군행 통보(감독 지지 · 1군 유지 강제 · 면담 중재)
+        RivalSigning = 11,    // 라이벌 구단의 S급 영입 - 팬덤 동요(맞불 영입 예고 · 유망주 육성 천명 · 대규모 치어리더 이벤트)
     }
 
     /// <summary>[TASK-GM-18] 사건 우선순위 - P0 시즌 방향 · P1 전력/재정/계약 · P2 일반 운영 · P3 정보(뉴스로만).</summary>
@@ -116,6 +119,8 @@ namespace KBOManager.Services
                 case GMSeasonEventKind.ContractAnxiety: return "재계약 불안";
                 case GMSeasonEventKind.FanDrop: return "팬심 하락";
                 case GMSeasonEventKind.OwnerCheck: return "구단주 중간 점검";
+                case GMSeasonEventKind.ManagerDemotion: return "감독과의 갈등";
+                case GMSeasonEventKind.RivalSigning: return "라이벌 S급 영입";
                 default: return "감독 갈등";
             }
         }
@@ -135,6 +140,8 @@ namespace KBOManager.Services
                 case GMSeasonEventKind.ContractAnxiety: return 8;
                 case GMSeasonEventKind.FanDrop: return 6;
                 case GMSeasonEventKind.OwnerCheck: return 99;
+                case GMSeasonEventKind.ManagerDemotion: return 4;
+                case GMSeasonEventKind.RivalSigning: return 3;
                 default: return 8;
             }
         }
@@ -261,6 +268,8 @@ namespace KBOManager.Services
             Add(GMSeasonEventKind.FanDrop, () => FanDrop(league, team, week));
             Add(GMSeasonEventKind.OwnerCheck, () => OwnerCheck(sim, team, week));
             Add(GMSeasonEventKind.ManagerConflict, () => ManagerConflict(league, team, week, rng));
+            Add(GMSeasonEventKind.ManagerDemotion, () => ManagerDemotion(league, team, week)); // [TASK-GM-19] 2티어
+            Add(GMSeasonEventKind.RivalSigning, () => RivalSigning(sim, team, week));
             return list;
         }
 
@@ -483,6 +492,146 @@ namespace KBOManager.Services
             return e;
         }
 
+        // ================================================================== [TASK-GM-19] 2티어 사건
+
+        public const int DemotionStreak = 5, DemotionSalaryRank = 5;
+        public const double DemotionMaxWar = 1.0;
+        public const int SupportLoyalty = -20, SupportMorale = -15, SupportManagerTrust = 6, OverruleManagerTrust = -20, OverruleLoyalty = 5;
+        public const int MediateManagerTrust = 2, MediateFailManagerTrust = -6, MediateLoyalty = 3, MediateFailLoyalty = -6;
+        public const int SClassOvr = 80, CounterTargetOvr = 75, CounterPledgeFan = 4, CounterFailTrust = -8, CounterFailFan = -4;
+        public const long CheerBigEventCost = 8000;
+        public const int CheerBigEventFan = 5, YouthFan = -2, YouthLoyalty = 6, YouthTrust = 2;
+
+        /// <summary>전통 라이벌(잠실 · 낙동강 · 영호남 · 통신사 계보 · 그 밖).</summary>
+        public static string TraditionalRival(string code)
+        {
+            switch (code)
+            {
+                case "LG": return "DOO";
+                case "DOO": return "LG";
+                case "LOT": return "NC";
+                case "NC": return "LOT";
+                case "SAM": return "KIA";
+                case "KIA": return "SAM";
+                case "SSG": return "KT";
+                case "KT": return "SSG";
+                case "HAN": return "KIW";
+                case "KIW": return "HAN";
+                default: return "";
+            }
+        }
+
+        /// <summary>라이벌 = 전통 라이벌 + 현재 순위 ±2 이내 구단.</summary>
+        public static bool IsRival(GMLiveSeasonSimulator sim, string userCode, string otherCode)
+        {
+            if (string.IsNullOrEmpty(otherCode) || otherCode == userCode) return false;
+            if (TraditionalRival(userCode) == otherCode) return true;
+            var standings = sim?.Standings();
+            if (standings == null || standings.Count == 0) return false;
+            int me = standings.FindIndex(r => r.TeamCode == userCode), them = standings.FindIndex(r => r.TeamCode == otherCode);
+            return me >= 0 && them >= 0 && Math.Abs(me - them) <= 2;
+        }
+
+        public static bool IsSClass(Player p) => p?.Template != null && (GMStarterDeck.TierOf(p) == GMStarterTier.S || p.BaseOverall >= SClassOvr);
+
+        /// <summary>부진 판정용 시즌 WAR(기록 없음 = 0).</summary>
+        private static double SeasonWar(GMLeagueState league, Player p) => league.Stats.TryGetValue(p.InstanceId, out var s) ? s.WAR : 0.0;
+
+        /// <summary>[감독과의 갈등] 대상 - 1군 연봉 상위 5명 중 시즌 WAR 최저(1.0 미만) 선수(부상 · 주장 제외).</summary>
+        public static Player DemotionTarget(GMLeagueState league, GMTeamState team) =>
+            team.Roster.Where(x => x?.Template != null && x.InjuryRemainingDays <= 0 && !x.IsCaptain)
+                .OrderByDescending(x => x.Salary).ThenBy(x => x.InstanceId, StringComparer.Ordinal).Take(DemotionSalaryRank)
+                .Where(x => SeasonWar(league, x) < DemotionMaxWar)
+                .OrderBy(x => SeasonWar(league, x)).ThenBy(x => x.BaseOverall).FirstOrDefault();
+
+        private static GMSeasonEvent ManagerDemotion(GMLeagueState league, GMTeamState team, int week)
+        {
+            var rec = league.RecordOf(team.TeamCode);
+            if (rec.Streak > -DemotionStreak) return null;
+            var p = DemotionTarget(league, team);
+            if (p == null) return null;
+            league.Stats.TryGetValue(p.InstanceId, out var s);
+            string line = s == null ? "시즌 기록 없음" : p.IsPitcher ? $"{s.OutsPitched / 3}이닝 평균자책점 {(s.OutsPitched > 0 ? s.ER * 27.0 / s.OutsPitched : 0):0.00} · WAR {s.WAR:0.0}"
+                : $"{s.PA}타석 타율 {GMTeamRecord.PctLabel(s.AVG)} · {s.HR}홈런 · WAR {s.WAR:0.0}";
+            var e = New(league, GMSeasonEventKind.ManagerDemotion, GMEventPriority.P0, week, $"감독 \"{Name(p)}, 2군으로 내리겠습니다\"",
+                $"{-rec.Streak}연패 끝에 감독이 단장실을 찾았습니다. 연봉 {GMDiagnosticFormat.Short(p.Salary)}의 {Pos(p)} {Name(p)}을(를) 퓨처스로 내려 분위기를 바꾸겠다는 통보입니다.");
+            e.Player = p;
+            e.Facts.Add($"대상: {Pos(p)} {Name(p)} · OVR {p.BaseOverall} · 연봉 {GMDiagnosticFormat.Short(p.Salary)}(팀 내 상위 {DemotionSalaryRank}위 이내) · {line}");
+            e.Facts.Add($"감독 신뢰도 {team.ManagerTrust} · 선수 충성도 {p.Loyalty} · 자존심 {p.EgoLevel} · 선수단 신뢰도 {team.LockerRoomTrust}");
+            bool canDown = team.Futures.Count < GMRosterTiers.FuturesMax;
+            Choice(e, "SUPPORT", "감독 지지 (2군 강등 수용)", $"{Name(p)} 퓨처스 강등 · 충성도 {SupportLoyalty} · 만족 {SupportMorale} · 감독 신뢰도 +{SupportManagerTrust}",
+                block: canDown ? "" : "퓨처스 풀이 가득 차 강등할 수 없습니다.");
+            Choice(e, "OVERRULE", "단장 권한으로 1군 유지 강제", $"감독 신뢰도 {OverruleManagerTrust} · 선수 충성도 +{OverruleLoyalty} · 팀워크 -2(3주)");
+            Choice(e, "MEDIATE", "감독 · 선수 면담 중재", $"성공 확률 {MediateChance(team) * 100:0}% - 성공: 1군 유지 · 감독 신뢰도 +{MediateManagerTrust} · 충성도 +{MediateLoyalty} / 실패: 감독 신뢰도 {MediateFailManagerTrust} · 충성도 {MediateFailLoyalty}", true);
+            return e;
+        }
+
+        /// <summary>면담 중재 성공 확률 = 0.45 + (선수단 · 감독 신뢰도 평균 - 50) × 1%p (20~85%).</summary>
+        public static double MediateChance(GMTeamState team) =>
+            Math.Max(0.2, Math.Min(0.85, 0.45 + ((team.LockerRoomTrust + team.ManagerTrust) / 2.0 - 50) * 0.01));
+
+        /// <summary>올해 라이벌 구단이 영입한 S급 선수(아직 사건으로 다루지 않은) - 커리어 타임라인의 FA · 트레이드 기록으로 찾는다.</summary>
+        public static (Player player, string teamCode, string via) FindRivalSigning(GMLiveSeasonSimulator sim)
+        {
+            var league = sim.League;
+            var fo = GMFrontOffice.Ensure(league);
+            string user = league.SelectedTeamCode;
+            foreach (var team in league.Teams.Values.Where(t => !t.IsUserTeam).OrderBy(t => t.TeamCode, StringComparer.Ordinal))
+            {
+                if (!IsRival(sim, user, team.TeamCode)) continue;
+                foreach (var p in team.Roster.Where(IsSClass).OrderByDescending(x => x.BaseOverall).ThenBy(x => x.InstanceId, StringComparer.Ordinal))
+                {
+                    var ev = (p.CareerHistory ?? new List<GMCareerEvent>()).LastOrDefault(x => x != null && x.Year == league.SeasonYear && x.TeamCode == team.TeamCode &&
+                                                                   (x.Kind == (int)GMCareerEventKind.FaSigning || x.Kind == (int)GMCareerEventKind.Trade));
+                    if (ev == null || fo.RivalSigningSeen.Contains($"{league.SeasonYear}|{p.InstanceId}")) continue;
+                    return (p, team.TeamCode, ev.Kind == (int)GMCareerEventKind.FaSigning ? "FA" : "트레이드");
+                }
+            }
+            return (null, null, null);
+        }
+
+        private static GMSeasonEvent RivalSigning(GMLiveSeasonSimulator sim, GMTeamState team, int week)
+        {
+            var league = sim.League;
+            var (p, code, via) = FindRivalSigning(sim);
+            if (p == null) return null;
+            var fo = GMFrontOffice.Ensure(league);
+            fo.RivalSigningSeen.Add($"{league.SeasonYear}|{p.InstanceId}");
+            while (fo.RivalSigningSeen.Count > 60) fo.RivalSigningSeen.RemoveAt(0);
+            string rival = NameAliasTable.DisplayTeamName(code);
+            bool traditional = TraditionalRival(team.TeamCode) == code;
+            var e = New(league, GMSeasonEventKind.RivalSigning, GMEventPriority.P1, week, $"{(traditional ? "전통의 라이벌" : "순위 경쟁 구단")} {rival}, S급 {Name(p)} {via} 영입",
+                $"{rival}이(가) {via}로 {Pos(p)} {Name(p)}(OVR {p.BaseOverall})을(를) 품었습니다. 팬 커뮤니티에는 \"우리 프런트는 뭐 하냐\"는 글이 쏟아지고 있습니다.");
+            e.Player = p;
+            e.PartnerTeam = code;
+            bool deadlinePassed = GMLeagueRules.IsPastTradeDeadline(league);
+            e.Facts.Add($"영입 선수: {Pos(p)} {Name(p)} · OVR {p.BaseOverall} · {p.Age}세 · 연봉 {GMDiagnosticFormat.Short(p.Salary)}");
+            e.Facts.Add($"팬 지지율 {team.FanSupport} · 마케팅 예산 {GMDiagnosticFormat.Short(team.MarketingBudget)} · 구단주 신임도 {fo.OwnerTrust}");
+            Choice(e, "COUNTER", "언론에 맞불 영입 예고", $"팬 지지율 +{CounterPledgeFan} · {league.SeasonYear}년 7월 31일까지 OVR {CounterTargetOvr}+ 선수(FA · 트레이드) 영입 약속 - 미달 시 구단주 신임도 {CounterFailTrust} · 팬 지지율 {CounterFailFan}",
+                block: deadlinePassed ? "트레이드 · 영입 마감(7/31)이 지나 공언할 수 없습니다." : fo.CounterPledgeYear == league.SeasonYear ? "이미 올해 맞불 영입을 공언했습니다." : "");
+            Choice(e, "YOUTH", "유망주 육성 천명", $"팬 지지율 {YouthFan} · 퓨처스 유망주 충성도 +{YouthLoyalty} · 선수단 신뢰도 +{YouthTrust}", true);
+            Choice(e, "CHEER", $"대규모 치어리더 이벤트 (마케팅 예산 {GMDiagnosticFormat.Short(CheerBigEventCost)})", $"마케팅 예산 -{GMDiagnosticFormat.Short(CheerBigEventCost)} · 팬 지지율 +{CheerBigEventFan} · 1군 만족 +2 · 시선 분산",
+                block: team.MarketingBudget < CheerBigEventCost ? "마케팅 예산이 부족합니다." : "");
+            return e;
+        }
+
+        /// <summary>[TASK-GM-19] 검증 · 툴 - 2티어 사건을 판정 조건 그대로 만든다(쿨다운 · 시즌 상한 무시, 조건 미충족 = null).</summary>
+        public static GMSeasonEvent BuildManagerDemotion(GMLeagueState league, GMTeamState team, int week) => league == null || team == null ? null : ManagerDemotion(league, team, week);
+        public static GMSeasonEvent BuildRivalSigning(GMLiveSeasonSimulator sim, int week) => sim?.League?.UserTeam == null ? null : RivalSigning(sim, sim.League.UserTeam, week);
+
+        private static void ManagerTrust(GMTeamState t, int delta) => t.ManagerTrust = Math.Max(0, Math.Min(100, t.ManagerTrust + delta));
+
+        /// <summary>맞불 영입 공언 이행 여부 - 공언 이후 7/31 마감 안에 OVR 75+ 선수를 FA · 트레이드로 데려왔는지(커리어 타임라인 기준).</summary>
+        public static bool CounterPledgeMet(GMLeagueState league)
+        {
+            var fo = GMFrontOffice.Ensure(league);
+            var team = league.UserTeam;
+            if (team == null || fo.CounterPledgeYear != league.SeasonYear) return false;
+            int deadline = GMLeagueRules.TradeDeadlineGameDay(league);
+            return team.ReservePlayers.Any(p => p.BaseOverall >= CounterTargetOvr && (p.CareerHistory ?? new List<GMCareerEvent>()).Any(x => x != null && x.Year == fo.CounterPledgeYear &&
+                x.TeamCode == team.TeamCode && x.Day >= fo.CounterPledgeDay && x.Day <= deadline && (x.Kind == (int)GMCareerEventKind.FaSigning || x.Kind == (int)GMCareerEventKind.Trade)));
+        }
+
         // ================================================================== 결과 반영
 
         private static void Teamwork(GMTeamState team, int delta, int weeks)
@@ -608,6 +757,64 @@ namespace KBOManager.Services
                     break;
                 }
 
+                case GMSeasonEventKind.ManagerDemotion:
+                    if (choice.Id == "SUPPORT" && p != null && team.Roster.Contains(p) && GMRosterTiers.SendDown(team, p, out var downMsg))
+                    {
+                        p.Loyalty = p.Loyalty + SupportLoyalty;
+                        Morale(p, SupportMorale);
+                        ManagerTrust(team, SupportManagerTrust);
+                        GMCareerTimeline.Record(league, p, GMCareerEventKind.BondConflict, team.TeamCode, "감독 요청으로 2군 강등 - 단장이 감독 편에", $"충성도 {SupportLoyalty} · {downMsg}");
+                        r.Audio = GMAudioEvent.Tension;
+                        r.Message = $"감독을 지지했습니다 - {Name(p)} 퓨처스 강등 · 충성도 {SupportLoyalty} · 만족 {SupportMorale} · 감독 신뢰도 +{SupportManagerTrust}.";
+                    }
+                    else if (choice.Id == "OVERRULE" && p != null)
+                    {
+                        ManagerTrust(team, OverruleManagerTrust);
+                        p.Loyalty = p.Loyalty + OverruleLoyalty;
+                        Teamwork(team, -2, 3);
+                        r.Audio = GMAudioEvent.Tension;
+                        r.Message = $"단장 권한으로 {Name(p)} 1군 유지 - 감독 신뢰도 {OverruleManagerTrust} · 선수 충성도 +{OverruleLoyalty} · 팀워크 -2(3주). 감독은 굳은 얼굴로 단장실을 나섰습니다.";
+                    }
+                    else if (p != null)
+                    {
+                        bool ok = roll < MediateChance(team);
+                        r.Success = ok;
+                        if (ok) { ManagerTrust(team, MediateManagerTrust); p.Loyalty = p.Loyalty + MediateLoyalty; Morale(p, 3); r.Message = $"면담 중재 성공 - {Name(p)}은(는) 1군에서 반등을 약속했고 감독도 수긍했습니다(감독 신뢰도 +{MediateManagerTrust} · 충성도 +{MediateLoyalty})."; }
+                        else { ManagerTrust(team, MediateFailManagerTrust); p.Loyalty = p.Loyalty + MediateFailLoyalty; r.Sfx = TeamAudioProfile.SynthFail; r.Audio = GMAudioEvent.Tension; r.Message = $"면담 중재 실패 - 양측 모두 불만을 품은 채 끝났습니다(감독 신뢰도 {MediateFailManagerTrust} · 충성도 {MediateFailLoyalty}). {Name(p)}은(는) 1군에 남습니다."; }
+                    }
+                    else { r.Success = false; r.Message = "대상 선수가 없어 사건이 종료되었습니다."; }
+                    break;
+
+                case GMSeasonEventKind.RivalSigning:
+                {
+                    var fo = GMFrontOffice.Ensure(league);
+                    if (choice.Id == "COUNTER")
+                    {
+                        team.FanSupport = GMTeamFan.Clamp(team.FanSupport + CounterPledgeFan);
+                        fo.CounterPledgeYear = league.SeasonYear;
+                        fo.CounterPledgeDay = league.GamesPlayed;
+                        fo.CounterPledgeRival = ev.PartnerTeam ?? "";
+                        fo.CounterPledgeTarget = Name(p);
+                        r.Audio = GMAudioEvent.OwnerApproval;
+                        r.Message = $"언론에 맞불 영입을 예고했습니다 - 팬 지지율 +{CounterPledgeFan}. 7월 31일까지 OVR {CounterTargetOvr}+ 선수를 데려오지 못하면 구단주 신임도 {CounterFailTrust} · 팬 지지율 {CounterFailFan}.";
+                    }
+                    else if (choice.Id == "CHEER")
+                    {
+                        team.MarketingBudget -= CheerBigEventCost;
+                        team.FanSupport = GMTeamFan.Clamp(team.FanSupport + CheerBigEventFan);
+                        foreach (var x in team.Roster) Morale(x, 2);
+                        r.Message = $"대규모 치어리더 이벤트 - 마케팅 예산 -{GMDiagnosticFormat.Short(CheerBigEventCost)} · 팬 지지율 +{CheerBigEventFan} · 1군 만족 +2. 팬들의 시선이 응원단 단상으로 쏠렸습니다.";
+                    }
+                    else
+                    {
+                        team.FanSupport = GMTeamFan.Clamp(team.FanSupport + YouthFan);
+                        foreach (var x in team.Futures) x.Loyalty = x.Loyalty + YouthLoyalty;
+                        Trust(team, YouthTrust);
+                        r.Message = $"유망주 육성을 천명했습니다 - 팬 지지율 {YouthFan} · 퓨처스 충성도 +{YouthLoyalty} · 선수단 신뢰도 +{YouthTrust}.";
+                    }
+                    break;
+                }
+
                 default:
                     if (choice.Id == "INTERVENE") { Teamwork(team, -2, 3); Owner(league, 2); Trust(team, -4); r.Audio = GMAudioEvent.Tension; r.Message = "단장 직접 개입 - 팀워크 -2(3주) · 구단주 신임도 +2 · 선수단 신뢰도 -4."; }
                     else if (choice.Id == "COACHES") { team.Budget -= CoachCost; Teamwork(team, 2, 3); Trust(team, 2); r.Message = "코치진 교체 - 운영 예산 -1억 · 팀워크 +2(3주) · 선수단 신뢰도 +2."; }
@@ -662,12 +869,33 @@ namespace KBOManager.Services
             var fo = GMFrontOffice.Ensure(league);
             foreach (var t in league.Teams.Values) { t.SeasonEventTeamwork = 0; t.SeasonEventTeamworkWeeks = 0; }
             fo.SeasonTradeBlockId = "";
-            if (fo.OwnerPledgeYear != league.SeasonYear || league.UserTeam == null) return "";
+            string counter = EvaluateCounterPledge(league); // [TASK-GM-19] 맞불 영입 공언 판정
+            if (fo.OwnerPledgeYear != league.SeasonYear || league.UserTeam == null) return counter;
             fo.OwnerPledgeYear = 0;
             int rank = regularSeasonRanks.ToList().IndexOf(league.UserTeam.TeamCode) + 1;
-            if (rank > 0 && rank <= fo.OwnerPledgeRank) return $"구단주 중간 점검 약속 이행({rank}위 ≤ {fo.OwnerPledgeRank}위)";
+            string sep = counter == "" ? "" : " · ";
+            if (rank > 0 && rank <= fo.OwnerPledgeRank) return counter + sep + $"구단주 중간 점검 약속 이행({rank}위 ≤ {fo.OwnerPledgeRank}위)";
             Owner(league, -8);
-            return $"구단주 중간 점검 약속 미달({rank}위 > {fo.OwnerPledgeRank}위) - 신임도 -8";
+            return counter + sep + $"구단주 중간 점검 약속 미달({rank}위 > {fo.OwnerPledgeRank}위) - 신임도 -8";
+        }
+
+        /// <summary>[TASK-GM-19] 맞불 영입 공언 판정(정규시즌 종료) - 미달 = 구단주 신임도 -8 · 팬 지지율 -4. 판정 메시지(공언 없으면 빈 문자열).</summary>
+        public static string EvaluateCounterPledge(GMLeagueState league)
+        {
+            var fo = GMFrontOffice.Ensure(league);
+            var team = league.UserTeam;
+            if (team == null || fo.CounterPledgeYear != league.SeasonYear) return "";
+            bool met = CounterPledgeMet(league);
+            fo.CounterPledgeYear = 0;
+            if (met) return "맞불 영입 공언 이행";
+            Owner(league, CounterFailTrust);
+            team.FanSupport = GMTeamFan.Clamp(team.FanSupport + CounterFailFan);
+            league.AddNews(new GMNewsItem
+            {
+                GameIndex = Math.Max(0, league.GamesPlayed - 1), DateLabel = $"{league.SeasonYear} 시즌 종료", Kind = GMNewsKind.Decision, IsUserTeam = true, IsMajor = true,
+                Title = "[단장 공언] 맞불 영입 약속, 끝내 지키지 못했다", Body = $"{NameAliasTable.DisplayTeamName(fo.CounterPledgeRival)}의 {fo.CounterPledgeTarget} 영입에 맞서 예고한 보강이 무산됐습니다. 구단주 신임도 {CounterFailTrust} · 팬 지지율 {CounterFailFan}.",
+            });
+            return $"맞불 영입 공언 미달 - 구단주 신임도 {CounterFailTrust} · 팬 지지율 {CounterFailFan}";
         }
 
         /// <summary>올해 단장 개입 결정 수.</summary>

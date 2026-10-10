@@ -409,8 +409,8 @@ namespace KBOManager.Services
             r.TeamworkBefore = Teamwork(mine);
             var outs = myOut.ToList();
             var ins = theirIn.ToList();
-            foreach (var p in outs) { RemoveFromTeam(mine, p); AddToTeam(partner, p); }
-            foreach (var p in ins) { RemoveFromTeam(partner, p); AddToTeam(mine, p); }
+            foreach (var p in outs) { RemoveFromTeam(mine, p); AddToTeam(partner, p); GMCareerTimeline.OnTraded(league, p, mine.TeamCode, partner.TeamCode); } // [TASK-GM-19]
+            foreach (var p in ins) { RemoveFromTeam(partner, p); AddToTeam(mine, p); GMCareerTimeline.OnTraded(league, p, partner.TeamCode, mine.TeamCode); }
             // [TASK-GM-08] 연봉 보조 이전 · 1군 29명 초과분 퓨처스 정리
             mine.Budget -= e.CashSubsidy;
             partner.Budget += e.CashSubsidy;
@@ -503,6 +503,7 @@ namespace KBOManager.Services
             AddToTeam(team, p);
             fo.DraftPicksThisYear++;
             if (!league.RookiesThisYear.Contains(p.InstanceId)) league.RookiesThisYear.Add(p.InstanceId); // [TASK-GM-08] 당해 신인 = 보상 자동 보호
+            GMCareerTimeline.OnDrafted(league, p, team.TeamCode, $"{league.SeasonYear} 신인 드래프트 {fo.DraftPicksThisYear}순위"); // [TASK-GM-19]
             r.TeamworkAfter = Teamwork(team);
             r.Success = true;
             r.Message = $"{league.SeasonYear} 신인 드래프트 {fo.DraftPicksThisYear}순위 지명: {p.Template.PlayerName}({GMFrontOffice.PositionLabel(p.Position)} · {p.Age}세 · 잠재력 {p.Potential}) · 계약금 {GMDiagnosticFormat.Won(bonus)}";

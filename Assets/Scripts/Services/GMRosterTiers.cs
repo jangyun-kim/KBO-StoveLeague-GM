@@ -196,6 +196,7 @@ namespace KBOManager.Services
             if (team.Roster.Count >= FirstTeamMax) { message = $"1군 {FirstTeamMax}명 가득 - 먼저 1군 선수를 퓨처스로 내리십시오."; return false; }
             team.Futures.Remove(p);
             team.Roster.Add(p);
+            GMCareerTimeline.OnCalledUp(league, p, team.TeamCode); // [TASK-GM-19] 첫 1군 콜업
             message = $"{p.Template.PlayerName} 1군 콜업 - {Summary(team)}";
             return true;
         }

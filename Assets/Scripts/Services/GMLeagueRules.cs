@@ -37,6 +37,19 @@ namespace KBOManager.Services
             return today.HasValue && today.Value.Date > TradeDeadline(league.SeasonYear);
         }
 
+        /// <summary>[TASK-GM-19] 7/31 이전 마지막 경기일 인덱스(이 값 이하의 경기 진행 수에서 생긴 영입 = 마감 내).</summary>
+        public static int TradeDeadlineGameDay(GMLeagueState league)
+        {
+            int year = league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR;
+            int last = 0;
+            for (int d = 0; d < GMLiveSeasonSimulator.SeasonGames; d++)
+            {
+                if (GMLiveSeasonSimulator.DateOf(d, year).Date > TradeDeadline(year)) break;
+                last = d;
+            }
+            return last;
+        }
+
         public static string DeadlineMessage(GMLeagueState league) =>
             $"KBO 규정 - {league?.SeasonYear ?? GMFeatureFlags.DEFAULT_START_YEAR}년 7월 31일 트레이드 · 영입 마감이 지났습니다. 시즌이 끝난 뒤 스토브리그에서 다시 열립니다.";
 

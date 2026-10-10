@@ -374,6 +374,7 @@ namespace KBOManager.Services
                 league.PriorityNegotiationIds.Remove(p.InstanceId);
                 GMFuturesMeeting.Prune(league);
                 r.ChainEffects = bonded;
+                GMCareerTimeline.OnContractBreakdown(league, p, team.TeamCode, s.Demand, f.Salary); // [TASK-GM-19] 커리어 타임라인 - 단장과의 협상 결렬
                 r.Message = $"{name} 측 최종 결렬 {cardText} - 협상 기회 {MaxStrikes}회 소진, {(r.MovedToFA ? "FA 시장으로 나갔습니다" : "구단을 떠났습니다")}(선수단 신뢰도 -2)." +
                             GMSalaryChain.Summary(bonded) + (tradeRisk ? " 동료들 사이에 동요가 있습니다." : "");
                 league.AddNews(new GMNewsItem
@@ -401,6 +402,7 @@ namespace KBOManager.Services
             if (GMPromiseSystem.Activate(league, promise)) r.Promise = promise; // [TASK-GM-13] 계약 체결 = 약속 활성
             r.ChainEffects = GMSalaryChain.Apply(league, team, p, s.CurrentSalary, salary, outcome); // [TASK-GM-14] 동료 연봉 연쇄
             fo.NegotiationTalks.RemoveAll(t => t.PlayerId == p.InstanceId); // [TASK-GM-17] 타결 = 협상 기록 종료
+            GMCareerTimeline.OnContract(league, p, team.TeamCode, OutcomeLabel(outcome), salary, s.CurrentSalary, f.Years, outcome == GMNegotiationOutcome.Cut); // [TASK-GM-19] 계약 · 삭감 갈등
             r.Success = true;
             r.Outcome = outcome;
             r.Salary = salary;
